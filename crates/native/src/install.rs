@@ -49,6 +49,9 @@ pub struct Job<'a> {
     /// The batch of installs this one belongs to (an "update all"): where the platform needs a
     /// permission prompt, the whole batch shares one. `None` for a job on its own.
     pub batch: Option<crate::queue::Gather>,
+    /// The job's place in the download line, taken when it started (none: it takes one when it
+    /// gets to its download).
+    pub place: Option<crate::downloads::Place<'static>>,
 }
 
 /// A job's place in its batch (see [`Job::batch`]): the installer queue takes it where the batch
@@ -126,6 +129,9 @@ pub fn install(
 
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
 
+/// Does the work of [`install`], plus `commit` (the caller's way of saving the new record). The
+/// download waits its turn in the line, using the job's place if it has one; a file already
+/// downloaded skips the line.
 #[allow(clippy::too_many_arguments)]
 pub fn install_at(
     app: &CraftApp,
@@ -187,17 +193,22 @@ pub fn install_at(
     } else {
         None
     };
-    // The package to put back comes first: without it, nothing is removed.
+    // One turn to download covers everything this install fetches, and ends when the files are here.
     #[cfg_attr(not(windows), allow(unused_variables))]
-    let rollback = match job.downgrade {
-        Some(Downgrade::Reinstall { previous, asset }) => {
-            let (file, sha256) = download(previous, asset, job)?;
-            Some((file, sha256, previous.version_label()))
-        }
-        Some(Downgrade::KeepOldCopy) | None => None,
+    let (rollback, file, sha256) = {
+        let _turn = download_turn(app, asset, job)?;
+        // The package to put back comes first: without it, nothing is removed.
+        let rollback = match job.downgrade {
+            Some(Downgrade::Reinstall { previous, asset }) => {
+                let (file, sha256) = download(previous, asset, job)?;
+                Some((file, sha256, previous.version_label()))
+            }
+            Some(Downgrade::KeepOldCopy) | None => None,
+        };
+        // The checksum is kept for the Windows all-users route, which checks the held package again.
+        let (file, sha256) = download(release, asset, job)?;
+        (rollback, file, sha256)
     };
-    #[cfg_attr(not(windows), allow(unused_variables))]
-    let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -662,6 +673,37 @@ pub fn available_kinds() -> Vec<PackageKind> {
     Vec::new()
 }
 
+/// Waits for this job's turn to download ([`DOWNLOADS`]), unless every file it needs is already
+/// here from an earlier try (that only needs checking). `asset` is the file being installed; a
+/// downgrade that puts back the installed version also fetches that version's package.
+fn download_turn(app: &CraftApp, asset: &Asset, job: &mut Job<'_>) -> Result<Option<crate::downloads::Turn<'static>>, String> {
+    let here = |asset: &Asset| crate::http::finished(&download_path(job.paths, asset), asset.size);
+    let put_back_here = match job.downgrade {
+        Some(Downgrade::Reinstall { asset, .. }) => here(asset),
+        Some(Downgrade::KeepOldCopy) | None => true,
+    };
+    let place = job.place.take();
+    if here(asset) && put_back_here {
+        // Everything is here: the place in line isn't needed.
+        drop(place);
+        return Ok(None);
+    }
+    let dest = download_path(job.paths, asset);
+    let phase = &mut *job.phase;
+    let mut queued = false;
+    let place = place.unwrap_or_else(|| DOWNLOADS.join(app.id));
+    let turn = place.turn(&|| job.stop.check(), &mut || {
+        queued = true;
+        phase(JobPhase::Queued);
+    })?;
+    if queued {
+        log::info!("{}: its turn to download came", app.name);
+        let done = crate::http::partial_bytes(&dest, asset.size).unwrap_or(0);
+        phase(JobPhase::Downloading { done, total: asset.size });
+    }
+    Ok(Some(turn))
+}
+
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
 /// or GitHub's per-file digest, else the release's `SHA256SUMS.txt`. A release with neither is
 /// refused before anything is fetched: a file nothing vouches for is never installed (#90).
@@ -810,7 +852,7 @@ pub fn uninstall(
         }
         #[cfg(target_os = "freebsd")]
         InstallSource::Launcher => match record {
-            Some(r) => freebsd::remove_files(&r.files, r.needs_root),
+            Some(r) => freebsd::remove_files(app.id, &r.files, r.needs_root),
             None => Err("the launcher has no record of these files".into()),
         },
         #[cfg(target_os = "linux")]
@@ -890,7 +932,7 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
         }
         _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open_app(path, args),
         _ => {
-            if !path.exists() {
+            if !is_resolved_location(path) {
                 if cfg!(windows) && installed.source == InstallSource::Msi && path.components().count() < 2 {
                     return Err(format!(
                         "{} is registered with Windows, but the launcher can't find where it put the program. Reinstall it from here.",
@@ -903,6 +945,15 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))
+}
+
+/// Whether `location` names a program that is really there. Only a full path counts: detection
+/// stores the bare app name (`WordCraft`) when it can't find the exe, and `exists()` on that
+/// looks in the launcher's working folder, which is its own install folder. With the apps in a
+/// custom folder beside the launcher, a folder of that name is there, so the bare name would be
+/// passed to spawn and fail with "program not found" instead of asking for a reinstall.
+fn is_resolved_location(location: &Path) -> bool {
+    location.is_absolute() && location.exists()
 }
 
 /// The environment a Craft App unpacked by the launcher runs with: its own `HOME` and the XDG
@@ -1080,6 +1131,9 @@ const SHARED_CALL: &str = "apps together. Try them one at a time.";
 pub fn failed_in_shared_call(error: &str) -> bool {
     cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
 }
+
+/// Apps download one at a time, in the order they are on screen; the others wait their turn here.
+pub static DOWNLOADS: crate::downloads::Downloads = crate::downloads::Downloads::new();
 
 /// The system's installer runs one job at a time; the others wait their turn here. The backend
 /// starts each batch of installs (an "update all") with [`Queue::gather`] on it.
@@ -2047,7 +2101,10 @@ mod tree {
 mod freebsd {
     use std::ffi::OsStr;
 
-    use super::{CraftApp, Path, PathBuf, Paths, pkexec, process, run_as_root, tree};
+    use super::{CraftApp, Path, PathBuf, Paths, pkexec, process, root_record, run_as_root, tree};
+
+    /// Where system-wide tree installs go.
+    const ROOT_PREFIX: &str = "/usr/local";
 
     /// Copies the release's tree into `/usr/local` (asking for permission through polkit), or
     /// into `~/.local` when polkit isn't installed. Returns the binary, every file installed,
@@ -2062,12 +2119,28 @@ mod freebsd {
     fn install_from(app: &CraftApp, file: &Path, staging: &Path) -> Result<(PathBuf, Vec<PathBuf>, bool), String> {
         let tree = tree::unpack(app, file, staging)?;
         let rel = tree::files(&tree)?;
-        let mut source = tree.into_os_string();
+        let mut source = tree.clone().into_os_string();
         source.push("/.");
         if pkexec().is_some() {
-            let prefix = PathBuf::from("/usr/local");
-            run_as_root(&[OsStr::new("/bin/cp"), OsStr::new("-R"), &source, prefix.as_os_str()])?;
-            return Ok((prefix.join("bin").join(app.id), rel.iter().map(|r| prefix.join(r)).collect(), true));
+            let prefix = PathBuf::from(ROOT_PREFIX);
+            // Copied in with the app's files and owned by root, so an uninstall can tell which
+            // files are the app's whatever happens to the user's own record of them.
+            let list = root_record::stage(&tree, app.id, &rel)?;
+            // The copy carries the archive's modes and the user's umask into the prefix: the same
+            // root call fixes the list's and its folders' modes (see `COPY_AND_PROTECT`).
+            let protect = root_record::protected_paths(&prefix, app.id);
+            let mut args: Vec<&OsStr> = vec![
+                OsStr::new("/bin/sh"),
+                OsStr::new("-c"),
+                OsStr::new(root_record::COPY_AND_PROTECT),
+                OsStr::new("sh"),
+                source.as_os_str(),
+                prefix.as_os_str(),
+            ];
+            args.extend(protect.iter().map(|p| p.as_os_str()));
+            run_as_root(&args)?;
+            let files = rel.iter().chain(std::iter::once(&list)).map(|r| prefix.join(r)).collect();
+            return Ok((prefix.join("bin").join(app.id), files, true));
         }
         let prefix = dirs::home_dir().ok_or("no home folder")?.join(".local");
         std::fs::create_dir_all(&prefix).map_err(|e| e.to_string())?;
@@ -2095,42 +2168,37 @@ mod freebsd {
         Ok((bin, rel.iter().map(|r| prefix.join(r)).collect(), false))
     }
 
-    /// Removes the files a tree install put down.
-    pub fn remove_files(files: &[PathBuf], needs_root: bool) -> Result<(), String> {
-        if files.is_empty() {
+    /// Removes the files a tree install of `app_id` put down. A system-wide install removes the
+    /// files that the root-owned list it installed names, not `files`: that comes from the user's
+    /// own record, which anything running as the user can rewrite.
+    pub fn remove_files(app_id: &str, files: &[PathBuf], needs_root: bool) -> Result<(), String> {
+        if !needs_root && files.is_empty() {
             return Err("the launcher has no record of these files".into());
         }
-        let prefix = if needs_root { PathBuf::from("/usr/local") } else { dirs::home_dir().ok_or("no home folder")?.join(".local") };
-        let mut safe_files = Vec::new();
-        for f in files {
+        let prefix = if needs_root { PathBuf::from(ROOT_PREFIX) } else { dirs::home_dir().ok_or("no home folder")?.join(".local") };
+        let targets: Vec<PathBuf> = if needs_root {
+            let mut owned: Vec<PathBuf> = root_record::owned(&prefix, app_id, 0)?.into_iter().collect();
+            owned.sort();
+            owned
+        } else {
+            files.to_vec()
+        };
+        for f in &targets {
             // Refuse paths that climb or escape install prefix (CWE-59).
             if !f.starts_with(&prefix) || f.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
                 return Err(format!("refusing to remove file outside install prefix: {}", f.display()));
             }
-            let mut has_symlink_ancestor = false;
-            if let Ok(rel) = f.strip_prefix(&prefix) {
-                let mut check = prefix.clone();
-                for part in rel.components() {
-                    if let Ok(meta) = std::fs::symlink_metadata(&check)
-                        && meta.file_type().is_symlink()
-                    {
-                        has_symlink_ancestor = true;
-                        break;
-                    }
-                    check.push(part);
-                }
-            }
-            if !has_symlink_ancestor {
-                safe_files.push(f);
-            }
-        }
-        if safe_files.is_empty() {
-            return Ok(());
         }
         if needs_root {
-            let mut args: Vec<&OsStr> = vec![OsStr::new("/bin/rm"), OsStr::new("-f"), OsStr::new("--")];
-            args.extend(safe_files.iter().map(|f| f.as_os_str()));
+            // Refuses when a target is behind a symlink, and removes the root-owned list last.
+            let args = root_record::removal_args(&prefix, app_id, &targets)?;
+            let args: Vec<&OsStr> = args.iter().map(|a| a.as_os_str()).collect();
             return run_as_root(&args);
+        }
+        // Files behind a symlink are left alone.
+        let safe_files: Vec<&PathBuf> = targets.iter().filter(|f| !root_record::has_symlink_ancestor(&prefix, f)).collect();
+        if safe_files.is_empty() {
+            return Ok(());
         }
         for f in safe_files {
             let _ = std::fs::remove_file(f);
@@ -2155,6 +2223,10 @@ fn explain(code: Option<i32>) -> Result<(), String> {
 /// Going back to an older version of a Windows Installer app.
 #[cfg(any(windows, test))]
 mod msi_downgrade;
+
+/// The root-owned list of files a system-wide FreeBSD tree install put down.
+#[cfg(any(target_os = "freebsd", all(unix, test)))]
+mod root_record;
 
 /// Helpers for Windows Installer PowerShell scripts running under elevation.
 #[cfg(any(windows, test))]
@@ -2418,6 +2490,18 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A bare app name is never a launchable location, even when the working folder holds a
+    /// folder of that name (an app folder beside the launcher in a custom install folder).
+    #[test]
+    fn a_bare_name_location_is_not_found_even_when_the_working_folder_has_it() {
+        let dir = tempfile::Builder::new().prefix("WordCraft-").tempdir_in(".").unwrap();
+        let name = Path::new(dir.path().file_name().unwrap());
+        assert!(name.exists(), "the bare name resolves against the working folder");
+        assert!(!is_resolved_location(name));
+        assert!(is_resolved_location(&std::fs::canonicalize(dir.path()).unwrap()));
+        assert!(!is_resolved_location(&std::env::current_dir().unwrap().join("no-such-app")));
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]
@@ -2856,6 +2940,7 @@ mod tests {
                 approved_path: None,
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
                 batch: None,
+                place: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
         };
@@ -2979,6 +3064,7 @@ mod tests {
                     approved_path: None,
                     downgrade,
                     batch: None,
+                    place: None,
                 };
                 install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
             };
@@ -3019,6 +3105,7 @@ mod tests {
                 approved_path: None,
                 downgrade: None,
                 batch: None,
+                place: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
@@ -3053,6 +3140,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             batch: None,
+            place: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
         assert!(error.contains("folder is unavailable") || (process::in_sandbox() && error.contains("aren't supported")), "{error}");
@@ -3086,6 +3174,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             batch: None,
+            place: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
@@ -3160,10 +3249,10 @@ mod tests {
     #[cfg(target_os = "freebsd")]
     #[test]
     fn remove_files_refuses_escaping_paths() {
-        assert!(freebsd::remove_files(&[PathBuf::from("/etc/shadow")], false).is_err());
+        assert!(freebsd::remove_files("wordcraft", &[PathBuf::from("/etc/shadow")], false).is_err());
         if let Some(home) = dirs::home_dir() {
             let prefix = home.join(".local");
-            assert!(freebsd::remove_files(&[prefix.join("../escaped")], false).is_err());
+            assert!(freebsd::remove_files("wordcraft", &[prefix.join("../escaped")], false).is_err());
         }
     }
 
@@ -3738,6 +3827,48 @@ mod tests {
         assert_eq!(choose_kinds_with(app, None, None, &[PackageKind::ArchPkg], &[PackageKind::ArchPkg], false), vec![PackageKind::ArchPkg]);
     }
 
+    /// A downgrade that puts back the installed version fetches two packages, so it takes its turn
+    /// to download unless both are here; keeping the old copy aside needs only the chosen one.
+    #[test]
+    fn a_downgrade_takes_a_turn_unless_every_package_it_fetches_is_here() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let phase = &mut |_| ();
+        let locations = InstallLocations::default();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let chosen = Asset { name: "photocraft-0.4.0-windows-x86_64.msi".into(), size: 4, ..Asset::default() };
+        let installed = Asset { name: "photocraft-0.5.0-windows-x86_64.msi".into(), size: 5, ..Asset::default() };
+        let previous = Release::default();
+        let stop = Stop::default();
+        let mut job = Job {
+            http: &http,
+            paths: &paths,
+            stop: &stop,
+            phase,
+            install_locations: &locations,
+            replace: false,
+            approved_path: None,
+            downgrade: Some(Downgrade::Reinstall { previous: &previous, asset: &installed }),
+            batch: None,
+            place: None,
+        };
+        let have = |asset: &Asset| {
+            let dest = download_path(&paths, asset);
+            std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            std::fs::write(dest, vec![0; asset.size as usize]).unwrap();
+        };
+        // The turn is dropped at the end of each statement, so the next one never waits for it.
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_some(), "nothing is here");
+        have(&chosen);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_some(), "the package to put back is missing");
+        have(&installed);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_none(), "both are here");
+        std::fs::remove_file(download_path(&paths, &installed)).unwrap();
+        job.downgrade = Some(Downgrade::KeepOldCopy);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_none(), "the old copy is kept aside, so only the chosen one is needed");
+    }
+
     #[test]
     fn install_refuses_to_downgrade_when_target_release_is_older() {
         let dir = tempfile::tempdir().unwrap();
@@ -3768,6 +3899,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             batch: None,
+            place: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
         assert!(result.is_err());
@@ -3801,6 +3933,7 @@ mod tests {
             approved_path: None,
             downgrade: None,
             batch: None,
+            place: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
         assert!(result.is_err(), "mismatched artifact version must be rejected");
