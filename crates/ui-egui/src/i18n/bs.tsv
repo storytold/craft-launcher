@@ -434,3 +434,18 @@ anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit w
 anicraft	Tweens that ease	Tweenovi s ublažavanjem
 anicraft	Vector animation on a timeline you know.	Vektorska animacija na vremenskoj liniji koju poznajete.
 mailcraft	Mail, calendar and contacts	Pošta, kalendar i kontakti
+
+# Version pinning, desktop shortcuts and the MCP setting.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher ne može instalirati verziju {version} preko ove kopije.
+	Add desktop shortcut	Dodaj prečicu na radnu površinu
+	Version pinned to {version}. Click to unlock.	Verzija je zaključana na {version}. Kliknite da je otključate.
+	Unlock version?	Otključati verziju?
+	{app} is pinned to {version}. Follow the latest release instead?	Aplikacija {app} je zaključana na verziji {version}. Pratiti najnovije izdanje?
+	Unlock	Otključaj
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Dok je ovo uključeno, AI aplikacije koje koriste MCP, poput Claudea, Cursora ili LM Studija, mogu raditi sa svakom instaliranom Craft aplikacijom preko jednog unosa. Dok je isključeno, nijedan agent ih ne može dosegnuti, a unosi dodani ovdje se uklanjaju.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} učitava svoje MCP servere samo pri pokretanju, pa se Craft aplikacije pojavljuju nakon ponovnog pokretanja. Ponovno pokretanje zatvara {client}, uključujući odgovor koji još piše.
+artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher nije mogao otvoriti svoj prozor na {backend}: {e}
+@msg	Desktop shortcut created for {name}	Prečica na radnoj površini je kreirana za {name}
+@msg	Couldn't create the desktop shortcut: {e}	Nije moguće kreirati prečicu na radnoj površini: {e}
+@msg	A desktop shortcut named {name} already exists	Prečica na radnoj površini s nazivom {name} već postoji

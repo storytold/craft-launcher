@@ -1627,6 +1627,26 @@ impl Backend for NativeBackend {
                     }
                 }
             }
+            Command::CreateDesktopShortcut { app } => {
+                let Some(def) = CraftApp::by_id(&app) else { return };
+                let Some(inst) = self.installed(&app) else {
+                    self.shared.emit(Event::Notice { app, result: Err(format!("{} isn't installed", def.name)) });
+                    return;
+                };
+                let path = std::path::PathBuf::from(&inst.location);
+                let name = def.name;
+                let app_id = app;
+                let shared = self.shared.clone();
+                // PowerShell-free .lnk write can still take a moment; don't freeze the UI thread.
+                std::thread::spawn(move || {
+                    let result = match crate::process::create_desktop_shortcut(name, &path) {
+                        Ok(()) => Ok(format!("Desktop shortcut created for {name}")),
+                        Err(e) if e.starts_with("A desktop shortcut named ") => Err(e),
+                        Err(e) => Err(format!("Couldn't create the desktop shortcut: {e}")),
+                    };
+                    shared.emit(Event::Notice { app: app_id, result });
+                });
+            }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::DownloadOrder(order) => install::DOWNLOADS.set_order(order),
@@ -1682,7 +1702,12 @@ impl Backend for NativeBackend {
             Some(Os::Windows) => "Show in Explorer",
             _ => "Show in Files",
         };
-        Capabilities { manage_apps: true, reveal_label, self_update: self.launcher_update_job().is_some() }
+        Capabilities {
+            manage_apps: true,
+            reveal_label,
+            self_update: self.launcher_update_job().is_some(),
+            desktop_shortcuts: matches!(self.platform.map(|p| p.os), Some(Os::Windows)),
+        }
     }
 
     fn platform(&self) -> Option<Platform> {
