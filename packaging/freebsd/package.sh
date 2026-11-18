@@ -57,7 +57,7 @@ echo "==> ArtCraft Launcher $VERSION for FreeBSD $ARCH"
 
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 if [[ "$SKIP_BUILD" = 0 ]]; then
-  (cd "$ROOT" && cargo build --release --locked -p "$PKG" ${CARGO_BUILD_TARGET:+--target "$CARGO_BUILD_TARGET"})
+  (cd "$ROOT" && cargo build --release --locked -p "$PKG" -p artcraft-launcher-mcp ${CARGO_BUILD_TARGET:+--target "$CARGO_BUILD_TARGET"})
 fi
 WORK="$CARGO_TARGET_DIR/freebsd-package"
 STAGE="$WORK/$BASENAME"
@@ -74,6 +74,8 @@ if [[ "$DRY_RUN" = 1 ]]; then
   mkdir -p "$BIN"
   printf '#!/bin/sh\necho "%s %s (dry-run stub)"\n' "$PKG" "$VERSION" >"$BIN/$PKG"
   chmod 755 "$BIN/$PKG"
+  printf '#!/bin/sh\necho "craft-ai-mcp (dry-run stub)"\n' >"$BIN/craft-ai-mcp"
+  chmod 755 "$BIN/craft-ai-mcp"
 fi
 
 # ---- stage a /usr/local-style tree --------------------------------------------------------------
@@ -82,6 +84,9 @@ mkdir -p "$STAGE/bin" "$STAGE/share/applications" "$STAGE/share/metainfo" "$STAG
   "$STAGE/share/doc/$PKG"
 install -m 755 "$BIN/$PKG" "$STAGE/bin/"
 strip "$STAGE/bin/$PKG" 2>/dev/null || true
+# The craft-ai-mcp gateway the launcher ships (Settings › AI agents), beside the launcher.
+install -m 755 "$BIN/craft-ai-mcp" "$STAGE/bin/"
+strip "$STAGE/bin/craft-ai-mcp" 2>/dev/null || true
 # The desktop entry, metainfo and icons are the freedesktop files Linux ships.
 install -m 644 "$LINUX/$APP_ID.desktop" "$STAGE/share/applications/$APP_ID.desktop"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$ARTCRAFT_LAUNCHER_BUILD_DATE/g" \
@@ -89,7 +94,7 @@ sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$ARTCRAFT_LAUNCHER_BUILD_DATE/g" \
 cp -R "$ROOT/assets/app-icon/hicolor" "$STAGE/share/icons/"
 copy_docs "$STAGE/share/doc/$PKG"
 
-for f in "bin/$PKG" "share/applications/$APP_ID.desktop" \
+for f in "bin/$PKG" "bin/craft-ai-mcp" "share/applications/$APP_ID.desktop" \
   "share/icons/hicolor/256x256/apps/$APP_ID.png" "share/icons/hicolor/scalable/apps/$APP_ID.svg" \
   "share/doc/$PKG/LICENSE-MIT" "share/doc/$PKG/LICENSE-APACHE"; do
   if [[ ! -e "$STAGE/$f" ]]; then echo "error: $f is missing from the package" >&2; exit 1; fi

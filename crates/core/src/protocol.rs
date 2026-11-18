@@ -29,6 +29,12 @@ pub enum Command {
     Install {
         app: String,
     },
+    /// Install or update every app in `apps` together: their downloads run as for [`Command::Install`],
+    /// but where the platform needs a permission prompt (polkit on Linux, elevation on Windows)
+    /// the batch shares one prompt instead of one per app. Apps already running a job are left out.
+    InstallAll {
+        apps: Vec<String>,
+    },
     /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
     /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
     /// the user is asked again.
@@ -46,6 +52,10 @@ pub enum Command {
     },
     /// Show the installed app in the file manager.
     Reveal {
+        app: String,
+    },
+    /// Create a desktop shortcut for an installed app (Windows).
+    CreateDesktopShortcut {
         app: String,
     },
     /// Pause a running download, keeping what's downloaded so far (`Install` resumes it).
@@ -66,6 +76,26 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+    /// The app ids in the order they are on screen. Downloads run one at a time, and those
+    /// waiting go in this order.
+    DownloadOrder(Vec<String>),
+
+    /// Ask for the AI agents state (the gateway, the switch, the MCP clients).
+    McpState,
+    /// Let AI agents use the Craft apps (writes the gateway's app list), or stop them (removes the
+    /// list and the client entries the launcher added).
+    McpSetAgents {
+        enabled: bool,
+    },
+    /// Add the one gateway entry to an MCP client's configuration, or remove it.
+    McpSetClient {
+        client: McpClient,
+        added: bool,
+    },
+    /// Quit an MCP client and start it again, so it loads the entry just added.
+    McpRestartClient {
+        client: McpClient,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -104,6 +134,8 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Downloads that may run at once (1 to 4; 0 for no limit).
+    pub simultaneous_downloads: u8,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -129,6 +161,8 @@ pub enum JobPhase {
         total: u64,
     },
     Verifying,
+    /// Another app is downloading; this one's download starts when its turn comes.
+    Queued,
     /// The system's installer is busy with another app; this one goes next.
     Waiting,
     /// Waiting on the OS installer (MSI) or copying files.
@@ -198,6 +232,8 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    /// A signed startup catalog has replaced the bundled app list.
+    CatalogUpdated,
     Latest {
         app: String,
         latest: LatestRelease,
@@ -258,7 +294,14 @@ pub enum Event {
         path: String,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
+    /// Clears the app's in-progress job phase in the UI.
     JobFinished {
+        app: String,
+        result: Result<String, String>,
+    },
+    /// A short status toast that is not tied to an install/uninstall job phase
+    /// (e.g. creating a desktop shortcut). Does not clear `Progress` state.
+    Notice {
         app: String,
         result: Result<String, String>,
     },
@@ -277,6 +320,52 @@ pub enum Event {
         /// GitHub refused more API calls until this time (Unix seconds).
         rate_limited_until: Option<i64>,
     },
+
+    /// The AI agents state: the gateway, the switch and the MCP clients. Sent when Settings asks,
+    /// after detection and after any change.
+    Mcp {
+        agents: McpAgents,
+    },
+    /// An AI agents operation failed (e.g. writing a client configuration). Carries a short, user-facing
+    /// message; the UI shows it as an error toast so a failed toggle is never silent.
+    McpError {
+        message: String,
+    },
+}
+
+/// An MCP client the launcher can add the gateway entry to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum McpClient {
+    ClaudeDesktop,
+    ClaudeCode,
+    Cursor,
+    LmStudio,
+}
+
+/// One MCP client on this machine: whether it looks installed, and whether our entry is in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct McpClientState {
+    pub client: McpClient,
+    pub name: String,
+    pub installed: bool,
+    pub added: bool,
+    /// The launcher can quit and start it again ([`Command::McpRestartClient`]).
+    pub restartable: bool,
+}
+
+/// AI agents and the Craft apps: the `craft-ai-mcp` gateway (found beside the launcher?), the
+/// switch, and the MCP clients.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct McpAgents {
+    /// The `AI-MCP` feature flag: without it Settings shows nothing about agents.
+    pub flag_on: bool,
+    pub gateway_found: bool,
+    pub enabled: bool,
+    /// How many installed apps agents can reach (those with a CLI).
+    pub apps: usize,
+    pub clients: Vec<McpClientState>,
+    /// The gateway clients start, while agents are on: what Copy puts in a configuration.
+    pub gateway: Option<String>,
 }
 
 /// What a backend can do on this platform.
@@ -287,10 +376,13 @@ pub struct Capabilities {
     /// What "show in file manager" is called here (`Show in Finder`).
     pub reveal_label: &'static str,
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
-    /// a Flatpak from anywhere but the release bundle). Without it the UI offers the download
-    /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
+    /// a Flatpak from anywhere but the release bundle), and the newer release has the file this copy
+    /// updates from. Without it the UI offers the download instead. A backend may only know this
+    /// once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
+    /// Offer "Add desktop shortcut" for installed apps (Windows desktop only).
+    pub desktop_shortcuts: bool,
 }
 
 /// The UI's view of a backend.
@@ -307,6 +399,11 @@ pub trait Backend {
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;
+    /// The cached package format and published bytes the next install would download.
+    /// Unknown until the backend has planned it; this must never perform installer discovery.
+    fn download_size(&self, _app: &str) -> Option<(PackageKind, u64)> {
+        None
+    }
     /// Unix seconds now.
     fn now(&self) -> i64;
 }

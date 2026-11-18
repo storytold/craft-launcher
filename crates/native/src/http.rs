@@ -134,7 +134,10 @@ impl Http {
 
     /// GET a GitHub API resource, revalidating with `etag` when given.
     pub fn get_api(&self, url: &str, etag: Option<&str>) -> Result<Fetched, String> {
-        let mut req = self.small.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
+        // A request carrying the token must not follow a redirect: a cross-origin `Location`
+        // could otherwise forward the bearer token. Requests without one keep the old behaviour.
+        let agent = if self.token.is_some() && url.starts_with("https://api.github.com/") { &self.no_redirect } else { &self.small };
+        let mut req = agent.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
         if let Some(tag) = etag {
             req = req.header("If-None-Match", tag);
         }
@@ -197,6 +200,18 @@ impl Http {
     /// on the body when the length wasn't announced or was wrong.
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let agent = if is_loopback(url) { &self.direct } else { &self.small };
+        Self::get_bytes_with(agent, url, max)
+    }
+
+    /// Catalog resources remain on the pinned HTTPS website; redirect responses are refused.
+    pub fn get_catalog_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+        if !url.starts_with("https://getartcraft.com/") {
+            return Err("catalog resources must use the pinned HTTPS website".into());
+        }
+        Self::get_bytes_with(&self.no_redirect, url, max)
+    }
+
+    fn get_bytes_with(agent: &ureq::Agent, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let mut resp = agent.get(url).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => {
