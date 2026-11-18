@@ -208,6 +208,13 @@ enum AfterLoss {
     Exit,
 }
 
+/// Whether a window whose graphics device was lost is replaced by a new one (#274). Not on macOS:
+/// a window there must not close while the app runs on (AppKit crashes on the view that is gone),
+/// so `craft_quit::on_close_request` turns every close of the window into the platform quit, and
+/// the process ends before the window loop could open another. A lost device quits the launcher
+/// there instead of crashing it.
+const REPLACES_LOST_WINDOW: bool = !cfg!(target_os = "macos");
+
 /// Decides [`AfterLoss`]: a new window while `budget` allows one at `now`, else the tray, else exit.
 fn after_loss(budget: &mut gpu_health::ReopenBudget, now: std::time::Instant, hidden: bool, has_tray: bool) -> AfterLoss {
     if budget.allow(now) {
@@ -996,6 +1003,10 @@ impl<'a> Shell<'a> {
 
     fn show(&mut self, ctx: &egui::Context) {
         self.visible = true;
+        // A window about to be replaced after a lost device (`device_lost`) comes back shown.
+        if let Some(hidden) = &mut self.launcher.reopen_window {
+            *hidden = false;
+        }
         // Before the window is ordered front, so it comes to this desktop rather than taking the
         // user to its own (macOS; the setting doesn't exist elsewhere).
         #[cfg(target_os = "macos")]
@@ -1021,12 +1032,19 @@ impl<'a> Shell<'a> {
     fn put_away(&mut self, ctx: &egui::Context) {
         if self.window_hides {
             self.visible = false;
+            // A window about to be replaced after a lost device (`device_lost`) comes back hidden.
+            if let Some(hidden) = &mut self.launcher.reopen_window {
+                *hidden = true;
+            }
             #[cfg(target_os = "macos")]
             hiding::hide();
             #[cfg(not(target_os = "macos"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         } else {
             self.launcher.closed_to_tray = true;
+            // Closing to the tray wins over replacing a lost window, as quitting does: left set,
+            // the window loop would open the replacement first (#612 review).
+            self.launcher.reopen_window = None;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
@@ -1042,9 +1060,16 @@ impl<'a> Shell<'a> {
     /// shapes panics inside it, so this frame draws nothing. The window then closes and the window
     /// loop opens a new one with a fresh device, unless it is already closing to quit or to the
     /// tray: those win, and a window opened from the tray later gets a fresh device anyway.
+    ///
+    /// Not on macOS ([`REPLACES_LOST_WINDOW`]): there the launcher quits, with its settings saved.
     fn device_lost(&mut self, ctx: &egui::Context) {
         ctx.graphics_mut(|g| *g = Default::default());
         if self.quitting || self.launcher.closed_to_tray || self.launcher.reopen_window.is_some() {
+            return;
+        }
+        if !REPLACES_LOST_WINDOW {
+            log::error!("the graphics device is lost and macOS can't replace the window; quitting");
+            self.quit(ctx);
             return;
         }
         log::error!("opening a new window with a fresh graphics device");
@@ -1537,6 +1562,10 @@ mod tests {
         let ctx = launcher.windowless.clone();
         let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: false, quitting: false, applied_follow: None, gpu: None };
         shell.device_lost(&ctx);
+        if !REPLACES_LOST_WINDOW {
+            assert!(shell.quitting && shell.launcher.reopen_window.is_none(), "macOS quits instead");
+            return;
+        }
         assert_eq!(shell.launcher.reopen_window, Some(true));
         shell.launcher.reopen_window = Some(false);
         shell.device_lost(&ctx);
@@ -1556,7 +1585,7 @@ mod tests {
 
         let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, gpu: None };
         shell.device_lost(&ctx);
-        assert!(shell.launcher.reopen_window.is_some());
+        assert_eq!(shell.launcher.reopen_window.is_some(), REPLACES_LOST_WINDOW);
         shell.quit(&ctx);
         assert_eq!(shell.launcher.reopen_window, None, "a quit after the loss still quits");
 
@@ -1565,6 +1594,33 @@ mod tests {
         shell.device_lost(&ctx);
         assert_eq!(shell.launcher.reopen_window, None);
         assert!(shell.launcher.closed_to_tray);
+    }
+
+    /// A tray toggle after a lost device asked for a new window, before the old one closed, wins:
+    /// where the window can't hide it closes to the tray and no replacement opens, and where it
+    /// hides the replacement opens hidden, or shown after a toggle back (#612 review).
+    #[test]
+    fn a_tray_toggle_after_a_lost_device_decides_the_replacement() {
+        if !REPLACES_LOST_WINDOW {
+            return;
+        }
+        let (mut launcher, _show, _) = launcher();
+        let ctx = launcher.windowless.clone();
+        let mut shell = Shell { launcher: &mut launcher, window_hides: false, visible: true, quitting: false, applied_follow: None, gpu: None };
+        shell.device_lost(&ctx);
+        assert_eq!(shell.launcher.reopen_window, Some(false));
+        shell.put_away(&ctx);
+        assert_eq!(shell.launcher.reopen_window, None, "the window loop must not reopen it");
+        assert!(shell.launcher.closed_to_tray);
+        launcher.closed_to_tray = false;
+
+        let mut shell = Shell { launcher: &mut launcher, window_hides: true, visible: true, quitting: false, applied_follow: None, gpu: None };
+        shell.device_lost(&ctx);
+        shell.put_away(&ctx);
+        assert_eq!(shell.launcher.reopen_window, Some(true), "hidden, as the toggle left it");
+        assert!(!shell.launcher.closed_to_tray);
+        shell.show(&ctx);
+        assert_eq!(shell.launcher.reopen_window, Some(false));
     }
 
     /// A device lost again and again ends: after the budget, in the tray, or with an error exit
