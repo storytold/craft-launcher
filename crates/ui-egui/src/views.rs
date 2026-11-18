@@ -388,7 +388,7 @@ impl LauncherUi {
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
             let ids: Vec<String> =
                 self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id.to_string()).collect();
-            if self.settings.batch_updates {
+            if self.settings.updates_batched() {
                 self.act_command(Command::InstallAll { apps: ids });
             } else {
                 for id in ids {
@@ -1404,6 +1404,10 @@ impl LauncherUi {
         }
         if ui.button(t(reveal)).clicked() {
             self.act_command(Command::Reveal { app: id.to_string() });
+            ui.close();
+        }
+        if self.caps.desktop_shortcuts && ui.button(tl!("Add desktop shortcut")).clicked() {
+            self.act_command(Command::CreateDesktopShortcut { app: id.to_string() });
             ui.close();
         }
         if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {
