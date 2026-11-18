@@ -101,7 +101,10 @@ pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) 
         };
         job.append(&upper(text), 0.0, format);
     }
-    if crate::i18n::current().rtl() {
+    let has_rtl = spans
+        .iter()
+        .any(|(t, _)| t.chars().any(|c| ('\u{0590}'..='\u{08FF}').contains(&c) || ('\u{FB1D}'..='\u{FEFC}').contains(&c)));
+    if crate::i18n::current().rtl() && has_rtl {
         job.direction = egui::epaint::text::TextDirection::RightToLeft;
     }
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));

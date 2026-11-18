@@ -59,6 +59,7 @@
 	Show in Explorer	הצג בסייר הקבצים
 	Show in Files	הצג בקבצים
 	Reinstall	התקן מחדש
+	Add desktop shortcut	הוסף קיצור דרך לשולחן העבודה
 	Uninstall…	הסר התקנה…
 	All releases	כל הגרסאות
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} זמין.
@@ -263,7 +264,7 @@ filter	Installed	מותקנים
 	{name} details	פרטי {name}
 @plural	{n} app|{n} apps	יישום {n}|{n} יישומים|{n} יישומים
 @plural	{n} min ago|{n} min ago	לפני {n} דקה|לפני {n} דקות|לפני {n} דקות
-@plural	{n} h ago|{n} h ago	לפני שעה ({n})|לפני {n} שעות|לפני {n} שעות
+@plural	{n} h ago|{n} h ago	לפני {n} שעה|לפני {n} שעות|לפני {n} שעות
 @plural	{n} day ago|{n} days ago	לפני {n} יום|לפני {n} ימים|לפני {n} ימים
 @msg	Couldn't open {name}: {e}	לא ניתן לפתוח את {name}: {e}
 @msg	Download cancelled	ההורדה בוטלה
@@ -339,6 +340,9 @@ filter	Installed	מותקנים
 @msg	custom install folders aren't supported on this system	תיקיות התקנה מותאמות אישית אינן נתמכות במערכת זו
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} כבר קיים ולא הותקן על ידי ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	לא ניתן להעביר את {path} לאשפה ({reason}). הסר אותו ב-Finder במקום זאת.
+@msg	Desktop shortcut created for {name}	קיצור דרך בשולחן העבודה נוצר עבור {name}
+@msg	Couldn't create the desktop shortcut: {e}	לא ניתן היה ליצור קיצור דרך בשולחן העבודה: {e}
+@msg	A desktop shortcut named {name} already exists	קיצור דרך בשולחן העבודה בשם {name} כבר קיים
 	Apps are placed inside this folder.	היישומים ממוקמים בתוך תיקייה זו.
 	Replace what's there?	להחליף את מה שקיים שם?
 	{path} already exists. Installing {name} will overwrite it.	{path} כבר קיים. התקנת {name} תחליף אותו.
