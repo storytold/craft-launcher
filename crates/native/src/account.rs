@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::protocol::{SuiteAccount, SuiteIdentity};
 use craft_suite_account::{Account, NewAccount, Secret, Shared, Store, TokenStore};
+use zeroize::Zeroizing;
 
 use crate::suite_service::{self, ConversationHome, Flow, Identity, Polled, Service, SignedOut};
 
@@ -102,6 +103,10 @@ impl Service for CollabCraft {
         // request body.
         let body = serde_json::json!({ "device_code": device_code }).to_string();
         let (status, answer) = self.http.post_json(&CollabCraft::url(base, "/auth/device/poll"), &body, None)?;
+        // A 200 answer carries the bearer token in plain JSON. Held as `Zeroizing` rather than a
+        // bare `String` so that plaintext is overwritten once it is parsed out, the same as
+        // `Secret` does for the token after that.
+        let answer = Zeroizing::new(answer);
         match status {
             200 => {
                 #[derive(serde::Deserialize)]
@@ -405,27 +410,33 @@ fn state_now<S: TokenStore>(store: &Store<S>, service: &(dyn Service + Send + Sy
     match store.shared() {
         Shared::None => SuiteAccount::SignedOut,
         Shared::Unreadable { account, why } => SuiteAccount::Unreadable { display: account.display, why },
-        Shared::Session { account, token } => match service.identity(&account.service, &token) {
-            Ok(Some(who)) => {
-                if let Err(e) = store.touch(&account.id, crate::now()) {
-                    log::warn!("couldn't record the account's last use: {e}");
+        Shared::Session { account, token } => {
+            if let Err(why) = service_base::validate_account_target(&account) {
+                log::warn!("a stored suite account did not pass target validation: {why}");
+                return SuiteAccount::Unreadable { display: account.display, why };
+            }
+            match service.identity(&account.service, &token) {
+                Ok(Some(who)) => {
+                    if let Err(e) = store.touch(&account.id, crate::now()) {
+                        log::warn!("couldn't record the account's last use: {e}");
+                    }
+                    signed_in(&account, Some(&who))
                 }
-                signed_in(&account, Some(&who))
-            }
-            // The deployment has forgotten the session. This machine should too.
-            Ok(None) => {
-                if let Err(e) = store.discard(&account.id) {
-                    log::warn!("couldn't clear the stale suite session: {e}");
+                // The deployment has forgotten the session. This machine should too.
+                Ok(None) => {
+                    if let Err(e) = store.discard(&account.id) {
+                        log::warn!("couldn't clear the stale suite session: {e}");
+                    }
+                    SuiteAccount::SignedOut
                 }
-                SuiteAccount::SignedOut
+                // Offline, or the deployment is down. Still signed in; the storage state is simply
+                // unknown until it answers.
+                Err(why) => {
+                    log::info!("the suite session could not be checked: {why}");
+                    signed_in(&account, None)
+                }
             }
-            // Offline, or the deployment is down. Still signed in; the storage state is simply
-            // unknown until it answers.
-            Err(why) => {
-                log::info!("the suite session could not be checked: {why}");
-                signed_in(&account, None)
-            }
-        },
+        }
     }
 }
 
@@ -579,5 +590,97 @@ mod tests {
         assert!(matches!(state, SuiteAccount::Failed(_)), "{state:?}");
         assert_eq!(service.revoked.load(Ordering::SeqCst), 0, "a failed sign-in must not log the person out everywhere");
         assert!(store.accounts().expect("the account list").current().is_none());
+    }
+
+    /// A deployment stand-in whose only job is to count how many times it was asked who a token
+    /// belongs to. The security property under test is that it is asked zero times.
+    #[derive(Default)]
+    struct Counting {
+        identity_calls: AtomicUsize,
+    }
+
+    impl Service for Counting {
+        fn start(&self, _base: &str) -> Result<Flow, String> {
+            Err("not used by this test".to_owned())
+        }
+
+        fn poll(&self, _base: &str, _device_code: &str) -> Result<Polled, String> {
+            Err("not used by this test".to_owned())
+        }
+
+        fn identity(&self, _base: &str, _token: &Secret) -> Result<Option<Identity>, String> {
+            self.identity_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(None)
+        }
+
+        fn revoke(&self, _base: &str, _token: &Secret) -> Result<(), String> {
+            Err("not used by this test".to_owned())
+        }
+    }
+
+    /// Writes `account` as the store's one, active row, with `token` behind it in the keychain
+    /// stand-in. Bypasses `Store::sign_in`, which always writes a row whose `id` is the correct
+    /// handle for its own `service` and `user`: the two attacks under test, a redirected address
+    /// and an edited-in-place `service`, both need a row `sign_in` would never produce.
+    fn seed(store: &Store<Memory>, tokens: &Memory, account: Account, token: &Secret) {
+        let path = store.path().expect("a store built with a directory has a path");
+        let mut list = craft_suite_account::Accounts { active: Some(account.id.clone()), ..craft_suite_account::Accounts::default() };
+        list.accounts.push(account.clone());
+        craft_suite_account::accounts::write(&path, &list).expect("writing the seeded account list");
+        tokens.put(&account.id, token).expect("seeding the token");
+    }
+
+    /// A row whose `service` is a plain, non-loopback `http://` address, the shape a migrated
+    /// legacy session file or another application's own session could hand this launcher, must
+    /// never have its token presented to that address. Without the fix, `state_now` sends it
+    /// straight to `identity`.
+    #[test]
+    fn a_non_loopback_http_service_sends_no_token() {
+        let dir = tempfile::tempdir().expect("a temporary folder");
+        let tokens = Memory::new();
+        let store = Store::at(Some(dir.path().to_path_buf()), tokens.clone());
+        let service = Counting::default();
+        let account = Account {
+            id: craft_suite_account::accounts::handle("http://collab.lan:8080", "u"),
+            service: "http://collab.lan:8080".to_owned(),
+            user: "u".to_owned(),
+            display: "Someone".to_owned(),
+            ..Account::default()
+        };
+        seed(&store, &tokens, account, &Secret::new("a-session-token"));
+
+        let state = state_now(&store, &service);
+
+        assert!(matches!(state, SuiteAccount::Unreadable { .. }), "{state:?}");
+        assert_eq!(service.identity_calls.load(Ordering::SeqCst), 0, "the token must never reach a service address that failed validation");
+    }
+
+    /// A row whose `service` was edited in place while its `id` was left as it was (so the
+    /// handle no longer matches what `accounts::handle(service, user)` computes) points the next
+    /// refresh at a different deployment than the one that minted the session. This must be
+    /// refused the same way a bad address is, not waved through because the address alone looks
+    /// allowed.
+    #[test]
+    fn an_edited_service_that_kept_the_old_id_sends_no_token() {
+        let dir = tempfile::tempdir().expect("a temporary folder");
+        let tokens = Memory::new();
+        let store = Store::at(Some(dir.path().to_path_buf()), tokens.clone());
+        let service = Counting::default();
+        // The id a sign-in would have minted for the original, honest service. Kept as-is while
+        // `service` below is swapped for a different, equally well-formed address.
+        let original_id = craft_suite_account::accounts::handle("https://good.example.test", "u");
+        let account = Account {
+            id: original_id,
+            service: "https://evil.example.test".to_owned(),
+            user: "u".to_owned(),
+            display: "Someone".to_owned(),
+            ..Account::default()
+        };
+        seed(&store, &tokens, account, &Secret::new("a-session-token"));
+
+        let state = state_now(&store, &service);
+
+        assert!(matches!(state, SuiteAccount::Unreadable { .. }), "{state:?}");
+        assert_eq!(service.identity_calls.load(Ordering::SeqCst), 0, "a service edited past its own handle must not receive the token either");
     }
 }

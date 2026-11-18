@@ -76,8 +76,8 @@ crates/
                                         verify and install
   ui-egui   artcraft-launcher-ui-egui   the shared egui UI (desktop and web)
   (no suite-account crate here)
-            craft-suite-account         the shared account store lives in craft-libs
-                                        (storytold/craft-libs#160). This repo pins that crate.
+            craft-suite-account         the shared account store, merged into craft-libs' main by
+                                        storytold/craft-libs#665. This repo pins that crate.
                                         docs/suite-account.md is the contract.
 apps/
   artcraft-launcher                     desktop shell (eframe): window, tray icon, notifications

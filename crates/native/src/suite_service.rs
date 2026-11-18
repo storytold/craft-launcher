@@ -18,6 +18,8 @@
 
 use craft_suite_account::{Error, Keychain, Secret, Store, TokenStore};
 
+use crate::service_base;
+
 /// Where to open the provider's conversation app with no document in hand.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ConversationHome {
@@ -103,6 +105,13 @@ pub enum SignedOut {
 /// the keychain.
 pub fn sign_out(store: &Store, service: &dyn Service, id: &str) -> Result<SignedOut, Error> {
     let account = store.accounts()?.get(id).cloned().ok_or_else(|| Error::Unknown(id.to_owned()))?;
+    // The same gate `account::state_now` applies before an `identity` call: a row whose `service`
+    // was redirected, or whose `id` no longer matches its own handle, must not have its token
+    // presented anywhere, including here, to the deployment's own logout endpoint.
+    if let Err(why) = service_base::validate_account_target(&account) {
+        log::warn!("a stored suite account did not pass target validation on sign-out: {why}");
+        return Err(Error::Malformed(why));
+    }
     // Read through the same keychain the store writes with: one suite service name, one entry per
     // handle, so this is the entry `store.discard` is about to remove.
     let told = match Keychain.get(id) {
@@ -118,4 +127,100 @@ pub fn sign_out(store: &Store, service: &dyn Service, id: &str) -> Result<Signed
         None => SignedOut::Everywhere,
         Some(why) => SignedOut::LocalOnly { why },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use craft_suite_account::{Account, Accounts};
+
+    use super::*;
+
+    /// A deployment stand-in that counts how many times it was asked to end a session. The
+    /// security property under test is that it is asked zero times.
+    #[derive(Default)]
+    struct Counting {
+        revoke_calls: AtomicUsize,
+    }
+
+    impl Service for Counting {
+        fn start(&self, _base: &str) -> Result<Flow, String> {
+            Err("not used by this test".to_owned())
+        }
+
+        fn poll(&self, _base: &str, _device_code: &str) -> Result<Polled, String> {
+            Err("not used by this test".to_owned())
+        }
+
+        fn identity(&self, _base: &str, _token: &Secret) -> Result<Option<Identity>, String> {
+            Err("not used by this test".to_owned())
+        }
+
+        fn revoke(&self, _base: &str, _token: &Secret) -> Result<(), String> {
+            self.revoke_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    /// Seeds `dir` with a one-row account list, bypassing `Store::sign_in`, which always writes
+    /// a row whose `id` is the correct handle for its own `service` and `user`. Both attacks
+    /// under test need a row `sign_in` would never produce.
+    fn seed(dir: &std::path::Path, account: Account) -> Store {
+        let store = Store::at(Some(dir.to_path_buf()), Keychain);
+        let path = store.path().expect("a store built with a directory has a path");
+        let mut list = Accounts { active: Some(account.id.clone()), ..Accounts::default() };
+        list.accounts.push(account);
+        craft_suite_account::accounts::write(&path, &list).expect("writing the seeded account list");
+        store
+    }
+
+    /// A row whose `service` is a plain, non-loopback `http://` address must not have its token
+    /// presented to the deployment's logout endpoint. `sign_out` reads the keychain through its
+    /// own, hard-coded `Keychain`, never through `store`'s, so a passing run here never touches
+    /// it: the validation failure returns before that read, not after it.
+    #[test]
+    fn a_non_loopback_http_service_is_never_told_to_revoke() {
+        let dir = tempfile::tempdir().expect("a temporary folder");
+        let id = craft_suite_account::accounts::handle("http://collab.lan:8080", "u");
+        let account = Account {
+            id: id.clone(),
+            service: "http://collab.lan:8080".to_owned(),
+            user: "u".to_owned(),
+            display: "Someone".to_owned(),
+            ..Account::default()
+        };
+        let store = seed(dir.path(), account);
+
+        let service = Counting::default();
+        let result = sign_out(&store, &service, &id);
+
+        assert!(result.is_err(), "{result:?}");
+        assert_eq!(service.revoke_calls.load(Ordering::SeqCst), 0, "the token must never reach a service address that failed validation");
+    }
+
+    /// A row whose `service` was edited in place while its `id` was left as it was (so the
+    /// handle no longer matches what `accounts::handle(service, user)` computes) must be refused
+    /// the same way, not waved through because the address alone looks allowed.
+    #[test]
+    fn an_edited_service_that_kept_the_old_id_is_never_told_to_revoke() {
+        let dir = tempfile::tempdir().expect("a temporary folder");
+        // The id a sign-in would have minted for the original, honest service. Kept as-is while
+        // `service` below is swapped for a different, equally well-formed address.
+        let id = craft_suite_account::accounts::handle("https://good.example.test", "u");
+        let account = Account {
+            id: id.clone(),
+            service: "https://evil.example.test".to_owned(),
+            user: "u".to_owned(),
+            display: "Someone".to_owned(),
+            ..Account::default()
+        };
+        let store = seed(dir.path(), account);
+
+        let service = Counting::default();
+        let result = sign_out(&store, &service, &id);
+
+        assert!(result.is_err(), "{result:?}");
+        assert_eq!(service.revoke_calls.load(Ordering::SeqCst), 0, "a service edited past its own handle must not receive the token either");
+    }
 }

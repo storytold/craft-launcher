@@ -1,7 +1,8 @@
 # The suite account store
 
-The contract every Craft App reads. The code is `craft-suite-account` in
-[craft-libs](https://github.com/storytold/craft-libs/pull/160). This page is what another implementation has to match.
+The contract every Craft App reads. The code is `craft-suite-account`, merged into
+[craft-libs](https://github.com/storytold/craft-libs/pull/665)'s `main` by the extraction RFC-0025
+asked for. This page is what another implementation has to match.
 
 ## Why there is one
 
@@ -101,6 +102,14 @@ removable in one place.
 Each is scoped to the one user by the platform itself. Each is removable one entry at a time from the
 platform's own window. Removing one reads back as "nobody is signed in".
 
+RFC-0025 states this plainly rather than leaving it implied: any code running as the same user can
+read the entry. The keychain's per-application access list is not a boundary between two Craft Apps,
+or between a Craft App and anything else this person runs. It is a boundary against a different
+user, and against a process that merely has read access to this one's files. A stored account's
+`service` and `user` therefore have to be trusted on their own terms before the token behind them is
+presented anywhere; see "Revocation" and `service_base::validate_account_target` in the launcher for
+the check that stands in for that trust.
+
 The crate uses [`keyring`](https://crates.io/crates/keyring) 4 with its default `v1` feature. That
 feature picks the right store per platform. It also pins `crypto-rust` for the Secret Service. That
 keeps OpenSSL and any C toolchain out of the build.
@@ -153,9 +162,20 @@ it did before this crate existed. None of those answers is an error that stops i
 
 ## Revocation
 
-Signing out goes through `Store::sign_out`. It tells the deployment first. It then clears the
-keychain entry and the row. `POST /auth/logout` drops every session the deployment holds for that
-user. The one action therefore covers the suite and any other machine the person left a session on.
+`craft-suite-account` keeps no provider client of its own: RFC-0025 moves that half "beside the
+provider adapter it belongs to". In this launcher that adapter is `suite_service::sign_out`, not a
+method on `Store`. It tells the deployment first. It then clears the keychain entry and the row.
+`POST /auth/logout` drops every session the deployment holds for that user. The one action therefore
+covers the suite and any other machine the person left a session on.
+
+Before it tells the deployment anything, `sign_out` checks the stored row's `service` and `id`
+against `service_base::validate_account_target`: the address has to be one the launcher would ever
+dial, and the row's `id` has to still be the handle its own `service` and `user` hash to. A row that
+fails either check is refused before the token is read from the keychain at all. The same check
+guards every other place a stored account's token reaches a deployment (`account::state_now`, which
+runs on every refresh). Without it, a plain accounts file that anything running as this user can
+rewrite (see "The keychain entry") could point a stored row at a different address and collect the
+bearer token on the account's next refresh or sign-out.
 
 A deployment that cannot be reached does not block the local half. The entry still goes. The answer
 is then `SignedOut::LocalOnly`. The caller can say the server was not told.

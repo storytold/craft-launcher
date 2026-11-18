@@ -364,6 +364,7 @@ dependencies = [
  "verifysign",
  "winreg",
  "winsafe",
+ "zeroize",
  "zip",
 ]
 
