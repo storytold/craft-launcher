@@ -256,6 +256,7 @@ impl LauncherUi {
                     ),
                     JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, tl!("Downloading…").to_string()),
                     JobPhase::Verifying => (None, tl!("Verifying…").to_string()),
+                    JobPhase::Queued => (None, tl!("Waiting for another download…").to_string()),
                     JobPhase::Waiting => (None, tl!("Waiting for other installs…").to_string()),
                     JobPhase::Installing | JobPhase::Removing => (None, tl!("Installing, then restarting…").to_string()),
                 };
@@ -603,7 +604,8 @@ impl LauncherUi {
             );
             if !version.is_empty() {
                 let github_w = widgets::hud_galley(&strip_ui, &format!("{} ↗", tl!("GitHub")), t.muted).size().x;
-                let room = (strip_ui.available_width() - github_w - 16.0).max(0.0);
+                let lock_w = if self.pinned_version(id).is_some() { 20.0 + strip_ui.spacing().item_spacing.x } else { 0.0 };
+                let room = (strip_ui.available_width() - github_w - 16.0 - lock_w).max(0.0);
                 let highlight = if in_colour { t.app_ink(app) } else { t.muted };
                 let spans: Vec<(&str, egui::Color32)> =
                     version.iter().map(|(text, lit)| (text.as_str(), if *lit { highlight } else { t.muted })).collect();
@@ -612,6 +614,7 @@ impl LauncherUi {
                     r.on_hover_text(tip);
                 }
             }
+            self.version_lock(&mut strip_ui, id);
             strip_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 widgets::hud_link(ui, tl!("GitHub"), &app.repo_url());
@@ -944,7 +947,7 @@ impl LauncherUi {
     /// The version column: what is installed, with an arrow to the new one (only that in the app's
     /// colour) when an update waits, or a quiet note of the newer release for a version kept on
     /// purpose; the latest, for an app not installed yet.
-    fn table_version_cell(&self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, t: &Tokens) {
+    fn table_version_cell(&mut self, ui: &mut Ui, entry: &AppEntry, status: &AppStatus, t: &Tokens) {
         let mono = |text: String, color| RichText::new(text).family(egui::FontFamily::Monospace).color(color);
         let (first, second) = match (*status == AppStatus::UpdateAvailable).then(|| entry.installed_label().zip(entry.latest_label())).flatten() {
             Some((from, to)) => (mono(format!("{from} → "), t.ink), Some(mono(to, t.app_ink(entry.app)))),
@@ -964,7 +967,16 @@ impl LauncherUi {
         for part in std::iter::once(first).chain(second) {
             part.append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
         }
-        let r = ui.label(job);
+        if self.pinned_version(entry.app.id).is_some() {
+            job.wrap = egui::text::TextWrapping::truncate_at_width((ui.available_width() - 20.0 - ui.spacing().item_spacing.x).max(0.0));
+        }
+        let r = ui
+            .horizontal(|ui| {
+                let response = ui.label(job);
+                self.version_lock(ui, entry.app.id);
+                response
+            })
+            .inner;
         if let Some(tip) = out_of_reach_tip(self.out_of_reach(entry)) {
             r.on_hover_text(tip);
         }
@@ -1186,13 +1198,15 @@ impl LauncherUi {
                 (f, if short { tl!("Reconnecting…").into() } else { format!("{} {}", tl!("Reconnecting…"), amount(done, total)) }, t.warn)
             }
             JobPhase::Verifying => (None, tl!("Verifying checksum…").into(), rgb(entry.app.color)),
+            JobPhase::Queued => (None, tl!("Waiting for another download…").into(), rgb(entry.app.color)),
             JobPhase::Waiting => (None, tl!("Waiting for another app…").into(), rgb(entry.app.color)),
             JobPhase::Installing => (None, tl!("Installing…").into(), rgb(entry.app.color)),
             JobPhase::Removing => (None, tl!("Removing…").into(), rgb(entry.app.color)),
         };
         let downloading = matches!(phase, JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. });
-        // A job waiting for the installer hasn't started it yet, so it can still be called off.
-        let waiting = phase == JobPhase::Waiting;
+        // A job waiting for its download or for the installer hasn't started it yet, so it can
+        // still be called off.
+        let waiting = matches!(phase, JobPhase::Queued | JobPhase::Waiting);
         // Waiting has one square button beside the bar, like the menu otherwise.
         widgets::progress(ui, fraction, &caption, color, if downloading { bar_w } else { main_w });
         if downloading && widgets::glyph_button(ui, widgets::Glyph::Pause, tl!("Pause download")).clicked() {
@@ -1419,6 +1433,10 @@ impl LauncherUi {
         }
         if ui.button(t(reveal)).clicked() {
             self.act_command(Command::Reveal { app: id.to_string() });
+            ui.close();
+        }
+        if self.caps.desktop_shortcuts && ui.button(tl!("Add desktop shortcut")).clicked() {
+            self.act_command(Command::CreateDesktopShortcut { app: id.to_string() });
             ui.close();
         }
         if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {

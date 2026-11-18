@@ -113,7 +113,7 @@ pub fn is_newer(latest: &Version, installed: &Version) -> bool {
     compare(latest, installed) == Ordering::Greater
 }
 
-/// Platforms that only record `X.Y.Z` (the MSI ProductVersion, `CFBundleShortVersionString`)
+/// Platforms that only record `X.Y.Z` (the MSI `ProductVersion`, `CFBundleShortVersionString`)
 /// drop a pre-release suffix. A numeric-only installed version therefore counts as current when it
 /// matches a pre-release's numbers, rather than nagging forever.
 pub fn is_update(latest: &Version, installed: &Version) -> bool {

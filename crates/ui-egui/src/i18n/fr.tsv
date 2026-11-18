@@ -74,6 +74,7 @@
 	Show in Explorer	Afficher dans l'Explorateur
 	Show in Files	Afficher dans Fichiers
 	Reinstall	Réinstaller
+	Add desktop shortcut	Ajouter un raccourci bureau
 	Uninstall…	Désinstaller…
 	Launch options…	Options de lancement…
 	{name} launch options	Options de lancement de {name}
@@ -168,6 +169,10 @@
 	Retry update to {version}	Réessayer la mise à jour vers {version}
 	The download is still here. It's checked again, then installed.	Le téléchargement est toujours là. Il sera vérifié à nouveau, puis installé.
 	Waiting for another app…	En attente d'une autre application…
+	Waiting for another download…	En attente d'un autre téléchargement…
+	Simultaneous downloads	Téléchargements simultanés
+	No limit	Illimité
+	Downloads running together share your connection, so each one is slower.	Les téléchargements simultanés partagent votre connexion, chacun est donc plus lent.
 	Waiting for other installs…	En attente d'autres installations…
 
 # Package formats offered for download (PackageKind::label)
@@ -393,6 +398,9 @@ filter	Installed	Installées
 @msg	custom install folders aren't supported on this system	les dossiers d’installation personnalisés ne sont pas pris en charge sur ce système
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existe déjà et n’a pas été installé par ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossible de déplacer {path} vers la Corbeille ({reason}). Supprimez-le dans le Finder.
+@msg	Desktop shortcut created for {name}	Raccourci bureau créé pour {name}
+@msg	Couldn't create the desktop shortcut: {e}	Impossible de créer le raccourci bureau : {e}
+@msg	A desktop shortcut named {name} already exists	Un raccourci bureau nommé {name} existe déjà
 	Apps are placed inside this folder.	Les applications sont placées dans ce dossier.
 	Replace what's there?	Remplacer l’existant ?
 	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
@@ -443,3 +451,27 @@ anicraft	Familiar by design	Conception familière
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Scène, outils, chronologie, calques, images clés, Propriétés et Bibliothèque là où les animateurs les attendent, avec pelure d'oignon.
 anicraft	Tweens that ease	Interpolations fluides
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Interpolations classiques avec huit préréglages d'accélération et courbes personnalisées, plus interpolations de forme.
+	Version pinned to {version}. Click to unlock.	Version fixée à {version}. Cliquez pour la déverrouiller.
+	Unlock version?	Déverrouiller la version ?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} est fixé à la version {version}. Suivre plutôt la dernière version ?
+	Unlock	Déverrouiller
+
+	AI agents	Agents IA
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Tant que cette option est activée, les apps d'IA qui utilisent MCP, comme Claude, Cursor ou LM Studio, peuvent travailler avec toutes les apps Craft installées grâce à une seule entrée. Désactivée, aucun agent ne peut les atteindre et les entrées ajoutées ici sont retirées.
+	Quick install	Installation rapide
+	Adds the Craft apps to that client. Restart the client afterwards.	Ajoute les apps Craft à ce client. Redémarrez ensuite le client.
+	Other clients	Autres clients
+	Copy the configuration and paste it into the client's MCP settings.	Copiez la configuration et collez-la dans les réglages MCP du client.
+	Copy JSON	Copier le JSON
+	Copy for VS Code	Copier pour VS Code
+	Copy for Codex (TOML)	Copier pour Codex (TOML)
+	Configuration copied.	Configuration copiée.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} ne charge ses serveurs MCP qu'au démarrage : les apps Craft apparaissent après un redémarrage. Le redémarrage ferme {client}, y compris une réponse en cours de rédaction.
+	Restart {client}	Redémarrer {client}
+	Restarting {client}…	Redémarrage de {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	La passerelle Craft (craft-ai-mcp) n'est pas installée à côté du lanceur.
+	Let AI agents use Craft apps	Permettre aux agents IA d'utiliser les apps Craft
+	Apps agents can reach: {count}	Apps accessibles aux agents : {count}
+	Added	Ajoutée
+	Remove	Retirer
+	Add	Ajouter

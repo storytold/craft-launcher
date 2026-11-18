@@ -16,9 +16,16 @@ impl LauncherUi {
     /// a click outside) discards the dialog.
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         let Some(mut dialog) = self.dialog.clone() else {
+            // No dialog on screen: next time settings opens we want fresh MCP state.
+            self.mcp_requested = false;
             self.alert_popup(ctx);
             return;
         };
+        // Opening the settings dialog (fresh): ask for current local-service state.
+        if matches!(dialog, Dialog::Settings) && !self.mcp_requested {
+            self.act_command(Command::McpState);
+            self.mcp_requested = true;
+        }
         let t = Tokens::get(ctx);
         // An area is laid out in the size it had last frame, so dialogs can't share one id: the
         // uninstall prompt would open as tall as Settings and never shrink (#88).
@@ -33,6 +40,7 @@ impl LauncherUi {
         let response = match &mut dialog {
             Dialog::Notes(id) => modal.show(ctx, |ui| close = self.notes_dialog(ui, id)),
             Dialog::ConfirmUninstall(id) => modal.show(ctx, |ui| close = self.uninstall_dialog(ui, id)),
+            Dialog::UnlockVersion { app, tag } => modal.show(ctx, |ui| close = self.unlock_version_dialog(ui, app, tag)),
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
@@ -45,7 +53,11 @@ impl LauncherUi {
             return;
         }
         if close || response.should_close() {
-            self.dialog = None;
+            self.dialog = if matches!(&dialog, Dialog::UnlockVersion { app, .. } if app == artcraft_launcher_core::catalog::LAUNCHER_ID) {
+                Some(Dialog::Settings)
+            } else {
+                None
+            };
             if matches!(dialog, Dialog::Versions(_)) {
                 // Close, Escape or a click outside: a version chosen there is dropped.
                 self.revert_version_choice();
