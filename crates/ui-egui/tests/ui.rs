@@ -4352,7 +4352,12 @@ fn card_text_stays_above_the_actions_and_inside_the_card() {
             .collect()
     };
     let dates: Vec<egui::Rect> = h.query_all_by_label_contains("Last updated").map(|n| n.rect()).collect();
-    assert!(dates.len() >= 3, "only {} cards show a date", dates.len());
+    // These fixture apps have a release, so each card shows its date.
+    for id in ["photocraft", "vectorcraft", "lightcraft", "wordcraft"] {
+        let name = SUITE.iter().find(|a| a.id == id).map(|a| a.name).unwrap_or(id);
+        let card = h.get_by_label_contains(&format!("{name} details")).rect();
+        assert!(dates.iter().any(|d| card.contains_rect(*d)), "{name}'s card shows no \"Last updated\"");
+    }
     for date in &dates {
         let top = actions_of(*date).iter().map(|b| b.top()).reduce(f32::min);
         let top = top.unwrap_or_else(|| panic!("no action row found for the date at {date:?}"));
