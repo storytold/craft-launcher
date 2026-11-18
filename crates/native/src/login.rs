@@ -19,11 +19,19 @@ pub const HIDDEN_FLAG: &str = "--hidden";
 const FLATPAK_COMMAND: &str = "artcraft-launcher";
 
 /// The program to start at login: the AppImage when running from one, else this executable.
+/// Windows has no AppImage, so a leftover `$APPIMAGE` is ignored there and the running
+/// executable is used instead.
 fn program() -> Result<PathBuf, String> {
-    if let Some(appimage) = std::env::var_os("APPIMAGE") {
+    program_from(std::env::var_os("APPIMAGE"), std::env::current_exe)
+}
+
+fn program_from(appimage: Option<OsString>, current_exe: impl FnOnce() -> std::io::Result<PathBuf>) -> Result<PathBuf, String> {
+    #[cfg(not(windows))]
+    if let Some(appimage) = appimage {
         return Ok(PathBuf::from(appimage));
     }
-    std::env::current_exe().map_err(|e| format!("couldn't find this program ({e})"))
+    let _ = appimage;
+    current_exe().map_err(|e| format!("couldn't find this program ({e})"))
 }
 
 #[cfg(target_os = "macos")]
@@ -160,34 +168,36 @@ fn run_value(exe: &std::path::Path) -> String {
     format!("\"{}\" {HIDDEN_FLAG}", exe.display())
 }
 
-/// The program a `Run` value starts: the quoted path, or the text before the first argument
-/// when it isn't quoted. An argument starts at whitespace followed by `-` or `/` (for example
-/// `--hidden`, `--minimized`, or `/min`), so a path with spaces is still kept together.
+/// The program a `Run` value starts. A quoted path is taken as written. An unquoted value is
+/// resolved the way Windows resolves a Run command line: each whitespace-separated prefix is
+/// tried in order, and the first path that exists (or cannot be checked) is the program. That
+/// keeps `C:\Portable\launcher.exe minimized` and `C:\Builds\ArtCraft - Portable\launcher.exe`
+/// intact, and still accepts a path with spaces followed by `--hidden` or `/min`.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn stored_program(stored: &str) -> &str {
+fn stored_program(stored: &str, exists: impl Fn(&Path) -> std::io::Result<bool>) -> &str {
     let stored = stored.trim();
     match stored.strip_prefix('"') {
         Some(rest) => rest.split('"').next().unwrap_or(rest),
-        None => match command_argument_start(stored) {
-            Some(i) => stored[..i].trim(),
-            None => stored,
-        },
+        None => unquoted_program(stored, exists),
     }
 }
 
-/// Byte offset of the first argument in an unquoted `Run` command line, if it has one.
+/// First existing (or uncheckable) prefix of an unquoted command line, or the whole line if none exist.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn command_argument_start(command: &str) -> Option<usize> {
+fn unquoted_program(command: &str, exists: impl Fn(&Path) -> std::io::Result<bool>) -> &str {
     let mut offset = 0;
     for token in command.split_inclusive(|c: char| c.is_ascii_whitespace()) {
-        let start = offset;
         offset += token.len();
-        let trimmed = token.trim();
-        if start > 0 && (trimmed.starts_with('-') || trimmed.starts_with('/')) {
-            return Some(start);
+        let candidate = command[..offset].trim();
+        if candidate.is_empty() {
+            continue;
+        }
+        match exists(Path::new(candidate)) {
+            Ok(true) | Err(_) => return candidate,
+            Ok(false) => {}
         }
     }
-    None
+    command
 }
 
 /// `text` with each `%NAME%` replaced by `lookup(NAME)`, as Windows does for an expandable (`REG_EXPAND_SZ`) `Run` value.
@@ -230,7 +240,7 @@ fn repointed(stored: &str, exe: &std::path::Path, exists: impl Fn(&std::path::Pa
     if value == stored {
         return None;
     }
-    match exists(std::path::Path::new(stored_program(stored))) {
+    match exists(std::path::Path::new(stored_program(stored, &exists))) {
         Ok(false) => Some(value),
         Ok(true) | Err(_) => None,
     }
@@ -558,6 +568,29 @@ mod tests {
     }
 
     #[test]
+    fn a_run_value_with_a_positional_argument_is_left_alone_when_the_program_exists() {
+        let existing = Path::new("C:/Portable/launcher.exe");
+        let exists = |p: &Path| Ok(p == existing);
+        let other = Path::new("D:/Dev/launcher.exe");
+        assert_eq!(repointed("C:/Portable/launcher.exe minimized", other, exists), None);
+    }
+
+    #[test]
+    fn a_run_value_with_a_positional_argument_is_repointed_when_the_program_is_gone() {
+        let new = Path::new("C:/New/launcher.exe");
+        assert_eq!(repointed("C:/Portable/launcher.exe minimized", new, |_| Ok(false)), Some("\"C:/New/launcher.exe\" --hidden".to_string()));
+    }
+
+    #[test]
+    fn a_run_value_whose_folder_name_contains_a_spaced_dash_is_left_alone() {
+        let existing = Path::new("C:/Builds/ArtCraft - Portable/launcher.exe");
+        let exists = |p: &Path| Ok(p == existing);
+        let other = Path::new("D:/Dev/launcher.exe");
+        assert_eq!(repointed("C:/Builds/ArtCraft - Portable/launcher.exe", other, exists), None);
+        assert_eq!(repointed("C:/Builds/ArtCraft - Portable/launcher.exe --hidden", other, exists), None);
+    }
+
+    #[test]
     fn a_run_value_whose_program_cannot_be_checked_is_left_alone() {
         let denied = |_: &Path| Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"));
         let stored = run_value(Path::new("C:/Protected/launcher.exe"));
@@ -606,12 +639,46 @@ mod tests {
 
     #[test]
     fn stored_program_reads_quoted_and_unquoted_values() {
-        assert_eq!(stored_program("\"C:/Program Files/A/launcher.exe\" --hidden"), "C:/Program Files/A/launcher.exe");
-        assert_eq!(stored_program("C:/A/launcher.exe --hidden"), "C:/A/launcher.exe");
-        assert_eq!(stored_program("C:/A/launcher.exe"), "C:/A/launcher.exe");
-        assert_eq!(stored_program("C:/Portable/launcher.exe --minimized"), "C:/Portable/launcher.exe");
-        assert_eq!(stored_program("\"C:/Portable/launcher.exe\" --minimized"), "C:/Portable/launcher.exe");
-        assert_eq!(stored_program("C:/Program Files/A/launcher.exe --hidden"), "C:/Program Files/A/launcher.exe");
-        assert_eq!(stored_program("C:/Portable/launcher.exe /min"), "C:/Portable/launcher.exe");
+        let exists = |want: &'static str| move |p: &Path| Ok(p == Path::new(want));
+        assert_eq!(
+            stored_program("\"C:/Program Files/A/launcher.exe\" --hidden", exists("C:/Program Files/A/launcher.exe")),
+            "C:/Program Files/A/launcher.exe"
+        );
+        assert_eq!(stored_program("C:/A/launcher.exe --hidden", exists("C:/A/launcher.exe")), "C:/A/launcher.exe");
+        assert_eq!(stored_program("C:/A/launcher.exe", exists("C:/A/launcher.exe")), "C:/A/launcher.exe");
+        assert_eq!(stored_program("C:/Portable/launcher.exe --minimized", exists("C:/Portable/launcher.exe")), "C:/Portable/launcher.exe");
+        assert_eq!(stored_program("\"C:/Portable/launcher.exe\" --minimized", exists("C:/Portable/launcher.exe")), "C:/Portable/launcher.exe");
+        assert_eq!(
+            stored_program("C:/Program Files/A/launcher.exe --hidden", exists("C:/Program Files/A/launcher.exe")),
+            "C:/Program Files/A/launcher.exe"
+        );
+        assert_eq!(stored_program("C:/Portable/launcher.exe /min", exists("C:/Portable/launcher.exe")), "C:/Portable/launcher.exe");
+        assert_eq!(stored_program("C:/Portable/launcher.exe minimized", exists("C:/Portable/launcher.exe")), "C:/Portable/launcher.exe");
+        assert_eq!(
+            stored_program("C:/Builds/ArtCraft - Portable/launcher.exe", exists("C:/Builds/ArtCraft - Portable/launcher.exe")),
+            "C:/Builds/ArtCraft - Portable/launcher.exe"
+        );
+        assert_eq!(
+            stored_program("C:/Builds/ArtCraft - Portable/launcher.exe --hidden", exists("C:/Builds/ArtCraft - Portable/launcher.exe")),
+            "C:/Builds/ArtCraft - Portable/launcher.exe"
+        );
+    }
+
+    #[test]
+    fn program_from_ignores_appimage_on_windows_only() {
+        let app = OsString::from("/tmp/ArtCraft.AppImage");
+        let exe = PathBuf::from("C:/ArtCraft/launcher.exe");
+        let got = program_from(Some(app.clone()), || Ok(exe.clone())).unwrap();
+        if cfg!(windows) {
+            assert_eq!(got, exe);
+        } else {
+            assert_eq!(got, PathBuf::from(app));
+        }
+    }
+
+    #[test]
+    fn program_from_uses_the_running_executable_when_appimage_is_absent() {
+        let exe = PathBuf::from("C:/ArtCraft/launcher.exe");
+        assert_eq!(program_from(None, || Ok(exe.clone())).unwrap(), exe);
     }
 }
