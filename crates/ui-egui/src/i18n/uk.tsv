@@ -462,3 +462,16 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Simultaneous downloads	Одночасні завантаження
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Шлюз Craft (craft-ai-mcp) не встановлено поруч із лаунчером.
 	Waiting for another download…	Очікування іншого завантаження…
+
+# The suite account: one sign-in every Craft app uses.
+	Account	Обліковий запис
+	CollabCraft address	Адреса CollabCraft
+	No storage connected	Сховище не підключено
+	Open {name}	Відкрити {name}
+	Sign in	Увійти
+	Sign in here once. Every Craft app then uses it.	Увійдіть тут один раз. Далі цей вхід використовують усі застосунки Craft.
+	Sign out	Вийти
+	Signing out ends the session for every Craft app.	Вихід завершує сеанс для всіх застосунків Craft.
+	Storage connected	Сховище підключено
+	The shared sign-in couldn't be read.	Не вдалося прочитати спільний вхід.
+	Your browser is open. Finish signing in there.	Браузер відкрито. Завершіть вхід у ньому.

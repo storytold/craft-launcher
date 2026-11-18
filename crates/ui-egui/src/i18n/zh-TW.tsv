@@ -436,3 +436,16 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	已加入
 	Remove	移除
 	Add	加入
+
+# The suite account: one sign-in every Craft app uses.
+	Account	帳號
+	CollabCraft address	CollabCraft 網址
+	No storage connected	未連接儲存空間
+	Open {name}	開啟 {name}
+	Sign in	登入
+	Sign in here once. Every Craft app then uses it.	在此登入一次，所有 Craft 應用程式都會使用這個登入。
+	Sign out	登出
+	Signing out ends the session for every Craft app.	登出會結束所有 Craft 應用程式的工作階段。
+	Storage connected	已連接儲存空間
+	The shared sign-in couldn't be read.	無法讀取共用的登入資訊。
+	Your browser is open. Finish signing in there.	瀏覽器已開啟，請在瀏覽器中完成登入。
