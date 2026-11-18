@@ -429,21 +429,21 @@ materialcraft	Combine noises, patterns and filters.	Gürültüleri, desenleri ve
 materialcraft	Live previews	Canlı önizlemeler
 materialcraft	Preview materials in 2D and on 3D models.	Materyalleri 2B'de ve 3B modeller üzerinde önizleyin.
 	Hide community apps	Topluluk uygulamalarını gizle
-	AI agents	Yapay zeka aracıları
+	AI agents	Yapay zeka ajanları
 	Add	Ekle
 	Add desktop shortcut	Masaüstü kısayolu ekle
 	Added	Eklendi
 	Adds the Craft apps to that client. Restart the client afterwards.	Craft uygulamalarını bu istemciye ekler. Ardından istemciyi yeniden başlatın.
-	Apps agents can reach: {count}	Aracıların erişebildiği uygulamalar: {count}
-	Ask for permission once when updating all apps	Tüm uygulamalar güncellenirken bir kez izin iste
+	Apps agents can reach: {count}	Ajanların erişebileceği uygulamalar: {count}
+	Ask for permission once when updating all apps	Tüm uygulamaları güncellerken yalnızca bir kez izin iste
 	Configuration copied.	Yapılandırma kopyalandı.
-	Copy JSON	JSON'u kopyala
+	Copy JSON	JSON kopyala
 	Copy for Codex (TOML)	Codex için kopyala (TOML)
 	Copy for VS Code	VS Code için kopyala
-	Copy the configuration and paste it into the client's MCP settings.	Yapılandırmayı kopyalayıp istemcinin MCP ayarlarına yapıştırın.
+	Copy the configuration and paste it into the client's MCP settings.	Yapılandırmayı kopyalayın ve istemcinin MCP ayarlarına yapıştırın.
 	Download size: {size}	İndirme boyutu: {size}
 	Downloads running together share your connection, so each one is slower.	Aynı anda çalışan indirmeler bağlantınızı paylaşır, bu yüzden her biri daha yavaş olur.
-	Let AI agents use Craft apps	Yapay zeka aracılarının Craft uygulamalarını kullanmasına izin ver
+	Let AI agents use Craft apps	Yapay zeka ajanlarının Craft uygulamalarını kullanmasına izin ver
 	No limit	Sınır yok
 	Other clients	Diğer istemciler
 	Quick install	Hızlı yükleme
@@ -451,7 +451,7 @@ materialcraft	Preview materials in 2D and on 3D models.	Materyalleri 2B'de ve 3B
 	Restart {client}	{client} uygulamasını yeniden başlat
 	Restarting {client}…	{client} yeniden başlatılıyor…
 	Simultaneous downloads	Eşzamanlı indirmeler
-	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft ağ geçidi (craft-ai-mcp) Launcher'ın yanında yüklü değil.
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft ağ geçidi (craft-ai-mcp) başlatıcının yanında kurulu değil.
 	Waiting for another download…	Başka bir indirme bekleniyor…
 anicraft	2D vector animation	2B vektör animasyonu
-mailcraft	Mail, calendar and contacts	Posta, takvim ve kişiler
+mailcraft	Mail, calendar and contacts	E-posta, takvim ve kişiler
