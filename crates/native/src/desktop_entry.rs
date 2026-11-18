@@ -76,14 +76,15 @@ pub fn exec_quote(path: &Path) -> Option<String> {
 const EXEC_RESERVED: &[char] = &[' ', '\t', '\n', '"', '\'', '\\', '>', '<', '~', '|', '&', ';', '$', '*', '?', '#', '(', ')', '`', '%'];
 
 /// `path` as one argument of an `Exec=` key: as it is when it holds none of the reserved
-/// characters, otherwise quoted by [`exec_quote`]. xdg-utils' `xdg-open` takes an entry's
+/// characters and no other whitespace (such as U+00A0, where [`exec_program`] ends a bare
+/// path), otherwise quoted by [`exec_quote`]. xdg-utils' `xdg-open` takes an entry's
 /// program as the first word of `Exec=`, quotes included, and skips the entry when `command -v`
 /// can't find it, so a quoted path that didn't need quoting stops the app from opening files
 /// as their default (#1393). `None` for the paths [`exec_quote`] refuses.
 pub fn exec_arg(path: &Path) -> Option<String> {
     let quoted = exec_quote(path)?;
     let s = path.to_str()?;
-    if s.is_empty() || s.contains(EXEC_RESERVED) { Some(quoted) } else { Some(s.to_string()) }
+    if s.is_empty() || s.contains(EXEC_RESERVED) || s.contains(char::is_whitespace) { Some(quoted) } else { Some(s.to_string()) }
 }
 
 /// A localestring/string value: backslashes and line breaks escaped.
@@ -199,7 +200,7 @@ mod tests {
         for p in ["/home/ana/Applications/gridcraft-0.19.1-linux-x86_64.AppImage", "/home/zoë/Apps/w.AppImage"] {
             assert_eq!(exec_arg(Path::new(p)).as_deref(), Some(p), "{p}");
         }
-        // Any reserved character, or `%`, keeps the spec's quoting.
+        // Any reserved character, `%`, or other whitespace keeps the spec's quoting.
         for p in [
             "/home/ana/My Apps/p.AppImage",
             "/a/\"q\".AppImage",
@@ -210,6 +211,8 @@ mod tests {
             "/a/~x.AppImage",
             "/a/#1.AppImage",
             "/a/(1).AppImage",
+            "/home/ana/Apps\u{00a0}Archive/p.AppImage",
+            "/home/ana/Apps\u{3000}Archive/p.AppImage",
         ] {
             let arg = exec_arg(Path::new(p));
             assert_eq!(arg, exec_quote(Path::new(p)), "{p}");
@@ -221,7 +224,13 @@ mod tests {
 
     #[test]
     fn reads_back_the_program_it_wrote_and_the_apps_own_entries() {
-        for p in ["/home/ana/My Apps/p.AppImage", "/a/\"q\" $HOME `x`.AppImage", r"/a\b/100%.AppImage", "/plain.AppImage"] {
+        for p in [
+            "/home/ana/My Apps/p.AppImage",
+            "/a/\"q\" $HOME `x`.AppImage",
+            r"/a\b/100%.AppImage",
+            "/plain.AppImage",
+            "/home/ana/Apps\u{00a0}Archive/p.AppImage",
+        ] {
             let text = render(app("gridcraft"), Path::new(p), false).unwrap();
             assert_eq!(exec_program(&text).map(PathBuf::from), Some(PathBuf::from(p)), "{p}");
         }
