@@ -46,6 +46,11 @@ pub trait Host {
     fn has_desktops(&self) -> bool {
         false
     }
+    /// The launcher has a Dock icon (macOS) that can be hidden while the window is put away in
+    /// the menu bar.
+    fn has_dock(&self) -> bool {
+        false
+    }
     /// `Some(enabled)` where starting at login is supported.
     fn login_item(&self) -> Option<bool> {
         None
