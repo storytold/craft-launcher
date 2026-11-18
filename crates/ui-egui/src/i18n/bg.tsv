@@ -1,0 +1,471 @@
+# Bulgarian (bg) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (English) or one|few|many (Bulgarian).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the meaning of ArtCraft Launcher's English labels in neutral,
+# international Bulgarian, using terms Bulgarian-speaking users of creative software know.
+#
+# Coverage: the whole interface — every menu string and tl! literal (complete_menus = true).
+# Left in English on purpose: product name "ArtCraft Launcher" (and its "Launcher" tag), suite
+# name "Craft App Suite",
+# app names (PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft,
+# WordCraft, DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft), "GitHub", "Discord", "Website".
+# Shortcut keys keep their key-cap names (Shift, Alt, Ctrl, Cmd, Esc).
+# Trailing "…" (U+2026) must be preserved. Placeholders {name}, {n}, {version}, {count}, {v},
+# {what}, {unit}, {real}, {e} must appear in translation.
+
+	Launcher	Launcher
+	Craft App Suite	Craft App Suite
+	by {name}	от {name}
+	Open Source Tools for Creatives, Makers, and Builders	Инструменти с отворен код за творци, създатели и строители
+	Settings	Настройки
+	Check for updates	Провери за актуализации
+	Grid	Мрежа
+	Table	Таблица
+	Show apps as cards	Покажи приложенията като карти
+	Show apps as a table	Покажи приложенията като таблица
+	All	Всички
+	Updates	Актуализации
+	Not installed	Не са инсталирани
+	Search apps	Търсене на приложения
+	Sort	Сортиране
+	Suite order	Ред на пакета
+	Name	Име
+	Status	Статус
+	Installed version	Инсталирана версия
+	Latest version	Последна версия
+	Newest release	Най-ново издание
+	Discord	Discord
+	GitHub	GitHub
+	Website	Уебсайт
+	Classic apps	Класически приложения
+	New apps	Нови приложения
+	NEW	НОВО
+	Install	Инсталирай
+	Update to {v}	Актуализирай до {v}
+	Open	Отвори
+	Open {version}	Отвори {version}
+	Open {installed} without updating. {latest} stays available.	Отвори {installed} без актуализация. Версия {latest} остава достъпна.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Излезе версия {latest}, но ArtCraft Launcher не може да я инсталира върху това копие.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher не може да инсталира версия {version} върху това копие.
+	Download for {os}	Изтегли за {os}
+	Download	Изтегли
+	Coming soon	Очаквайте скоро
+	Checking…	Проверка…
+	Not available	Не е налично
+	Offline	Офлайн
+	Downloading {done} of {total}	Изтегляне {done} от {total}
+	Downloading…	Изтегляне…
+	Reconnecting…	Повторно свързване…
+	Verifying…	Проверка на целостта…
+	Installing, then restarting…	Инсталиране, след което рестартиране…
+	Installing…	Инсталиране…
+	Removing…	Премахване…
+	Pause download	Пауза на изтеглянето
+	Cancel download	Отказ на изтеглянето
+	Resume download	Продължи изтеглянето
+	Discard download	Изхвърли изтегленото
+	Release notes	Бележки към изданието
+	Show in Finder	Покажи в Finder
+	Show in Explorer	Покажи в Explorer
+	Show in Files	Покажи във файлов мениджър
+	Reinstall	Преинсталирай
+	Uninstall…	Деинсталирай…
+	Launch options…	Опции за стартиране…
+	{name} launch options	Опции за стартиране на {name}
+	Flags added each time the app is opened	Флагове, добавяни при всяко отваряне на приложението
+	Separate flags with spaces. Quote a value that has spaces in it.	Разделяйте флаговете с интервали. Заграждайте в кавички стойностите, които съдържат интервали.
+	A quote isn't closed.	Кавичка не е затворена.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} не беше отворено: кавичка в опциите за стартиране не е затворена.
+	Save	Запази
+	All releases	Всички издания
+	ArtCraft Launcher {version} is available.	Наличен е ArtCraft Launcher {version}.
+	Dismiss	Затвори
+	Update and restart	Актуализирай и рестартирай
+	A new version is available. Would you like to relaunch with the updated version?	Налична е нова версия. Искате ли да рестартирате с актуализираната версия?
+	A new version is available. Download it to replace this version?	Налична е нова версия. Да я изтегля ли, за да замени тази версия?
+	Later	По-късно
+	What's new	Какво ново
+	No notes were published with this release.	Към това издание не са публикувани бележки.
+	Released {date}	Издадено на {date}
+	Open on GitHub	Отвори в GitHub
+	Close	Затвори
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	Only when I ask	Само когато поискам
+	Automatically download and install updates	Автоматично изтегляне и инсталиране на актуализации
+	Ask for permission once when updating all apps	Питай за разрешение веднъж при актуализиране на всички приложения
+	Notify me when an installed app has an update	Уведомявай ме, когато за инсталирано приложение има актуализация
+	Include pre-releases (betas and release candidates)	Включи предварителни издания (бети и release candidates)
+	Installing on Linux	Инсталиране на Linux
+	Installing on Windows	Инсталиране на Windows
+	Install new apps as	Инсталирай нови приложения като
+	System package (recommended)	Системен пакет (препоръчително)
+	Updates always use the format an app was installed with.	Актуализациите винаги използват формата, с който е било инсталирано приложението.
+	Running in the background	Работа във фонов режим
+	Keep running in the tray when the window is closed	Оставай в системния трей при затваряне на прозореца
+	ArtCraft Launcher is still running	ArtCraft Launcher все още работи
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Той е в трея: отворете го или го затворете от иконата в трея, или изключете това в настройките.
+	Show the window on the current desktop	Показвай прозореца на текущия работен плот
+	Start ArtCraft Launcher when I log in	Стартирай ArtCraft Launcher при влизане в системата
+	Community	Общност
+	Questions, ideas and news from the ArtCraft team	Въпроси, идеи и новини от екипа на ArtCraft
+	Appearance	Външен вид
+	Quit ArtCraft Launcher	Изход от ArtCraft Launcher
+	Done	Готово
+	Uninstall {name}?	Деинсталиране на {name}?
+	The app will be moved to the Trash. Your documents and settings stay.	Приложението ще бъде преместено в Кошчето. Вашите документи и настройки остават.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows ще го премахне като всяка инсталирана програма. Вашите документи и настройки остават.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Системният мениджър на пакети ще го премахне и може да поиска парола. Вашите документи и настройки остават.
+	The app will be removed. Your documents and settings stay.	Приложението ще бъде премахнато. Вашите документи и настройки остават.
+	Uninstall	Деинсталирай
+	Cancel	Отказ
+	Checked {ago}	Проверено {ago}
+	just now	току-що
+	yesterday	вчера
+	{month} {day}, {year}	{day} {month} {year}
+
+	Automatically	Автоматично
+	Every Craft app	Всички приложения Craft
+	Apps on this computer	Приложения на този компютър
+	Installed apps with a newer version	Инсталирани приложения с по-нова версия
+	Apps you can install	Приложения, които можете да инсталирате
+	Pin to top	Закачи отгоре
+	Unpin	Откачи
+	Pinned	Закачени
+	Reorder {name}	Пренареди {name}
+	Move up	Премести нагоре
+	Move down	Премести надолу
+	Hide App	Скрий приложението
+	Unhide App	Покажи приложението
+	Hidden Apps	Скрити приложения
+	Apps you hid	Приложения, които скрихте
+	Checked {ago} · using {sources}	Проверено {ago} · чрез {sources}
+	{a} and {b}	{a} и {b}
+	Join the Discord	Присъедини се към Discord
+	Learn more	Научи повече
+	Minimize	Минимизирай
+	Maximize	Максимизирай
+	Restore	Възстанови
+	New	Ново
+	OK	OK
+	Open link	Отвори връзката
+	Update	Актуализирай
+	{name} icon	Икона на {name}
+	Loading ArtCraft Launcher…	Зареждане на ArtCraft Launcher…
+	Cancel update	Отмени актуализацията
+	Stop waiting; the update can be started again later	Спри да чакаш; актуализацията може да бъде стартирана отново по-късно
+	Download again	Изтегли отново
+	Install cancelled	Инсталацията е отказана
+	Install cancelled. The download is kept for the next try.	Инсталацията е отказана. Изтегленият файл е запазен за следващия опит.
+	Update cancelled	Актуализацията е отказана
+	Uninstall cancelled	Деинсталацията е отказана
+	Retry install	Опитай инсталацията отново
+	Retry update	Опитай актуализацията отново
+	Retry update to {version}	Опитай актуализация до {version} отново
+	The download is still here. It's checked again, then installed.	Изтегленият файл е все още тук. Той ще бъде проверен отново и след това инсталиран.
+	Waiting for another app…	Изчакване на друго приложение…
+	Waiting for another download…	Изчакване на друго изтегляне…
+	Simultaneous downloads	Едновременни изтегляния
+	No limit	Без ограничение
+	Downloads running together share your connection, so each one is slower.	Едновременните изтегляния споделят връзката ви, така че всяко е по-бавно.
+	Waiting for other installs…	Изчакване на други инсталации…
+
+# Package formats offered for download (PackageKind::label)
+	Installer (.msi)	Инсталатор (.msi)
+	Portable (.zip)	Портативна версия (.zip)
+	Disk image (.dmg)	Дисково изображение (.dmg)
+	Debian package (.deb)	Debian пакет (.deb)
+	RPM package (.rpm)	RPM пакет (.rpm)
+	Arch package (.pkg.tar.zst)	Arch пакет (.pkg.tar.zst)
+	Flatpak bundle	Flatpak пакет
+	Tarball (.tar.gz)	Архив (.tar.gz)
+
+# Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Създаване на изображения и видео с AI
+photocraft	Image editing	Редактиране на изображения
+vectorcraft	Vector illustration	Векторна илюстрация
+filmcraft	Video editing, color and sound	Видео монтаж, цветокорекция и звук
+lightcraft	Photo library and raw development	Фотобиблиотека и RAW проявяване
+pdfcraft	Reading, organizing and protecting PDFs	Четене, организиране и защита на PDF
+effectcraft	Motion graphics and visual effects	Моушън графики и визуални ефекти
+designcraft	Page layout and publishing	Оформление на страници и издаване
+wordcraft	Writing and document design	Писане и оформяне на документи
+deckcraft	Presentations and slide shows	Презентации и слайдшоута
+gridcraft	Spreadsheets and data	Електронни таблици и данни
+craft-anything	Find out how any software works, then craft your own	Разберете как работи всеки софтуер и създайте своя
+solidcraft	Parametric 3D CAD	Параметричен 3D CAD
+mailcraft	Mail, calendar and contacts	Поща, календар и контакти
+cadcraft	Computer-aided design and drafting	Компютърно проектиране и чертане
+soundcraft	Recording, editing and mixing audio	Запис, редактиране и смесване на аудио
+figcraft	Interface design and prototyping	Дизайн на интерфейси и прототипиране
+
+# Contextual: month abbreviations for date rendering
+month	Jan	яну.
+month	Feb	фев.
+month	Mar	март
+month	Apr	апр.
+month	May	май
+month	Jun	юни
+month	Jul	юли
+month	Aug	авг.
+month	Sep	сеп.
+month	Oct	окт.
+month	Nov	ное.
+month	Dec	дек.
+	Not checked yet	Все още не е проверено
+	GitHub's hourly limit was reached; full details return in {min} min	Достигнат е часовият лимит на GitHub; пълните подробности ще се върнат след {min} мин.
+	GitHub limit hit; back in {min} min	Достигнат е лимитът на GitHub; връщане след {min} мин.
+	Installing for {platform}	Инсталиране за {platform}
+	Downloads for {platform}	Изтегляния за {platform}
+	No downloads for this system	Няма изтегляния за тази система
+	Join the ArtCraft community on Discord	Присъедини се към общността на ArtCraft в Discord
+	ArtCraft on {name}	ArtCraft в {name}
+	Couldn't open {name}: {e}	Неуспешно отваряне на {name}: {e}
+	Download cancelled	Изтеглянето е отказано
+	Available to install	Налично за инсталиране
+	Available	Налично
+	Installed · up to date	Инсталирано · актуално
+	Update available	Налична актуализация
+	Installed	Инсталирано
+	installed	инсталирано
+	Not available here	Не е налично тук
+	Updating…	Актуализиране…
+	Update paused	Актуализацията е на пауза
+	Download paused	Изтеглянето е на пауза
+	{version} installed → {latest} released	{version} инсталирано → {latest} издадено
+	Version {version}	Версия {version}
+	{installed} installed · latest {latest}	{installed} инсталирано · последна {latest}
+	Installed · latest {latest}	Инсталирано · последна {latest}
+	Version {version} installed	Версия {version} е инсталирана
+	Version {latest}	Версия {latest}
+	No release published yet	Все още няма публикувано издание
+	ArtCraft Launcher	ArtCraft Launcher
+	App	Приложение
+	Latest	Последна
+	Released	Издадено
+	Auto	Авто
+	Language	Език
+	Ascending	Възходящо
+	Descending	Низходящо
+	Click to reverse the order	Кликнете, за да обърнете реда
+	Click to sort by this column	Кликнете, за да сортирате по тази колона
+	{done} of {total}	{done} от {total}
+	Downloading	Изтегляне
+	Verifying checksum…	Проверка на контролната сума…
+	Resume	Продължи
+	{done} of {total} downloaded	{done} от {total} изтеглено
+	{done} downloaded	Изтеглено {done}
+	Checking for updates…	Проверка за актуализации…
+	Downloads the new version, replaces this one and opens it again	Изтегля новата версия, заменя текущата и я отваря отново
+	Couldn't check for updates: {f}	Неуспешна проверка за актуализации: {f}
+	GitHub repository	GitHub хранилище
+	ArtCraft	ArtCraft
+	Update 1 app	Актуализирай 1 приложение
+	Update all ({count})	Актуализирай всички ({count})
+	⊞  Grid	⊞  Мрежа
+	☰  Table	☰  Таблица
+	🔍  Search apps	🔍  Търсене на приложения
+	{name} {version}	{name} {version}
+	Match system	Като системата
+	Dark	Тъмна
+	Light	Светла
+	Full changelog	Пълен списък с промени
+	link	връзка
+	No apps match	Няма съвпадащи приложения
+	Open ArtCraft Launcher to update.	Отворете ArtCraft Launcher, за да актуализирате.
+	{name} {v} is available	Налична е {name} {v}
+	{count} updates are available	Налични са {count} актуализации
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Тези бележки не бяха извлечени (достигнат е лимитът на заявките към GitHub). Те са на страницата на изданието.
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Когато е включено, отварянето на стартера от лентата с менюта премества прозореца му на текущия ви работен плот. Когато е изключено, macOS ви прехвърля на работния плот, на който е бил прозорецът.
+	Couldn't change the login item: {e}	Неуспешна промяна на елемента за вход: {e}
+
+# Contextual: table column headers
+column	App	Приложение
+column	Installed	Текуща
+column	Latest	Последна
+column	Released	Дата на издаване
+
+# Contextual: the filter tab names a group (the status pill says "Installed")
+filter	Installed	Инсталирани
+	{name} details	{name}: подробности
+
+# Plural forms for Bulgarian (one|other)
+@plural	{n} app|{n} apps	{n} приложение|{n} приложения
+@plural	{n} min ago|{n} min ago	преди {n} минута|преди {n} минути
+@plural	{n} h ago|{n} h ago	преди {n} час|преди {n} часа
+@plural	{n} day ago|{n} days ago	преди {n} ден|преди {n} дни
+
+# Message templates (@msg): toasts from the backend. {placeholders} match any text.
+@msg	Couldn't open {name}: {e}	Неуспешно отваряне на {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher не успя да стартира прозореца си на {backend}: {e}
+@msg	Download cancelled	Изтеглянето е отказано
+@msg	{name} updated to {version}	{name} е актуализирано до {version}
+@msg	{name} installed: {version}	{name} е инсталирано: {version}
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name} е актуализирано до {version} (това издание не публикува контролна сума, затова беше проверен само размерът)
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} е инсталирано: {version} (това издание не публикува контролна сума, затова беше проверен само размерът)
+@msg	{name} was removed	{name} беше премахнато
+@msg	{name} is running. Quit it, then try again.	{name} работи. Затворете го и опитайте отново.
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} е инсталирано от хранилището {repo} или от AUR ({pkg}). Актуализирайте го с {cmd} или sudo pacman -Syu
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} е инсталирано от хранилището {repo} или от AUR ({pkg}). Актуализирайте го с вашия AUR помощник (например: yay -S {pkg}) или sudo pacman -Syu
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} е инсталирано от AUR ({pkg}). Актуализирайте го с {cmd}
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name} е инсталирано от AUR ({pkg}). Актуализирайте го с вашия AUR помощник (например: yay -S {pkg})
+
+# Command IDs for menu items (@id)
+# Format: @id<TAB>command_id<TAB>translation
+@id	app.install	Инсталирай
+@id	app.update	Актуализирай до {v}
+@id	app.open	Отвори
+@id	app.download	Изтегли за {os}
+@id	app.reveal	Покажи в Finder
+@id	app.reinstall	Преинсталирай
+@id	app.uninstall	Деинсталирай…
+@id	app.notes	Бележки към изданието
+@id	app.website	Уебсайт
+@id	app.github	Хранилище в GitHub
+@id	app.releases	Всички издания
+@id	launcher.update	Актуализирай и рестартирай
+@id	launcher.download	Изтегли
+@id	launcher.notes	Какво ново
+@id	launcher.dismiss	Затвори
+@id	settings.open	Настройки
+@id	settings.quit	Изход от ArtCraft Launcher
+@id	view.grid	Мрежа
+@id	view.table	Таблица
+@id	filter.all	Всички
+@id	filter.installed	Инсталирани
+@id	filter.updates	Актуализации
+@id	filter.notinstalled	Не са инсталирани
+@id	sort.suite	Ред на пакета
+@id	sort.name	Име
+@id	sort.status	Статус
+@id	sort.installed	Инсталирана версия
+@id	sort.latest	Последна версия
+@id	sort.released	Най-ново издание
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Уебсайт
+@id	update.check	Провери за актуализации
+@id	update.check_auto	Проверявай за актуализации автоматично
+@id	update.notify	Уведомявай ме, когато за инсталирано приложение има актуализация
+@id	update.prereleases	Включи предварителни издания (бети и release candidates)
+@id	linux.preferred_kind	Инсталирай нови приложения като
+@id	tray.close_to_tray	Оставай в системния трей при затваряне на прозореца
+@id	tray.show_on_current_desktop	Показвай прозореца на текущия работен плот
+@id	tray.login_item	Стартирай ArtCraft Launcher при влизане в системата
+@id	appearance.theme	Външен вид
+
+# Tray (menu bar) menu and tooltip
+	Show ArtCraft Launcher	Покажи ArtCraft Launcher
+	Check for Updates	Провери за актуализации
+	Visit getartcraft.com	Посети getartcraft.com
+	ArtCraft on GitHub	ArtCraft в GitHub
+	Join the ArtCraft Discord	Присъедини се към Discord на ArtCraft
+	App details	Подробности за приложението
+	More actions for {name}	Още действия за {name}
+	Close (Esc)	Затвори (Esc)
+	Features	Функции
+	Latest release	Последно издание
+	Version	Версия
+	Platforms	Платформи
+	Releases	Издания
+	Enlarge picture	Увеличи изображението
+	Click to enlarge	Кликнете за увеличаване
+	Previous picture (←)	Предишно изображение (←)
+	Next picture (→)	Следващо изображение (→)
+	Loading pictures…	Зареждане на изображения…
+	Pictures couldn't be loaded. Reopen this page to try again.	Изображенията не можаха да се заредят. Отворете страницата отново, за да опитате пак.
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} налична актуализация|ArtCraft Launcher · {n} налични актуализации
+
+	Download size: {size}	Размер на изтеглянето: {size}
+	Install folder	Папка за инсталиране
+	Default install folder	Папка за инсталиране по подразбиране
+	System default	Системна по подразбиране
+	Browse…	Прегледай…
+	Use default	Използвай по подразбиране
+	New installs use this folder. Updates stay in their current location.	Новите инсталации използват тази папка. Актуализациите остават на текущото си място.
+	Custom folders use AppImage on Linux.	Персонализираните папки използват AppImage на Linux.
+	On Linux, custom folders use AppImage format.	На Linux персонализираните папки използват формат AppImage.
+	The system manages install locations here.	Тук системата управлява местоположенията за инсталиране.
+@msg	couldn't use install folder {path}: {reason}	неуспешно използване на папката за инсталиране {path}: {reason}
+@msg	this release has no AppImage for a custom install folder	това издание няма AppImage за персонализирана папка за инсталиране
+@msg	custom install folders aren't supported on this system	персонализираните папки за инсталиране не се поддържат на тази система
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} вече съществува и не е инсталиран от ArtCraft Launcher
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	неуспешно преместване на {path} в Кошчето ({reason}). Вместо това го премахнете в Finder.
+	Apps are placed inside this folder.	Приложенията се поставят в тази папка.
+	Replace what's there?	Да се замени ли съществуващото?
+	{path} already exists. Installing {name} will overwrite it.	{path} вече съществува. Инсталирането на {name} ще го презапише.
+	Replace	Замени
+	Recently updated	Наскоро актуализирани
+	Name (A–Z)	Име (А–Я)
+	Name (Z–A)	Име (Я–А)
+	Frequently used	Често използвани
+	Next app	Следващо приложение
+	Previous app	Предишно приложение
+	Show {n} more changes	Покажи още {n} промени
+	Last updated: {date}	Последна актуализация: {date}
+column	Version	Версия
+column	Author	Автор
+	Choose version	Избери версия
+	latest {version}	последна {version}
+	{version} (latest release)	{version} (последно издание)
+	Launcher version	Версия на стартера
+	Nightly	Нощна сборка
+	Nightly (none published yet)	Нощна сборка (все още няма публикувана)
+	Install version {version}	Инсталирай версия {version}
+	Download selected version	Изтегли избраната версия
+	Older launcher versions require a manual reinstall.	По-старите версии на стартера изискват ръчна преинсталация.
+	Your files may not open in older versions.	Вашите файлове може да не се отворят в по-стари версии.
+	Enable automatic installs in Settings to follow new nightly builds.	Включете автоматичните инсталации в Настройки, за да следвате нови нощни сборки.
+texturecraft	3D texture painting	3D рисуване на текстури
+texturecraft	Paint materials on 3D models and export textures.	Рисувайте материали върху 3D модели и експортирайте текстури.
+texturecraft	Materials	Материали
+texturecraft	Mesh maps	Мрежови карти
+texturecraft	Bake mesh maps and use smart materials.	Печете мрежови карти и използвайте умни материали.
+texturecraft	Paint textures on 3D models.	Рисувайте текстури върху 3D модели.
+	Hide community apps	Скрий приложенията на общността
+materialcraft	Procedural material design	Процедурен дизайн на материали
+materialcraft	Build materials with node graphs.	Създавайте материали с графики от възли.
+materialcraft	Create tileable PBR materials and export texture maps.	Създавайте повтарящи се PBR материали и експортирайте карти на текстури.
+materialcraft	Node graphs	Графики от възли
+materialcraft	Combine noises, patterns and filters.	Комбинирайте шумове, шарки и филтри.
+materialcraft	Live previews	Преглед на живо
+materialcraft	Preview materials in 2D and on 3D models.	Преглеждайте материали в 2D и върху 3D модели.
+	Advanced	Разширени
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Мигриране на Flatpak пакети към ArtCraft OCI (експериментално)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При актуализация превключвай първопартийните приложения, когато е наличен съответният пакет. В противен случай продължавай да използваш пакетите.
+	The OCI repository is a preview with GPG verification disabled.	Хранилището OCI е преглед с изключена GPG проверка.
+anicraft	2D vector animation	2D векторна анимация
+anicraft	Vector animation on a timeline you know.	Векторна анимация на позната времева линия.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Анимация с отворен код за 2D вектори, изградена на чист Rust.
+anicraft	Familiar by design	Познат по дизайн
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменти, времева линия, слоеве, ключови кадри, Свойства и Библиотека са там, където аниматорите ги очакват, с onion skinning за междинни кадри.
+anicraft	Tweens that ease	Плавни преходи
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Класически преходи с осем пресета за плавност и персонализирани криви, плюс преходи на формата, които трансформират един векторен контур в друг.
+	Version pinned to {version}. Click to unlock.	Версията е фиксирана на {version}. Кликнете, за да отключите.
+	Unlock version?	Отключване на версията?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} е фиксирано на {version}. Да се следва последното издание вместо това?
+	Unlock	Отключи
+
+	AI agents	AI агенти
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Докато това е включено, AI приложения, които използват MCP, като Claude, Cursor или LM Studio, могат да работят с всяко инсталирано Craft приложение чрез един запис. Докато е изключено, никой агент не може да ги достигне и записите, добавени тук, се премахват.
+	Quick install	Бърза инсталация
+	Adds the Craft apps to that client. Restart the client afterwards.	Добавя Craft приложенията към този клиент. След това рестартирайте клиента.
+	Other clients	Други клиенти
+	Copy the configuration and paste it into the client's MCP settings.	Копирайте конфигурацията и я поставете в MCP настройките на клиента.
+	Copy JSON	Копирай JSON
+	Copy for VS Code	Копирай за VS Code
+	Copy for Codex (TOML)	Копирай за Codex (TOML)
+	Configuration copied.	Конфигурацията е копирана.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} зарежда своите MCP сървъри само при стартиране, така че Craft приложенията се появяват след рестартиране. Рестартирането затваря {client}, включително отговор, който все още се пише.
+	Restart {client}	Рестартирай {client}
+	Restarting {client}…	Рестартиране на {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft шлюзът (craft-ai-mcp) не е инсталиран до стартера.
+	Let AI agents use Craft apps	Позволи на AI агентите да използват Craft приложения
+	Apps agents can reach: {count}	Приложения, достъпни за агенти: {count}
+	Added	Добавено
+	Remove	Премахни
+	Add	Добави
