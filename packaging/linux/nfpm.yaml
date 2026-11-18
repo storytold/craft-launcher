@@ -70,6 +70,10 @@ contents:
   - src: ${STAGE}/usr/bin/artcraft-launcher
     dst: /usr/bin/artcraft-launcher
     file_info: { mode: 0755 }
+  # The craft-ai-mcp gateway the launcher ships (Settings › AI agents).
+  - src: ${STAGE}/usr/bin/craft-ai-mcp
+    dst: /usr/bin/craft-ai-mcp
+    file_info: { mode: 0755 }
   - src: ${STAGE}/usr/share/
     dst: /usr/share/
     type: tree
