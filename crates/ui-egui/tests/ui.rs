@@ -95,7 +95,7 @@ impl Backend for Fake {
         out
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage }
+        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
@@ -475,7 +475,7 @@ impl Backend for VersionsFake {
         self.launcher_kind
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true }
+        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(self.platform)
@@ -1365,11 +1365,19 @@ fn the_actual_open_button_launches_once_across_a_discarded_pass() {
 /// What the Open half beside PhotoCraft's update reads out (0.4.1 installed, 0.5.0 out).
 const KEEP_PHOTOCRAFT: &str = "Open 0.4.1 without updating. 0.5.0 stays available.";
 
-/// The commands `sent` holds for `app`: how many launches and how many installs.
+/// The commands `sent` holds for `app`: how many launches and how many installs, counting a
+/// batched `InstallAll` (always used on Linux) that includes it.
 fn launches_and_installs(sent: &RefCell<Vec<Command>>, app: &str) -> (usize, usize) {
     let sent = sent.borrow();
     let launches = sent.iter().filter(|c| matches!(c, Command::Launch { app: a, .. } if a == app)).count();
-    let installs = sent.iter().filter(|c| matches!(c, Command::Install { app: a } if a == app)).count();
+    let installs = sent
+        .iter()
+        .filter(|c| match c {
+            Command::Install { app: a } => a == app,
+            Command::InstallAll { apps } => apps.iter().any(|a| a == app),
+            _ => false,
+        })
+        .count();
     (launches, installs)
 }
 
@@ -1758,9 +1766,25 @@ fn grid_shows_every_status_and_installs_on_click() {
     h.get_by_label_contains("48 MB of 131 MB");
     h.get_by_label("Update all (2)").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
-    assert_eq!(installs.len(), 2, "{installs:?}");
-    assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+    assert_update_commands(&sent, &["photocraft", "effectcraft"]);
+}
+
+/// With `batch_updates` off (the default): one `InstallAll` for `apps` on Linux, where updates
+/// are always batched, and one `Install` per app elsewhere.
+fn assert_update_commands(sent: &RefCell<Vec<Command>>, apps: &[&str]) {
+    let mut installs: Vec<Command> =
+        sent.borrow().iter().filter(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. })).cloned().collect();
+    for c in &mut installs {
+        if let Command::InstallAll { apps } = c {
+            apps.sort();
+        }
+    }
+    installs.sort_by_key(|c| format!("{c:?}"));
+    let mut apps: Vec<String> = apps.iter().map(|a| a.to_string()).collect();
+    apps.sort();
+    let expected =
+        if cfg!(target_os = "linux") { vec![Command::InstallAll { apps }] } else { apps.into_iter().map(|app| Command::Install { app }).collect() };
+    assert_eq!(installs, expected);
 }
 
 #[test]
@@ -2843,9 +2867,8 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
         None,
     );
     h.run_steps(4);
+    assert_update_commands(&sent, &["photocraft", "effectcraft"]);
     let commands = sent.borrow().clone();
-    assert!(commands.contains(&Command::Install { app: "photocraft".into() }), "outdated photocraft should be queued for install: {commands:?}");
-    assert!(commands.contains(&Command::Install { app: "effectcraft".into() }), "outdated effectcraft should be queued for install: {commands:?}");
     assert!(commands.contains(&Command::UpdateLauncher), "launcher update should be queued: {commands:?}");
 }
 
@@ -3104,6 +3127,105 @@ fn custom_title_bar_has_window_buttons() {
     assert!(closes, "the close button asks the window to close (the shell decides whether that hides it to the tray)");
 }
 
+/// With a dialog open, one click on the custom title bar's Close closes the window: the caption
+/// buttons sit above the dialog's backdrop, as a system title bar does, so the click isn't spent
+/// dismissing the dialog first (#853). The header's own controls beside them still take clicks.
+#[test]
+fn close_button_closes_with_a_dialog_open() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(2);
+    h.get_by_label("Done");
+    h.get_by_label("Close").click();
+    h.step();
+    let closes = h.output().viewport_output.values().any(|v| v.commands.contains(&egui::ViewportCommand::Close));
+    assert!(closes, "the first click on Close closes the window");
+    h.run_steps(2);
+    h.get_by_label("Done");
+}
+
+/// Presses and releases at `pos`, and returns what the window was asked to do.
+fn click_at(h: &mut Harness<'_, Option<LauncherUi>>, pos: egui::Pos2) -> Vec<egui::ViewportCommand> {
+    let mut asked = Vec::new();
+    for pressed in [true, false] {
+        let input = h.input_mut();
+        input.events.push(egui::Event::PointerMoved(pos));
+        input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        h.step();
+        asked.extend(h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()));
+    }
+    h.run_steps(2);
+    asked
+}
+
+/// Above a dialog the caption buttons are for the pointer alone: Tab stays in the dialog, and a
+/// click just beside them is still the backdrop's (#853).
+#[test]
+fn the_lifted_caption_buttons_leave_tab_and_the_backdrop_to_the_dialog() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(6);
+    let tab = |h: &mut Harness<'_, Option<LauncherUi>>| -> String {
+        h.key_press(egui::Key::Tab);
+        h.run_steps(2);
+        let focused = h.root().query_all(egui_kittest::kittest::by()).find(|n| n.accesskit_node().is_focused());
+        focused.map_or(String::new(), |n| n.accesskit_node().label().unwrap_or_default().to_string())
+    };
+    let caption = ["Minimize", "Maximize", "Close"];
+    let reached: Vec<String> = (0..4).map(|_| tab(&mut h)).filter(|l| caption.contains(&l.as_str())).collect();
+    assert_eq!(reached, caption, "without a dialog Tab reaches them in the order they're drawn");
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    assert_eq!(tab(&mut h), "Language", "the first Tab goes to the dialog");
+    for _ in 0..40 {
+        let focused = tab(&mut h);
+        assert!(!caption.contains(&focused.as_str()), "Tab left the dialog for {focused}");
+    }
+    let close = h.get_by_label("Close").rect();
+    let asked = click_at(&mut h, egui::pos2(close.center().x, close.bottom() + 3.0));
+    assert!(asked.is_empty(), "below Close: {asked:?}");
+    assert!(h.query_by_label("Done").is_none(), "a click below Close dismisses the dialog");
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    let minimize = h.get_by_label("Minimize").rect();
+    let asked = click_at(&mut h, egui::pos2(minimize.left() - 3.0, minimize.center().y));
+    assert!(asked.is_empty(), "left of Minimize: {asked:?}");
+    assert!(h.query_by_label("Done").is_none(), "a click left of Minimize dismisses the dialog");
+}
+
+/// The details drawer covers the header, and the window's Close stays under it.
+#[test]
+fn the_details_drawer_keeps_the_caption_buttons_under_it() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(8);
+    let close = h.get_by_label("Close").rect().center();
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    let asked = click_at(&mut h, close);
+    assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
+}
+
+/// The enlarged picture's own Close sits under the custom title bar's Close. With no dialog open
+/// the caption buttons stay in the header, under the picture, so that click closes the picture
+/// and not the window.
+#[test]
+fn the_enlarged_pictures_close_closes_the_picture_not_the_window() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    h.get_by_label("Enlarge picture").click();
+    h.run_steps(4);
+    // The drawer's Close is lower down; the picture's is at the top right, under the title bar.
+    let picture = h.query_all_by_label("Close (Esc)").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).unwrap();
+    let spot = picture.intersect(h.get_by_label("Close").rect());
+    assert!(spot.is_positive(), "the two buttons don't overlap: {picture:?}");
+    let asked = click_at(&mut h, spot.center());
+    assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
+    h.run_steps(4);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1, "the enlarged picture is still open");
+}
+
 /// Maximized, the window's top-right pixel is the screen's corner: there is no resize band there,
 /// so it belongs to the close button, as it does with Windows' own caption buttons (#374).
 #[test]
@@ -3247,6 +3369,21 @@ fn a_press_on_the_window_edge_only_resizes() {
     assert!(settings_open(&h));
     let asked = press(&mut h, egui::pos2(590.0, 1198.0));
     assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{asked:?}");
+    assert!(settings_open(&h), "the dialog closed on a resize");
+    // Above the dialog the caption buttons have a layer of their own (#853); the band over them still only resizes.
+    for label in ["Minimize", "Maximize", "Close"] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 2.0));
+        assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label} over the dialog: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label} over the dialog: {asked:?}");
+    }
+    for label in ["Minimize", "Restore", "Close"] {
+        let asked = press_on_restore(&mut h, label, 4.5);
+        assert!(
+            !asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)),
+            "{label} restored over the dialog: {asked:?}"
+        );
+    }
     assert!(settings_open(&h), "the dialog closed on a resize");
 }
 
