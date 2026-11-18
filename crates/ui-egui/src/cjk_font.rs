@@ -2,7 +2,8 @@
 //! no CJK glyphs, and a CJK font is too large to ship (10 MB or more), so the desktop build
 //! borrows the one every system that can show them already has. Desktop only.
 //!
-//! Georgian, which the bundled faces don't draw either, borrows its system face the same way.
+//! Georgian and Arabic, which the bundled faces don't draw either, borrow their system face the
+//! same way.
 
 use std::path::{Path, PathBuf};
 
@@ -47,6 +48,7 @@ fn script_name(script: Script) -> &'static str {
         Script::TraditionalChinese => "Traditional Chinese",
         Script::Japanese => "Japanese",
         Script::Georgian => "Georgian",
+        Script::Arabic => "Arabic",
     }
 }
 
@@ -57,6 +59,7 @@ fn script_families(script: Script) -> &'static str {
         Script::TraditionalChinese => "Noto Sans CJK TC, Noto Sans TC, PingFang TC, Heiti TC, Microsoft JhengHei and MingLiU",
         Script::Japanese => "Hiragino Sans, Yu Gothic, Meiryo, MS Gothic, Noto Sans CJK JP, Noto Sans JP, IPAGothic and TakaoGothic",
         Script::Georgian => "SF Georgian, Arial Unicode MS, Sylfaen, Noto Sans Georgian and DejaVu Sans",
+        Script::Arabic => "SF Arabic, Geeza Pro, Segoe UI, Tahoma, Noto Sans Arabic and DejaVu Sans",
     }
 }
 
@@ -154,6 +157,7 @@ fn candidates(script: Script) -> Vec<Candidate> {
         Script::TraditionalChinese => traditional_chinese_candidates(),
         Script::Japanese => japanese_candidates(),
         Script::Georgian => georgian_candidates(),
+        Script::Arabic => arabic_candidates(),
     };
     let mut out = Vec::with_capacity(found.len() * 2);
     for candidate in found {
@@ -460,6 +464,54 @@ fn georgian_candidates() -> Vec<Candidate> {
             add(dir.join("NotoSansGeorgian-Regular.ttf"), "Noto Sans Georgian");
         }
         // DejaVu Sans draws Georgian too, and most desktops have it.
+        for path in [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/local/share/fonts/dejavu/DejaVuSans.ttf",
+        ] {
+            add(path.into(), "DejaVu Sans");
+        }
+    }
+    out
+}
+
+/// Where each system keeps an Arabic font, best first: the one its own interface uses.
+fn arabic_candidates() -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut add = |path: PathBuf, family: &'static str| out.push(Candidate { path, family });
+    #[cfg(target_os = "macos")]
+    {
+        // SF Arabic is the system UI face for Arabic (a hidden face, like SF Georgian); Geeza Pro
+        // drew it before macOS 11.
+        add("/System/Library/Fonts/SFArabic.ttf".into(), ".SF Arabic");
+        add("/System/Library/Fonts/GeezaPro.ttc".into(), "Geeza Pro");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let root = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        add(root.join("Fonts").join("segoeui.ttf"), "Segoe UI");
+        add(root.join("Fonts").join("tahoma.ttf"), "Tahoma");
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Debian/Ubuntu, Arch, Fedora (static and variable), openSUSE and FreeBSD's ports.
+        for path in [
+            "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+            "/usr/share/fonts/truetype/NotoSansArabic-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSansArabic-Regular.ttf",
+            "/usr/share/fonts/google-noto/NotoSansArabic-Regular.ttf",
+            "/usr/share/fonts/google-noto-vf/NotoSansArabic[wght].ttf",
+            "/usr/local/share/fonts/noto/NotoSansArabic-Regular.ttf",
+        ] {
+            add(path.into(), "Noto Sans Arabic");
+        }
+        // A face the user installed by hand.
+        for dir in user_font_dirs() {
+            add(dir.join("NotoSansArabic-Regular.ttf"), "Noto Sans Arabic");
+        }
+        // DejaVu Sans draws Arabic too, and most desktops have it.
         for path in [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/TTF/DejaVuSans.ttf",

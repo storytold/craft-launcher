@@ -36,14 +36,14 @@ pub(crate) fn hero(ui: &mut Ui, icon: Option<ImageSource<'static>>, title: &str,
                     ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(44.0, 44.0)));
                     ui.add_space(6.0);
                 }
-                ui.vertical(|ui| {
+                ui.with_layout(widgets::down(), |ui| {
                     ui.spacing_mut().item_spacing.y = 4.0;
                     ui.label(widgets::heading(title, theme::SHEET_TITLE, t.ink_strong));
                     if !caption.is_empty() {
                         widgets::hud(ui, caption, t.faint);
                     }
                 });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), right);
+                ui.with_layout(widgets::to_end(egui::Align::Center), right);
             });
         });
     let r = shown.response.rect;
@@ -78,11 +78,11 @@ pub(crate) fn columns(ui: &mut Ui, wide: bool, gap: f32, left: impl FnOnce(&mut 
     let w = ((ui.available_width() - gap) / 2.0).floor();
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = gap;
-        ui.vertical(|ui| {
+        ui.with_layout(widgets::down(), |ui| {
             ui.set_width(w);
             left(ui);
         });
-        ui.vertical(|ui| {
+        ui.with_layout(widgets::down(), |ui| {
             ui.set_width(w);
             right(ui);
         });
