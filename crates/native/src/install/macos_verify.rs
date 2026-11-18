@@ -84,7 +84,26 @@ fn assessment_status(output: &crate::process::RunOutput) -> Result<AssessmentSta
     if stdout == "assessments enabled" && stderr.is_empty() {
         return Ok(AssessmentStatus::Enabled);
     }
-    Err("macOS returned an unknown Gatekeeper status, so the app wasn't installed".into())
+    Err(format!("macOS returned an unknown Gatekeeper status ({}), so the app wasn't installed", printed(stdout, stderr)))
+}
+
+/// How much of each `spctl --status` stream an error quotes. Its real answers are one short line.
+const STATUS_QUOTE_CHARS: usize = 120;
+
+/// What `spctl --status` printed, for an error a person can send back: each non-empty stream,
+/// cut to [`STATUS_QUOTE_CHARS`] characters and quoted with newlines and control characters
+/// escaped, so an unexpected answer is visible instead of only called unknown.
+fn printed(stdout: &str, stderr: &str) -> String {
+    let quote = |name: &str, text: &str| {
+        let mut cut: String = text.chars().take(STATUS_QUOTE_CHARS).collect();
+        if cut.len() < text.len() {
+            cut.push('…');
+        }
+        format!("{name} {cut:?}")
+    };
+    let streams: Vec<String> =
+        [("stdout", stdout), ("stderr", stderr)].into_iter().filter(|(_, text)| !text.is_empty()).map(|(name, text)| quote(name, text)).collect();
+    if streams.is_empty() { "spctl printed nothing".into() } else { format!("spctl printed {}", streams.join(", ")) }
 }
 
 fn identity_requirement(app: &CraftApp, team: &str) -> Result<String, String> {
@@ -275,6 +294,39 @@ mod tests {
         assert!(error.contains("couldn't determine Gatekeeper status"), "{error}");
         assert!(error.contains("helper unavailable"), "{error}");
         assert_eq!(calls, 4);
+    }
+
+    #[test]
+    fn unknown_gatekeeper_status_errors_quote_what_spctl_printed() {
+        // #1409: a Big Sur Mac with Gatekeeper on got "unknown Gatekeeper status" and nothing else,
+        // so nobody could tell what macOS had said. The error now quotes it, bounded and escaped.
+        let cases = [
+            (crate::process::RunOutput::success(""), "spctl printed nothing"),
+            (
+                crate::process::RunOutput::success("assessments enabled\ndeveloper id enabled"),
+                r#"stdout "assessments enabled\ndeveloper id enabled""#,
+            ),
+            (
+                crate::process::RunOutput { stderr: "assessments enabled\n".into(), ..crate::process::RunOutput::success("") },
+                r#"stderr "assessments enabled""#,
+            ),
+            (
+                crate::process::RunOutput { stderr: "spctl: note".into(), ..crate::process::RunOutput::success("assessments enabled") },
+                r#"stdout "assessments enabled", stderr "spctl: note""#,
+            ),
+        ];
+        for (output, quoted) in cases {
+            let error = assessment_status(&output).unwrap_err();
+            assert!(error.contains("unknown Gatekeeper status"), "{error}");
+            assert!(error.contains(quoted), "{error}");
+            assert!(error.ends_with("so the app wasn't installed"), "{error}");
+        }
+
+        // A runaway helper can't flood the message: each stream is cut at a character boundary.
+        let long = crate::process::RunOutput::success("é".repeat(10_000));
+        let error = assessment_status(&long).unwrap_err();
+        assert!(error.contains(&format!("stdout \"{}…\"", "é".repeat(STATUS_QUOTE_CHARS))), "{error}");
+        assert!(error.chars().count() < STATUS_QUOTE_CHARS + 200, "{error}");
     }
 
     #[test]
