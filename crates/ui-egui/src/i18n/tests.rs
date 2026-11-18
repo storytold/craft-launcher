@@ -5,7 +5,19 @@ use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
 use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
-use super::{LANGUAGES, Lang, LangInfo, lang_from_tag, message, tr, trn};
+use super::{LANGUAGES, Lang, LangInfo, fmt, lang_from_tag, message, tr, trn};
+
+#[test]
+fn a_filled_in_value_is_never_read_as_a_placeholder() {
+    assert_eq!(fmt("{name}: {error}", &[("name", "{error}"), ("error", "disk full")]), "{error}: disk full");
+    assert_eq!(fmt("{a} and {a}", &[("a", "{a}")]), "{a} and {a}");
+}
+
+#[test]
+fn placeholders_nobody_filled_stay_as_written() {
+    assert_eq!(fmt("{a} {b} { {} }{", &[("a", "1")]), "1 {b} { {} }{");
+    assert_eq!(fmt("{{a}", &[("a", "1")]), "{1");
+}
 
 /// Each catalog's rows as (line number, context, source, translation), split exactly as the
 /// parser does: `trim_end` only, since a plain row *starts* with a TAB.
@@ -25,10 +37,12 @@ fn rows(lang: &LangInfo) -> Vec<(usize, &str, &str, &str)> {
     out
 }
 
+/// Every catalog that carries rows (English is the built-in source, with no file of its own).
 fn catalogs() -> impl Iterator<Item = &'static LangInfo> {
     LANGUAGES.iter().filter(|l| !l.source.is_empty())
 }
 
+/// The `{name}` placeholders a source or translation line carries, for comparison.
 fn placeholders(template: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let mut rest = template;
@@ -212,6 +226,28 @@ fn russian_plural_rule_works() {
 }
 
 #[test]
+fn ukrainian_locales_and_plurals_work() {
+    for tag in ["uk", "uk-UA", "uk_UA.UTF-8", "UK_ua"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::UK), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "uk-UA", "en-US"]), Some(Lang::UK));
+    // Ukrainian counts share Russian's rule: 1 (but not 11) is "one", 2–4 (but not 12–14) "few",
+    // everything else "many".
+    assert_eq!(trn(Lang::UK, 1, "{n} app", "{n} apps"), "1 застосунок");
+    assert_eq!(trn(Lang::UK, 3, "{n} app", "{n} apps"), "3 застосунки");
+    assert_eq!(trn(Lang::UK, 5, "{n} app", "{n} apps"), "5 застосунків");
+    assert_eq!(trn(Lang::UK, 21, "{n} day ago", "{n} days ago"), "21 день тому");
+    assert_eq!(trn(Lang::UK, 22, "{n} day ago", "{n} days ago"), "22 дні тому");
+    assert_eq!(trn(Lang::UK, 12, "{n} day ago", "{n} days ago"), "12 днів тому");
+    // A key the Ukrainian catalog doesn't carry falls back to the English forms.
+    assert_eq!(trn(Lang::UK, 3, "{n} unknown item", "{n} unknown items"), "3 unknown items");
+    assert_eq!(super::tr_ctx(Lang::UK, "month", "Mar"), "бер.");
+    assert_eq!(tr(Lang::UK, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::UK, "PhotoCraft updated to 0.5.0"), "Застосунок PhotoCraft оновлено до 0.5.0");
+    assert_eq!(tr(Lang::UK, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
+
+#[test]
 fn czech_plural_rule_works() {
     for n in [0, 5, 11, 21, 22, 25] {
         assert_eq!(plural_czech(n), 2, "{n}");
@@ -360,15 +396,19 @@ fn polish_locales_resolve() {
 }
 
 #[test]
-fn simplified_chinese_locales_respect_the_script() {
+fn chinese_locales_respect_the_script() {
     for tag in ["zh", "zh-CN", "zh_CN.UTF-8", "zh-SG", "zh-Hans", "zh-Hans-CN", "zh-Hans-HK", "ZH_cn"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::ZH_CN), "{tag}");
     }
-    for tag in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-CN", "zh-Hant-SG", "zh_TW.UTF-8"] {
-        assert_eq!(lang_from_tag(tag), None, "{tag}");
+    for tag in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-CN", "zh-Hant-SG", "zh_TW.UTF-8", "ZH_hant"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::ZH_TW), "{tag}");
     }
-    // A Traditional Chinese system that also lists English gets English, not Simplified.
-    assert_eq!(super::detect::first_supported(["zh-Hant-TW", "en-US"]), Some(Lang::EN));
+    // An explicit script wins over the region.
+    assert_eq!(lang_from_tag("zh-Hans-TW"), Some(Lang::ZH_CN));
+    // A Traditional Chinese system that also lists English gets Traditional Chinese.
+    assert_eq!(super::detect::first_supported(["zh-Hant-TW", "en-US"]), Some(Lang::ZH_TW));
+    // A region with no explicit script and no Traditional Chinese convention stays unsupported.
+    assert_eq!(lang_from_tag("zh-MY"), None);
 }
 
 #[test]
@@ -380,6 +420,29 @@ fn chinese_counts_and_english_fallback_work() {
     assert_eq!(trn(Lang::ZH_CN, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
     assert_eq!(tr(Lang::ZH_CN, "Untranslated diagnostic"), "Untranslated diagnostic");
     assert_eq!(message(Lang::ZH_CN, "PhotoCraft updated to 0.5.0"), "PhotoCraft 已更新至 0.5.0");
+}
+
+#[test]
+fn traditional_chinese_locales_and_counts_work() {
+    for tag in ["zh-TW", "zh-HK", "zh-MO", "zh-Hant", "zh-Hant-TW", "zh_TW.UTF-8", "ZH_hant"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::ZH_TW), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["zh-Hant-TW", "en-US"]), Some(Lang::ZH_TW));
+    // Traditional Chinese has one plural form.
+    for n in [0, 1, 2, 11, 100] {
+        assert_eq!(trn(Lang::ZH_TW, n, "{n} app", "{n} apps"), format!("{n} 個應用程式"));
+        assert_eq!(trn(Lang::ZH_TW, n, "{n} min ago", "{n} min ago"), format!("{n} 分鐘前"));
+        assert_eq!(trn(Lang::ZH_TW, n, "{n} day ago", "{n} days ago"), format!("{n} 天前"));
+    }
+    assert_eq!(trn(Lang::ZH_TW, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(Lang::ZH_TW, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(tr(Lang::ZH_TW, "{month} {day}, {year}"), "{year}年{month}{day}日");
+    assert_eq!(super::tr_ctx(Lang::ZH_TW, "month", "Mar"), "3月");
+    assert_eq!(tr(Lang::ZH_TW, "Settings"), "設定");
+    assert_eq!(tr(Lang::ZH_TW, "Uninstall…"), "解除安裝…");
+    // The product's "Launcher" tag stays in English (AGENTS.md).
+    assert_eq!(tr(Lang::ZH_TW, "Launcher"), "Launcher");
+    assert_eq!(message(Lang::ZH_TW, "PhotoCraft updated to 0.5.0"), "PhotoCraft 已更新至 0.5.0");
 }
 
 #[test]
@@ -400,37 +463,62 @@ fn japanese_locales_and_counts_work() {
     assert_eq!(message(Lang::JA, "PhotoCraft updated to 0.5.0"), "PhotoCraft を 0.5.0 に更新しました");
 }
 
-/// With the system's Chinese font installed, every UI family can draw the whole Chinese catalog.
-/// Machines without one (CI, the web) skip this; the UI then stays in English.
+#[test]
+fn georgian_locales_and_counts_work() {
+    for tag in ["ka", "ka-GE", "ka_GE.UTF-8", "KA_ge"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::KA), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "ka-GE", "en-US"]), Some(Lang::KA));
+    // After a number the noun stays singular, so both forms are the same; 1 is still "one".
+    for n in [0, 1, 2, 21, 100] {
+        assert_eq!(trn(Lang::KA, n, "{n} app", "{n} apps"), format!("{n} აპლიკაცია"));
+        assert_eq!(trn(Lang::KA, n, "{n} day ago", "{n} days ago"), format!("{n} დღის წინ"));
+    }
+    assert_eq!(trn(Lang::KA, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(Lang::KA, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(super::tr_ctx(Lang::KA, "month", "Mar"), "მარ");
+    assert_eq!(tr(Lang::KA, "{month} {day}, {year}"), "{day} {month}, {year}");
+    assert_eq!(message(Lang::KA, "PhotoCraft updated to 0.5.0"), "PhotoCraft განახლდა ვერსიამდე 0.5.0");
+    // Georgian has no letter case: no Mtavruli (U+1C90–U+1CBF) in the interface.
+    assert!(!Lang::KA.0.source.chars().any(|c| ('\u{1c90}'..='\u{1cbf}').contains(&c)));
+}
+
+/// With the system's Chinese font installed, every UI family can draw the whole Simplified and
+/// Traditional Chinese catalogs. Machines without one (CI, the web) skip this; the UI then stays
+/// in English.
 #[test]
 fn system_font_covers_chinese_in_every_ui_family() {
     use egui::{FontFamily, FontId};
-    if !crate::theme::cjk_font_available(Lang::ZH_CN) {
-        return;
-    }
-    let ctx = egui::Context::default();
-    crate::theme::install_fonts(&ctx, Some(Lang::ZH_CN));
-    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
-    output.textures_delta.clear();
-    let text: String = Lang::ZH_CN
-        .0
-        .source
-        .lines()
-        .filter_map(|line| line.split('\t').nth(2))
-        .flat_map(str::chars)
-        .filter(|c| ('\u{3400}'..='\u{9fff}').contains(c))
-        .collect();
-    assert!(text.chars().count() > 500);
-    for family in [
-        FontFamily::Proportional,
-        FontFamily::Monospace,
-        crate::theme::medium(),
-        crate::theme::semibold(),
-        crate::theme::display(),
-        crate::theme::mono(),
-        crate::theme::mono_bold(),
-    ] {
-        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    for lang in [Lang::ZH_CN, Lang::ZH_TW] {
+        if !crate::theme::cjk_font_available(lang) {
+            continue;
+        }
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, Some(lang));
+        let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        let text: String = lang
+            .0
+            .source
+            .lines()
+            .filter_map(|line| line.split('\t').nth(2))
+            .flat_map(str::chars)
+            .filter(|c| ('\u{3400}'..='\u{9fff}').contains(c))
+            .collect();
+        assert!(text.chars().count() > 500, "{}", lang.code());
+        for family in [
+            FontFamily::Proportional,
+            FontFamily::Monospace,
+            crate::theme::medium(),
+            crate::theme::semibold(),
+            crate::theme::display(),
+            crate::theme::mono(),
+            crate::theme::mono_bold(),
+        ] {
+            ctx.fonts_mut(|fonts| {
+                assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "{}: missing glyph in {family:?}", lang.code());
+            });
+        }
     }
 }
 
@@ -468,6 +556,40 @@ fn system_font_covers_japanese_in_every_ui_family() {
     }
 }
 
+/// With a system Georgian font installed, every UI family can draw the whole Georgian catalog.
+/// Machines without one (the web, minimal Linux installs) skip this.
+#[test]
+fn system_font_covers_georgian_in_every_ui_family() {
+    use egui::{FontFamily, FontId};
+    if !crate::theme::cjk_font_available(Lang::KA) {
+        return;
+    }
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx, Some(Lang::KA));
+    let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+    output.textures_delta.clear();
+    let text: String = Lang::KA
+        .0
+        .source
+        .lines()
+        .filter_map(|line| line.split('\t').nth(2))
+        .flat_map(str::chars)
+        .filter(|c| ('\u{10d0}'..='\u{10ff}').contains(c))
+        .collect();
+    assert!(text.chars().count() > 1000);
+    for family in [
+        FontFamily::Proportional,
+        FontFamily::Monospace,
+        crate::theme::medium(),
+        crate::theme::semibold(),
+        crate::theme::display(),
+        crate::theme::mono(),
+        crate::theme::mono_bold(),
+    ] {
+        ctx.fonts_mut(|fonts| assert!(fonts.has_glyphs(&FontId::new(14.0, family.clone()), &text), "missing glyph in {family:?}"));
+    }
+}
+
 #[test]
 fn language_labels_come_from_the_registry() {
     use crate::settings::Settings;
@@ -478,8 +600,12 @@ fn language_labels_come_from_the_registry() {
     // in the font stack: no other face draws it.
     assert_eq!(Settings::language_label(Lang::ZH_CN.code(), None), "Simplified Chinese");
     assert_eq!(Settings::language_label(Lang::ZH_CN.code(), Some(Lang::ZH_CN)), "Simplified Chinese (简体中文)");
+    assert_eq!(Settings::language_label(Lang::ZH_TW.code(), None), "Traditional Chinese (Taiwan)");
+    assert_eq!(Settings::language_label(Lang::ZH_TW.code(), Some(Lang::ZH_TW)), "Traditional Chinese (Taiwan) (繁體中文)");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::ZH_CN)), "Japanese");
     assert_eq!(Settings::language_label(Lang::JA.code(), Some(Lang::JA)), "Japanese (日本語)");
+    assert_eq!(Settings::language_label(Lang::KA.code(), None), "Georgian");
+    assert_eq!(Settings::language_label(Lang::KA.code(), Some(Lang::KA)), "Georgian (ქართული)");
     assert_eq!(Settings::language_label(Settings::LANGUAGE_AUTO, None), "Auto");
     assert_eq!(Settings::language_label("xx", None), "Auto");
 }

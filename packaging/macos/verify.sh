@@ -66,6 +66,20 @@ assess() {
   return 1
 }
 
+# `stapler validate` fetches the ticket from Apple's CloudKit, and a dropped connection there
+# (NSURLErrorDomain -1005, "Error 68") fails it although the ticket is stapled. Retry like
+# package.sh's stapler_retry; a missing or bad ticket still fails every try.
+stapler_validate() {
+  local try
+  for try in 1 2 3 4; do
+    xcrun stapler validate "$1" && return 0
+    [[ "$try" = 4 ]] && break
+    echo "stapler validate failed (try $try of 4); retrying in $((try * 20)) s" >&2
+    sleep $((try * 20))
+  done
+  return 1
+}
+
 if [[ ! -f "$DMG" ]]; then
   echo "error: missing $DMG" >&2
   exit 1
@@ -83,7 +97,7 @@ trap cleanup EXIT
 echo "==> $(basename "$DMG")"
 codesign --verify --strict --verbose=2 "$DMG"
 if [[ "$STRICT" = 1 ]]; then
-  xcrun stapler validate "$DMG" || fail "no notarization ticket stapled to the DMG"
+  stapler_validate "$DMG" || fail "no notarization ticket stapled to the DMG"
   assess --assess --type open --context context:primary-signature -vv "$DMG" \
     || fail "Gatekeeper rejects the DMG"
 fi
@@ -133,7 +147,7 @@ if [[ -n "${APPLE_TEAM_ID:-}" ]]; then
     || fail "$APP_NAME.app is signed by a different team"
 fi
 if [[ "$STRICT" = 1 ]]; then
-  xcrun stapler validate "$APP" || fail "no notarization ticket stapled to $APP_NAME.app"
+  stapler_validate "$APP" || fail "no notarization ticket stapled to $APP_NAME.app"
   if gk="$(assess --assess --type execute -vv "$APP")"; then
     printf '%s\n' "$gk"
     printf '%s\n' "$gk" | grep -q 'source=Notarized Developer ID' \

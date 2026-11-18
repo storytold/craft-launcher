@@ -181,4 +181,64 @@ ln -s "$TMP/manager-entry" "$DESKTOP"
 "$APPDIR/AppRun" >/dev/null || fail "launch with desktop symlink failed"
 [[ -L "$DESKTOP" ]] || fail "desktop symlink replaced"
 
+# 15. appimaged lists this AppImage under its own name: drop our entry, install nothing more.
+rm -rf "$XDG_DATA_HOME"
+"$APPDIR/AppRun" >/dev/null || fail "launch before appimaged failed"
+apps="$XDG_DATA_HOME/applications"
+real="$(readlink -f "$APPIMAGE")"
+printf '[Desktop Entry]\nName=ArtCraft Launcher\nExec="/usr/bin/appimaged" wrap "%s" %%F\nStartupWMClass=%s\nActions=Trash;\n\n[Desktop Action Trash]\nName=Move to Trash\nExec=gio trash "%s"\n' "$real" "$APP_ID" "$real" >"$apps/appimagekit_0123abcd.desktop"
+rm -rf "$XDG_DATA_HOME/icons"
+out="$("$APPDIR/AppRun" managed)" || fail "launch beside appimaged failed"
+[[ "$out" = "stub: managed" ]] || fail "launch beside appimaged lost arguments"
+[[ ! -e "$DESKTOP" ]] || fail "own entry kept beside appimaged's"
+[[ ! -e "$XDG_DATA_HOME/icons" ]] || fail "icons installed beside appimaged's entry"
+
+# 15a. Gear Lever's entry (single-quoted path, no trailing newline) counts too.
+rm -rf "$XDG_DATA_HOME" && mkdir -p "$apps"
+spaced="$TMP/Art Craft.AppImage"
+: >"$spaced"
+printf "[Desktop Entry]\nName=ArtCraft Launcher\nStartupWMClass=%s\nExec=env DESKTOPINTEGRATION=1 '%s'" "$APP_ID" "$(readlink -f "$spaced")" >"$apps/artcraft_launcher.desktop"
+APPIMAGE="$spaced" "$APPDIR/AppRun" >/dev/null || fail "launch beside Gear Lever failed"
+[[ ! -e "$DESKTOP" ]] || fail "integrated beside Gear Lever's entry"
+
+# 15b. Our entry with user changes stays beside a manager's entry.
+cp "$apps/artcraft_launcher.desktop" "$TMP/gear-lever-entry"
+sed "s|^Exec=.*|Exec=\"$(readlink -f "$APPIMAGE")\"|" "$TMP/gear-lever-entry" >"$apps/artcraft_launcher.desktop"
+sed 's/^Name=.*/Name=My Launcher/' "$TMP/generated-entry" >"$DESKTOP"
+cp "$DESKTOP" "$TMP/renamed-entry"
+"$APPDIR/AppRun" >/dev/null || fail "launch with renamed entry failed"
+cmp -s "$DESKTOP" "$TMP/renamed-entry" || fail "user-changed entry removed"
+
+# 15c. An entry for another file that shares our path as a prefix doesn't count.
+rm -rf "$XDG_DATA_HOME" && mkdir -p "$apps"
+printf '[Desktop Entry]\nStartupWMClass=%s\nExec="%s.old"\n' "$APP_ID" "$(readlink -f "$APPIMAGE")" >"$apps/old-copy.desktop"
+"$APPDIR/AppRun" >/dev/null || fail "launch beside an older copy's entry failed"
+[[ -f "$DESKTOP" ]] || fail "an entry for another file blocked integration"
+
+# 15d. An entry from a release with the old StartupWMClass is ours: refreshed, and dropped beside appimaged's.
+sed 's/^StartupWMClass=.*/StartupWMClass=artcraft-launcher/' "$TMP/generated-entry" >"$DESKTOP"
+"$APPDIR/AppRun" >/dev/null || fail "launch over an older release's entry failed"
+cmp -s "$DESKTOP" "$TMP/generated-entry" || fail "older release's entry not refreshed"
+sed 's/^StartupWMClass=.*/StartupWMClass=artcraft-launcher/' "$TMP/generated-entry" >"$DESKTOP"
+printf '[Desktop Entry]\nExec="/usr/bin/appimaged" wrap "%s" %%F\nStartupWMClass=%s\n' "$real" "$APP_ID" >"$apps/appimagekit_0123abcd.desktop"
+"$APPDIR/AppRun" >/dev/null || fail "launch over an older release's entry beside appimaged failed"
+[[ ! -e "$DESKTOP" ]] || fail "older release's entry kept beside appimaged's"
+
+# 15e. A manager's entry hidden with a menu editor lists nothing: ours is installed and kept.
+for key in NoDisplay Hidden; do
+  printf '[Desktop Entry]\nExec="/usr/bin/appimaged" wrap "%s" %%F\nStartupWMClass=%s\n%s=true\n' "$real" "$APP_ID" "$key" >"$apps/appimagekit_0123abcd.desktop"
+  "$APPDIR/AppRun" >/dev/null || fail "launch beside a hidden entry failed"
+  [[ -f "$DESKTOP" ]] || fail "no entry of ours beside a $key=true manager entry"
+done
+
+# 15f. A manager's entry left with the old window class by an in-place update: ours stays.
+printf '[Desktop Entry]\nExec="/usr/bin/appimaged" wrap "%s" %%F\nStartupWMClass=artcraft-launcher\n' "$real" >"$apps/appimagekit_0123abcd.desktop"
+"$APPDIR/AppRun" >/dev/null || fail "launch beside an old-class manager entry failed"
+[[ -f "$DESKTOP" ]] || fail "own entry dropped beside a manager entry with the old class"
+
+# 15g. Only the [Desktop Entry] group counts: an action that runs this AppImage doesn't.
+printf '[Desktop Entry]\nExec=other-app\nStartupWMClass=%s\nActions=Launcher;\n\n[Desktop Action Launcher]\nExec="%s"\n' "$APP_ID" "$real" >"$apps/appimagekit_0123abcd.desktop"
+"$APPDIR/AppRun" >/dev/null || fail "launch beside an entry that runs this AppImage from an action failed"
+[[ -f "$DESKTOP" ]] || fail "own entry dropped beside an entry that runs this AppImage only from an action"
+
 echo "AppRun desktop integration ok"

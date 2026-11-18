@@ -42,8 +42,37 @@ pub struct Job<'a> {
     pub install_locations: &'a InstallLocations,
     /// Write over whatever [`occupied`] found.
     pub replace: bool,
+    /// The exact path [`occupied`] reported when the user agreed to replace it.
+    pub approved_path: Option<&'a Path>,
     /// Set only when the person chose this older version by name over a newer installed copy.
     pub downgrade: Option<Downgrade<'a>>,
+    /// The batch of installs this one belongs to (an "update all"): where the platform needs a
+    /// permission prompt, the whole batch shares one. `None` for a job on its own.
+    pub batch: Option<crate::queue::Gather>,
+    /// The job's place in the download line, taken when it started (none: it takes one when it
+    /// gets to its download).
+    pub place: Option<crate::downloads::Place<'static>>,
+}
+
+/// A job's place in its batch (see [`Job::batch`]): the installer queue takes it where the batch
+/// shares one call ([`crate::queue::Queue::batched_when`]); a job that ends before that — failed,
+/// cancelled, or needing no prompt at all — gives the place back on its way out, so the rest of
+/// the batch never waits for it. [`install_at`](fn@install_at) takes it for the installer routes;
+/// the backend holds it the same way for every earlier way out of a job.
+pub(crate) struct BatchPlace(pub(crate) Option<crate::queue::Gather>);
+
+impl BatchPlace {
+    pub(crate) fn take(&mut self) -> Option<crate::queue::Gather> {
+        self.0.take()
+    }
+}
+
+impl Drop for BatchPlace {
+    fn drop(&mut self) {
+        if let Some(gather) = self.0.take() {
+            gather.leave();
+        }
+    }
 }
 
 /// How a downgrade the person chose is undone if it fails.
@@ -52,23 +81,34 @@ pub enum Downgrade<'a> {
     /// The installed version's own release and package, downloaded and checked before a downgrade
     /// changes anything, so a failed Windows Installer downgrade can put it back.
     Reinstall { previous: &'a Release, asset: &'a Asset },
-    /// The installed copy is moved aside, not removed, until the older one is in place, and moved
-    /// back if that fails (see [`keeps_old_copy`]). No older package is needed.
+    /// The installed copy stays until the older one is in place (see [`keeps_old_copy`]). No
+    /// older package is needed.
     KeepOldCopy,
 }
 
-/// Whether going back over `existing` keeps the old copy aside until the new one is in place: a
-/// macOS bundle the launcher replaces itself, the same way it updates one.
-pub fn keeps_old_copy(kind: PackageKind, existing: Option<&Installed>) -> bool {
-    kind == PackageKind::Dmg && existing.is_some_and(|inst| inst.source == InstallSource::MacApp)
+/// Whether going back over `existing` keeps the old copy until the new one is in place, the same
+/// way an update does. A macOS bundle is moved aside and moved back if the swap fails. An
+/// AppImage the launcher installed (`previous` records it) is renamed in whole, and the old file
+/// is removed only after that. A Flatpak bundle over the launcher's own Flatpak (same bundle
+/// origin) deploys the new commit before undeploying the old one, as an update does; a Flatpak
+/// from a repository is left to that repository. A tarball is left out: its `bin` and `share`
+/// swap one at a time.
+pub fn keeps_old_copy(kind: PackageKind, existing: Option<&Installed>, previous: Option<&Record>) -> bool {
+    let source = existing.map(|inst| inst.source);
+    match kind {
+        PackageKind::Dmg => source == Some(InstallSource::MacApp),
+        PackageKind::AppImage => source == Some(InstallSource::Launcher) && previous.is_some_and(|r| r.kind == PackageKind::AppImage),
+        PackageKind::Flatpak => existing.is_some_and(|inst| inst.source == InstallSource::Flatpak && !inst.externally_managed),
+        _ => false,
+    }
 }
 
 /// Whether `downgrade` has a way back for this kind of install.
-fn downgrade_is_safe(downgrade: Option<Downgrade<'_>>, kind: PackageKind, existing: Option<&Installed>) -> bool {
+fn downgrade_is_safe(downgrade: Option<Downgrade<'_>>, kind: PackageKind, existing: Option<&Installed>, previous: Option<&Record>) -> bool {
     match downgrade {
         None => true,
         Some(Downgrade::Reinstall { .. }) => kind == PackageKind::Msi && existing.is_some_and(|inst| inst.source == InstallSource::Msi),
-        Some(Downgrade::KeepOldCopy) => keeps_old_copy(kind, existing),
+        Some(Downgrade::KeepOldCopy) => keeps_old_copy(kind, existing, previous),
     }
 }
 
@@ -89,6 +129,9 @@ pub fn install(
 
 type RecordCommit<'a> = Option<&'a mut dyn FnMut(&Record) -> Result<(), String>>;
 
+/// Does the work of [`install`], plus `commit` (the caller's way of saving the new record). The
+/// download waits its turn in the line, using the job's place if it has one; a file already
+/// downloaded skips the line.
 #[allow(clippy::too_many_arguments)]
 pub fn install_at(
     app: &CraftApp,
@@ -104,6 +147,9 @@ pub fn install_at(
     let mut commit = commit;
     #[cfg(not(windows))]
     let _ = commit;
+    // Every early way out below gives the job's place in its batch back (see [`BatchPlace`]).
+    #[cfg_attr(not(any(target_os = "linux", windows)), allow(unused_mut, unused_variables))]
+    let mut batch = BatchPlace(job.batch.take());
     #[allow(unused_variables)]
     let destination = destination(app, kind, existing, previous, job.install_locations)?;
     #[cfg(windows)]
@@ -113,6 +159,11 @@ pub fn install_at(
         && process::is_running(Path::new(&inst.location))
     {
         return Err(format!("{} is running. Quit it, then try again.", app.name));
+    }
+    if kind == PackageKind::Flatpak
+        && let Some(installed) = existing.filter(|installed| installed.source == InstallSource::Flatpak && installed.externally_managed)
+    {
+        return Err(managed_elsewhere(app, installed, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
     }
     bind_artifact_version(app, release, asset)?;
     // A feed can't send an app back to an older build; only a version the person chose by name
@@ -125,14 +176,10 @@ pub fn install_at(
     {
         return Err(format!("Cannot update {} to {}: installed version {} is newer", app.name, release.version_label(), inst_v));
     }
-    if !downgrade_is_safe(job.downgrade, kind, existing) {
+    if !downgrade_is_safe(job.downgrade, kind, existing, previous) {
         return Err(format!("Going back to an older version of {} isn't available for this kind of install yet.", app.name));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
-    // An update of an installed MSI may be an all-users one. Say so before the (slow) scope lookup, so
-    // the other updates of this "Update all" wait for it and share one permission prompt.
-    #[cfg(windows)]
-    let mut joined = (kind == PackageKind::Msi && existing.is_some_and(|inst| inst.source == InstallSource::Msi)).then(msi_batch::Joined::join);
     #[cfg(windows)]
     let msi_scope = if kind == PackageKind::Msi {
         let updated = crate::msi_context::update_scope(
@@ -146,41 +193,51 @@ pub fn install_at(
     } else {
         None
     };
-    #[cfg(windows)]
-    if msi_scope != Some(MsiScope::PerMachine) || job.downgrade.is_some() {
-        // A downgrade runs its own remove, install and put-back steps, outside any batch.
-        joined = None;
-    }
-    // The package to put back comes first: without it, nothing is removed.
+    // One turn to download covers everything this install fetches, and ends when the files are here.
     #[cfg_attr(not(windows), allow(unused_variables))]
-    let rollback = match job.downgrade {
-        Some(Downgrade::Reinstall { previous, asset }) => {
-            let (file, sha256) = download(previous, asset, job)?;
-            Some((file, sha256, previous.version_label()))
-        }
-        Some(Downgrade::KeepOldCopy) | None => None,
+    let (rollback, file, sha256) = {
+        let _turn = download_turn(app, asset, job)?;
+        // The package to put back comes first: without it, nothing is removed.
+        let rollback = match job.downgrade {
+            Some(Downgrade::Reinstall { previous, asset }) => {
+                let (file, sha256) = download(previous, asset, job)?;
+                Some((file, sha256, previous.version_label()))
+            }
+            Some(Downgrade::KeepOldCopy) | None => None,
+        };
+        // The checksum is kept for the Windows all-users route, which checks the held package again.
+        let (file, sha256) = download(release, asset, job)?;
+        (rollback, file, sha256)
     };
-    // The checksum is kept for the Windows all-users route, which checks the held package again.
-    #[cfg_attr(not(windows), allow(unused_variables))]
-    let (file, sha256) = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
     #[allow(unused_variables)]
     let version = release.version_label();
     let result = match kind {
+        // No team to check the signature against: refuse rather than install it unchecked.
         #[cfg(target_os = "macos")]
-        PackageKind::Dmg => {
-            macos::install_dmg(app, &file, existing, destination.as_deref(), job.replace, job.paths, &macos::Expect::release(release))
-                .map(|path| Some(record(&version, kind, path, Vec::new(), false)))
+        PackageKind::Dmg if app.mac_team.is_none() => {
+            Err("ArtCraft Launcher has no macOS signing team recorded for this app, so it wasn't installed here".into())
         }
+        #[cfg(target_os = "macos")]
+        PackageKind::Dmg => macos::install_dmg(
+            app,
+            &file,
+            existing,
+            destination.as_deref(),
+            job.replace.then_some(job.approved_path).flatten(),
+            job.paths,
+            &macos::Expect::release(app, release),
+        )
+        .map(|path| Some(record(&version, kind, path, Vec::new(), false))),
         #[cfg(windows)]
         PackageKind::Msi => {
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
             // fresh install passes no context and takes the package's own default.
-            match (&joined, &rollback) {
-                (_, Some((previous, previous_sha256, previous_version))) => windows::downgrade_msi(
+            match &rollback {
+                Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
                     windows::Package { file: &file, sha256: &sha256, version: &version },
                     windows::Package { file: previous, sha256: previous_sha256, version: previous_version },
@@ -189,9 +246,15 @@ pub fn install_at(
                     job.stop,
                     &mut *job.phase,
                 ),
-                // All-users updates that are ready together share one permission prompt.
-                (Some(joined), None) => windows::run_msi_all_users(&file, &sha256, destination.as_deref(), joined, job.stop, &mut *job.phase),
-                (None, None) => windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase),
+                None => windows::run_msi(
+                    app,
+                    windows::Package { file: &file, sha256: &sha256, version: &version },
+                    destination.as_deref(),
+                    msi_scope,
+                    batch.take(),
+                    job.stop,
+                    &mut *job.phase,
+                ),
             }
             .map(|_| None)
         }
@@ -209,14 +272,21 @@ pub fn install_at(
             .map(Some)
         }
         #[cfg(target_os = "linux")]
-        PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => {
-            linux::install_package(kind, &file, job.stop, &mut *job.phase).map(|_| {
-                if kind == PackageKind::Flatpak {
-                    linux::retire_former_flatpak(app, existing);
-                }
-                None
-            })
-        }
+        PackageKind::Deb | PackageKind::Rpm | PackageKind::ArchPkg | PackageKind::Flatpak => linux::install_package(
+            kind,
+            &file,
+            existing.and_then(|installed| installed.installation.as_deref()),
+            batch.take(),
+            job.stop,
+            &mut *job.phase,
+        )
+        .map(|_| {
+            if kind == PackageKind::Flatpak {
+                linux::configure_bundle_lookaside(app, existing.and_then(|installed| installed.installation.as_deref()));
+                linux::retire_former_flatpak(app, existing);
+            }
+            None
+        }),
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => {
             linux::install_appimage(&file, &asset.name, destination.as_deref(), previous, job.replace).map(|(path, replaced)| {
@@ -304,7 +374,9 @@ pub fn occupied(
     let target = match kind {
         PackageKind::Msi => folder,
         PackageKind::PortableZip => Some(folder.unwrap_or_else(|| paths.apps()).join(app.id)),
-        PackageKind::Dmg => folder.map(|f| f.join(format!("{}.app", app.name))),
+        PackageKind::Dmg => {
+            folder.and_then(|f| app.mac_bundle_names().map(|n| f.join(format!("{n}.app"))).find(|t| std::fs::symlink_metadata(t).is_ok()))
+        }
         #[cfg(target_os = "linux")]
         PackageKind::AppImage => folder.or_else(crate::detect::linux::appimage_dir).map(|f| f.join(&asset.name)),
         _ => None,
@@ -456,7 +528,7 @@ fn msi_folder_argument(path: &Path) -> Result<String, String> {
 /// HKLM registrations; a per-user one must not silently become a second, per-machine copy (or
 /// the other way round). A fresh install is always `PerMachine`.
 #[cfg(any(windows, test))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MsiScope {
     PerUser,
     PerMachine,
@@ -496,9 +568,36 @@ fn record(version: &str, kind: PackageKind, path: PathBuf, files: Vec<PathBuf>, 
 /// Returns an empty `Vec` when `app` is already installed outside the launcher (such as an AUR
 /// or repository Arch package) and must not be updated or replaced by the launcher.
 pub fn choose_kinds(app: &CraftApp, existing: Option<&Installed>, record: Option<&Record>, preferred: &[PackageKind]) -> Vec<PackageKind> {
-    let available = available_kinds();
-    let can_pacman = available.contains(&PackageKind::ArchPkg) || can_pacman();
-    choose_kinds_with(app, existing, record, preferred, &available, can_pacman)
+    choose_kinds_on(app, existing, record, preferred, &SystemKinds::now())
+}
+
+/// What this system can install: its package formats ([`available_kinds`]) and whether pacman can
+/// take the release's own Arch package. Asking can run a program on the host (inside the Flatpak
+/// sandbox), so a question asked for every app on every check keeps one for a while.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemKinds {
+    pub available: Vec<PackageKind>,
+    pub can_pacman: bool,
+}
+
+impl SystemKinds {
+    /// Asks this system now.
+    pub fn now() -> Self {
+        let available = available_kinds();
+        let can_pacman = available.contains(&PackageKind::ArchPkg) || can_pacman();
+        Self { available, can_pacman }
+    }
+}
+
+/// [`choose_kinds`] on what `system` can install, without asking it again.
+pub fn choose_kinds_on(
+    app: &CraftApp,
+    existing: Option<&Installed>,
+    record: Option<&Record>,
+    preferred: &[PackageKind],
+    system: &SystemKinds,
+) -> Vec<PackageKind> {
+    choose_kinds_with(app, existing, record, preferred, &system.available, system.can_pacman)
 }
 
 pub(crate) fn choose_kinds_with(
@@ -509,7 +608,7 @@ pub(crate) fn choose_kinds_with(
     available: &[PackageKind],
     can_pacman: bool,
 ) -> Vec<PackageKind> {
-    // Formats the launcher can't verify for this app (SolidCraft's unsigned macOS build) never count.
+    // Formats the launcher can't verify for this app (a macOS build with no `mac_team`) never count.
     let available: Vec<PackageKind> = available.iter().copied().filter(|k| app.installs(*k)).collect();
     let available = available.as_slice();
     if let Some(inst) = existing {
@@ -524,6 +623,9 @@ pub(crate) fn choose_kinds_with(
             // opens and removes them but never replaces them.
             InstallSource::Pacman if is_release_arch_package(app, inst) => Some(PackageKind::ArchPkg),
             InstallSource::Pacman => return Vec::new(),
+            // Repository-managed Flatpaks are externally managed: the launcher will not
+            // replace them with a downloaded local .flatpak bundle.
+            InstallSource::Flatpak if inst.externally_managed => return Vec::new(),
             InstallSource::Flatpak => Some(PackageKind::Flatpak),
             InstallSource::AppImage => Some(PackageKind::AppImage),
             InstallSource::Binary => Some(PackageKind::TarGz),
@@ -569,6 +671,37 @@ pub fn available_kinds() -> Vec<PackageKind> {
     return vec![PackageKind::TarGz];
     #[allow(unreachable_code)]
     Vec::new()
+}
+
+/// Waits for this job's turn to download ([`DOWNLOADS`]), unless every file it needs is already
+/// here from an earlier try (that only needs checking). `asset` is the file being installed; a
+/// downgrade that puts back the installed version also fetches that version's package.
+fn download_turn(app: &CraftApp, asset: &Asset, job: &mut Job<'_>) -> Result<Option<crate::downloads::Turn<'static>>, String> {
+    let here = |asset: &Asset| crate::http::finished(&download_path(job.paths, asset), asset.size);
+    let put_back_here = match job.downgrade {
+        Some(Downgrade::Reinstall { asset, .. }) => here(asset),
+        Some(Downgrade::KeepOldCopy) | None => true,
+    };
+    let place = job.place.take();
+    if here(asset) && put_back_here {
+        // Everything is here: the place in line isn't needed.
+        drop(place);
+        return Ok(None);
+    }
+    let dest = download_path(job.paths, asset);
+    let phase = &mut *job.phase;
+    let mut queued = false;
+    let place = place.unwrap_or_else(|| DOWNLOADS.join(app.id));
+    let turn = place.turn(&|| job.stop.check(), &mut || {
+        queued = true;
+        phase(JobPhase::Queued);
+    })?;
+    if queued {
+        log::info!("{}: its turn to download came", app.name);
+        let done = crate::http::partial_bytes(&dest, asset.size).unwrap_or(0);
+        phase(JobPhase::Downloading { done, total: asset.size });
+    }
+    Ok(Some(turn))
 }
 
 /// Fetches `asset` into the download folder, checked against its published SHA-256: the feed's
@@ -619,11 +752,24 @@ pub fn managed_elsewhere(app: &CraftApp, installed: &Installed, uninstall: bool)
     managed_elsewhere_with(app, installed, uninstall, pacman_repo)
 }
 
+/// Whether the launcher leaves `installed` to whatever installed it, as [`managed_elsewhere`]
+/// says, without asking pacman which repository to name in the message: for a question that only
+/// needs the answer, such as whether an update can be installed.
+pub fn is_managed_elsewhere(app: &CraftApp, installed: &Installed) -> bool {
+    managed_elsewhere_with(app, installed, false, |_| None).is_some()
+}
+
 fn managed_elsewhere_with(app: &CraftApp, installed: &Installed, uninstall: bool, repo_fn: impl Fn(&str) -> Option<String>) -> Option<String> {
     match installed.source {
         InstallSource::Pacman if !uninstall && !is_release_arch_package(app, installed) => {
             let pkg = installed.package.clone().unwrap_or_else(|| app.id.to_string());
             Some(pacman_update_hint(app, &pkg, repo_fn(&pkg).as_deref()))
+        }
+        InstallSource::Flatpak if !uninstall && installed.externally_managed => {
+            let default_id = app.bundle_id();
+            let pkg = installed.package.as_deref().unwrap_or(&default_id);
+            let scope = crate::packages::flatpak_scope(installed.installation.as_deref());
+            Some(format!("{} was installed from a Flatpak repository. Update it with flatpak update {scope} {pkg}", app.name))
         }
         InstallSource::Binary => Some(format!("{} was installed outside the launcher. Update or remove it the way it was installed.", app.name)),
         _ => None,
@@ -706,7 +852,7 @@ pub fn uninstall(
         }
         #[cfg(target_os = "freebsd")]
         InstallSource::Launcher => match record {
-            Some(r) => freebsd::remove_files(&r.files, r.needs_root),
+            Some(r) => freebsd::remove_files(app.id, &r.files, r.needs_root),
             None => Err("the launcher has no record of these files".into()),
         },
         #[cfg(target_os = "linux")]
@@ -740,18 +886,29 @@ fn remove_appimage(app: &CraftApp, path: &Path, record: Option<&Record>) -> Resu
     Ok(())
 }
 
-/// Starts an installed app.
-pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<(), String> {
+/// Starts an installed app with `args` (the user's launch flags) on its command line.
+pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[String]) -> Result<(), String> {
     let _ = paths;
     let path = Path::new(&installed.location);
+    // Every app is told where the shared version-choice file is (see `craft_update::pins`), so
+    // it finds it even when its own data folder points elsewhere: a redirected home, a sandbox,
+    // or a launcher whose data folder moved.
+    let pins = craft_update::pins::Pins::default_path();
+    let env: Vec<(&str, &std::ffi::OsStr)> = pins.iter().map(|p| (craft_update::pins::PATH_ENV, p.as_os_str())).collect();
     match installed.source {
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
+            cmd.arg("run");
+            cmd.args(process::env_args(&env));
             // The id detection found it under, which may be one of the app's older ones.
-            cmd.args(["run", &installed.package.clone().unwrap_or_else(|| app.bundle_id())]);
+            cmd.arg(installed.package.clone().unwrap_or_else(|| app.bundle_id()));
+            // After the app's id: flags before it would go to `flatpak run` itself.
+            cmd.args(args);
             process::spawn_detached(cmd)
         }
-        InstallSource::MacApp => process::open(path.as_os_str()),
+        // `open` starts the app through Launch Services, which gives it the user's real home, so
+        // it finds the file at its default path; not every macOS `open` takes an environment.
+        InstallSource::MacApp => process::open_app(path, args),
         // A tarball the launcher unpacked into its own folder: run it here, against its own
         // home, rather than on the host through `flatpak-spawn` (which is what `launch_binary`
         // would do inside the sandbox). Its settings then land beside it instead of in the
@@ -761,17 +918,21 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
             let home = paths.app_home(app.id);
             prepare_home(&home);
             let mut cmd = process::command(path);
+            cmd.args(args);
             for (name, value) in home_env(&home) {
                 cmd.env(name, value);
             }
+            // Its data folder now points inside its own home, so this is the only way it finds
+            // the real version-choice file.
+            cmd.envs(env.iter().copied());
             if let Some(dir) = path.parent() {
                 cmd.current_dir(dir);
             }
             process::spawn_detached(cmd)
         }
-        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open(path.as_os_str()),
+        _ if cfg!(target_os = "macos") && path.extension().is_some_and(|e| e == "app") => process::open_app(path, args),
         _ => {
-            if !path.exists() {
+            if !is_resolved_location(path) {
                 if cfg!(windows) && installed.source == InstallSource::Msi && path.components().count() < 2 {
                     return Err(format!(
                         "{} is registered with Windows, but the launcher can't find where it put the program. Reinstall it from here.",
@@ -780,10 +941,19 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths) -> Result<()
                 }
                 return Err(format!("{} isn't where it was installed ({})", app.name, path.display()));
             }
-            process::launch_binary(path, &[])
+            process::launch_binary_with_env(path, args, &env)
         }
     }
     .map_err(|e| format!("Couldn't open {}: {e}", app.name))
+}
+
+/// Whether `location` names a program that is really there. Only a full path counts: detection
+/// stores the bare app name (`WordCraft`) when it can't find the exe, and `exists()` on that
+/// looks in the launcher's working folder, which is its own install folder. With the apps in a
+/// custom folder beside the launcher, a folder of that name is there, so the bare name would be
+/// passed to spawn and fail with "program not found" instead of asking for a reinstall.
+fn is_resolved_location(location: &Path) -> bool {
+    location.is_absolute() && location.exists()
 }
 
 /// The environment a Craft App unpacked by the launcher runs with: its own `HOME` and the XDG
@@ -943,28 +1113,32 @@ fn run_as_root(args: &[&std::ffi::OsStr]) -> Result<(), String> {
 fn root_outcome(code: Option<i32>) -> Result<(), String> {
     match code {
         Some(0) => Ok(()),
-        // pkexec: 126 = the password prompt was dismissed, 127 = not authorized.
-        Some(126 | 127) => Err("cancelled".into()),
+        // pkexec: 126 = the password prompt was dismissed.
+        Some(126) => Err("cancelled".into()),
+        // pkexec: 127 = not authorized, no authentication agent, or another pkexec error.
+        Some(127) => Err("the system installer stopped with error 127 (usually refused permission or no polkit authentication agent)".into()),
         Some(c) => Err(format!("the system installer stopped with error {c}")),
         None => Err("the system installer was interrupted".into()),
     }
 }
 
-/// How the error of an installer call shared by several apps ends (see `linux::shared_outcome` and
-/// `msi_batch::outcome`). "In one go" covers a Linux package call, a Windows batch under one
-/// prompt, and its fallback where each package ran by itself but the run still has one result.
-const SHARED_CALL: &str = "apps in one go. Try them one at a time.";
+/// How the error of an installer call shared by several apps ends (see `linux::shared_outcome`).
+const SHARED_CALL: &str = "apps together. Try them one at a time.";
 
 /// Whether an install failed in one installer call shared with other apps (Linux packages
-/// installed together, or Windows all-users updates under one permission prompt). Such a call can
-/// fail after it has installed some of its apps; any other failure is the app's own.
+/// installed together). Such a call can fail after it has installed some of its apps; any other
+/// failure is the app's own.
 pub fn failed_in_shared_call(error: &str) -> bool {
-    cfg!(any(target_os = "linux", windows)) && error.ends_with(SHARED_CALL)
+    cfg!(target_os = "linux") && error.ends_with(SHARED_CALL)
 }
 
-/// The system's installer runs one job at a time; the others wait their turn here.
+/// Apps download one at a time, in the order they are on screen; the others wait their turn here.
+pub static DOWNLOADS: crate::downloads::Downloads = crate::downloads::Downloads::new();
+
+/// The system's installer runs one job at a time; the others wait their turn here. The backend
+/// starts each batch of installs (an "update all") with [`Queue::gather`] on it.
 #[cfg(any(target_os = "linux", windows))]
-static INSTALLER: crate::queue::Queue = crate::queue::Queue::new();
+pub(crate) static INSTALLER: crate::queue::Queue = crate::queue::Queue::new();
 
 /// For [`INSTALLER`]: reports [`JobPhase::Waiting`] while a job waits, then `working` again.
 #[cfg(any(target_os = "linux", windows))]
@@ -1009,19 +1183,22 @@ pub(crate) mod linux {
     const SYSTEM: Root<'static> = Root { queue: &INSTALLER, run: &run_as_root };
 
     /// Runs `command target` as root. Jobs waiting for the same command go into one call
-    /// (`apt-get install a.deb b.deb`), so the password is asked for once.
+    /// (`apt-get install a.deb b.deb`), so the password is asked for once; a job with a `batch`
+    /// also waits for the rest of that batch first, so the call covers all of them.
     fn as_root(
         root: &Root<'_>,
         command: &[&str],
         target: &OsStr,
+        batch: Option<crate::queue::Gather>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
         working: JobPhase,
     ) -> Result<(), String> {
         let command = command.iter().map(OsString::from).collect();
-        root.queue.batched(command, target.to_os_string(), &cancelled(stop), &mut turn(phase, working), &|command, targets| {
+        root.queue.batched_when(batch, command, target.to_os_string(), &cancelled(stop), &mut turn(phase, working), &|command, targets| {
             let args: Vec<&OsStr> = command.iter().chain(targets).map(OsString::as_os_str).collect();
-            shared_outcome((root.run)(&args), targets.len())
+            let outcome = shared_outcome((root.run)(&args), targets.len());
+            vec![outcome; targets.len()]
         })
     }
 
@@ -1121,27 +1298,57 @@ pub(crate) mod linux {
     }
 
     /// Installs (or upgrades) a downloaded package with the system's own tools.
-    pub fn install_package(kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        if kind == PackageKind::Deb && system_tool("apt-get").is_none() {
-            return Err("this system has no apt-get to install a Debian package with".into());
+    pub fn install_package(
+        kind: PackageKind,
+        file: &Path,
+        installation: Option<&str>,
+        batch: Option<crate::queue::Gather>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
+        let missing = if kind == PackageKind::Deb && system_tool("apt-get").is_none() {
+            Some("this system has no apt-get to install a Debian package with")
+        } else if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
+            Some("this system has no pacman to install an Arch package with")
+        } else {
+            None
+        };
+        if let Some(error) = missing {
+            // This member never reaches the shared prompt: its place in the batch goes back at
+            // once, so the rest don't wait for it (see [`Gather::leave`]).
+            if let Some(gather) = batch {
+                gather.leave();
+            }
+            return Err(error.into());
         }
-        if kind == PackageKind::ArchPkg && system_tool("pacman").is_none() {
-            return Err("this system has no pacman to install an Arch package with".into());
-        }
-        install_package_via(&SYSTEM, kind, file, stop, phase)
+        install_package_via(&SYSTEM, kind, file, installation, batch, stop, phase)
     }
 
-    pub fn install_package_via(root: &Root<'_>, kind: PackageKind, file: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    pub fn install_package_via(
+        root: &Root<'_>,
+        kind: PackageKind,
+        file: &Path,
+        installation: Option<&str>,
+        batch: Option<crate::queue::Gather>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
         let f = file.as_os_str();
         if let Some(command) = install_command(kind) {
-            return as_root(root, command, f, stop, phase, JobPhase::Installing);
+            return as_root(root, command, f, batch, stop, phase, JobPhase::Installing);
+        }
+        // This kind runs without the batch's shared prompt (Flatpak asks for itself, or not at
+        // all): its place in the batch is given back right away.
+        if let Some(gather) = batch {
+            gather.leave();
         }
         match kind {
             PackageKind::Flatpak => {
+                let scope = installation.map_or_else(|| "--user".to_string(), |name| crate::packages::flatpak_scope(Some(name)));
                 let install_one = || {
                     log::info!("executing flatpak install --reinstall --bundle for {}", file.display());
                     let output = process::flatpak_command()
-                        .args(["install", "--user", "-y", "--noninteractive", "--reinstall", "--bundle"])
+                        .args(["install", &scope, "-y", "--noninteractive", "--reinstall", "--bundle"])
                         .arg(f)
                         .output()
                         .map_err(|e| format!("couldn't start Flatpak ({e})"))?;
@@ -1167,7 +1374,7 @@ pub(crate) mod linux {
     }
 
     pub fn remove_package(app: &CraftApp, installed: &Installed, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), stop, phase, JobPhase::Removing);
+        let mut remove = |command: &[&str], package: &str| as_root(&SYSTEM, command, OsStr::new(package), None, stop, phase, JobPhase::Removing);
         let package = installed.package.as_deref().unwrap_or(app.id);
         match installed.source {
             // The package detected (photocraft, or ai.storyteller.photocraft).
@@ -1198,6 +1405,82 @@ pub(crate) mod linux {
                 remove(&["flatpak", "uninstall", "--system", "-y", "--noninteractive"], &id)
             }
             other => Err(format!("{} isn't a system package", other.label())),
+        }
+    }
+
+    /// Configure signature verification for a bundle-created ArtCraft OCI origin.
+    pub fn configure_bundle_lookaside(app: &CraftApp, installation: Option<&str>) {
+        let scope = installation.map_or_else(|| "--user".to_string(), |name| crate::packages::flatpak_scope(Some(name)));
+        let id = app.bundle_id();
+        let Some(origin) = process::capture_flatpak(&["info", &scope, "--show-origin", &id], std::time::Duration::from_secs(10)) else { return };
+        let origin = origin.trim();
+        if !origin.ends_with("-origin") {
+            return;
+        }
+        let Some(remotes) =
+            process::capture_flatpak(&["remotes", &scope, "--show-disabled", "--columns=name,url"], std::time::Duration::from_secs(10))
+        else {
+            return;
+        };
+        if !crate::packages::is_artcraft_remote(origin, &remotes) {
+            return;
+        }
+        let lookaside = format!("--signature-lookaside={}", crate::packages::ARTCRAFT_SIGNATURE_LOOKASIDE);
+        if process::capture_flatpak(&["remote-modify", &scope, &lookaside, origin], std::time::Duration::from_secs(10)).is_none() {
+            log::warn!("Could not configure the Flatpak signature lookaside for {origin}");
+        }
+    }
+
+    /// Updates an installed Flatpak from its remote repository (such as FlatPark).
+    pub fn update_flatpak_app(
+        app: &CraftApp,
+        id: &str,
+        installation: Option<&str>,
+        origin: Option<&str>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
+        phase(JobPhase::Installing);
+        stop.check()?;
+        let scope_arg = crate::packages::flatpak_scope(installation);
+        // Let Flatpak's system helper authorize system updates through polkit.
+        // watch-bus also terminates the host command if the sandbox proxy exits.
+        let flatpak = |args: &[&str]| {
+            let mut cmd = if process::in_sandbox() {
+                let mut command = process::command("flatpak-spawn");
+                command.args(["--host", "--watch-bus", "flatpak"]);
+                command
+            } else {
+                process::command("flatpak")
+            };
+            cmd.args(args);
+            process::cancellable_output(cmd, || stop.check())
+        };
+        let update = ["update", &scope_arg, "-y", "--noninteractive", id];
+        let mut output = flatpak(&update)?;
+        // A signed bundle's origin can't carry the ArtCraft OCI signature lookaside, so its first
+        // update from the repository finds no signature: add the lookaside once and retry.
+        if !output.status.success()
+            && let Some(origin) = origin
+            && let Some(remotes) = process::capture_flatpak(&["remotes", &scope_arg, "--columns=name,url"], std::time::Duration::from_secs(10))
+            && crate::packages::needs_signature_lookaside(&String::from_utf8_lossy(&output.stderr), origin, &remotes)
+        {
+            let lookaside = format!("--signature-lookaside={}", crate::packages::ARTCRAFT_SIGNATURE_LOOKASIDE);
+            if flatpak(&["remote-modify", &scope_arg, &lookaside, origin])?.status.success() {
+                output = flatpak(&update)?;
+            }
+        }
+        if output.status.success() {
+            return Ok(());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let err = stderr.trim();
+        let err = if err.is_empty() { String::from_utf8_lossy(&output.stdout).trim().to_string() } else { err.to_string() };
+        if err.is_empty() {
+            Err(format!("Flatpak couldn't update {}", app.name))
+        } else {
+            let clean_err = err.strip_prefix("error: ").or_else(|| err.strip_prefix("Error: ")).unwrap_or(&err);
+            Err(format!("Flatpak couldn't update {}: {clean_err}", app.name))
         }
     }
 
@@ -1453,12 +1736,15 @@ pub(crate) mod linux {
 }
 
 #[cfg(target_os = "macos")]
+mod macos_verify;
+
+#[cfg(target_os = "macos")]
 pub mod macos {
     use std::time::Duration;
 
     use artcraft_launcher_core::version::Version;
 
-    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, staging_dir, swap_into_place};
+    use super::{CraftApp, InstallSource, Installed, Path, PathBuf, Paths, Release, process, swap_into_place};
 
     const SYSTEM_APPLICATIONS: &str = "/Applications";
 
@@ -1484,10 +1770,6 @@ pub mod macos {
         super::mac_applications_dir(Path::new(SYSTEM_APPLICATIONS), dirs::home_dir().as_deref())
     }
 
-    /// The Apple Developer team that signs every Craft App and ArtCraft Launcher (Learning
-    /// Machines LLC): the macOS side of the Windows publisher check.
-    pub const TEAM_ID: &str = "DJ6XS33FX8";
-
     /// What a new copy must prove before it replaces anything. The checksum shows the download is
     /// the file the release lists; these show the app inside is the one the release promises.
     pub struct Expect<'a> {
@@ -1499,8 +1781,9 @@ pub mod macos {
     }
 
     impl<'a> Expect<'a> {
-        pub fn release(release: &'a Release) -> Self {
-            Self { team: Some(TEAM_ID), version: release.version.as_ref() }
+        /// What `release` of `app` must prove: the app's own team's signature, and the version.
+        pub fn release(app: &'a CraftApp, release: &'a Release) -> Self {
+            Self { team: app.mac_team, version: release.version.as_ref() }
         }
     }
 
@@ -1514,12 +1797,13 @@ pub mod macos {
     const DITTO: &str = "/usr/bin/ditto";
     const CODESIGN: &str = "/usr/bin/codesign";
 
+    /// Mounts `dmg`, copies and verifies the `.app` bundle inside, and places it in Applications.
     pub fn install_dmg(
         app: &CraftApp,
         dmg: &Path,
         existing: Option<&Installed>,
         destination: Option<&Path>,
-        replace: bool,
+        approved_replace: Option<&Path>,
         paths: &Paths,
         expect: &Expect<'_>,
     ) -> Result<PathBuf, String> {
@@ -1561,26 +1845,38 @@ pub mod macos {
             let _ = std::fs::remove_dir(&mount);
             return Err(format!("couldn't open the disk image: {reason}"));
         }
-        let result = copy_app(app, &mount, existing, destination, replace, expect);
+        let result = copy_app(app, &mount, existing, destination, approved_replace, expect);
         let _ = detach(&mount);
         let _ = std::fs::remove_dir(&mount);
         result
     }
 
+    /// Copies the `.app` bundle from `mount` into staging, verifies it, and swaps it into Applications.
     fn copy_app(
         app: &CraftApp,
         mount: &Path,
         existing: Option<&Installed>,
         destination: Option<&Path>,
-        replace: bool,
+        approved_replace: Option<&Path>,
         expect: &Expect<'_>,
     ) -> Result<PathBuf, String> {
-        let bundle = format!("{}.app", app.name);
-        let src = mount.join(&bundle);
+        let (src, bundle) = app
+            .mac_bundle_names()
+            .map(|n| {
+                let bundle = format!("{n}.app");
+                (mount.join(&bundle), bundle)
+            })
+            .find(|(src, _)| std::fs::symlink_metadata(src).is_ok_and(|m| m.is_dir()))
+            .ok_or_else(|| "the disk image does not contain an app directory".to_string())?;
         crate::detect::macos::read_bundle(app, &src).ok_or("the disk image doesn't contain the app")?;
         let dir = applications_dir(existing, destination)?;
         let dest = existing.filter(|i| i.source == InstallSource::MacApp).map_or_else(|| dir.join(&bundle), |i| PathBuf::from(&i.location));
-        if !replace
+        if let Some(approved) = approved_replace
+            && dest != approved
+        {
+            return Err(format!("{} already exists and wasn't installed by ArtCraft Launcher", dest.display()));
+        }
+        if approved_replace.is_none_or(|approved| approved != dest)
             && std::fs::symlink_metadata(&dest).is_ok()
             && (std::fs::symlink_metadata(&dest).is_ok_and(|m| m.file_type().is_symlink()) || crate::detect::macos::read_bundle(app, &dest).is_none())
         {
@@ -1595,27 +1891,40 @@ pub mod macos {
         // bundle's signature lives in its files, not in extended attributes.
         process::run(DITTO, &["--norsrc", "--noextattr", "--noacl", src_s, staged_s], Duration::from_secs(600))
             .map_err(|reason| format!("couldn't copy the app: {reason}"))?;
-        let checked = crate::detect::macos::read_bundle(app, &staged)
-            .ok_or_else(|| "the copied app is incomplete".to_string())
-            .and_then(|found| check(&staged, &found, expect));
-        checked?;
-        swap_into_place(&staged, &dest)?;
+        if !std::fs::symlink_metadata(&staged).is_ok_and(|m| m.is_dir()) {
+            return Err("the copied app is not an app directory".into());
+        }
+        let found = crate::detect::macos::read_bundle(app, &staged).ok_or("the copied app is incomplete")?;
+        check_and_swap(app, &staged, &dest, &found, expect, process::run_with_output)?;
         Ok(dest)
     }
 
-    /// Checks a copied bundle against what its release promises, before it replaces anything.
-    fn check(bundle: &Path, found: &Installed, expect: &Expect<'_>) -> Result<(), String> {
-        if let Some(team) = expect.team
-            && !signed_by(bundle, team)
-        {
-            return Err("the app isn't signed by its developer, so it wasn't installed".into());
+    /// Unsigned fixtures are allowed only in test builds, never in production installs.
+    pub(super) fn required_team(team: Option<&str>, test_build: bool) -> Result<Option<&str>, String> {
+        if team.is_none() && !test_build {
+            return Err("no macOS signing team was supplied, so the app wasn't installed".into());
+        }
+        Ok(team)
+    }
+
+    /// Every check must succeed before the old copy or its record can be changed.
+    pub(super) fn check_and_swap(
+        app: &CraftApp,
+        bundle: &Path,
+        destination: &Path,
+        found: &Installed,
+        expect: &Expect<'_>,
+        run: impl FnMut(&str, &[&str], Duration) -> Result<process::RunOutput, String>,
+    ) -> Result<(), String> {
+        if let Some(team) = required_team(expect.team, cfg!(test))? {
+            super::macos_verify::verify_with(app, bundle, team, run)?;
         }
         if let Some(want) = expect.version
             && !found.version.as_ref().is_some_and(|v| same_release(v, want))
         {
             return Err(format!("the app inside isn't version {want}, so it wasn't installed"));
         }
-        Ok(())
+        swap_into_place(bundle, destination)
     }
 
     /// Whether `bundle` has a valid Developer ID signature from `team`, nested code included. The
@@ -1792,7 +2101,10 @@ mod tree {
 mod freebsd {
     use std::ffi::OsStr;
 
-    use super::{CraftApp, Path, PathBuf, Paths, pkexec, process, run_as_root, tree};
+    use super::{CraftApp, Path, PathBuf, Paths, pkexec, process, root_record, run_as_root, tree};
+
+    /// Where system-wide tree installs go.
+    const ROOT_PREFIX: &str = "/usr/local";
 
     /// Copies the release's tree into `/usr/local` (asking for permission through polkit), or
     /// into `~/.local` when polkit isn't installed. Returns the binary, every file installed,
@@ -1807,12 +2119,28 @@ mod freebsd {
     fn install_from(app: &CraftApp, file: &Path, staging: &Path) -> Result<(PathBuf, Vec<PathBuf>, bool), String> {
         let tree = tree::unpack(app, file, staging)?;
         let rel = tree::files(&tree)?;
-        let mut source = tree.into_os_string();
+        let mut source = tree.clone().into_os_string();
         source.push("/.");
         if pkexec().is_some() {
-            let prefix = PathBuf::from("/usr/local");
-            run_as_root(&[OsStr::new("/bin/cp"), OsStr::new("-R"), &source, prefix.as_os_str()])?;
-            return Ok((prefix.join("bin").join(app.id), rel.iter().map(|r| prefix.join(r)).collect(), true));
+            let prefix = PathBuf::from(ROOT_PREFIX);
+            // Copied in with the app's files and owned by root, so an uninstall can tell which
+            // files are the app's whatever happens to the user's own record of them.
+            let list = root_record::stage(&tree, app.id, &rel)?;
+            // The copy carries the archive's modes and the user's umask into the prefix: the same
+            // root call fixes the list's and its folders' modes (see `COPY_AND_PROTECT`).
+            let protect = root_record::protected_paths(&prefix, app.id);
+            let mut args: Vec<&OsStr> = vec![
+                OsStr::new("/bin/sh"),
+                OsStr::new("-c"),
+                OsStr::new(root_record::COPY_AND_PROTECT),
+                OsStr::new("sh"),
+                source.as_os_str(),
+                prefix.as_os_str(),
+            ];
+            args.extend(protect.iter().map(|p| p.as_os_str()));
+            run_as_root(&args)?;
+            let files = rel.iter().chain(std::iter::once(&list)).map(|r| prefix.join(r)).collect();
+            return Ok((prefix.join("bin").join(app.id), files, true));
         }
         let prefix = dirs::home_dir().ok_or("no home folder")?.join(".local");
         std::fs::create_dir_all(&prefix).map_err(|e| e.to_string())?;
@@ -1840,42 +2168,37 @@ mod freebsd {
         Ok((bin, rel.iter().map(|r| prefix.join(r)).collect(), false))
     }
 
-    /// Removes the files a tree install put down.
-    pub fn remove_files(files: &[PathBuf], needs_root: bool) -> Result<(), String> {
-        if files.is_empty() {
+    /// Removes the files a tree install of `app_id` put down. A system-wide install removes the
+    /// files that the root-owned list it installed names, not `files`: that comes from the user's
+    /// own record, which anything running as the user can rewrite.
+    pub fn remove_files(app_id: &str, files: &[PathBuf], needs_root: bool) -> Result<(), String> {
+        if !needs_root && files.is_empty() {
             return Err("the launcher has no record of these files".into());
         }
-        let prefix = if needs_root { PathBuf::from("/usr/local") } else { dirs::home_dir().ok_or("no home folder")?.join(".local") };
-        let mut safe_files = Vec::new();
-        for f in files {
+        let prefix = if needs_root { PathBuf::from(ROOT_PREFIX) } else { dirs::home_dir().ok_or("no home folder")?.join(".local") };
+        let targets: Vec<PathBuf> = if needs_root {
+            let mut owned: Vec<PathBuf> = root_record::owned(&prefix, app_id, 0)?.into_iter().collect();
+            owned.sort();
+            owned
+        } else {
+            files.to_vec()
+        };
+        for f in &targets {
             // Refuse paths that climb or escape install prefix (CWE-59).
             if !f.starts_with(&prefix) || f.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
                 return Err(format!("refusing to remove file outside install prefix: {}", f.display()));
             }
-            let mut has_symlink_ancestor = false;
-            if let Ok(rel) = f.strip_prefix(&prefix) {
-                let mut check = prefix.clone();
-                for part in rel.components() {
-                    if let Ok(meta) = std::fs::symlink_metadata(&check)
-                        && meta.file_type().is_symlink()
-                    {
-                        has_symlink_ancestor = true;
-                        break;
-                    }
-                    check.push(part);
-                }
-            }
-            if !has_symlink_ancestor {
-                safe_files.push(f);
-            }
-        }
-        if safe_files.is_empty() {
-            return Ok(());
         }
         if needs_root {
-            let mut args: Vec<&OsStr> = vec![OsStr::new("/bin/rm"), OsStr::new("-f"), OsStr::new("--")];
-            args.extend(safe_files.iter().map(|f| f.as_os_str()));
+            // Refuses when a target is behind a symlink, and removes the root-owned list last.
+            let args = root_record::removal_args(&prefix, app_id, &targets)?;
+            let args: Vec<&OsStr> = args.iter().map(|a| a.as_os_str()).collect();
             return run_as_root(&args);
+        }
+        // Files behind a symlink are left alone.
+        let safe_files: Vec<&PathBuf> = targets.iter().filter(|f| !root_record::has_symlink_ancestor(&prefix, f)).collect();
+        if safe_files.is_empty() {
+            return Ok(());
         }
         for f in safe_files {
             let _ = std::fs::remove_file(f);
@@ -1897,14 +2220,21 @@ fn explain(code: Option<i32>) -> Result<(), String> {
     }
 }
 
-/// One permission prompt for several all-users updates.
-#[cfg(any(windows, test))]
-mod msi_batch;
-
 /// Going back to an older version of a Windows Installer app.
 #[cfg(any(windows, test))]
 mod msi_downgrade;
 
+/// The root-owned list of files a system-wide FreeBSD tree install put down.
+#[cfg(any(target_os = "freebsd", all(unix, test)))]
+mod root_record;
+
+/// Helpers for Windows Installer PowerShell scripts running under elevation.
+#[cfg(any(windows, test))]
+mod msi_batch;
+/// One permission prompt for a batch of per-machine packages: the launcher's own exe, elevated
+/// once, running Windows Installer on each checked package.
+#[cfg(any(windows, test))]
+pub mod msi_session;
 /// Builds the Windows Installer command separately so its package argument can be checked
 /// without starting an installer.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -1941,24 +2271,74 @@ pub mod windows {
 
     use super::{
         CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, process, turn,
+        msi_log, msi_scope_arguments, msi_session, process, turn,
     };
 
-    fn msiexec() -> PathBuf {
+    pub(super) fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
     /// `scope`, from the copy being replaced's registration, keeps the update in the same
-    /// Windows Installer context (see [`MsiScope`]).
-    pub fn run_msi(
-        msi: &Path,
+    /// Windows Installer context (see [`MsiScope`]). A per-machine package with a `batch` joins
+    /// it instead: the whole batch shares one permission prompt ([`run_batched`]). Only
+    /// [`install_at`](super::install_at) calls it, so it stays as private as its [`Package`].
+    pub(super) fn run_msi(
+        app: &CraftApp,
+        package: Package<'_>,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
+        batch: Option<crate::queue::Gather>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Installing, || run_direct(msi, destination, scope))
+        if let Some(gather) = batch {
+            if scope == Some(MsiScope::PerMachine) {
+                return run_batched(Batched { app, package, destination, scope }, gather, stop, phase);
+            }
+            // A per-user install asks Windows for nothing: its place in the batch goes back at
+            // once, so the per-machine members don't wait for it.
+            gather.leave();
+        }
+        in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope))
+    }
+
+    /// One app's install, as the batch session runs it.
+    struct Batched<'a> {
+        app: &'a CraftApp,
+        package: Package<'a>,
+        destination: Option<&'a Path>,
+        scope: Option<MsiScope>,
+    }
+
+    /// One permission prompt for a batch of per-machine packages: the members meet in one call
+    /// of the installer queue, the one whose call it is starts the elevated session
+    /// ([`msi_session`]), and every member hears its own installer's exit code. A declined
+    /// prompt cancels the whole batch; a session that cannot start sends the members back to
+    /// installing one by one, the way a single app always installs.
+    fn run_batched(job: Batched<'_>, gather: crate::queue::Gather, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        let Batched { app, package, destination, scope } = job;
+        let target = match msi_session::entry(app, &package, destination, scope) {
+            Ok(target) => target,
+            Err(e) => {
+                log::warn!("{}: {e}; installing it by itself", app.name);
+                gather.leave();
+                return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope));
+            }
+        };
+        let outcome = INSTALLER.batched_when(
+            Some(gather),
+            msi_session::command(),
+            target,
+            &cancelled(stop),
+            &mut turn(phase, JobPhase::Installing),
+            &msi_session::call,
+        );
+        if outcome.as_ref().err().is_some_and(|e| e == msi_session::NO_SESSION) {
+            log::warn!("{}: the batch session could not start; installing it by itself", app.name);
+            return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope));
+        }
+        outcome
     }
 
     /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
@@ -1977,53 +2357,6 @@ pub mod windows {
             Some(1602) | None => e,
             _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
         })
-    }
-
-    /// Updates an app installed for all users. Jobs that are ready together go into one call, so Windows
-    /// asks for permission once for all of them; one that is alone runs as [`run_msi`] does.
-    /// `sha256` is the checksum the download was checked against: the package is held unchangeable
-    /// and checked again before it waits, and stays held until its call ends.
-    pub(super) fn run_msi_all_users(
-        msi: &Path,
-        sha256: &str,
-        destination: Option<&Path>,
-        joined: &msi_batch::Joined<'_>,
-        stop: &Stop,
-        phase: &mut dyn FnMut(JobPhase),
-    ) -> Result<(), String> {
-        let _held = msi_batch::hold(msi, sha256)?;
-        let scope = Some(MsiScope::PerMachine);
-        run_all_users_with(msi, destination, joined, stop, phase, &|| run_direct(msi, destination, scope), &|targets| {
-            msi_batch::run(&msiexec(), targets)
-        })
-    }
-
-    /// [`run_msi_all_users`] with the two ways of installing handed in: `alone` for a job that is the
-    /// only one in its call, `together` for the command lines of every job of a call of several.
-    pub(super) fn run_all_users_with(
-        msi: &Path,
-        destination: Option<&Path>,
-        joined: &msi_batch::Joined<'_>,
-        stop: &Stop,
-        phase: &mut dyn FnMut(JobPhase),
-        alone: &dyn Fn() -> Result<(), String>,
-        together: &dyn Fn(&[std::ffi::OsString]) -> Result<(), String>,
-    ) -> Result<(), String> {
-        use std::ffi::OsString;
-        let line = msi_batch::line(msi, destination, Some(MsiScope::PerMachine))?;
-        INSTALLER.batched_when(
-            vec![OsString::from(msi_batch::COMMAND)],
-            OsString::from(line),
-            &cancelled(stop),
-            &mut turn(phase, JobPhase::Installing),
-            &|_, targets| match targets {
-                [_one] => alone(),
-                _ => together(targets),
-            },
-            // Queued: this job's package is ready, so the others need not wait for it any more.
-            &|| joined.arrived(),
-            &|_| msi_batch::everyone_here(),
-        )
     }
 
     /// Runs the launcher's own new MSI for a self-update, with the same progress window and no
@@ -2103,7 +2436,7 @@ pub mod windows {
         if installs.is_empty() {
             return Err(format!("{} isn't registered with the Windows Installer", app.name));
         }
-        let removals = installs.iter().map(|m| msi_downgrade::removal(&m.product_code)).collect::<Result<Vec<_>, _>>()?;
+        let removals = msi_downgrade::elevated_removals(app.name, installs.iter().map(|m| (m.product_code.as_str(), m.scope)))?;
         let script = msi_downgrade::script(
             msi_batch::text(&msiexec())?,
             &removals,
@@ -2157,6 +2490,18 @@ pub mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A bare app name is never a launchable location, even when the working folder holds a
+    /// folder of that name (an app folder beside the launcher in a custom install folder).
+    #[test]
+    fn a_bare_name_location_is_not_found_even_when_the_working_folder_has_it() {
+        let dir = tempfile::Builder::new().prefix("WordCraft-").tempdir_in(".").unwrap();
+        let name = Path::new(dir.path().file_name().unwrap());
+        assert!(name.exists(), "the bare name resolves against the working folder");
+        assert!(!is_resolved_location(name));
+        assert!(is_resolved_location(&std::fs::canonicalize(dir.path()).unwrap()));
+        assert!(!is_resolved_location(&std::env::current_dir().unwrap().join("no-such-app")));
+    }
 
     /// A folder found only by the launch fallback, in another scope, never reaches the installer.
     #[cfg(windows)]
@@ -2308,6 +2653,9 @@ mod tests {
             source: InstallSource::Msi,
             location: dir.path().join("MSI/PhotoCraft/photocraft.exe").display().to_string(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         assert_eq!(destination(app, PackageKind::Msi, Some(&msi), Some(&old), &unavailable).unwrap(), Some(dir.path().join("MSI/PhotoCraft")));
         assert!(destination(app, PackageKind::TarGz, None, None, &locations).unwrap_err().contains("aren't supported"));
@@ -2319,8 +2667,24 @@ mod tests {
         let app = CraftApp::by_id("photocraft").unwrap();
         let path = dir.path().join("old.AppImage");
         let rec = record("0.5.0", PackageKind::AppImage, path.clone(), vec![], false);
-        let launcher = Installed { version: None, source: InstallSource::Launcher, location: path.display().to_string(), package: None };
-        let users = Installed { version: None, source: InstallSource::AppImage, location: "/home/me/AppImages/p.AppImage".into(), package: None };
+        let launcher = Installed {
+            version: None,
+            source: InstallSource::Launcher,
+            location: path.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let users = Installed {
+            version: None,
+            source: InstallSource::AppImage,
+            location: "/home/me/AppImages/p.AppImage".into(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let chosen = dir.path().join("New apps");
         std::fs::create_dir(&chosen).unwrap();
         let mut locations = InstallLocations { root: Some(chosen.display().to_string()), ..Default::default() };
@@ -2414,6 +2778,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 2, "staging was left behind");
     }
 
+    /// Checks that `occupied` detects existing targets for portable zips and macOS bundle variants.
     #[test]
     fn a_new_install_reports_what_it_would_write_over() {
         let dir = tempfile::tempdir().unwrap();
@@ -2421,12 +2786,24 @@ mod tests {
         let paths = Paths::under(dir.path());
         let locations = InstallLocations { root: Some(dir.path().display().to_string()), ..Default::default() };
         let asset = Asset { name: "photocraft.zip".into(), ..Default::default() };
-        let occupied = |previous| occupied(app, &asset, PackageKind::PortableZip, None, previous, &locations, &paths).unwrap();
-        assert_eq!(occupied(None), None);
+        let is_occupied = |previous| occupied(app, &asset, PackageKind::PortableZip, None, previous, &locations, &paths).unwrap();
+        assert_eq!(is_occupied(None), None);
         std::fs::create_dir(dir.path().join("photocraft")).unwrap();
-        assert_eq!(occupied(None), Some(dir.path().join("photocraft")));
+        assert_eq!(is_occupied(None), Some(dir.path().join("photocraft")));
         let old = record("0.5.0", PackageKind::PortableZip, dir.path().join("photocraft/photocraft.exe"), vec![], false);
-        assert_eq!(occupied(Some(&old)), None);
+        assert_eq!(is_occupied(Some(&old)), None);
+
+        let studio = CraftApp { name: "ArtCraft Studio", former_names: &["ArtCraft"], mac_bundle_name: Some("ArtCraft"), ..*app };
+        let dmg_asset = Asset { name: "ArtCraft_0.41.1_universal.dmg".into(), ..Default::default() };
+        assert_eq!(occupied(&studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(), None);
+        std::fs::create_dir(dir.path().join("ArtCraft.app")).unwrap();
+        assert_eq!(occupied(&studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(), Some(dir.path().join("ArtCraft.app")));
+        std::fs::remove_dir(dir.path().join("ArtCraft.app")).unwrap();
+        std::fs::create_dir(dir.path().join("ArtCraft Studio.app")).unwrap();
+        assert_eq!(
+            occupied(&studio, &dmg_asset, PackageKind::Dmg, None, None, &locations, &paths).unwrap(),
+            Some(dir.path().join("ArtCraft Studio.app"))
+        );
     }
 
     #[test]
@@ -2546,6 +2923,9 @@ mod tests {
             source: InstallSource::Launcher,
             location: dir.path().join("photocraft.exe").display().to_string(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         let mut phases = vec![];
         let error = {
@@ -2557,7 +2937,10 @@ mod tests {
                 phase: &mut phase,
                 install_locations: &locations,
                 replace: false,
+                approved_path: None,
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
+                batch: None,
+                place: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
         };
@@ -2568,68 +2951,132 @@ mod tests {
 
     #[test]
     fn each_way_back_is_allowed_only_for_the_install_it_can_undo() {
-        let installed = |source| Installed { version: version::parse("0.5.0"), source, location: String::new(), package: None };
+        let installed = |source| Installed {
+            version: version::parse("0.5.0"),
+            source,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let (mac, msi, portable) = (installed(InstallSource::MacApp), installed(InstallSource::Msi), installed(InstallSource::Launcher));
         let (release, asset) = (Release::default(), Asset::default());
         let reinstall = Some(Downgrade::Reinstall { previous: &release, asset: &asset });
         let keep = Some(Downgrade::KeepOldCopy);
-        // Only a macOS bundle over a Mac app keeps its old copy aside.
-        assert!(keeps_old_copy(PackageKind::Dmg, Some(&mac)));
-        assert!(!keeps_old_copy(PackageKind::Dmg, Some(&portable)));
-        assert!(!keeps_old_copy(PackageKind::Dmg, None));
-        assert!(!keeps_old_copy(PackageKind::Msi, Some(&mac)));
+        let record = |kind| Record { version: "0.5.0".into(), kind, path: PathBuf::new(), installed_at: 0, files: Vec::new(), needs_root: false };
+        let (appimage, tarball) = (record(PackageKind::AppImage), record(PackageKind::TarGz));
+        // A macOS bundle over a Mac app, or an AppImage over one the launcher installed, keeps its
+        // old copy until the new one is in place.
+        assert!(keeps_old_copy(PackageKind::Dmg, Some(&mac), None));
+        assert!(keeps_old_copy(PackageKind::AppImage, Some(&portable), Some(&appimage)));
+        assert!(!keeps_old_copy(PackageKind::Dmg, Some(&portable), None));
+        assert!(!keeps_old_copy(PackageKind::Dmg, None, None));
+        assert!(!keeps_old_copy(PackageKind::Msi, Some(&mac), None));
+        // An AppImage the launcher didn't record, a user's own AppImage, and a tarball don't.
+        assert!(!keeps_old_copy(PackageKind::AppImage, Some(&portable), None));
+        assert!(!keeps_old_copy(PackageKind::AppImage, Some(&installed(InstallSource::AppImage)), Some(&appimage)));
+        assert!(!keeps_old_copy(PackageKind::AppImage, Some(&portable), Some(&tarball)));
+        assert!(!keeps_old_copy(PackageKind::TarGz, Some(&portable), Some(&tarball)));
+        // A Flatpak bundle over the launcher's own Flatpak keeps it; one from a repository doesn't.
+        let flatpak = installed(InstallSource::Flatpak);
+        let managed = Installed { externally_managed: true, ..installed(InstallSource::Flatpak) };
+        assert!(keeps_old_copy(PackageKind::Flatpak, Some(&flatpak), None));
+        assert!(downgrade_is_safe(keep, PackageKind::Flatpak, Some(&flatpak), None));
+        assert!(!keeps_old_copy(PackageKind::Flatpak, Some(&managed), None));
+        assert!(!keeps_old_copy(PackageKind::Flatpak, Some(&portable), None));
+        assert!(!keeps_old_copy(PackageKind::Flatpak, None, None));
         // Each way back fits one kind of install; anything else is refused.
-        assert!(downgrade_is_safe(None, PackageKind::AppImage, Some(&portable)));
-        assert!(downgrade_is_safe(keep, PackageKind::Dmg, Some(&mac)));
-        assert!(downgrade_is_safe(reinstall, PackageKind::Msi, Some(&msi)));
-        assert!(!downgrade_is_safe(keep, PackageKind::Msi, Some(&msi)));
-        assert!(!downgrade_is_safe(keep, PackageKind::Dmg, Some(&portable)));
-        assert!(!downgrade_is_safe(keep, PackageKind::AppImage, Some(&portable)));
-        assert!(!downgrade_is_safe(reinstall, PackageKind::Dmg, Some(&mac)));
+        assert!(downgrade_is_safe(None, PackageKind::AppImage, Some(&portable), None));
+        assert!(downgrade_is_safe(keep, PackageKind::Dmg, Some(&mac), None));
+        assert!(downgrade_is_safe(keep, PackageKind::AppImage, Some(&portable), Some(&appimage)));
+        assert!(downgrade_is_safe(reinstall, PackageKind::Msi, Some(&msi), None));
+        assert!(!downgrade_is_safe(keep, PackageKind::Msi, Some(&msi), None));
+        assert!(!downgrade_is_safe(keep, PackageKind::Dmg, Some(&portable), None));
+        assert!(!downgrade_is_safe(keep, PackageKind::AppImage, Some(&portable), None));
+        assert!(!downgrade_is_safe(reinstall, PackageKind::Dmg, Some(&mac), None));
+        assert!(!downgrade_is_safe(reinstall, PackageKind::AppImage, Some(&portable), Some(&appimage)));
     }
 
-    /// Going back over a Mac app passes the "installed version is newer" guard and installs the
-    /// older bundle the way an update does, with no older package fetched first.
-    #[cfg(not(target_os = "macos"))]
+    /// Going back over a Mac app or a launcher AppImage passes the "installed version is newer"
+    /// guard and installs the older copy the way an update does, with no older package fetched
+    /// first. Each case runs where its package can't really install, so it stops at that step.
     #[test]
-    fn a_mac_downgrade_goes_ahead_without_a_package_to_put_back() {
+    fn a_downgrade_that_keeps_the_old_copy_goes_ahead_without_a_package_to_put_back() {
         use crate::http::tests::{Reply, body, serve};
         let app = CraftApp::by_id("wordcraft").unwrap();
-        let (body, sha) = body();
-        let (url, requests) = serve(body.clone(), vec![Reply::Full]);
-        let asset = Asset { name: "wordcraft-0.3.0-macos-universal.dmg".into(), size: body.len() as u64, url, sha256: Some(sha) };
-        let release = Release { tag: "v0.3.0".into(), version: version::parse("0.3.0"), assets: vec![asset.clone()], ..Release::default() };
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::under(dir.path());
-        let http = Http::new().unwrap();
-        let installed = Installed {
-            version: version::parse("0.4.0"),
-            source: InstallSource::MacApp,
-            location: dir.path().join("WordCraft.app").display().to_string(),
-            package: None,
+        let old_appimage = dir.path().join("wordcraft-0.4.0-linux-x86_64.AppImage");
+        let record = Record {
+            version: "0.4.0".into(),
+            kind: PackageKind::AppImage,
+            path: old_appimage.clone(),
+            installed_at: 0,
+            files: Vec::new(),
+            needs_root: false,
         };
-        let run = |downgrade| {
-            let mut phases = Vec::new();
-            let mut phase = |p: JobPhase| phases.push(p);
-            let mut job = Job {
-                http: &http,
-                paths: &paths,
-                stop: &Stop::default(),
-                phase: &mut phase,
-                install_locations: &InstallLocations::default(),
-                replace: false,
-                downgrade,
+        let cases = [
+            (
+                PackageKind::Dmg,
+                "wordcraft-0.3.0-macos-universal.dmg",
+                InstallSource::MacApp,
+                dir.path().join("WordCraft.app"),
+                None,
+                cfg!(target_os = "macos"),
+            ),
+            (
+                PackageKind::AppImage,
+                "wordcraft-0.3.0-linux-x86_64.AppImage",
+                InstallSource::Launcher,
+                old_appimage,
+                Some(&record),
+                cfg!(target_os = "linux"),
+            ),
+        ];
+        for (kind, name, source, location, previous, installs_here) in cases {
+            if installs_here {
+                continue;
+            }
+            let (body, sha) = body();
+            let (url, requests) = serve(body.clone(), vec![Reply::Full]);
+            let asset = Asset { name: name.into(), size: body.len() as u64, url, sha256: Some(sha) };
+            let release = Release { tag: "v0.3.0".into(), version: version::parse("0.3.0"), assets: vec![asset.clone()], ..Release::default() };
+            let paths = Paths::under(&dir.path().join(name));
+            let http = Http::new().unwrap();
+            let installed = Installed {
+                version: version::parse("0.4.0"),
+                source,
+                location: location.display().to_string(),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
             };
-            install(app, &release, &asset, PackageKind::Dmg, Some(&installed), None, &mut job).unwrap_err()
-        };
-        // Not chosen by name: still refused as older than the installed copy.
-        let refused = run(None);
-        assert!(refused.contains("installed version 0.4.0 is newer"), "{refused}");
-        assert!(requests.lock().unwrap().is_empty(), "nothing was downloaded");
-        // Chosen by name: only the chosen version is downloaded, then this system can't open a DMG.
-        let error = run(Some(Downgrade::KeepOldCopy));
-        assert!(error.contains("isn't supported"), "{error}");
-        assert_eq!(requests.lock().unwrap().len(), 1, "one package, the chosen one");
+            let run = |downgrade| {
+                let mut phase = |_: JobPhase| {};
+                let mut job = Job {
+                    http: &http,
+                    paths: &paths,
+                    stop: &Stop::default(),
+                    phase: &mut phase,
+                    install_locations: &InstallLocations::default(),
+                    replace: false,
+                    approved_path: None,
+                    downgrade,
+                    batch: None,
+                    place: None,
+                };
+                install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
+            };
+            // Not chosen by name: still refused as older than the installed copy.
+            let refused = run(None);
+            assert!(refused.contains("installed version 0.4.0 is newer"), "{name}: {refused}");
+            assert!(requests.lock().unwrap().is_empty(), "{name}: nothing was downloaded");
+            // Chosen by name: only the chosen version is downloaded, then this system can't install it.
+            let error = run(Some(Downgrade::KeepOldCopy));
+            assert!(error.contains("isn't supported"), "{name}: {error}");
+            assert_eq!(requests.lock().unwrap().len(), 1, "{name}: one package, the chosen one");
+        }
     }
 
     #[test]
@@ -2655,7 +3102,10 @@ mod tests {
                 phase: &mut phase,
                 install_locations: &InstallLocations::default(),
                 replace: false,
+                approved_path: None,
                 downgrade: None,
+                batch: None,
+                place: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
@@ -2687,7 +3137,10 @@ mod tests {
             phase: &mut phase,
             install_locations: &locations,
             replace: false,
+            approved_path: None,
             downgrade: None,
+            batch: None,
+            place: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
         assert!(error.contains("folder is unavailable") || (process::in_sandbox() && error.contains("aren't supported")), "{error}");
@@ -2718,7 +3171,10 @@ mod tests {
             phase: &mut phase,
             install_locations: &InstallLocations::default(),
             replace: false,
+            approved_path: None,
             downgrade: None,
+            batch: None,
+            place: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
@@ -2793,10 +3249,10 @@ mod tests {
     #[cfg(target_os = "freebsd")]
     #[test]
     fn remove_files_refuses_escaping_paths() {
-        assert!(freebsd::remove_files(&[PathBuf::from("/etc/shadow")], false).is_err());
+        assert!(freebsd::remove_files("wordcraft", &[PathBuf::from("/etc/shadow")], false).is_err());
         if let Some(home) = dirs::home_dir() {
             let prefix = home.join(".local");
-            assert!(freebsd::remove_files(&[prefix.join("../escaped")], false).is_err());
+            assert!(freebsd::remove_files("wordcraft", &[prefix.join("../escaped")], false).is_err());
         }
     }
 
@@ -2959,7 +3415,7 @@ mod tests {
         assert_eq!(linux::shared_outcome(failed(), 1), failed());
         assert_eq!(
             linux::shared_outcome(failed(), 3),
-            Err("the system installer stopped with error 100 while handling 3 apps in one go. Try them one at a time.".into())
+            Err("the system installer stopped with error 100 while handling 3 apps together. Try them one at a time.".into())
         );
         // A dismissed password prompt stays a cancellation for every app, not an error.
         assert_eq!(linux::shared_outcome(Err("cancelled".into()), 3), Err("cancelled".into()));
@@ -2998,7 +3454,7 @@ mod tests {
                             waiting.send(()).unwrap();
                         }
                     };
-                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), &Stop::default(), &mut phase)
+                    linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, None, &Stop::default(), &mut phase)
                 })
             });
             waits.recv().unwrap();
@@ -3026,11 +3482,56 @@ mod tests {
         assert_eq!(ran.len(), 1, "{ran:?}");
         assert_eq!(results, vec![Err("cancelled".to_string()); 2]);
 
+        // No prompt could be shown (no polkit agent): a failure with its cause, not a cancel.
+        let (ran, results) = two_debs_through_pkexec(127);
+        assert_eq!(ran.len(), 1, "{ran:?}");
+        let error = "the system installer stopped with error 127 (usually refused permission or no polkit authentication agent) while handling 2 apps together. Try them one at a time.";
+        assert_eq!(results, vec![Err(error.to_string()); 2]);
+
         // apt failed: both apps say so, and how to find the one at fault.
         let (ran, results) = two_debs_through_pkexec(100);
         assert_eq!(ran.len(), 1, "{ran:?}");
-        let error = "the system installer stopped with error 100 while handling 2 apps in one go. Try them one at a time.";
+        let error = "the system installer stopped with error 100 while handling 2 apps together. Try them one at a time.";
         assert_eq!(results, vec![Err(error.to_string()); 2]);
+    }
+
+    /// An "update all" of two `.deb` apps whose downloads finish one after the other, on an idle
+    /// system: with a batch, the first to finish holds back from the installer until the second
+    /// arrives, so the password is asked for once — without the batch, each gets its own call.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn two_gathered_debs_share_one_password_prompt_without_a_busy_installer() {
+        use std::sync::Mutex;
+
+        let queue = crate::queue::Queue::new();
+        let ran = Mutex::new(Vec::new());
+        let run = |args: &[&std::ffi::OsStr]| {
+            ran.lock().unwrap().push(args.iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>());
+            root_outcome(Some(0))
+        };
+        let root = linux::Root { queue: &queue, run: &run };
+        let gather = queue.gather(2);
+        let results = std::thread::scope(|scope| {
+            let root = &root;
+            let jobs: Vec<_> = ["/downloads/a.deb", "/downloads/b.deb"]
+                .iter()
+                .enumerate()
+                .map(|(at, file)| {
+                    let gather = gather.clone();
+                    scope.spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(30 * at as u64));
+                        linux::install_package_via(root, PackageKind::Deb, Path::new(file), None, Some(gather), &Stop::default(), &mut |_| ())
+                    })
+                })
+                .collect();
+            jobs.into_iter().map(|job| job.join().unwrap()).collect::<Vec<_>>()
+        });
+        let calls = ran.into_inner().unwrap();
+        assert_eq!(calls.len(), 1, "one call for the whole batch: {calls:?}");
+        let mut files = calls[0].split_at(6).1.to_vec();
+        files.sort();
+        assert_eq!(files, ["/downloads/a.deb", "/downloads/b.deb"]);
+        assert_eq!(results, vec![Ok(()), Ok(())]);
     }
 
     #[cfg(target_os = "linux")]
@@ -3041,7 +3542,15 @@ mod tests {
         }
         let queue = crate::queue::Queue::new();
         let root = linux::Root { queue: &queue, run: &|_| Ok(()) };
-        let result = linux::install_package_via(&root, PackageKind::Flatpak, Path::new("/nonexistent/file.flatpak"), &Stop::default(), &mut |_| ());
+        let result = linux::install_package_via(
+            &root,
+            PackageKind::Flatpak,
+            Path::new("/nonexistent/file.flatpak"),
+            None,
+            None,
+            &Stop::default(),
+            &mut |_| (),
+        );
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.starts_with("Flatpak couldn't install the bundle: "), "unexpected error: {err}");
@@ -3120,7 +3629,15 @@ mod tests {
 
     #[test]
     fn updates_keep_the_installed_format() {
-        let inst = |source| Installed { version: None, source, location: String::new(), package: None };
+        let inst = |source| Installed {
+            version: None,
+            source,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let app = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
         let available = available_kinds();
         if let Some(first) = available.first() {
@@ -3137,7 +3654,15 @@ mod tests {
 
     #[test]
     fn only_the_release_arch_package_is_updated_by_the_launcher() {
-        let pacman = |name: &str| Installed { version: None, source: InstallSource::Pacman, location: String::new(), package: Some(name.into()) };
+        let pacman = |name: &str| Installed {
+            version: None,
+            source: InstallSource::Pacman,
+            location: String::new(),
+            package: Some(name.into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let app = artcraft_launcher_core::CraftApp::by_id("wordcraft").unwrap();
         assert!(is_release_arch_package(app, &pacman("ai.storyteller.wordcraft")));
         for aur in ["wordcraft", "wordcraft-bin", "wordcraft-git"] {
@@ -3165,7 +3690,15 @@ mod tests {
 
     #[test]
     fn aur_packages_are_not_updated_as_arch_pkg() {
-        let pacman = |name: &str| Installed { version: None, source: InstallSource::Pacman, location: String::new(), package: Some(name.into()) };
+        let pacman = |name: &str| Installed {
+            version: None,
+            source: InstallSource::Pacman,
+            location: String::new(),
+            package: Some(name.into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let app = artcraft_launcher_core::CraftApp::by_id("filmcraft").unwrap();
         let installed = pacman("filmcraft-bin");
         assert!(managed_elsewhere_with(app, &installed, false, |_| None).is_some());
@@ -3174,9 +3707,11 @@ mod tests {
     }
 
     #[test]
-    fn solidcraft_is_never_installed_from_its_unsigned_macos_build() {
+    fn a_macos_build_installs_only_when_its_team_is_known() {
         let sc = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap();
-        assert_eq!(choose_kinds_with(sc, None, None, &[], &[PackageKind::Dmg], false), Vec::<PackageKind>::new());
+        assert_eq!(choose_kinds_with(sc, None, None, &[], &[PackageKind::Dmg], false), [PackageKind::Dmg]);
+        let unsigned = artcraft_launcher_core::CraftApp { mac_team: None, ..*sc };
+        assert_eq!(choose_kinds_with(&unsigned, None, None, &[], &[PackageKind::Dmg], false), Vec::<PackageKind>::new());
         let photo = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
         assert_eq!(choose_kinds_with(photo, None, None, &[], &[PackageKind::Dmg], false), [PackageKind::Dmg]);
     }
@@ -3185,7 +3720,15 @@ mod tests {
     #[test]
     fn only_an_apps_own_older_flatpak_id_is_retired() {
         use super::linux::former_flatpak;
-        let flatpak = |id: &str| Installed { version: None, source: InstallSource::Flatpak, location: id.into(), package: Some(id.into()) };
+        let flatpak = |id: &str| Installed {
+            version: None,
+            source: InstallSource::Flatpak,
+            location: id.into(),
+            package: Some(id.into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let sc = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap();
         let old = flatpak("ai.storyteller.solvecraft");
         assert_eq!(former_flatpak(sc, Some(&old)), Some("ai.storyteller.solvecraft"));
@@ -3198,7 +3741,15 @@ mod tests {
 
     #[test]
     fn release_arch_packages_are_updated_as_arch_pkg() {
-        let pacman = |name: &str| Installed { version: None, source: InstallSource::Pacman, location: String::new(), package: Some(name.into()) };
+        let pacman = |name: &str| Installed {
+            version: None,
+            source: InstallSource::Pacman,
+            location: String::new(),
+            package: Some(name.into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let app = artcraft_launcher_core::CraftApp::by_id("filmcraft").unwrap();
         let installed = pacman("ai.storyteller.filmcraft");
         assert_eq!(managed_elsewhere_with(app, &installed, false, |_| None), None);
@@ -3207,11 +3758,115 @@ mod tests {
     }
 
     #[test]
+    fn flatpark_flatpaks_are_externally_managed_and_not_updated_via_bundle() {
+        let app = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
+        let flatpark_installed = Installed {
+            version: version::parse("0.19.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft".into(),
+            package: Some("ai.storyteller.photocraft".into()),
+            externally_managed: true,
+            origin: Some("flatpark".into()),
+            installation: Some("user".into()),
+        };
+        assert!(flatpark_installed.is_externally_managed());
+        assert_eq!(choose_kinds_with(app, Some(&flatpark_installed), None, &[], &[PackageKind::Flatpak], false), Vec::<PackageKind>::new());
+        let hint = managed_elsewhere_with(app, &flatpark_installed, false, |_| None);
+        assert_eq!(
+            hint.as_deref(),
+            Some("PhotoCraft was installed from a Flatpak repository. Update it with flatpak update --user ai.storyteller.photocraft")
+        );
+        // During uninstall, managed_elsewhere returns None so it can be removed
+        assert_eq!(managed_elsewhere_with(app, &flatpark_installed, true, |_| None), None);
+
+        // When installed under a former bundle ID, the hint targets that detected ID
+        let former_installed = Installed {
+            version: version::parse("0.19.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft-old".into(),
+            package: Some("ai.storyteller.photocraft-old".into()),
+            externally_managed: true,
+            origin: Some("flatpark".into()),
+            installation: Some("system".into()),
+        };
+        let hint_former = managed_elsewhere_with(app, &former_installed, false, |_| None);
+        assert_eq!(
+            hint_former.as_deref(),
+            Some("PhotoCraft was installed from a Flatpak repository. Update it with flatpak update --system ai.storyteller.photocraft-old")
+        );
+
+        let bundle_installed = Installed {
+            version: version::parse("0.19.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft".into(),
+            package: Some("ai.storyteller.photocraft".into()),
+            externally_managed: false,
+            origin: Some("photocraft-origin".into()),
+            installation: Some("user".into()),
+        };
+        assert!(!bundle_installed.is_externally_managed());
+        assert_eq!(choose_kinds_with(app, Some(&bundle_installed), None, &[], &[PackageKind::Flatpak], false), vec![PackageKind::Flatpak]);
+        assert_eq!(managed_elsewhere_with(app, &bundle_installed, false, |_| None), None);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn update_flatpak_app_respects_cancellation() {
+        let app = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
+        let stop = Stop::default();
+        stop.cancel();
+        let mut phase = |_| ();
+        assert_eq!(linux::update_flatpak_app(app, "ai.storyteller.photocraft", Some("user"), None, &stop, &mut phase), Err(CANCELLED.into()));
+    }
+
+    #[test]
     fn unavailable_arch_package_not_selected_for_new_install() {
         let app = artcraft_launcher_core::CraftApp::by_id("filmcraft").unwrap();
         assert_eq!(choose_kinds_with(app, None, None, &[PackageKind::ArchPkg], &[], true), Vec::<PackageKind>::new());
         assert_eq!(choose_kinds_with(app, None, None, &[PackageKind::ArchPkg], &[], false), Vec::<PackageKind>::new());
         assert_eq!(choose_kinds_with(app, None, None, &[PackageKind::ArchPkg], &[PackageKind::ArchPkg], false), vec![PackageKind::ArchPkg]);
+    }
+
+    /// A downgrade that puts back the installed version fetches two packages, so it takes its turn
+    /// to download unless both are here; keeping the old copy aside needs only the chosen one.
+    #[test]
+    fn a_downgrade_takes_a_turn_unless_every_package_it_fetches_is_here() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let phase = &mut |_| ();
+        let locations = InstallLocations::default();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let chosen = Asset { name: "photocraft-0.4.0-windows-x86_64.msi".into(), size: 4, ..Asset::default() };
+        let installed = Asset { name: "photocraft-0.5.0-windows-x86_64.msi".into(), size: 5, ..Asset::default() };
+        let previous = Release::default();
+        let stop = Stop::default();
+        let mut job = Job {
+            http: &http,
+            paths: &paths,
+            stop: &stop,
+            phase,
+            install_locations: &locations,
+            replace: false,
+            approved_path: None,
+            downgrade: Some(Downgrade::Reinstall { previous: &previous, asset: &installed }),
+            batch: None,
+            place: None,
+        };
+        let have = |asset: &Asset| {
+            let dest = download_path(&paths, asset);
+            std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            std::fs::write(dest, vec![0; asset.size as usize]).unwrap();
+        };
+        // The turn is dropped at the end of each statement, so the next one never waits for it.
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_some(), "nothing is here");
+        have(&chosen);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_some(), "the package to put back is missing");
+        have(&installed);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_none(), "both are here");
+        std::fs::remove_file(download_path(&paths, &installed)).unwrap();
+        job.downgrade = Some(Downgrade::KeepOldCopy);
+        assert!(download_turn(app, &chosen, &mut job).unwrap().is_none(), "the old copy is kept aside, so only the chosen one is needed");
     }
 
     #[test]
@@ -3229,9 +3884,23 @@ mod tests {
             source: InstallSource::Launcher,
             location: dir.path().join("PhotoCraft.AppImage").display().to_string(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         };
         let stop = Stop::default();
-        let mut job = Job { http: &http, paths: &paths, stop: &stop, phase, install_locations: &locations, replace: false, downgrade: None };
+        let mut job = Job {
+            http: &http,
+            paths: &paths,
+            stop: &stop,
+            phase,
+            install_locations: &locations,
+            replace: false,
+            approved_path: None,
+            downgrade: None,
+            batch: None,
+            place: None,
+        };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("installed version 0.5.0 is newer"));
@@ -3254,7 +3923,18 @@ mod tests {
             ..Asset::default()
         };
         let stop = Stop::default();
-        let mut job = Job { http: &http, paths: &paths, stop: &stop, phase, install_locations: &locations, replace: false, downgrade: None };
+        let mut job = Job {
+            http: &http,
+            paths: &paths,
+            stop: &stop,
+            phase,
+            install_locations: &locations,
+            replace: false,
+            approved_path: None,
+            downgrade: None,
+            batch: None,
+            place: None,
+        };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
         assert!(result.is_err(), "mismatched artifact version must be rejected");
         assert!(result.unwrap_err().contains("does not match the advertised version"));
@@ -3333,8 +4013,9 @@ mod tests {
     mod macos_checks {
         use artcraft_launcher_core::{SUITE, version};
 
-        use super::macos::{Expect, TEAM_ID, install_dmg, signed_by};
+        use super::macos::{Expect, install_dmg, signed_by};
         use super::*;
+        use artcraft_launcher_core::catalog::ARTCRAFT_TEAM_ID as TEAM_ID;
 
         fn photocraft() -> &'static CraftApp {
             SUITE.iter().find(|a| a.id == "photocraft").unwrap()
@@ -3396,7 +4077,7 @@ mod tests {
             let paths = Paths::under(dir.path());
             let image = dmg(dir.path(), "0.6.0");
             let expect = Expect { team: None, version: None };
-            let placed = install_dmg(photocraft(), &image, None, Some(&apps), false, &paths, &expect).unwrap();
+            let placed = install_dmg(photocraft(), &image, None, Some(&apps), None, &paths, &expect).unwrap();
             assert_eq!(placed, apps.join("PhotoCraft.app"));
             let mut manifest = crate::manifest::Manifest::default();
             manifest.apps.insert("photocraft".into(), record("0.6.0", PackageKind::Dmg, placed.clone(), vec![], false));
@@ -3408,7 +4089,7 @@ mod tests {
             let new_default = dir.path().join("Other Apps");
             std::fs::create_dir(&new_default).unwrap();
             let update = dmg(dir.path(), "0.7.0");
-            assert_eq!(install_dmg(photocraft(), &update, Some(&existing), Some(&new_default), false, &paths, &expect).unwrap(), placed);
+            assert_eq!(install_dmg(photocraft(), &update, Some(&existing), Some(&new_default), None, &paths, &expect).unwrap(), placed);
             assert!(!new_default.join("PhotoCraft.app").exists());
             let detected = crate::detect::detect(photocraft(), &manifest, &crate::detect::Snapshot::default()).unwrap();
             assert_eq!(detected.version.unwrap().to_string(), "0.7.0");
@@ -3428,10 +4109,24 @@ mod tests {
             std::fs::write(&plist, &unrelated).unwrap();
             let image = dmg(dir.path(), "0.6.0");
             let result =
-                install_dmg(photocraft(), &image, None, Some(dir.path()), false, &Paths::under(dir.path()), &Expect { team: None, version: None });
+                install_dmg(photocraft(), &image, None, Some(dir.path()), None, &Paths::under(dir.path()), &Expect { team: None, version: None });
             assert!(result.unwrap_err().contains("already exists"));
-            assert_eq!(std::fs::read_to_string(plist).unwrap(), unrelated);
+            assert_eq!(std::fs::read_to_string(&plist).unwrap(), unrelated);
             assert_eq!(std::fs::read(placed.join("Contents/MacOS/PhotoCraft")).unwrap(), b"0.5.0");
+
+            // Approval for a different path does not authorize overwriting `placed`.
+            let other = dir.path().join("Other.app");
+            let refused = install_dmg(
+                photocraft(),
+                &image,
+                None,
+                Some(dir.path()),
+                Some(&other),
+                &Paths::under(dir.path()),
+                &Expect { team: None, version: None },
+            );
+            assert!(refused.unwrap_err().contains("already exists"));
+            assert_eq!(std::fs::read_to_string(&plist).unwrap(), unrelated);
         }
 
         #[test]
@@ -3455,7 +4150,15 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let apps = dir.path().join("Applications");
             let current = bundle(&apps, "0.5.0");
-            let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
+            let existing = Installed {
+                version: None,
+                source: InstallSource::MacApp,
+                location: current.display().to_string(),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            };
             let paths = Paths::under(dir.path());
             let image = dmg(dir.path(), "0.6.0");
 
@@ -3463,7 +4166,7 @@ mod tests {
                 std::fs::write(current.join("Contents/MacOS/PhotoCraft"), "0.5.0").unwrap();
                 let want = version::parse(release).unwrap();
                 let expect = Expect { team: None, version: Some(&want) };
-                let result = install_dmg(photocraft(), &image, Some(&existing), None, false, &paths, &expect);
+                let result = install_dmg(photocraft(), &image, Some(&existing), None, None, &paths, &expect);
                 assert_eq!(result.is_ok(), ok, "release {release}: {result:?}");
                 let now = std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap();
                 assert_eq!(now, if ok { "0.6.0" } else { "0.5.0" }, "release {release}");
@@ -3480,7 +4183,7 @@ mod tests {
             let rc = dmg(dir.path(), "0.8.0-rc.2");
             let want = version::parse("0.8.0-rc.1").unwrap();
             let expect = Expect { team: None, version: Some(&want) };
-            assert!(install_dmg(photocraft(), &rc, Some(&existing), None, false, &paths, &expect).is_err());
+            assert!(install_dmg(photocraft(), &rc, Some(&existing), None, None, &paths, &expect).is_err());
         }
 
         #[test]
@@ -3488,12 +4191,21 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let apps = dir.path().join("Applications");
             let current = bundle(&apps, "0.5.0");
-            let existing = Installed { version: None, source: InstallSource::MacApp, location: current.display().to_string(), package: None };
+            let existing = Installed {
+                version: None,
+                source: InstallSource::MacApp,
+                location: current.display().to_string(),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            };
             let image = dmg(dir.path(), "0.6.0");
             let release = Release { tag: "v0.6.0".into(), version: version::parse("0.6.0"), ..Release::default() };
 
-            let result = install_dmg(photocraft(), &image, Some(&existing), None, false, &Paths::under(dir.path()), &Expect::release(&release));
-            assert_eq!(result, Err("the app isn't signed by its developer, so it wasn't installed".into()));
+            let result =
+                install_dmg(photocraft(), &image, Some(&existing), None, None, &Paths::under(dir.path()), &Expect::release(photocraft(), &release));
+            assert!(result.unwrap_err().contains("macOS verification did not succeed (signature integrity"));
             assert_eq!(std::fs::read_to_string(current.join("Contents/MacOS/PhotoCraft")).unwrap(), "0.5.0");
             assert_eq!(
                 std::fs::read_dir(&apps).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>(),

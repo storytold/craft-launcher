@@ -53,13 +53,57 @@ pub fn capture(program: &str, args: &[&str], timeout: Duration) -> Option<String
 /// Runs a helper and returns its standard output when it succeeds within `timeout`; otherwise
 /// the reason, in the helper's own words (its standard error) where it gave one.
 pub fn run(program: &str, args: &[&str], timeout: Duration) -> Result<String, String> {
+    output_result(program, run_with_output(program, args, timeout)?)
+}
+
+/// Output and exit status from a helper, including both streams on failure.
+#[derive(Debug)]
+pub(crate) struct RunOutput {
+    pub success: bool,
+    /// Read only by the macOS Gatekeeper verifier; other targets keep the field for the shared
+    /// command runner and its tests.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub code: Option<i32>,
+    pub status: String,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl RunOutput {
+    #[cfg(test)]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn success(stdout: impl Into<String>) -> Self {
+        Self { success: true, code: Some(0), status: "exit status: 0".into(), stdout: stdout.into(), stderr: String::new() }
+    }
+
+    #[cfg(test)]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn exit(code: i32, stdout: impl Into<String>, stderr: impl Into<String>) -> Self {
+        Self { success: false, code: Some(code), status: format!("exit status: {code}"), stdout: stdout.into(), stderr: stderr.into() }
+    }
+}
+
+/// Runs a helper and preserves its output streams and exit status when it fails.
+pub(crate) fn run_with_output(program: &str, args: &[&str], timeout: Duration) -> Result<RunOutput, String> {
     let mut cmd = command(program);
     cmd.args(args);
-    run_command(cmd, program, timeout)
+    run_command_with_output(cmd, program, timeout)
 }
 
 /// Runs a configured helper with bounded output and a timeout.
-pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
+pub fn run_command(cmd: Command, program: &str, timeout: Duration) -> Result<String, String> {
+    output_result(program, run_command_with_output(cmd, program, timeout)?)
+}
+
+fn output_result(program: &str, output: RunOutput) -> Result<String, String> {
+    if output.success {
+        return Ok(output.stdout);
+    }
+    let reason = output.stderr.trim();
+    Err(if reason.is_empty() { format!("{program} failed ({})", output.status) } else { reason.to_string() })
+}
+
+fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -> Result<RunOutput, String> {
     let mut child =
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't start {program} ({e})"))?;
     // Read both pipes while it runs, so a chatty helper can't block on a full one.
@@ -78,19 +122,16 @@ pub fn run_command(mut cmd: Command, program: &str, timeout: Duration) -> Result
     };
     // A descendant may retain a pipe after the direct child exits. Keep reader completion
     // under the same deadline; on timeout the readers detach, as in the child timeout path.
+    // Say which deadline expired: the child's own, or the readers' after the child exited.
     while !stdout.is_finished() || !stderr.is_finished() {
         if start.elapsed() >= timeout {
-            return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
+            return Err(format!("{program} exited, but its output was still being captured at the {} second deadline", timeout.as_secs()));
         }
         std::thread::sleep(Duration::from_millis(15));
     }
     let text = |pipe: std::thread::JoinHandle<Vec<u8>>| String::from_utf8_lossy(&pipe.join().unwrap_or_default()).into_owned();
     let (out, err) = (text(stdout), text(stderr));
-    if status.success() {
-        return Ok(out);
-    }
-    let reason = err.trim();
-    Err(if reason.is_empty() { format!("{program} failed ({status})") } else { reason.to_string() })
+    Ok(RunOutput { success: status.success(), code: status.code(), status: status.to_string(), stdout: out, stderr: err })
 }
 
 /// Captures at most 8 MB of a child's pipe and drains the rest on its own thread.
@@ -159,7 +200,7 @@ pub fn is_flatpak_available() -> bool {
     if in_sandbox() {
         capture("flatpak-spawn", &["--host", "flatpak", "--version"], Duration::from_secs(3)).is_some()
     } else {
-        which_on_path("flatpak").is_some()
+        which("flatpak").is_some()
     }
 }
 
@@ -290,19 +331,42 @@ fn detect_discord_scheme_handler() -> bool {
     false
 }
 
-fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
+/// Finds a program on `PATH`. The path returned is absolute: a relative `PATH` entry (`.`, `bin`)
+/// is taken from the working folder, as the shell does, so the result still names the same file
+/// after it is stored and used from elsewhere (launch accepts only absolute locations).
+pub(crate) fn which(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
+    which_in(&path, std::env::current_dir().ok().as_deref(), name)
+}
+
+/// [`which`] over the given `PATH` value, with relative entries taken from `cwd`. Without a
+/// working folder, relative entries are skipped: what they name can't be said.
+fn which_in(path: &std::ffi::OsStr, cwd: Option<&Path>, name: &str) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path)
+        .filter_map(|d| if d.is_absolute() { Some(d) } else { cwd.map(|c| c.join(d)) })
+        .map(|d| d.join(name))
+        .find(|p| p.is_file())
 }
 
 /// Starts an app binary from its own folder.
-pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
+pub fn launch_binary(exe: &Path, args: &[String]) -> Result<(), String> {
+    launch_binary_with_env(exe, args, &[])
+}
+
+/// Starts an app binary from its own folder with `env` added to its environment. Inside the
+/// sandbox `flatpak-spawn` does not pass the launcher's environment on, so each one becomes an
+/// `--env=` argument instead.
+pub fn launch_binary_with_env(exe: &Path, args: &[String], env: &[(&str, &std::ffi::OsStr)]) -> Result<(), String> {
     let mut cmd = if in_sandbox() {
         let mut c = command("flatpak-spawn");
-        c.arg("--host").arg(exe);
+        c.arg("--host");
+        c.args(env_args(env));
+        c.arg(exe);
         c
     } else {
-        command(exe)
+        let mut c = command(exe);
+        c.envs(env.iter().copied());
+        c
     };
     cmd.args(args);
     if let Some(dir) = exe.parent() {
@@ -311,9 +375,29 @@ pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
     spawn_detached(cmd)
 }
 
+/// `--env=NAME=VALUE` for each of `env`, as `flatpak run` and `flatpak-spawn` take them.
+pub fn env_args(env: &[(&str, &std::ffi::OsStr)]) -> Vec<std::ffi::OsString> {
+    env.iter()
+        .map(|(name, value)| {
+            let mut arg = std::ffi::OsString::from(format!("--env={name}="));
+            arg.push(value);
+            arg
+        })
+        .collect()
+}
+
 /// Opens a file, folder or URL with the system's default handler.
 pub fn open(target: &std::ffi::OsStr) -> Result<(), String> {
     spawn_detached(opener(target)?)
+}
+
+/// macOS: opens an `.app` bundle with `open`, handing `args` to the app (`open … --args`).
+pub fn open_app(bundle: &Path, args: &[String]) -> Result<(), String> {
+    let mut cmd = opener(bundle.as_os_str())?;
+    if !args.is_empty() {
+        cmd.arg("--args").args(args);
+    }
+    spawn_detached(cmd)
 }
 
 /// The system's default opener for `target`: `explorer` on Windows, `open` on macOS, and
@@ -433,6 +517,259 @@ fn explorer_select_arg(path: &Path) -> Option<std::ffi::OsString> {
     Some(arg)
 }
 
+/// The PowerShell script that restarts Claude Desktop on Windows. Its processes are picked by
+/// install folder (the Microsoft Store package or the classic per-user install), never by name
+/// alone: `claude.exe` is also Claude Code's command-line program, whose sessions must keep running.
+/// It is started again through its Start menu entry, which works for both installs.
+pub const CLAUDE_DESKTOP_RESTART_PS: &str = r#"$ErrorActionPreference = 'Stop'
+$app = Get-StartApps | Where-Object { $_.Name -eq 'Claude' } | Select-Object -First 1
+if (-not $app) { throw 'Claude Desktop is not in the Start menu.' }
+$running = @(Get-Process -Name claude -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\WindowsApps\Claude_*' -or $_.Path -like '*\AnthropicClaude\*' })
+$running | Stop-Process -Force -ErrorAction SilentlyContinue
+foreach ($p in $running) { $null = $p.WaitForExit(10000) }
+Start-Process ('shell:AppsFolder\' + $app.AppID)
+"#;
+
+/// The AppleScript that quits Claude Desktop on macOS (as Quit in its menu does, waiting up to
+/// 10 s), before `open -a Claude` starts it again.
+pub const CLAUDE_DESKTOP_QUIT_APPLESCRIPT: &str = r#"if application "Claude" is running then
+  tell application "Claude" to quit
+  repeat 50 times
+    if application "Claude" is not running then exit repeat
+    delay 0.2
+  end repeat
+end if"#;
+
+/// Quit Claude Desktop and start it again, so it loads the MCP servers in its configuration.
+pub fn restart_claude_desktop() -> Result<(), String> {
+    if cfg!(windows) {
+        let exe = windows_system_program(r"System32\WindowsPowerShell\v1.0\powershell.exe")?;
+        let mut cmd = command(exe);
+        cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", CLAUDE_DESKTOP_RESTART_PS]);
+        run_command(cmd, "powershell", Duration::from_secs(30)).map(|_| ())
+    } else if cfg!(target_os = "macos") {
+        run("osascript", &["-e", CLAUDE_DESKTOP_QUIT_APPLESCRIPT], Duration::from_secs(20))?;
+        run("open", &["-a", "Claude"], Duration::from_secs(10)).map(|_| ())
+    } else {
+        Err("restarting Claude Desktop isn't supported on this system".into())
+    }
+}
+
+/// Creates a `.lnk` on the user's Desktop that opens `target`.
+///
+/// Windows only. Uses the shell Desktop folder (`dirs::desktop_dir`), which follows OneDrive
+/// redirection. Does not overwrite an existing desktop entry of the same name (file, directory,
+/// or symlink), including against races with another creator.
+#[cfg(windows)]
+pub fn create_desktop_shortcut(name: &str, target: &Path) -> Result<(), String> {
+    let desktop = dirs::desktop_dir().ok_or_else(|| "couldn't find the Desktop folder".to_string())?;
+    create_desktop_shortcut_in(&desktop, name, target)
+}
+
+/// Same as [`create_desktop_shortcut`], but writes into `desktop` (for tests and callers that
+/// already resolved the Desktop folder).
+#[cfg(windows)]
+pub(crate) fn create_desktop_shortcut_in(desktop: &Path, name: &str, target: &Path) -> Result<(), String> {
+    // Must be a real executable path (not a missing path or a directory).
+    if !target.is_file() {
+        return Err(format!("{} isn't where it was installed", target.display()));
+    }
+    let lnk = desktop.join(format!("{name}.lnk"));
+    // symlink_metadata does not follow links: a dangling symlink still counts as occupied.
+    if std::fs::symlink_metadata(&lnk).is_ok() {
+        return Err(format!("A desktop shortcut named {name} already exists"));
+    }
+    // Prefer a normal path without the `\\?\` prefix — .lnk targets work better that way.
+    let target = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+    // mslnk panics on non-UTF-8 paths; fail with a toast instead of killing the worker thread.
+    if target.to_str().is_none() {
+        return Err("path isn't valid Unicode".into());
+    }
+
+    // Pure Rust MS-SHLINK writer (no PowerShell). See docs/incident-2026-10-windows-antivirus.md.
+    let mut link = mslnk::ShellLink::new(&target).map_err(|e| e.to_string())?;
+    if let Some(dir) = target.parent().and_then(|p| p.to_str()) {
+        link.set_working_dir(Some(dir.to_string()));
+    }
+
+    // Write to a sibling temp file, then publish with CREATE_NEW so we never truncate a
+    // destination that appeared after the metadata check (and never follow a symlink).
+    let temp = desktop.join(format!(".{name}.{}.lnk.tmp", std::process::id()));
+    let _ = std::fs::remove_file(&temp);
+    if let Err(e) = link.create_lnk(&temp) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e.to_string());
+    }
+    match publish_new_file(&temp, &lnk) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&temp);
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                Err(format!("A desktop shortcut named {name} already exists"))
+            } else {
+                Err(format!("couldn't publish the desktop shortcut: {e}"))
+            }
+        }
+    }
+}
+
+/// Copies `temp` onto `dest` only if `dest` does not already exist (no follow, no truncate).
+#[cfg(windows)]
+fn publish_new_file(temp: &Path, dest: &Path) -> std::io::Result<()> {
+    use std::io::{Read, Write};
+    let mut src = std::fs::File::open(temp)?;
+    let mut dest_file = std::fs::OpenOptions::new().write(true).create_new(true).open(dest)?;
+    let mut buf = Vec::new();
+    src.read_to_end(&mut buf)?;
+    dest_file.write_all(&buf)?;
+    dest_file.sync_all()?;
+    drop(dest_file);
+    let _ = std::fs::remove_file(temp);
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn create_desktop_shortcut(_name: &str, _target: &Path) -> Result<(), String> {
+    Err("desktop shortcuts are only supported on Windows".into())
+}
+
+#[cfg(all(test, windows))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod desktop_shortcut_tests {
+    use super::*;
+    use std::fs;
+    use std::io::{Read, Write};
+
+    fn write_fake_exe(dir: &Path, file_name: &str) -> PathBuf {
+        let path = dir.join(file_name);
+        let mut f = fs::File::create(&path).unwrap();
+        f.write_all(b"MZ").unwrap();
+        path
+    }
+
+    fn read_all(path: &Path) -> Vec<u8> {
+        let mut data = Vec::new();
+        fs::File::open(path).unwrap().read_to_end(&mut data).unwrap();
+        data
+    }
+
+    /// MS-SHLINK stores string data as UTF-16 LE; search for `s` in that encoding.
+    fn lnk_contains_utf16(data: &[u8], s: &str) -> bool {
+        let needle: Vec<u8> = s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        if needle.is_empty() {
+            return false;
+        }
+        data.windows(needle.len()).any(|w| w == needle.as_slice())
+    }
+
+    fn assert_lnk_points_at(lnk: &Path, target: &Path) {
+        let data = read_all(lnk);
+        assert!(data.len() >= 0x4c, "too small for a .lnk: {} bytes", data.len());
+        assert_eq!(&data[0..4], &0x4Cu32.to_le_bytes(), "bad ShellLink header size");
+
+        // Match production: dunce::canonicalize before reading parent (avoids 8.3 vs long mismatch).
+        let target = dunce::canonicalize(target).unwrap_or_else(|_| target.to_path_buf());
+        let file_name = target.file_name().and_then(|n| n.to_str()).expect("utf-8 file name");
+        let parent = target.parent().and_then(|p| p.to_str()).expect("utf-8 parent").to_owned();
+
+        assert!(lnk_contains_utf16(&data, file_name), "shortcut missing target file name {file_name:?} as UTF-16 ({} bytes)", data.len());
+        assert!(
+            lnk_contains_utf16(&data, &parent) || lnk_contains_utf16(&data, &parent.replace('/', "\\")),
+            "shortcut missing working directory {parent:?} as UTF-16 ({} bytes)",
+            data.len()
+        );
+    }
+
+    #[test]
+    fn rejects_missing_target() {
+        let desktop = tempfile::tempdir().unwrap();
+        let missing = desktop.path().join("gone.exe");
+        let err = create_desktop_shortcut_in(desktop.path(), "App", &missing).unwrap_err();
+        assert!(err.contains("isn't where it was installed"), "{err}");
+    }
+
+    #[test]
+    fn rejects_directory_as_target() {
+        let desktop = tempfile::tempdir().unwrap();
+        let dir = desktop.path().join("not-an-exe");
+        fs::create_dir(&dir).unwrap();
+        let err = create_desktop_shortcut_in(desktop.path(), "App", &dir).unwrap_err();
+        assert!(err.contains("isn't where it was installed"), "{err}");
+    }
+
+    #[test]
+    fn refuses_to_overwrite_existing_shortcut() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        let lnk = desktop.path().join("PhotoCraft.lnk");
+        fs::write(&lnk, b"existing-user-shortcut").unwrap();
+        let err = create_desktop_shortcut_in(desktop.path(), "PhotoCraft", &target).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(fs::read(&lnk).unwrap(), b"existing-user-shortcut");
+    }
+
+    #[test]
+    fn refuses_to_overwrite_dangling_symlink() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        let lnk = desktop.path().join("Dangle.lnk");
+        // Creating symlinks on Windows needs SeCreateSymbolicLinkPrivilege or Developer Mode.
+        match std::os::windows::fs::symlink_file(desktop.path().join("missing-target.exe"), &lnk) {
+            Ok(()) => {}
+            Err(e) if e.raw_os_error() == Some(1314) => {
+                eprintln!("skipping dangling-symlink test: privilege not held ({e})");
+                return;
+            }
+            Err(e) => panic!("symlink_file failed: {e}"),
+        }
+        let err = create_desktop_shortcut_in(desktop.path(), "Dangle", &target).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert!(fs::symlink_metadata(&lnk).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(desktop.path().join("app.exe")).unwrap(), b"MZ");
+    }
+
+    #[test]
+    fn create_new_publish_fails_if_dest_appears() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        let lnk = desktop.path().join("Race.lnk");
+        fs::write(&lnk, b"racer").unwrap();
+        let err = create_desktop_shortcut_in(desktop.path(), "Race", &target).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(fs::read(&lnk).unwrap(), b"racer");
+    }
+
+    #[test]
+    fn creates_shortcut_with_spaces_and_non_ascii_target_and_workdir() {
+        let desktop = tempfile::tempdir().unwrap();
+        // Non-ASCII folder + spaced exe name: both should show up in the .lnk string data.
+        let sub = desktop.path().join("приложения apps");
+        fs::create_dir(&sub).unwrap();
+        let target = write_fake_exe(&sub, "my app.exe");
+        create_desktop_shortcut_in(desktop.path(), "My App", &target).unwrap();
+        let lnk = desktop.path().join("My App.lnk");
+        assert_lnk_points_at(&lnk, &target);
+    }
+
+    #[test]
+    fn creates_shortcut_for_name_with_apostrophe() {
+        let desktop = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(desktop.path(), "app.exe");
+        create_desktop_shortcut_in(desktop.path(), "App's Tool", &target).unwrap();
+        assert_lnk_points_at(&desktop.path().join("App's Tool.lnk"), &target);
+    }
+
+    #[test]
+    fn uses_provided_desktop_folder_not_a_hardcoded_path() {
+        let redirected = tempfile::tempdir().unwrap();
+        let target = write_fake_exe(redirected.path(), "app.exe");
+        create_desktop_shortcut_in(redirected.path(), "Redirected", &target).unwrap();
+        let lnk = redirected.path().join("Redirected.lnk");
+        assert_lnk_points_at(&lnk, &target);
+        assert!(!PathBuf::from("Redirected.lnk").exists());
+    }
+}
+
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {
@@ -478,12 +815,43 @@ fn pgrep_pattern(path: &str) -> String {
 }
 
 #[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    #[test]
+    fn each_variable_becomes_one_env_argument_with_its_value_intact() {
+        let path = std::ffi::OsStr::new("/home/ana/.local/share/artcraft-launcher/versions with space.json");
+        let args = env_args(&[("CRAFT_VERSIONS_FILE", path)]);
+        assert_eq!(args, [std::ffi::OsString::from("--env=CRAFT_VERSIONS_FILE=/home/ana/.local/share/artcraft-launcher/versions with space.json")]);
+        assert!(env_args(&[]).is_empty());
+    }
+}
+
+#[cfg(test)]
 #[cfg(unix)]
 mod tests {
     use std::io::{BufRead, BufReader};
     use std::process::Child;
 
     use super::*;
+
+    /// A program found through a relative `PATH` entry comes back as an absolute path, so it is
+    /// still a launchable location once stored.
+    #[test]
+    fn which_makes_a_relative_path_entry_absolute() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("bin")).unwrap();
+        std::fs::write(dir.path().join("bin").join("wordcraft"), b"").unwrap();
+        let path = std::env::join_paths([Path::new("bin"), Path::new("other")]).unwrap();
+        let found = which_in(&path, Some(dir.path()), "wordcraft").unwrap();
+        assert!(found.is_absolute() && found.is_file(), "{found:?}");
+        assert_eq!(found, dir.path().join("bin").join("wordcraft"));
+        // An absolute entry is used as it is; without a working folder a relative one is skipped.
+        let abs = std::env::join_paths([dir.path().join("bin")]).unwrap();
+        assert_eq!(which_in(&abs, None, "wordcraft"), Some(dir.path().join("bin").join("wordcraft")));
+        assert_eq!(which_in(&path, None, "wordcraft"), None);
+        assert_eq!(which_in(&path, Some(dir.path()), "missing"), None);
+    }
 
     struct RunningProbe(Child);
 
@@ -585,6 +953,18 @@ mod run_tests {
         assert!(err.starts_with(&format!("{program} failed")), "{err}");
         let (program, args) = shell("echo hello");
         assert_eq!(run(program, &args, Duration::from_secs(30)).map(|out| out.trim().to_string()), Ok("hello".into()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_with_output_keeps_both_streams_when_a_helper_exits_nonzero() {
+        let output =
+            run_with_output("/bin/sh", &["-c", "printf 'assessments disabled\\n'; printf 'diagnostic\\n' >&2; exit 1"], Duration::from_secs(30))
+                .unwrap();
+        assert!(!output.success);
+        assert_eq!(output.code, Some(1));
+        assert_eq!(output.stdout, "assessments disabled\n");
+        assert_eq!(output.stderr, "diagnostic\n");
     }
 }
 
@@ -728,6 +1108,7 @@ mod inherited_pipe_tests {
         // The direct child has to start a second test process and fill both pipes before the
         // deadline, which can take seconds on a slow or emulated machine. An attempt where it
         // didn't get that far says nothing about inherited pipes: retry with a longer deadline.
+        const MAX_DEADLINE: Duration = Duration::from_secs(16);
         let mut deadline = Duration::from_secs(1);
         loop {
             let holder = StopHolder(tempfile::tempdir().unwrap());
@@ -736,21 +1117,87 @@ mod inherited_pipe_tests {
             let start = Instant::now();
             let result = run(exe.to_str().unwrap(), &args, deadline);
             let elapsed = start.elapsed();
-            if !holder.0.path().join("parent-returning").exists() && deadline < Duration::from_secs(16) {
+            let parent_returned = holder.0.path().join("parent-returning").exists();
+            // The child timing out says nothing about the inherited pipes; its own deadline
+            // expired first, as does an attempt that never reached the marker.
+            let child_timeout = matches!(&result, Err(error) if error.contains("didn't finish within"));
+            if (!parent_returned || child_timeout) && deadline < MAX_DEADLINE {
                 deadline *= 4;
                 continue;
             }
-            assert!(holder.0.path().join("parent-returning").exists(), "direct child did not exit its fixture within {deadline:?}");
-            assert!(
-                matches!(&result, Err(error) if error.contains("didn't finish within")),
-                "expected a pipe deadline error; helper returned success: {}, elapsed: {elapsed:?}",
-                result.is_ok()
-            );
+            assert!(parent_returned, "direct child did not exit its fixture within {deadline:?}");
+            let pipe_timeout = matches!(&result, Err(error) if error.contains("still being captured at the"));
+            assert!(pipe_timeout, "expected the inherited-pipe deadline, not the child's; helper returned {result:?}, elapsed: {elapsed:?}");
             // The descendant would hold the pipes for HOLD, far past this bound.
             assert!(deadline * 2 < HOLD);
             assert!(elapsed < deadline * 2, "capture exceeded its caller deadline {deadline:?}: {elapsed:?}");
             // The guard stops the finite descendant and waits for its completion marker on failures too.
             break;
         }
+    }
+}
+
+/// Runs a helper while polling cancellation and draining its bounded output.
+#[cfg(target_os = "linux")]
+pub(crate) fn cancellable_output(mut cmd: Command, check: impl Fn() -> Result<(), String>) -> Result<std::process::Output, String> {
+    check()?;
+    let mut child =
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't run flatpak ({e})"))?;
+    let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
+    let started = Instant::now();
+    let status = loop {
+        if started.elapsed() >= Duration::from_secs(60 * 60) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Flatpak did not finish within one hour".into());
+        }
+        if let Err(e) = check() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(e);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => std::thread::sleep(Duration::from_millis(25)),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("couldn't wait for flatpak ({e})"));
+            }
+        }
+    };
+    let deadline = Instant::now();
+    while !stdout.is_finished() || !stderr.is_finished() {
+        check()?;
+        if deadline.elapsed() > Duration::from_secs(5) {
+            return Err("Flatpak output did not close after completion".into());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Ok(std::process::Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod update_cancel_tests {
+    use super::*;
+
+    #[test]
+    fn cancels_a_running_helper_promptly() {
+        let mut cmd = command("sleep");
+        cmd.arg("30");
+        let start = Instant::now();
+        let result = cancellable_output(cmd, || if start.elapsed() >= Duration::from_millis(100) { Err("cancelled".into()) } else { Ok(()) });
+        assert_eq!(result.unwrap_err(), "cancelled");
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn retains_both_output_streams_and_exit_status() {
+        let mut cmd = command("sh");
+        cmd.args(["-c", "printf output; printf error >&2; exit 7"]);
+        let output = cancellable_output(cmd, || Ok(())).unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(output.stdout, b"output");
+        assert_eq!(output.stderr, b"error");
     }
 }
