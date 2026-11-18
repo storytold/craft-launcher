@@ -247,6 +247,26 @@ fn ukrainian_locales_and_plurals_work() {
     assert_eq!(tr(Lang::UK, "Untranslated diagnostic"), "Untranslated diagnostic");
 }
 
+/// Italian locales resolve to `it`; only 1 takes the singular ("0 giorni", "1 giorno").
+#[test]
+fn italian_locales_and_plurals_work() {
+    for tag in ["it", "it-IT", "it-CH", "it_IT.UTF-8", "IT_it"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::IT), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "it-IT", "en-US"]), Some(Lang::IT));
+    assert_eq!(trn(Lang::IT, 0, "{n} day ago", "{n} days ago"), "0 giorni fa");
+    assert_eq!(trn(Lang::IT, 1, "{n} day ago", "{n} days ago"), "1 giorno fa");
+    assert_eq!(trn(Lang::IT, 2, "{n} day ago", "{n} days ago"), "2 giorni fa");
+    assert_eq!(trn(Lang::IT, 1, "{n} h ago", "{n} h ago"), "1 ora fa");
+    assert_eq!(trn(Lang::IT, 5, "{n} h ago", "{n} h ago"), "5 ore fa");
+    // A key the Italian catalog doesn't carry falls back to the English forms.
+    assert_eq!(trn(Lang::IT, 3, "{n} unknown item", "{n} unknown items"), "3 unknown items");
+    assert_eq!(super::tr_ctx(Lang::IT, "month", "Aug"), "ago.");
+    assert_eq!(tr(Lang::IT, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::IT, "PhotoCraft updated to 0.5.0"), "PhotoCraft aggiornata a 0.5.0");
+    assert_eq!(tr(Lang::IT, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
+
 #[test]
 fn czech_plural_rule_works() {
     for n in [0, 5, 11, 21, 22, 25] {
