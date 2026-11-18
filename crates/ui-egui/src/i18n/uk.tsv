@@ -75,6 +75,7 @@
 	Show in Explorer	Показати в Провіднику
 	Show in Files	Показати у файловому менеджері
 	Reinstall	Перевстановити
+	Add desktop shortcut	Додати ярлик на робочий стіл
 	Uninstall…	Видалити…
 	Launch options…	Параметри запуску…
 	{name} launch options	Параметри запуску {name}
@@ -391,6 +392,9 @@ filter	Installed	Встановлені
 @msg	custom install folders aren't supported on this system	ця система не підтримує власні папки встановлення
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} уже існує і не був встановлений через ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	не вдалося перемістити {path} у Кошик ({reason}). Натомість видаліть його у Finder.
+@msg	Desktop shortcut created for {name}	Ярлик на робочому столі для {name} створено
+@msg	Couldn't create the desktop shortcut: {e}	Не вдалося створити ярлик на робочому столі: {e}
+@msg	A desktop shortcut named {name} already exists	Ярлик на робочому столі з назвою {name} уже існує
 	Apps are placed inside this folder.	Застосунки розміщуються всередині цієї папки.
 	Replace what's there?	Замінити наявне?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже існує. Встановлення {name} перезапише його.

@@ -81,6 +81,7 @@
 	Show in Explorer	إظهار في مستكشف الملفات
 	Show in Files	إظهار في الملفات
 	Reinstall	إعادة التثبيت
+	Add desktop shortcut	إضافة اختصار على سطح المكتب
 	Uninstall…	إلغاء التثبيت…
 	Launch options…	خيارات التشغيل…
 	{name} launch options	خيارات تشغيل {name}
@@ -404,6 +405,9 @@ filter	Installed	المثبّتة
 @msg	custom install folders aren't supported on this system	مجلدات التثبيت المخصصة غير مدعومة على هذا النظام
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	المسار {path} موجود بالفعل ولم يثبّته ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	تعذّر نقل {path} إلى سلة المهملات ({reason}). أزِله من Finder بدلًا من ذلك.
+@msg	Desktop shortcut created for {name}	تم إنشاء اختصار على سطح المكتب لـ {name}
+@msg	Couldn't create the desktop shortcut: {e}	تعذّر إنشاء الاختصار على سطح المكتب: {e}
+@msg	A desktop shortcut named {name} already exists	يوجد بالفعل اختصار على سطح المكتب باسم {name}
 	Apps are placed inside this folder.	توضع التطبيقات داخل هذا المجلد.
 	Replace what's there?	هل تريد استبدال الموجود؟
 	{path} already exists. Installing {name} will overwrite it.	المسار {path} موجود بالفعل. سيؤدي تثبيت {name} إلى الكتابة فوقه.

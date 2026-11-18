@@ -11,7 +11,7 @@ use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
 use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
 use artcraft_launcher_ui_egui::settings::ViewMode;
-use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings};
+use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, TitleBar};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
@@ -32,7 +32,7 @@ impl Backend for Fake {
         std::mem::take(&mut self.events)
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage }
+        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
@@ -42,8 +42,13 @@ impl Backend for Fake {
     }
 }
 
-struct NoHost;
-impl Host for NoHost {}
+/// A window without the OS title bar: the header draws minimize, maximize and close.
+struct Frameless;
+impl Host for Frameless {
+    fn title_bar(&self) -> TitleBar {
+        TitleBar::Custom
+    }
+}
 
 fn release(id: &str, v: &str, at: i64) -> Release {
     let name = format!("{id}-{v}-macos-universal.dmg");
@@ -133,8 +138,8 @@ fn harness_language(
                 *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), s));
             }
             if let Some(l) = state.as_mut() {
-                l.logic(&ui.ctx().clone(), &mut NoHost);
-                l.ui(ui, &mut NoHost);
+                l.logic(&ui.ctx().clone(), &mut Frameless);
+                l.ui(ui, &mut Frameless);
             }
         },
         None,
@@ -192,6 +197,8 @@ fn arabic_switches_persists_mirrors_and_keeps_install_actions() {
     let width = h.ctx.content_rect().width();
     assert!(h.get_by_label("الإعدادات").rect().center().x < width / 2.0);
     assert!(h.get_by_label("تفاصيل EffectCraft").rect().center().x > width / 2.0);
+    // The window's close button takes the left corner.
+    assert!(h.get_by_label("إغلاق").rect().center().x < h.get_by_label("تصغير").rect().center().x);
     snapshot(&mut h, "grid-ar-dark");
     // The app's page closes from its left, and the uninstall prompt reads right to left.
     h.get_by_label("تفاصيل PhotoCraft").click();
@@ -209,7 +216,16 @@ fn arabic_switches_persists_mirrors_and_keeps_install_actions() {
     h.run_steps(3);
     h.get_by_label("تحديث الكل (2)").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
+    // One InstallAll where updates are batched (always on Linux), else one Install per app.
+    let installs: Vec<_> = sent
+        .borrow()
+        .iter()
+        .flat_map(|c| match c {
+            Command::Install { app } => vec![app.clone()],
+            Command::InstallAll { apps } => apps.clone(),
+            _ => vec![],
+        })
+        .collect();
     assert_eq!(installs, ["photocraft", "effectcraft"]);
 
     let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);

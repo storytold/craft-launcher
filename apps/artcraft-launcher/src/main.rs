@@ -105,6 +105,8 @@ fn main() -> ExitCode {
             }
         }
     }
+    // A moved or reinstalled launcher would otherwise leave the login entry pointing at the old path.
+    login::refresh();
     if let Some(error) =
         artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| artcraft_launcher_native::self_update::take_failure(&paths))
     {
@@ -1105,7 +1107,7 @@ mod tests {
             std::mem::take(&mut *self.0.news.lock().unwrap_or_else(PoisonError::into_inner))
         }
         fn capabilities(&self) -> Capabilities {
-            Capabilities { manage_apps: true, reveal_label: "Show in Files", self_update: false }
+            Capabilities { manage_apps: true, reveal_label: "Show in Files", self_update: false, desktop_shortcuts: false }
         }
         fn platform(&self) -> Option<artcraft_launcher_core::Platform> {
             None

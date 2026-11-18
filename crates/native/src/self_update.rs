@@ -13,7 +13,7 @@ use artcraft_launcher_core::version::Version;
 use crate::http::{Http, Stop};
 use crate::paths::Paths;
 
-pub use craft_update::self_update::{FINISH_FLAG, Install, PRETEND_VAR, is_self_updating};
+pub use craft_update::self_update::{FINISH_FLAG, Install, PRETEND_VAR};
 
 /// The version this launcher counts as (see [`PRETEND_VAR`]).
 pub fn current_version() -> Option<Version> {
@@ -25,12 +25,20 @@ pub fn current() -> Option<Install> {
     craft_update::self_update::current(&craft_update::suite::LAUNCHER)
 }
 
+/// Whether this copy can update itself: [`current`] finds it and, on Windows, it is signed.
+pub fn is_self_updating() -> bool {
+    craft_update::self_update::is_self_updating(&craft_update::suite::LAUNCHER)
+}
+
 fn to_update_paths(paths: &Paths) -> craft_update::Paths {
     craft_update::Paths { data: paths.data.clone(), cache: paths.cache.clone() }
 }
 
-fn to_update_release(release: &Release) -> craft_update::Release {
+/// craft-update's copy of `release`, read from `repo` (`""` for the launcher's own). craft-update
+/// downloads only assets whose links belong to that repository.
+fn to_update_release(release: &Release, repo: &str) -> craft_update::Release {
     craft_update::Release {
+        repo: repo.to_string(),
         tag: release.tag.clone(),
         version: release.version.clone(),
         name: release.name.clone(),
@@ -43,8 +51,6 @@ fn to_update_release(release: &Release) -> craft_update::Release {
             .iter()
             .map(|a| craft_update::Asset { name: a.name.clone(), size: a.size, url: a.url.clone(), sha256: a.sha256.clone() })
             .collect(),
-        // Empty: the launcher's own repository (`suite::LAUNCHER`), the only one its releases are read from.
-        repo: String::new(),
     }
 }
 
@@ -68,7 +74,7 @@ fn to_update_platform(platform: Platform) -> craft_update::Platform {
 /// Whether `release` is the version this launcher just updated itself to.
 pub fn just_updated_to(paths: &Paths, release: &Release) -> bool {
     let update_paths = to_update_paths(paths);
-    let update_release = to_update_release(release);
+    let update_release = to_update_release(release, "");
     craft_update::self_update::just_updated_to(&update_paths, &update_release)
 }
 
@@ -78,13 +84,15 @@ pub fn take_failure(paths: &Paths) -> Option<String> {
     craft_update::self_update::take_failure(&update_paths)
 }
 
-/// Downloads `release` for `platform`, puts it in place and starts the helper that relaunches
-/// it once this process has exited. On success the caller must quit promptly. `last` is called
-/// once the download is ready and returns when the launcher may replace itself and restart.
+/// Downloads `release`, read from `repo` (the launcher's, or the one the feed renamed it to), for
+/// `platform`, puts it in place and starts the helper that relaunches it once this process has
+/// exited. On success the caller must quit promptly. `last` is called once the download is ready
+/// and returns when the launcher may replace itself and restart.
 #[allow(clippy::too_many_arguments)]
 pub fn update(
     install: &Install,
     release: &Release,
+    repo: &str,
     platform: Platform,
     _http: &Http,
     paths: &Paths,
@@ -92,7 +100,7 @@ pub fn update(
     phase: &mut dyn FnMut(JobPhase),
     last: &dyn Fn() -> Result<(), String>,
 ) -> Result<(), String> {
-    let update_release = to_update_release(release);
+    let update_release = to_update_release(release, repo);
     let update_platform = to_update_platform(platform);
     let update_paths = to_update_paths(paths);
     let update_http = craft_update::Http::new("ArtCraft-Launcher/SelfUpdate")?;
@@ -151,10 +159,10 @@ fn update_kind(install: &Install) -> craft_update::PackageKind {
 }
 
 /// Whether `release` has the file that updating `install` on `platform` downloads ([`kind`]),
-/// picked as [`update`] picks it.
+/// picked as [`update`] picks it. The pick reads only the file names, so the repo is left empty.
 pub fn installs_from(install: &Install, release: &Release, platform: Platform) -> bool {
     let app = &craft_update::suite::LAUNCHER;
-    craft_update::pick_asset(&to_update_release(release), &[app.id], to_update_platform(platform), &[update_kind(install)]).is_some()
+    craft_update::pick_asset(&to_update_release(release, ""), &[app.id], to_update_platform(platform), &[update_kind(install)]).is_some()
 }
 
 /// Finishes an update when this program was started as the update helper.
@@ -165,6 +173,59 @@ pub fn finish(args: &[OsString]) -> Option<Result<(), String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// craft-update downloads only links in the repository the release was read from: a release
+    /// read from the repository the feed renamed the launcher's to passes when it carries that
+    /// repository, and is refused as the launcher's own.
+    #[test]
+    fn the_update_checks_links_against_the_repo_the_release_came_from() {
+        let app = &craft_update::suite::LAUNCHER;
+        let sums = |name: &str| [("a".repeat(64), name.to_string())];
+        let renamed = artcraft_launcher_core::release::release_from_sums(
+            "storytold/artcraft-launcher-next",
+            "v0.9.0",
+            &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"),
+        );
+        let carried = to_update_release(&renamed, "storytold/artcraft-launcher-next");
+        assert!(craft_update::install::check_download_link(app, &carried, &carried.assets[0]).is_ok());
+        let own = to_update_release(&renamed, "");
+        assert!(craft_update::install::check_download_link(app, &own, &own.assets[0]).is_err());
+
+        let launcher = artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"));
+        let launcher = to_update_release(&launcher, app.repo);
+        assert!(craft_update::install::check_download_link(app, &launcher, &launcher.assets[0]).is_ok());
+    }
+
+    /// The update downloads the file for this platform in the format the copy was installed from,
+    /// so a release without that file offers the download instead: an AppImage-only release for
+    /// an MSI copy, an MSI for another architecture, or an MSI for a portable copy.
+    #[test]
+    fn a_release_without_the_installed_format_for_this_platform_does_not_install() {
+        use artcraft_launcher_core::platform::{Arch, Os};
+        use std::path::PathBuf;
+        let app = &craft_update::suite::LAUNCHER;
+        let release = |names: &[&str]| {
+            let sums: Vec<(String, String)> = names.iter().map(|n| ("a".repeat(64), (*n).to_string())).collect();
+            artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums)
+        };
+        let windows_x64 = Platform { os: Os::Windows, arch: Arch::X64 };
+        let msi = Install::Msi(PathBuf::new());
+        let portable = Install::Portable(PathBuf::new());
+
+        let with_msi = release(&["artcraft-launcher-0.9.0-windows-x64.msi"]);
+        assert!(installs_from(&msi, &with_msi, windows_x64));
+        let appimage_only = release(&["artcraft-launcher-0.9.0-linux-x86_64.AppImage"]);
+        assert!(!installs_from(&msi, &appimage_only, windows_x64));
+        let other_arch = release(&["artcraft-launcher-0.9.0-windows-arm64.msi"]);
+        assert!(!installs_from(&msi, &other_arch, windows_x64));
+        assert!(installs_from(&msi, &other_arch, Platform { os: Os::Windows, arch: Arch::Arm64 }));
+        assert!(!installs_from(&portable, &with_msi, windows_x64));
+
+        let linux_x64 = Platform { os: Os::Linux, arch: Arch::X64 };
+        let deb = Install::Package(craft_update::PackageKind::Deb, PathBuf::new());
+        assert!(installs_from(&Install::AppImage(PathBuf::new()), &appimage_only, linux_x64));
+        assert!(!installs_from(&deb, &appimage_only, linux_x64));
+    }
 
     #[test]
     fn a_development_build_does_not_update_itself() {
@@ -277,7 +338,7 @@ mod tests {
             installs.push(Install::Package(kind, PathBuf::new()));
         }
         for install in installs {
-            let error = update(&install, &Release::default(), platform, &http, &paths, &Stop::default(), &mut |_| {}, &|| Ok(())).unwrap_err();
+            let error = update(&install, &Release::default(), "", platform, &http, &paths, &Stop::default(), &mut |_| {}, &|| Ok(())).unwrap_err();
             let looked_for = format!(" has no {} for ", update_kind(&install).label());
             assert!(error.contains(&looked_for), "{install:?}: {error}");
         }
