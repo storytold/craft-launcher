@@ -628,7 +628,10 @@ impl LauncherUi {
         let text_area = Rect::from_min_max(inner.min, egui::pos2(inner.right(), actions.top() - ACTIONS_GAP));
         // Detached children: the card's contents never move the next card along.
         let mut text = ui.new_child(egui::UiBuilder::new().max_rect(text_area).layout(egui::Layout::top_down(egui::Align::Min)));
-        text.set_clip_rect(text_area.expand(1.0).intersect(rect).intersect(ui.clip_rect()));
+        // Clipped only at its bottom edge: the icon lifts above the area on hover, and its shadow
+        // spreads to the left.
+        let text_clip = Rect::from_min_max(rect.min, egui::pos2(rect.right(), text_area.bottom() + 1.0));
+        text.set_clip_rect(text_clip.intersect(ui.clip_rect()));
         self.card_text(&mut text, &entry, &status, &version, in_colour, lift, &t);
         // After the text, so a screen reader reads the app before its actions.
         let mut row = ui.new_child(egui::UiBuilder::new().max_rect(actions).layout(egui::Layout::left_to_right(egui::Align::Center)));
@@ -707,8 +710,8 @@ impl LauncherUi {
         }
         let updated = crate::card_parts::last_updated(entry);
         if let Some(details) = AppDetails::by_id(id) {
-            // As many lines of the description as fit above the date (up to four), so the date
-            // always shows.
+            // As many lines of the description as fit above the date (up to four), so the
+            // description never pushes the date out of the card.
             // The date below takes the item spacing after the description, its gap and its line.
             let date_h =
                 if updated.is_some() { ui.spacing().item_spacing.y + DATE_GAP + lines_height(ui, &[&FontId::proportional(12.5)], 0.0) } else { 0.0 };

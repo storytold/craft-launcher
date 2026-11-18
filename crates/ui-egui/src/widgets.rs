@@ -442,7 +442,10 @@ pub fn badge_within(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> 
     const PAD: f32 = 12.0;
     // No room for even an ellipsis: nothing, rather than a badge that runs past its row.
     if max_width <= PAD + 8.0 {
-        return ui.allocate_exact_size(vec2(0.0, 0.0), Sense::hover()).1;
+        let resp = ui.allocate_exact_size(vec2(0.0, 0.0), Sense::hover()).1;
+        // A screen reader still reads it.
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, text));
+        return resp;
     }
     let t = Tokens::get(ui.ctx());
     let format = egui::TextFormat { font_id: egui::FontId::new(10.0, theme::mono()), color, extra_letter_spacing: 1.0, ..Default::default() };
