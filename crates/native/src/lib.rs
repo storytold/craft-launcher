@@ -7,9 +7,11 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod agents;
 pub mod backend;
 pub mod desktop_entry;
 pub mod detect;
+pub mod downloads;
 pub mod feed_throttle;
 pub mod hosted_catalog;
 pub mod http;

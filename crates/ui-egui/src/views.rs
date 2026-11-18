@@ -250,6 +250,7 @@ impl LauncherUi {
                     ),
                     JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, tl!("Downloading…").to_string()),
                     JobPhase::Verifying => (None, tl!("Verifying…").to_string()),
+                    JobPhase::Queued => (None, tl!("Waiting for another download…").to_string()),
                     JobPhase::Waiting => (None, tl!("Waiting for other installs…").to_string()),
                     JobPhase::Installing | JobPhase::Removing => (None, tl!("Installing, then restarting…").to_string()),
                 };
@@ -387,7 +388,7 @@ impl LauncherUi {
         if widgets::button(ui, &label, Kind::Primary, 0.0).clicked() {
             let ids: Vec<String> =
                 self.entries.iter().filter(|e| self.in_filter(e, Filter::Updates) && e.job.is_none()).map(|e| e.app.id.to_string()).collect();
-            if self.settings.batch_updates {
+            if self.settings.updates_batched() {
                 self.act_command(Command::InstallAll { apps: ids });
             } else {
                 for id in ids {
@@ -1168,13 +1169,15 @@ impl LauncherUi {
                 (f, if short { tl!("Reconnecting…").into() } else { format!("{} {}", tl!("Reconnecting…"), amount(done, total)) }, t.warn)
             }
             JobPhase::Verifying => (None, tl!("Verifying checksum…").into(), rgb(entry.app.color)),
+            JobPhase::Queued => (None, tl!("Waiting for another download…").into(), rgb(entry.app.color)),
             JobPhase::Waiting => (None, tl!("Waiting for another app…").into(), rgb(entry.app.color)),
             JobPhase::Installing => (None, tl!("Installing…").into(), rgb(entry.app.color)),
             JobPhase::Removing => (None, tl!("Removing…").into(), rgb(entry.app.color)),
         };
         let downloading = matches!(phase, JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. });
-        // A job waiting for the installer hasn't started it yet, so it can still be called off.
-        let waiting = phase == JobPhase::Waiting;
+        // A job waiting for its download or for the installer hasn't started it yet, so it can
+        // still be called off.
+        let waiting = matches!(phase, JobPhase::Queued | JobPhase::Waiting);
         // Waiting has one square button beside the bar, like the menu otherwise.
         widgets::progress(ui, fraction, &caption, color, if downloading { bar_w } else { main_w });
         if downloading && widgets::glyph_button(ui, widgets::Glyph::Pause, tl!("Pause download")).clicked() {
@@ -1401,6 +1404,10 @@ impl LauncherUi {
         }
         if ui.button(t(reveal)).clicked() {
             self.act_command(Command::Reveal { app: id.to_string() });
+            ui.close();
+        }
+        if self.caps.desktop_shortcuts && ui.button(tl!("Add desktop shortcut")).clicked() {
+            self.act_command(Command::CreateDesktopShortcut { app: id.to_string() });
             ui.close();
         }
         if *status == AppStatus::UpToDate && entry.installs_here(self.platform) && ui.button(tl!("Reinstall")).clicked() {

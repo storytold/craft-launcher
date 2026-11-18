@@ -93,18 +93,19 @@ The web version shows the same catalog in the browser, with the latest download 
 
 The interface is in English, Brazilian Portuguese (Português (Brasil)), Czech (Čeština), French
 (Français), Georgian (ქართული), German (Deutsch), Hungarian (Magyar), Japanese (日本語), Polish
-(Polski), Russian (Русский), Simplified Chinese (简体中文), Traditional Chinese (繁體中文) or Spanish
-(Español). **Auto**, the default, follows the system or browser language; **Settings → Language**
-picks one and switches at once, and the choice is kept between runs. Czech locales (`cs-CZ`,
-`cs_CZ.UTF-8`…) select Czech, Georgian ones (`ka`, `ka-GE`, `ka_GE.UTF-8`…) Georgian, German ones
-(`de-DE`, `de-AT`, `de-CH`, `de_DE.UTF-8`…) German, French ones (`fr-FR`, `fr-CA`…) French, Hungarian
-ones (`hu`, `hu-HU`, `hu_HU.UTF-8`…) Hungarian, Japanese ones (`ja`, `ja-JP`, `ja_JP.UTF-8`…)
-Japanese, Polish ones (`pl`, `pl-PL`, `pl_PL.UTF-8`) Polish, Spanish ones (`es-ES`, `es-MX`,
-`es-419`…) Spanish, and Portuguese ones (`pt-BR`, and `pt-PT` too, for now) Brazilian Portuguese.
-Simplified Chinese locales (`zh-CN`, `zh-SG`, `zh-Hans`, and POSIX forms such as `zh_CN.UTF-8`)
-select Simplified Chinese; Traditional Chinese ones (`zh-TW`, `zh-HK`, `zh-MO`, `zh-Hant`, and POSIX
-forms such as `zh_TW.UTF-8`) select Traditional Chinese, with an explicit script winning over the
-region. To try a language without changing the setting, start the desktop app with
+(Polski), Russian (Русский), Simplified Chinese (简体中文), Traditional Chinese (繁體中文), Spanish
+(Español) or Ukrainian (Українська). **Auto**, the default, follows the system or browser language;
+**Settings → Language** picks one and switches at once, and the choice is kept between runs. Czech
+locales (`cs-CZ`, `cs_CZ.UTF-8`…) select Czech, Georgian ones (`ka`, `ka-GE`, `ka_GE.UTF-8`…)
+Georgian, German ones (`de-DE`, `de-AT`, `de-CH`, `de_DE.UTF-8`…) German, French ones (`fr-FR`,
+`fr-CA`…) French, Hungarian ones (`hu`, `hu-HU`, `hu_HU.UTF-8`…) Hungarian, Japanese ones (`ja`,
+`ja-JP`, `ja_JP.UTF-8`…) Japanese, Polish ones (`pl`, `pl-PL`, `pl_PL.UTF-8`) Polish, Ukrainian ones
+(`uk`, `uk-UA`, `uk_UA.UTF-8`…) Ukrainian, Spanish ones (`es-ES`, `es-MX`, `es-419`…) Spanish, and
+Portuguese ones (`pt-BR`, and `pt-PT` too, for now) Brazilian Portuguese. Simplified Chinese locales
+(`zh-CN`, `zh-SG`, `zh-Hans`, and POSIX forms such as `zh_CN.UTF-8`) select Simplified Chinese;
+Traditional Chinese ones (`zh-TW`, `zh-HK`, `zh-MO`, `zh-Hant`, and POSIX forms such as
+`zh_TW.UTF-8`) select Traditional Chinese, with an explicit script winning over the region. To try
+a language without changing the setting, start the desktop app with
 `ARTCRAFT_LAUNCHER_LOCALE=pt-BR`, or add `?lang=ru` to the web address.
 
 The CJK languages are drawn with the system's own CJK font (Hiragino Sans or PingFang on macOS,
@@ -281,7 +282,7 @@ stand on its own.
 | <img src="https://raw.githubusercontent.com/storytold/cadcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.cadcraft.png" alt="" width="32" height="32">                         | **CADCraft**        | Computer-aided design                                 | [GitHub](https://github.com/storytold/cadcraft)       | [Website](https://getartcraft.com/apps/cadcraft)           |
 | <img src="https://raw.githubusercontent.com/storytold/gridcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.gridcraft.png" alt="" width="32" height="32">                       | **GridCraft**       | Spreadsheets and data                                 | [GitHub](https://github.com/storytold/gridcraft)      | [Website](https://getartcraft.com/apps/gridcraft)          |
 | <img src="https://raw.githubusercontent.com/storytold/texturecraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.texturecraft.png" alt="" width="32" height="32">                 | **TextureCraft**    | 3D texture painting                                   | [GitHub](https://github.com/storytold/texturecraft)   | [Website](https://getartcraft.com/apps/texturecraft)       |
-| <img src="https://raw.githubusercontent.com/storytold/materialcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.materialcraft.png" alt="" width="32" height="32">               | **MaterialCraft**   | Procedural material design                            | [GitHub](https://github.com/storytold/materialcraft)  | [Project page](https://github.com/storytold/materialcraft) |
+| <img src="https://raw.githubusercontent.com/storytold/materialcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.materialcraft.png" alt="" width="32" height="32">               | **MaterialCraft**   | Procedural material design                            | [GitHub](https://github.com/storytold/materialcraft)  | [Website](https://getartcraft.com/apps/materialcraft)      |
 | <img src="https://raw.githubusercontent.com/storytold/craft-anything/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.craft-anything.png" alt="" width="32" height="32">             | **Craft Anything**  | See how any software works, then build your own       | [GitHub](https://github.com/storytold/craft-anything) | [Website](https://getartcraft.com/apps/craft-anything)     |
 | <img src="https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/64x64/apps/io.tangencylabs.solidcraft.png" alt="" width="32" height="32"> | **SolidCraft**      | Parametric 3D CAD by Tangency Labs (community app)    | [GitHub](https://github.com/tangency-labs/solidcraft) |                                                            |
 | <img src="https://raw.githubusercontent.com/UCS-Care-Group/mailcraft/main/assets/app-icon/hicolor/64x64/apps/io.github.billsecond.mailcraft.png" alt="" width="32" height="32"> | **MailCraft** | Mail, calendar and contacts by UCS Care Group (community app) | [GitHub](https://github.com/UCS-Care-Group/mailcraft) | [Website](https://mailcraft.work) |

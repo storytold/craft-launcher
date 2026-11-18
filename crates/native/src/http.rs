@@ -134,7 +134,10 @@ impl Http {
 
     /// GET a GitHub API resource, revalidating with `etag` when given.
     pub fn get_api(&self, url: &str, etag: Option<&str>) -> Result<Fetched, String> {
-        let mut req = self.small.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
+        // A request carrying the token must not follow a redirect: a cross-origin `Location`
+        // could otherwise forward the bearer token. Requests without one keep the old behaviour.
+        let agent = if self.token.is_some() && url.starts_with("https://api.github.com/") { &self.no_redirect } else { &self.small };
+        let mut req = agent.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
         if let Some(tag) = etag {
             req = req.header("If-None-Match", tag);
         }
