@@ -169,6 +169,10 @@ pub struct Accounts {
     base: Mutex<String>,
     /// A sign-in or sign-out is in flight. A second request is then ignored. Nothing queues.
     busy: Arc<AtomicBool>,
+    /// The last address somebody typed was refused. A sign-in then has nothing it may use: the
+    /// address still held is the one before it, and a flow against that one would sign the person
+    /// in somewhere they did not ask for.
+    refused: Arc<AtomicBool>,
     /// Counts the changes of what this window's session is about: the configured deployment, a
     /// sign-in, a sign-out. A worker reads it when it starts and again before it acts. A worker
     /// holding a stale number is answering about a session that has been replaced, so its answer
@@ -176,6 +180,10 @@ pub struct Accounts {
     generation: Arc<AtomicU64>,
     emit: Arc<dyn Fn(SuiteAccount) + Send + Sync>,
 }
+
+/// What the configured deployment address has to look like. Stated once, because a refused
+/// address is reported when it is typed and again when a sign-in is asked for afterwards.
+const BASE_RULE: &str = "the suite service must be https:// or http:// on 127.0.0.1, localhost, or [::1] with a port";
 
 /// How often to look again while waiting for a browser, whatever the deployment asked for.
 const MIN_POLL: u64 = 1;
@@ -191,6 +199,7 @@ impl Accounts {
             service: Arc::new(CollabCraft::new(http)),
             base: Mutex::new(String::new()),
             busy: Arc::new(AtomicBool::new(false)),
+            refused: Arc::new(AtomicBool::new(false)),
             generation: Arc::new(AtomicU64::new(0)),
             emit: Arc::new(emit),
         }
@@ -208,11 +217,11 @@ impl Accounts {
             return;
         }
         if !service_base::allowed_service_base(&base) {
-            (self.emit)(SuiteAccount::Failed(
-                "the suite service must be https:// or http:// on 127.0.0.1, localhost, or [::1] with a port".to_owned(),
-            ));
+            self.refused.store(true, Ordering::SeqCst);
+            (self.emit)(SuiteAccount::Failed(BASE_RULE.to_owned()));
             return;
         }
+        self.refused.store(false, Ordering::SeqCst);
         *held = base;
         drop(held);
         // A sign-in still waiting on a browser was started against the deployment configured
@@ -237,31 +246,7 @@ impl Accounts {
         let (store, service, emit) = (self.store.clone(), self.service.clone(), self.emit.clone());
         let (generation, issued) = (self.generation.clone(), self.generation.load(Ordering::SeqCst));
         std::thread::spawn(move || {
-            let state = match store.shared() {
-                Shared::None => SuiteAccount::SignedOut,
-                Shared::Unreadable { account, why } => SuiteAccount::Unreadable { display: account.display, why },
-                Shared::Session { account, token } => match service.identity(&account.service, &token) {
-                    Ok(Some(who)) => {
-                        if let Err(e) = store.touch(&account.id, crate::now()) {
-                            log::warn!("couldn't record the account's last use: {e}");
-                        }
-                        signed_in(&account, Some(&who))
-                    }
-                    // The deployment has forgotten the session. This machine should too.
-                    Ok(None) => {
-                        if let Err(e) = store.discard(&account.id) {
-                            log::warn!("couldn't clear the stale suite session: {e}");
-                        }
-                        SuiteAccount::SignedOut
-                    }
-                    // Offline, or the deployment is down. Still signed in; the storage state is
-                    // simply unknown until it answers.
-                    Err(why) => {
-                        log::info!("the suite session could not be checked: {why}");
-                        signed_in(&account, None)
-                    }
-                },
-            };
+            let state = state_now(&store, service.as_ref());
             // A sign-out or a sign-in that landed while this was asking has already said what is
             // true. This answer is about the session before it.
             if generation.load(Ordering::SeqCst) != issued {
@@ -278,6 +263,12 @@ impl Accounts {
             (self.emit)(SuiteAccount::Unconfigured);
             return;
         }
+        // The address typed before this was refused, so it was never configured. Starting a flow
+        // now would use the address before it, which is not what was asked for.
+        if self.refused.load(Ordering::SeqCst) {
+            (self.emit)(SuiteAccount::Failed(BASE_RULE.to_owned()));
+            return;
+        }
         if self.busy.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -287,12 +278,7 @@ impl Accounts {
             let mut guard = BusyGuard::new(busy);
             let state = run_sign_in(&store, service.as_ref(), &base, emit.as_ref(), &generation, issued);
             guard.clear();
-            if generation.load(Ordering::SeqCst) != issued {
-                return;
-            }
-            // This window's session is now whatever this sign-in made of it.
-            generation.fetch_add(1, Ordering::SeqCst);
-            emit(state);
+            emit(settle(&store, service.as_ref(), state, &generation, issued));
         });
     }
 
@@ -410,6 +396,63 @@ fn keep<S: TokenStore>(store: &Store<S>, service: &(dyn Service + Send + Sync), 
     }
 }
 
+/// What the store says about the session now, with the deployment's own answer where it gives one.
+///
+/// Read by [`Accounts::refresh`], and by a sign-in whose answer arrived for a session that has
+/// since been replaced. In both cases the question is what is true at this moment, never what was
+/// true when the work started.
+fn state_now<S: TokenStore>(store: &Store<S>, service: &(dyn Service + Send + Sync)) -> SuiteAccount {
+    match store.shared() {
+        Shared::None => SuiteAccount::SignedOut,
+        Shared::Unreadable { account, why } => SuiteAccount::Unreadable { display: account.display, why },
+        Shared::Session { account, token } => match service.identity(&account.service, &token) {
+            Ok(Some(who)) => {
+                if let Err(e) = store.touch(&account.id, crate::now()) {
+                    log::warn!("couldn't record the account's last use: {e}");
+                }
+                signed_in(&account, Some(&who))
+            }
+            // The deployment has forgotten the session. This machine should too.
+            Ok(None) => {
+                if let Err(e) = store.discard(&account.id) {
+                    log::warn!("couldn't clear the stale suite session: {e}");
+                }
+                SuiteAccount::SignedOut
+            }
+            // Offline, or the deployment is down. Still signed in; the storage state is simply
+            // unknown until it answers.
+            Err(why) => {
+                log::info!("the suite session could not be checked: {why}");
+                signed_in(&account, None)
+            }
+        },
+    }
+}
+
+/// What a finished sign-in should report.
+///
+/// Its own result, when this window's session is still the one it was started for. The number then
+/// moves, because that session is now whatever the sign-in made of it.
+///
+/// Where the number has already moved, the result is about a session that has been replaced, so it
+/// is dropped. What goes out instead is the state as it stands, read afresh. Saying nothing would
+/// leave the window on the last thing the flow reported, which is `Waiting`: a screen that offers
+/// no sign-in, no sign-out and no way back.
+fn settle<S: TokenStore>(
+    store: &Store<S>,
+    service: &(dyn Service + Send + Sync),
+    state: SuiteAccount,
+    generation: &AtomicU64,
+    issued: u64,
+) -> SuiteAccount {
+    if generation.load(Ordering::SeqCst) != issued {
+        log::info!("a finished sign-in was dropped: this window's session changed while it waited");
+        return state_now(store, service);
+    }
+    generation.fetch_add(1, Ordering::SeqCst);
+    state
+}
+
 /// The state for an account, with the deployment's own answer where there is one.
 fn signed_in(account: &Account, who: Option<&Identity>) -> SuiteAccount {
     SuiteAccount::SignedIn(SuiteIdentity {
@@ -489,6 +532,37 @@ mod tests {
 
         assert!(matches!(state, SuiteAccount::Failed(_)), "{state:?}");
         assert!(store.accounts().expect("the account list").current().is_none(), "no account is stored for the address that was left");
+    }
+
+    /// A sign-in whose answer arrives for a session that has been replaced must still report
+    /// something. The window's last word from the flow is `Waiting`, a screen with no sign-in, no
+    /// sign-out and no way back, so saying nothing strands whoever is looking at it.
+    #[test]
+    fn a_dropped_sign_in_reports_the_state_as_it_stands() {
+        let dir = tempfile::tempdir().expect("a temporary folder");
+        let store = store(dir.path());
+        let service = Immediate::new(None);
+        let generation = AtomicU64::new(9);
+
+        let reported = settle(&store, &service, SuiteAccount::Waiting { verify_url: "https://example.test/device".to_owned() }, &generation, 8);
+
+        assert!(matches!(reported, SuiteAccount::SignedOut), "{reported:?}");
+        assert_eq!(generation.load(Ordering::SeqCst), 9, "a dropped answer does not move the session on");
+    }
+
+    /// Its own answer goes out when the session is still the one it was started for, and the
+    /// number moves, because that session is now whatever the sign-in made of it.
+    #[test]
+    fn a_sign_in_for_the_session_it_started_for_reports_its_own_answer() {
+        let dir = tempfile::tempdir().expect("a temporary folder");
+        let store = store(dir.path());
+        let service = Immediate::new(None);
+        let generation = AtomicU64::new(4);
+
+        let reported = settle(&store, &service, SuiteAccount::Failed("that sign-in expired".to_owned()), &generation, 4);
+
+        assert!(matches!(reported, SuiteAccount::Failed(_)), "{reported:?}");
+        assert_eq!(generation.load(Ordering::SeqCst), 5);
     }
 
     /// A sign-in whose owner cannot be read is abandoned, and the token is left alone. Revoking it
