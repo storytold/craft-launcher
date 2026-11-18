@@ -99,6 +99,20 @@ mod holding {
         let error = hold(&msi, &sha).err().unwrap();
         assert!(error.contains("changed after it was checked"), "{error}");
     }
+
+    #[test]
+    fn a_link_is_not_held_because_it_can_be_pointed_elsewhere() {
+        let dir = tempfile::tempdir().unwrap();
+        let (msi, sha) = package(dir.path());
+        let link = dir.path().join("link.msi");
+        // Creating a link needs Developer Mode or an elevated account.
+        if std::os::windows::fs::symlink_file(&msi, &link).is_err() {
+            return;
+        }
+        let error = hold(&link, &sha).err().unwrap();
+        assert!(error.contains("is a link"), "{error}");
+        assert!(hold(&msi, &sha).is_ok());
+    }
 }
 
 /// Runs the generated elevated script for real, but not elevated and with `cmd.exe` standing in for

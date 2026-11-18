@@ -53,6 +53,10 @@
 	Install	ინსტალაცია
 	Update to {v}	განახლება ვერსიამდე {v}
 	Open	გახსნა
+	Open {version}	{version} ვერსიის გახსნა
+	Open {installed} without updating. {latest} stays available.	{installed} ვერსიის გახსნა განახლების გარეშე. {latest} ვერსია ხელმისაწვდომი რჩება.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} უკვე გამოვიდა, მაგრამ ArtCraft Launcher ვერ დააინსტალირებს მას ამ ასლის ნაცვლად.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher ვერ დააინსტალირებს {version} ვერსიას ამ ასლის ნაცვლად.
 	Download for {os}	ჩამოტვირთვა {os}-ისთვის
 	Download	ჩამოტვირთვა
 	Coming soon	მალე
@@ -75,6 +79,7 @@
 	Show in Explorer	Explorer-ში ჩვენება
 	Show in Files	Files-ში ჩვენება
 	Reinstall	ხელახლა ინსტალაცია
+	Add desktop shortcut	სამუშაო მაგიდის მალსახმობის დამატება
 	Uninstall…	დეინსტალაცია…
 	All releases	ყველა გამოშვება
 	ArtCraft Launcher {version} is available.	ხელმისაწვდომია ArtCraft Launcher {version}.
@@ -91,6 +96,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	მხოლოდ მოთხოვნისას
 	Automatically download and install updates	განახლებების ავტომატური ჩამოტვირთვა და ინსტალაცია
+	Ask for permission once when updating all apps	ყველა აპლიკაციის განახლებისას ნებართვის მოთხოვნა მხოლოდ ერთხელ
 	Notify me when an installed app has an update	შეტყობინება, როცა დაინსტალირებულ აპლიკაციას განახლება აქვს
 	Include pre-releases (betas and release candidates)	წინასწარი ვერსიების ჩართვა (ბეტა-ვერსიები და გამოშვების კანდიდატები)
 	Installing on Linux	ინსტალაცია Linux-ზე
@@ -116,6 +122,13 @@
 	The app will be removed. Your documents and settings stay.	აპლიკაცია წაიშლება. თქვენი დოკუმენტები და პარამეტრები შენარჩუნდება.
 	Uninstall	დეინსტალაცია
 	Cancel	გაუქმება
+	Save	შენახვა
+	Launch options…	გაშვების პარამეტრები…
+	{name} launch options	{name}-ის გაშვების პარამეტრები
+	Flags added each time the app is opened	ფლაგები, რომლებიც აპლიკაციის ყოველ გახსნისას ემატება
+	Separate flags with spaces. Quote a value that has spaces in it.	ფლაგები ჰარით გამოყავით. ჰარის შემცველი მნიშვნელობა ბრჭყალებში ჩასვით.
+	A quote isn't closed.	ბრჭყალი არ არის დახურული.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} არ გაიხსნა: მისი გაშვების პარამეტრებში ბრჭყალი არ არის დახურული.
 	Checked {ago}	ბოლო შემოწმება: {ago}
 	just now	ახლახან
 	yesterday	გუშინ
@@ -164,6 +177,10 @@
 	Unpin	დამაგრების მოხსნა
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
 	Waiting for another app…	სხვა აპლიკაციის მოლოდინი…
+	Waiting for another download…	სხვა ჩამოტვირთვის მოლოდინი…
+	Simultaneous downloads	ერთდროული ჩამოტვირთვები
+	No limit	შეზღუდვის გარეშე
+	Downloads running together share your connection, so each one is slower.	ერთად მიმდინარე ჩამოტვირთვები კავშირს იზიარებენ, ამიტომ თითოეული უფრო ნელია.
 	Waiting for other installs…	სხვა ინსტალაციების მოლოდინი…
 
 # Package formats offered for download (PackageKind::label)
@@ -177,6 +194,7 @@
 	Tarball (.tar.gz)	tar-არქივი (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	სურათებისა და ვიდეოების შექმნა ხელოვნური ინტელექტით
 photocraft	Image editing	გამოსახულებების რედაქტირება
 vectorcraft	Vector illustration	ვექტორული ილუსტრაცია
 filmcraft	Video editing, color and sound	ვიდეოს მონტაჟი, ფერი და ხმა
@@ -192,6 +210,7 @@ cadcraft	Computer-aided design and drafting	დაპროექტება �
 soundcraft	Recording, editing and mixing audio	აუდიოს ჩაწერა, რედაქტირება და მიქსირება
 figcraft	Interface design and prototyping	ინტერფეისის დიზაინი და პროტოტიპირება
 solidcraft	Parametric 3D CAD	პარამეტრული 3D დაპროექტება
+mailcraft	Mail, calendar and contacts	ფოსტა, კალენდარი და კონტაქტები
 
 # Contextual: month abbreviations for date rendering
 month	Jan	იან
@@ -306,6 +325,7 @@ filter	Installed	დაინსტალირებული
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} ვერ გაიხსნა: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher-ის ფანჯარა ვერ გაეშვა {backend}-ზე: {e}
 @msg	Download cancelled	ჩამოტვირთვა გაუქმდა
 @msg	{name} updated to {version}	{name} განახლდა ვერსიამდე {version}
 @msg	{name} installed: {version}	{name} დაინსტალირდა: {version}
@@ -384,6 +404,9 @@ filter	Installed	დაინსტალირებული
 @msg	custom install folders aren't supported on this system	ამ სისტემაზე ინსტალაციის საქაღალდის არჩევა არ არის მხარდაჭერილი
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} უკვე არსებობს და ის ArtCraft Launcher-ს არ დაუინსტალირებია
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} ნაგავში ვერ გადავიდა ({reason}). წაშალეთ ის Finder-ში.
+@msg	Desktop shortcut created for {name}	{name}-ის სამუშაო მაგიდის მალსახმობი შეიქმნა
+@msg	Couldn't create the desktop shortcut: {e}	სამუშაო მაგიდის მალსახმობის შექმნა ვერ მოხერხდა: {e}
+@msg	A desktop shortcut named {name} already exists	სამუშაო მაგიდის მალსახმობი სახელით {name} უკვე არსებობს
 	Apps are placed inside this folder.	აპლიკაციები ამ საქაღალდეში განთავსდება.
 	Replace what's there?	ჩანაცვლდეს არსებული?
 	{path} already exists. Installing {name} will overwrite it.	{path} უკვე არსებობს. {name}-ის ინსტალაცია მას გადააწერს.
@@ -423,3 +446,35 @@ materialcraft	Node graphs	კვანძების გრაფები
 materialcraft	Combine noises, patterns and filters.	ხმაურების, პატერნებისა და ფილტრების კომბინირება.
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
+	Download size: {size}	ჩამოტვირთვის ზომა: {size}
+anicraft	2D vector animation	2D ვექტორული ანიმაცია
+anicraft	Vector animation on a timeline you know.	ვექტორული ანიმაცია ნაცნობ ქრონოლოგიაზე.
+anicraft	Open-source 2D vector animation, built in pure Rust.	ღია კოდის 2D ვექტორული ანიმაცია, შექმნილი სუფთა Rust-ში.
+anicraft	Familiar by design	ნაცნობი დიზაინი
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	სცენა, ხელსაწყოები, დროის ხაზი, ფენები, საკვანძო კადრები, თვისებები და ბიბლიოთეკა იქ, სადაც ანიმატორები ელიან.
+anicraft	Tweens that ease	გლუვი ანიმაცია
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	კლასიკური ანიმაციური გადასვლები რვა წინასწარ დაყენებული პარამეტრით და ფორმის გარდაქმნით.
+	Version pinned to {version}. Click to unlock.	ვერსია ფიქსირებულია {version}-ზე. განსაბლოკად დააწკაპუნეთ.
+	Unlock version?	განიბლოკოს ვერსია?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} ფიქსირებულია {version} ვერსიაზე. სანაცვლოდ გამოიყენოთ უახლესი გამოშვება?
+	Unlock	განბლოკვა
+
+	AI agents	AI აგენტები
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	სანამ ეს ჩართულია, MCP-ის მქონე AI აპებს, მაგალითად Claude-ს, Cursor-ს ან LM Studio-ს, ერთი ჩანაწერით შეუძლიათ ყველა დაინსტალირებულ Craft აპთან მუშაობა. გამორთვისას ვერცერთი აგენტი ვერ მიაღწევს მათ და აქ დამატებული ჩანაწერები წაიშლება.
+	Quick install	სწრაფი დაყენება
+	Adds the Craft apps to that client. Restart the client afterwards.	ამატებს Craft აპებს ამ კლიენტში. შემდეგ კლიენტი გადატვირთეთ.
+	Other clients	სხვა კლიენტები
+	Copy the configuration and paste it into the client's MCP settings.	დააკოპირეთ კონფიგურაცია და ჩასვით კლიენტის MCP პარამეტრებში.
+	Copy JSON	JSON-ის კოპირება
+	Copy for VS Code	კოპირება VS Code-ისთვის
+	Copy for Codex (TOML)	კოპირება Codex-ისთვის (TOML)
+	Configuration copied.	კონფიგურაცია დაკოპირდა.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} MCP სერვერებს მხოლოდ გაშვებისას ტვირთავს, ამიტომ Craft აპები გადატვირთვის შემდეგ გამოჩნდება. გადატვირთვა ხურავს {client}-ს, მათ შორის პასუხს, რომელსაც ახლა წერს.
+	Restart {client}	{client}-ის გადატვირთვა
+	Restarting {client}…	{client} გადაიტვირთება…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft კარიბჭე (craft-ai-mcp) გამშვების გვერდით არ არის დაინსტალირებული.
+	Let AI agents use Craft apps	AI აგენტებს Craft აპების გამოყენების ნება
+	Apps agents can reach: {count}	აგენტებისთვის ხელმისაწვდომი აპები: {count}
+	Added	დამატებულია
+	Remove	წაშლა
+	Add	დამატება
