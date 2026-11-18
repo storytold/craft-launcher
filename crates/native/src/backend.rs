@@ -1851,6 +1851,7 @@ mod tests {
             None,
             None,
             Some(gather.clone()),
+            None,
         );
         assert_eq!(result, Err(artcraft_launcher_core::protocol::CANCELLED.into()));
         let seen = seen.lock().unwrap();
