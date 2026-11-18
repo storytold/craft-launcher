@@ -723,7 +723,9 @@ impl LauncherUi {
         }
         if let Some(line) = updated {
             ui.add_space(DATE_GAP);
-            ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false));
+            // One line, as the room above reserves: a long translation ends in "…" instead of wrapping
+            // under the text area's bottom edge.
+            ui.add(egui::Label::new(RichText::new(line).size(12.5).color(t.faint)).selectable(false).truncate());
         }
     }
 

@@ -4316,6 +4316,22 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
 }
 
+/// Where the text column of the card that holds `r` ends. Every card in a grid column ends its text
+/// column at the same x, where the "…" buttons of that column end; the column is the one whose
+/// span (the gap between two column ends) holds `r`'s left edge, whatever `r`'s own width.
+fn card_column_end(h: &Harness<'static, Option<LauncherUi>>, r: egui::Rect) -> f32 {
+    let mut ends: Vec<f32> = h.query_all_by_label_contains("More actions for").map(|n| n.rect().right()).collect();
+    ends.sort_by(f32::total_cmp);
+    ends.dedup_by(|a, b| (*a - *b).abs() < 1.0);
+    let width = ends.windows(2).map(|w| w[1] - w[0]).reduce(f32::min).unwrap_or(f32::INFINITY);
+    // A column without any "…" button would make its neighbour's span cover it.
+    assert!(ends.windows(2).all(|w| (w[1] - w[0] - width).abs() < 1.0), "a card column has no \"…\" button: {ends:?}");
+    ends.iter()
+        .copied()
+        .find(|end| r.left() < *end && r.left() > *end - width)
+        .unwrap_or_else(|| panic!("no card column holds the text at {r:?} (column ends {ends:?})"))
+}
+
 /// Grid cards are all one height, so the text above a card's action row has to fit beside it: a
 /// description that wraps to two lines used to push "Last updated" under the Install button, and
 /// a long name with its byline ran past the card's edge, cutting the byline and the tagline.
@@ -4324,31 +4340,30 @@ fn card_text_stays_above_the_actions_and_inside_the_card() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Light, true);
     h.run_steps(8);
     let buttons: Vec<egui::Rect> = h.query_all_by_role(egui::accesskit::Role::Button).map(|n| n.rect()).collect();
-    // The buttons of the card a text belongs to: in its column, and in the action row below it.
-    let actions_below = |r: egui::Rect| -> Vec<egui::Rect> {
+    // The action row of the card a date belongs to: buttons inside the date's card column that are
+    // not wholly above the date and start less than a card's text height below it, so a date that
+    // overlaps its own row still finds it.
+    let actions_of = |r: egui::Rect| -> Vec<egui::Rect> {
+        let end = card_column_end(&h, r);
         buttons
             .iter()
             .copied()
-            .filter(|b| b.left() >= r.left() - 1.0 && b.left() < r.left() + 340.0 && b.top() > r.top() && b.top() - r.top() < 140.0)
+            .filter(|b| b.left() >= r.left() - 1.0 && b.right() <= end + 0.5 && b.bottom() > r.top() && b.top() - r.top() < 140.0)
             .collect()
     };
     let dates: Vec<egui::Rect> = h.query_all_by_label_contains("Last updated").map(|n| n.rect()).collect();
-    let mut checked = 0;
+    assert!(dates.len() >= 3, "only {} cards show a date", dates.len());
     for date in &dates {
-        let row = actions_below(*date);
-        if let Some(top) = row.iter().map(|b| b.top()).reduce(f32::min) {
-            // The text area ends 12 px above the actions; 1 px of rounding is allowed.
-            assert!(date.bottom() <= top - 11.0, "\"Last updated\" ends at {} but its card's actions start at {top}", date.bottom());
-            checked += 1;
-        }
+        let top = actions_of(*date).iter().map(|b| b.top()).reduce(f32::min);
+        let top = top.unwrap_or_else(|| panic!("no action row found for the date at {date:?}"));
+        // The text area ends 12 px above the actions; 1 px of rounding is allowed.
+        assert!(date.bottom() <= top - 11.0, "\"Last updated\" ends at {} but its card's actions start at {top}", date.bottom());
     }
-    assert!(checked >= 3, "checked {checked} of {} dates against their card's actions", dates.len());
-    // The "…" button ends at the right of the card's text column.
-    let column_ends: Vec<f32> = h.query_all_by_label_contains("More actions for").map(|n| n.rect().right()).collect();
+    // A byline ends within its card's text column, which ends where that card's "…" button does.
     let bylines: Vec<egui::Rect> = h.query_all_by_label_contains("by ").filter(|n| n.rect().height() <= 21.0).map(|n| n.rect()).collect();
     assert!(!bylines.is_empty(), "cards show who makes the app");
     for byline in bylines {
-        let end = column_ends.iter().copied().filter(|x| *x > byline.left()).reduce(f32::min).unwrap_or(f32::INFINITY);
+        let end = card_column_end(&h, byline);
         assert!(byline.right() <= end + 0.5, "a byline ends at {} past its card's text column at {end}", byline.right());
     }
     snapshot(&mut h, "grid_cards_fit");
@@ -4362,17 +4377,21 @@ fn a_long_name_and_byline_fit_a_narrow_card() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Light, true);
     h.set_size(egui::vec2(1020.0, 1200.0));
     h.run_steps(8);
-    let column_ends: Vec<f32> = h.query_all_by_label_contains("More actions for").map(|n| n.rect().right()).collect();
-    let end_of = |left: f32| column_ends.iter().copied().filter(|x| *x > left).reduce(f32::min).unwrap_or(f32::INFINITY);
     let tagline = h.get_by_label_contains("Find out how any software works").rect();
-    assert!(
-        tagline.right() <= end_of(tagline.left()) + 0.5,
-        "Craft Anything's tagline ends at {} past its column at {}",
-        tagline.right(),
-        end_of(tagline.left())
-    );
+    let end = card_column_end(&h, tagline);
+    assert!(tagline.right() <= end + 0.5, "Craft Anything's tagline ends at {} past its column at {end}", tagline.right());
+    // Craft Anything's byline ends its title row, just above the tagline in the same card column.
+    let byline = h
+        .query_all_by_label_contains("by ")
+        .map(|n| n.rect())
+        .find(|b| b.top() < tagline.top() && tagline.top() - b.top() < 40.0 && card_column_end(&h, *b) == end)
+        .expect("Craft Anything shows who makes it");
+    // The badge is one line and gives up its room (0 × 0) when none is left.
+    assert!(byline.width() > 0.0, "Craft Anything's byline has no room");
+    assert!(byline.right() <= end + 0.5, "Craft Anything's byline ends at {} past its column at {end}", byline.right());
     for byline in h.query_all_by_label_contains("by ").filter(|n| n.rect().height() <= 21.0).map(|n| n.rect()) {
-        assert!(byline.right() <= end_of(byline.left()) + 0.5, "a byline ends at {} past its column at {}", byline.right(), end_of(byline.left()));
+        let end = card_column_end(&h, byline);
+        assert!(byline.right() <= end + 0.5, "a byline ends at {} past its card's text column at {end}", byline.right());
     }
     snapshot(&mut h, "grid_cards_narrow");
 }
