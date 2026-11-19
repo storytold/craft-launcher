@@ -1557,10 +1557,10 @@ mod tests {
         // An attempt that names no backend is the platform's own list (`wgpu_options`).
         if Backends::from_env().is_none() {
             assert_eq!(backend_label(RendererAttempt::Default), DEFAULT_BACKENDS_LABEL);
+            // The fallback names itself.
+            #[cfg(not(target_os = "macos"))]
+            assert_eq!(backend_label(RendererAttempt::OpenGl), "OpenGL");
         }
-        // The fallback names itself.
-        #[cfg(not(target_os = "macos"))]
-        assert_eq!(backend_label(RendererAttempt::OpenGl), "OpenGL");
     }
 
     /// Renderer failures exhaust the platform's plan; they never cycle back to a failed attempt.
