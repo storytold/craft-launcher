@@ -156,8 +156,10 @@ pub(crate) fn msi_update_plan(
     }))
 }
 
-/// Downloads and checks both installers before removing anything. Profile data is not moved:
-/// it is independent of the executable's location. Portable installations require manual migration.
+/// Downloads and checks the new installer before changing anything; the copy for everyone is
+/// removed only after the copy for this account is in ([`msi_migration`]). Profile data is not
+/// moved: it is independent of the executable's location. Portable installations require manual
+/// migration.
 #[cfg(windows)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn migrate_msi_to_user(
@@ -182,15 +184,15 @@ pub(crate) fn migrate_msi_to_user(
     if process::is_running(Path::new(&plan.installed.location)) {
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
-    let (old_file, old_sha) = download(previous, previous_asset, job)?;
     let (new_file, new_sha) = download(release, asset, job)?;
-    if !crate::msi_context::package_installs_per_user(&new_file)? {
+    let package = crate::msi_context::read_package(&new_file)?;
+    if !package.per_user || msi_migration::same_product(plan.installed.package.as_deref(), &package.product_code) {
         return Err(MIGRATION_UNAVAILABLE.into());
     }
     windows::migrate_msi(
         app,
         windows::Package { file: &new_file, sha256: &new_sha, version: &release.version_label() },
-        windows::Package { file: &old_file, sha256: &old_sha, version: &previous.version_label() },
+        &previous.version_label(),
         &plan.installed,
         &destination,
         job.stop,
@@ -2352,6 +2354,10 @@ fn explain(code: Option<i32>) -> Result<(), String> {
 #[cfg(any(windows, test))]
 mod msi_downgrade;
 
+/// Moving an all-users Windows Installer copy to this account.
+#[cfg(any(windows, test))]
+mod msi_migration;
+
 /// The root-owned list of files a system-wide FreeBSD tree install put down.
 #[cfg(any(target_os = "freebsd", all(unix, test)))]
 mod root_record;
@@ -2399,7 +2405,7 @@ pub mod windows {
 
     use super::{
         CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, msi_session, process, turn,
+        msi_log, msi_migration, msi_scope_arguments, msi_session, process, turn,
     };
 
     pub(super) fn msiexec() -> PathBuf {
@@ -2589,20 +2595,19 @@ pub mod windows {
         Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some(ended))
     }
 
-    /// Keep removal, user install and rollback in one installer-queue turn. Only removal and
-    /// rollback may elevate; the user MSI is started by this account, never by an elevated helper.
-    #[allow(clippy::too_many_arguments)]
+    /// Keep the user install and the removal in one installer-queue turn. The user MSI is started
+    /// by this account, never by an elevated helper; only the removal that follows it elevates.
     pub(super) fn migrate_msi(
         app: &CraftApp,
         chosen: Package<'_>,
-        previous: Package<'_>,
+        previous_version: &str,
         expected: &artcraft_launcher_core::Installed,
         destination: &Path,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
         in_turn(stop, phase, JobPhase::Installing, || {
-            let _held = (msi_batch::hold(chosen.file, chosen.sha256)?, msi_batch::hold(previous.file, previous.sha256)?);
+            let _held = msi_batch::hold(chosen.file, chosen.sha256)?;
             let installs = crate::detect::windows::msi_installs(app);
             let [installed] = installs.as_slice() else {
                 return Err(super::MIGRATION_CHANGED.into());
@@ -2618,21 +2623,18 @@ pub mod windows {
             if process::is_running(Path::new(&expected.location)) {
                 return Err(format!("{} is running. Quit it, then try again.", app.name));
             }
-            let old_folder = Path::new(&expected.location).parent().ok_or(super::MIGRATION_CHANGED)?;
-            msi_downgrade::run(msi_downgrade::Steps {
+            msi_migration::run(msi_migration::Steps {
                 app: app.name,
                 chosen: chosen.version,
-                previous: previous.version,
-                remove: &mut || {
+                previous: previous_version,
+                install_for_user: &mut || run_direct(chosen.file, Some(destination), Some(MsiScope::PerUser)),
+                remove_shared: &mut || {
                     process::command(msiexec())
                         .args(["/x", &installed.product_code, "/passive", "/norestart"])
                         .status()
                         .map_err(|e| format!("couldn't start the Windows Installer ({e})"))
                         .and_then(|status| explain(status.code()))
-                        .map_err(|error| msi_downgrade::Removal { error, partly: false })
                 },
-                install_chosen: &mut || run_direct(chosen.file, Some(destination), Some(MsiScope::PerUser)),
-                reinstall_previous: &mut || run_direct(previous.file, Some(old_folder), Some(MsiScope::PerMachine)),
             })
         })
     }

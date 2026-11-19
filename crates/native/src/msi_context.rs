@@ -64,19 +64,30 @@ pub(crate) fn install_scope(updated: Option<MsiScope>, fresh: bool) -> Option<Ms
 /// per-user-only package, which installs without elevated privileges.
 const NO_ELEVATION_NEEDED: u32 = 8;
 
-/// Whether a package can install for one account, from the lookup's two lines: its Word Count and
-/// its own `ALLUSERS` property. Only a package that authors `ALLUSERS` for everyone (`1`, or any
-/// value but `2`) is per-machine-only. A dual-scope package (WiX `perUserOrMachine`, as every
-/// ArtCraft release) authors `ALLUSERS=2`; a package without `ALLUSERS` installs per-user by
-/// default; and bit 3 marks a package that never needs elevation.
-pub(crate) fn installs_per_user(output: &str) -> Option<bool> {
+/// What a downloaded package says about itself.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct PackageFacts {
+    /// Whether it can install for one account.
+    pub per_user: bool,
+    /// Its `ProductCode`, which tells a new release from the installed product.
+    pub product_code: String,
+}
+
+/// Reads the lookup's three lines: the package's Word Count, its own `ALLUSERS` property and its
+/// `ProductCode`. Only a package that authors `ALLUSERS` for everyone (`1`, or any value but `2`)
+/// is per-machine-only. A dual-scope package (WiX `perUserOrMachine`, as every ArtCraft release)
+/// authors `ALLUSERS=2`; a package without `ALLUSERS` installs per-user by default; and bit 3 marks
+/// a package that never needs elevation.
+pub(crate) fn package_facts(output: &str) -> Option<PackageFacts> {
     let mut lines = output.lines().map(str::trim);
     let word_count = lines.next()?.parse::<u32>().ok()?;
     let all_users = lines.next()?;
-    if lines.any(|line| !line.is_empty()) {
+    let product_code = lines.next()?;
+    if !valid_product_code(product_code) || lines.any(|line| !line.is_empty()) {
         return None;
     }
-    Some(word_count & NO_ELEVATION_NEEDED != 0 || all_users.is_empty() || all_users == "2")
+    let per_user = word_count & NO_ELEVATION_NEEDED != 0 || all_users.is_empty() || all_users == "2";
+    Some(PackageFacts { per_user, product_code: product_code.to_string() })
 }
 
 /// The context of a fresh install, once the downloaded package says what it supports. A
@@ -178,15 +189,21 @@ fn current_user_sid() -> Result<String, String> {
     }
 }
 
-/// Reads whether a downloaded package can install for one account (see [`installs_per_user`]).
-/// The path reaches the script through the environment, so it is never parsed as PowerShell.
+/// Reads what a downloaded package says about itself (see [`package_facts`]). The path reaches the
+/// script through the environment, so it is never parsed as PowerShell.
 #[cfg(windows)]
-pub(crate) fn package_installs_per_user(package: &std::path::Path) -> Result<bool, String> {
+pub(crate) fn read_package(package: &std::path::Path) -> Result<PackageFacts, String> {
     let mut command = crate::process::command(powershell()?);
     command.env("ARTCRAFT_MSI_PACKAGE", package);
     command.args(["-NoProfile", "-NonInteractive", "-Command", include_str!("msi_package.ps1")]);
     let output = crate::process::run_command(command, "Windows Installer package check", std::time::Duration::from_secs(10))?;
-    installs_per_user(&output).ok_or_else(|| format!("unexpected package lookup output {:?}", output.trim()))
+    package_facts(&output).ok_or_else(|| format!("unexpected package lookup output {:?}", output.trim()))
+}
+
+/// Reads whether a downloaded package can install for one account.
+#[cfg(windows)]
+pub(crate) fn package_installs_per_user(package: &std::path::Path) -> Result<bool, String> {
+    read_package(package).map(|facts| facts.per_user)
 }
 
 #[cfg(windows)]
@@ -374,15 +391,24 @@ mod tests {
     /// `ALLUSERS=2`), a per-machine-only package (`ALLUSERS=1`) and a per-user-only one (bit 3).
     #[test]
     fn the_package_says_whether_it_installs_per_user() {
-        assert_eq!(installs_per_user("2\r\n2\r\n"), Some(true));
-        assert_eq!(installs_per_user("2\r\n1\r\n"), Some(false));
+        let per_user = |output: String| package_facts(&output).map(|facts| facts.per_user);
+        assert_eq!(per_user(format!("2\r\n2\r\n{CODE}\r\n")), Some(true));
+        assert_eq!(per_user(format!("2\r\n1\r\n{CODE}\r\n")), Some(false));
         // No ALLUSERS: the package's own default is a per-user install.
-        assert_eq!(installs_per_user("2\r\n\r\n"), Some(true));
-        assert_eq!(installs_per_user("2\r\nYes\r\n"), Some(false));
-        assert_eq!(installs_per_user("10\r\n\r\n"), Some(true));
-        for output in ["", "x\n2", "-8\n", "2", "2\n2\nnoise", "8 9\n"] {
-            assert_eq!(installs_per_user(output), None, "{output:?}");
+        assert_eq!(per_user(format!("2\r\n\r\n{CODE}\r\n")), Some(true));
+        assert_eq!(per_user(format!("2\r\nYes\r\n{CODE}\r\n")), Some(false));
+        assert_eq!(per_user(format!("10\r\n\r\n{CODE}\r\n")), Some(true));
+        for output in ["", "x\n2", "-8\n", "2", "2\n2", "2\n2\nnoise", "8 9\n", "2\n2\n{CODE}\nnoise"] {
+            assert_eq!(package_facts(&output.replace("{CODE}", CODE)), None, "{output:?}");
         }
+    }
+
+    /// The product code comes back as the package has it, so a release can be told from the
+    /// installed product.
+    #[test]
+    fn the_package_gives_its_product_code() {
+        let facts = package_facts(&format!("2\r\n2\r\n{CODE}\r\n")).unwrap();
+        assert_eq!(facts, PackageFacts { per_user: true, product_code: CODE.to_string() });
     }
 
     /// A file that is not a package gives an error, never a scope guessed from empty output.
