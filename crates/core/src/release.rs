@@ -159,6 +159,10 @@ fn contains_encoded_separator(rest: &str) -> bool {
 }
 
 /// Reads `GET /repos/<repo>/releases/latest` (or one element of `/releases`).
+///
+/// # Errors
+///
+/// Returns an error if the JSON is malformed or does not describe a usable release.
 pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     release_from_value(&v, repo)
@@ -166,6 +170,10 @@ pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
 
 /// Published releases offered for manual selection, in GitHub's order.
 /// Drafts and unparseable tags cannot be installed.
+///
+/// # Errors
+///
+/// Returns an error if the JSON is malformed or its top level is not an array.
 pub fn parse_github_versions(json: &str, repo: &str) -> Result<Vec<Release>, String> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     let list = v.as_array().ok_or("unexpected answer from GitHub")?;
@@ -203,6 +211,10 @@ pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrac
 
 /// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
 /// `allow_prerelease`) published release.
+///
+/// # Errors
+///
+/// Returns an error if the JSON is malformed or its top level is not an array.
 pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool) -> Result<Option<Release>, String> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     let list = v.as_array().ok_or("unexpected answer from GitHub")?;
