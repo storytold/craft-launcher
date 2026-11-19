@@ -59,6 +59,10 @@ impl LauncherUi {
             return;
         }
         if close || response.should_close() {
+            if matches!(dialog, Dialog::MsiUpdate { .. }) {
+                // The last pending choice sends the kept updates, even when it was cancelled.
+                self.send_kept_updates();
+            }
             self.dialog = if matches!(&dialog, Dialog::UnlockVersion { app, .. } if app == artcraft_launcher_core::catalog::LAUNCHER_ID) {
                 Some(Dialog::Settings)
             } else {
@@ -166,7 +170,13 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_enabled_ui(!*migrate || *accepted, |ui| {
                     if widgets::button(ui, tl!("Update"), Kind::Primary, 110.0).clicked() {
-                        self.act_command(Command::ConfirmMsiUpdate { app: id.to_string(), plan: plan.clone(), migrate: *migrate });
+                        if *migrate {
+                            self.act_command(Command::ConfirmMsiUpdate { app: id.to_string(), plan: plan.clone(), migrate: true });
+                        } else {
+                            // Remembered, and sent with the other kept updates once the choices are made.
+                            self.settings.keep_shared_installs.insert(id.to_string());
+                            self.kept_updates.push(id.to_string());
+                        }
                         close = true;
                     }
                 });

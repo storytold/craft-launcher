@@ -886,7 +886,10 @@ fn run_install_with_choice(
     let http = http.ok_or("secure connections aren't available on this system")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
     #[cfg(windows)]
-    if let Some(plan) = install::msi_update_plan(app, kind, existing, &release)? {
+    if let Some(plan) = install::msi_update_plan(app, kind, existing, &release)?
+        // A copy the person chose to keep updates where it is, like any all-users update.
+        && !keeps_shared_install(options, app.id, update.is_some())
+    {
         let Some((approved_plan, migrate)) = update.filter(|(approved_plan, _)| **approved_plan == plan) else {
             *update_choice = Some(plan);
             return Err(UPDATE_CHOICE_REQUIRED.into());
@@ -917,6 +920,13 @@ fn run_install_with_choice(
                 place: None,
             };
             install::migrate_msi_to_user(app, &release, &asset, &previous, &previous_asset, approved_plan, &mut job)?;
+            // Installed the platform's own way, as the normal MSI path below: an old launcher record is stale.
+            let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            if m.apps.remove(app.id).is_some()
+                && let Err(e) = m.save(&paths.manifest())
+            {
+                log::warn!("couldn't save the install record: {e}");
+            }
             return Ok(installed_text(app, true, &release));
         }
     } else if update.is_some() {
@@ -1004,6 +1014,13 @@ fn run_install_with_choice(
         }
     }
     Ok(installed_text(app, existing.is_some(), &release))
+}
+
+/// Whether an all-users update goes ahead without asking where to update: the person chose to
+/// keep this app's shared copy, and this isn't the answer to a question already asked.
+#[cfg(any(windows, test))]
+fn keeps_shared_install(options: &BackendOptions, app: &str, answered: bool) -> bool {
+    !answered && options.keep_shared_installs.contains(app)
 }
 
 /// Whether an install may write over what is at its destination.
@@ -3293,5 +3310,16 @@ mod tests {
                 assert!(backend.shared.jobs.lock().unwrap().is_empty());
             }
         }
+    }
+
+    /// A kept all-users copy updates without asking again; any other app, or an answer the person
+    /// just gave in the dialog, goes as before.
+    #[test]
+    fn a_kept_shared_install_updates_without_asking_again() {
+        let options = BackendOptions { keep_shared_installs: ["photocraft".to_string()].into(), ..BackendOptions::default() };
+        assert!(keeps_shared_install(&options, "photocraft", false));
+        assert!(!keeps_shared_install(&options, "gridcraft", false));
+        assert!(!keeps_shared_install(&options, "photocraft", true));
+        assert!(!keeps_shared_install(&BackendOptions::default(), "photocraft", false));
     }
 }

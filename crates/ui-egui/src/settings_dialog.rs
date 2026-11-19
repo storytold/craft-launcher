@@ -198,6 +198,11 @@ impl LauncherUi {
             // Linux always batches (`Settings::updates_batched`), so there is nothing to choose.
             if self.caps.manage_apps && !cfg!(target_os = "linux") {
                 ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
+                if !self.settings.keep_shared_installs.is_empty()
+                    && widgets::button(ui, tl!("Ask again how to update apps installed for everyone"), Kind::Secondary, 0.0).clicked()
+                {
+                    self.settings.keep_shared_installs.clear();
+                }
                 let mut at_once = self.settings.simultaneous_downloads.min(4);
                 let no_limit = tl!("No limit").to_string();
                 row(ui, tl!("Simultaneous downloads"), 150.0, &mut |ui, label| {

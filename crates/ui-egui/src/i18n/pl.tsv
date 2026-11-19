@@ -491,6 +491,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows poprosi jeszcze raz o zgodę administratora, aby odinstalować starą wspólną kopię. Po przeniesieniu aktualizacje i odinstalowanie na tym koncie zwykle nie wymagają już tej zgody. Inni użytkownicy Windows stracą dostęp do aplikacji.
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Ustawienia i presety w profilu pozostaną na miejscu. Dodatki w katalogu programu mogą wymagać ponownej instalacji; najpierw zrób ich kopię.
 	I accept removal of the shared copy and the risk to add-ons beside it.	Akceptuję usunięcie wspólnej instalacji i ryzyko dotyczące dodatków w jej katalogu.
+	Ask again how to update apps installed for everyone	Zapytaj ponownie, jak aktualizować aplikacje zainstalowane dla wszystkich
 
 @msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	Instalacja lub wybrana wersja uległa zmianie. Sprawdź aktualizacje i wybierz ponownie; niczego nie usunięto.
 @msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Przeniesienie tej wersji jest niedostępne. Pozostaw obecną lokalizację; niczego nie usunięto.

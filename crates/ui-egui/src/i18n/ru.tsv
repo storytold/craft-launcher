@@ -485,6 +485,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows ещё раз запросит разрешение администратора для удаления старой общей копии. После переноса обновления и удаление для этой учётной записи обычно больше не требуют такого разрешения. Другие пользователи Windows потеряют доступ.
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Настройки и наборы в профиле останутся на месте. Дополнения в папке программы может потребоваться переустановить; сначала сделайте их копию.
 	I accept removal of the shared copy and the risk to add-ons beside it.	Я согласен на удаление общей установки и принимаю риск для дополнений в её папке.
+	Ask again how to update apps installed for everyone	Снова спросить, как обновлять приложения, установленные для всех
 
 @msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	Установка или выбранная версия изменилась. Проверьте обновления и выберите снова; ничего не удалено.
 @msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Перенос недоступен для этой версии. Сохраните текущее расположение; ничего не удалено.

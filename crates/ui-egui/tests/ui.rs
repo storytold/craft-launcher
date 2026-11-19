@@ -4812,6 +4812,8 @@ fn msi_migration_requires_consent_and_queues_other_apps() {
     assert_eq!(sent.borrow().iter().filter(|c| matches!(c, Command::ConfirmMsiUpdate { .. })).count(), 1);
 }
 
+/// Keeping the current location is the default. It is remembered, the backend learns it before
+/// the update is sent, and the update goes as a plain install, so it is not asked again.
 #[test]
 fn msi_update_keeps_location_by_default() {
     let mut ev = events();
@@ -4821,5 +4823,40 @@ fn msi_update_keeps_location_by_default() {
     snapshot(&mut h, "msi-update-light");
     h.get_by_label("Update").click();
     h.run();
-    assert!(sent.borrow().iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { migrate: false, .. })));
+    let sent = sent.borrow();
+    assert!(!sent.iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { .. })));
+    let kept = sent
+        .iter()
+        .position(|c| matches!(c, Command::Configure(o) if o.keep_shared_installs.contains("photocraft")))
+        .expect("the backend learns the app is kept");
+    let install = sent.iter().position(|c| matches!(c, Command::Install { app } if app == "photocraft")).expect("the update is sent");
+    assert!(kept < install, "kept before the update is sent");
+    assert!(h.state().as_ref().unwrap().settings.keep_shared_installs.contains("photocraft"));
+}
+
+/// Update all with several all-users apps: each choice to keep waits for the last one, then all go
+/// as one batch, which keeps Update all's one permission prompt. Settings can ask again.
+#[test]
+fn kept_all_users_updates_go_together_and_settings_can_ask_again() {
+    let mut ev = events();
+    ev.extend([migration_offer("photocraft"), migration_offer("gridcraft")]);
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run();
+    h.state_mut().as_mut().unwrap().settings.batch_updates = true;
+    h.get_by_label("Update").click();
+    h.run();
+    let installs = |sent: &RefCell<Vec<Command>>| {
+        sent.borrow().iter().filter(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. })).cloned().collect::<Vec<_>>()
+    };
+    assert!(installs(&sent).is_empty(), "nothing is sent while another choice is pending");
+    h.get_by_label("Choose how to update GridCraft");
+    h.get_by_label("Update").click();
+    h.run();
+    assert_eq!(installs(&sent), [Command::InstallAll { apps: vec!["photocraft".into(), "gridcraft".into()] }]);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Ask again how to update apps installed for everyone").click();
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().settings.keep_shared_installs.is_empty());
+    assert!(h.query_by_label("Ask again how to update apps installed for everyone").is_none());
 }

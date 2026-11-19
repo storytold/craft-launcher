@@ -150,6 +150,9 @@ pub struct BackendOptions {
     pub prereleases: bool,
     /// Downloads that may run at once (1 to 4; 0 for no limit).
     pub simultaneous_downloads: u8,
+    /// Windows: apps whose all-users copy the person chose to keep. Their updates stay all-users
+    /// and join Update all's one permission prompt, without asking where to update again.
+    pub keep_shared_installs: std::collections::BTreeSet<String>,
 }
 
 /// The answer to "what's the latest release of this app?".
