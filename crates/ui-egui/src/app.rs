@@ -1579,6 +1579,7 @@ mod tests {
     fn zoom_input_scales_and_resets_main_ui_and_notes_dialog() {
         use egui::gui_zoom::kb_shortcuts;
         let (mut launcher, _sent, ctx) = launcher();
+        ctx.options_mut(|o| o.zoom_with_keyboard = false);
         frame(&mut launcher, &ctx, 0.0);
         assert_eq!(ctx.zoom_factor(), 1.0);
 
