@@ -1,0 +1,450 @@
+# Turkish (tr) catalog for ArtCraft Launcher.
+# Format: context<TAB>source<TAB>translation
+# Empty context = plain UI string (tl!, t).
+# @id = command-id keyed (tr_id).
+# @plural = plural forms: one|other (Turkish uses 2 CLDR forms).
+# @msg = status/error message template (message, msg).
+# Other context = disambiguation for tr_ctx.
+#
+# Clean-room: written from the plain meaning of ArtCraft Launcher's English labels in ordinary
+# Turkish computing vocabulary. Product, app and key-cap names keep their spelling.
+
+	A new version is available. Download it to replace this version?	Yeni bir sürüm mevcut. Bu sürümle değiştirmek için indirilsin mi?
+	A new version is available. Would you like to relaunch with the updated version?	Yeni bir sürüm mevcut. Güncellenmiş sürümle yeniden başlatmak ister misiniz?
+	A quote isn't closed.	Bir tırnak işareti kapatılmamış.
+	AI agents	Yapay zeka ajanları
+	Add	Ekle
+	Add desktop shortcut	Masaüstü kısayolu ekle
+	Added	Eklendi
+	Adds the Craft apps to that client. Restart the client afterwards.	Craft uygulamalarını bu istemciye ekler. Ardından istemciyi yeniden başlatın.
+	Advanced	Gelişmiş
+	All	Tümü
+	All releases	Tüm sürümler
+	App	Uygulama
+	App details	Uygulama ayrıntıları
+	Appearance	Görünüm
+	Apps agents can reach: {count}	Ajanların erişebildiği uygulamalar: {count}
+	Apps are placed inside this folder.	Uygulamalar bu klasörün içine yerleştirilir.
+	Apps on this computer	Bu bilgisayardaki uygulamalar
+	Apps you can install	Yükleyebileceğiniz uygulamalar
+	Apps you hid	Gizlediğiniz uygulamalar
+	Arch package (.pkg.tar.zst)	Arch paketi (.pkg.tar.zst)
+	ArtCraft	ArtCraft
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher {version} sürümünü bu kopyanın üzerine yükleyemiyor.
+	ArtCraft Launcher is still running	ArtCraft Launcher hâlâ çalışıyor
+	ArtCraft Launcher {version}	ArtCraft Launcher {version}
+	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} mevcut.
+	ArtCraft on GitHub	GitHub'da ArtCraft
+	ArtCraft on {name}	{name} üzerinde ArtCraft
+	Ascending	Artan
+	Ask for permission once when updating all apps	Tüm uygulamaları güncellerken bir kez izin iste
+	Auto	Otomatik
+	Automatically	Otomatik olarak
+	Automatically download and install updates	Güncellemeleri otomatik olarak indir ve yükle
+	Available	Kullanılabilir
+	Available to install	Yüklenebilir
+	Browse…	Gözat…
+	Cancel	İptal
+	Cancel download	İndirmeyi iptal et
+	Cancel update	Güncellemeyi iptal et
+	Check for Updates	Güncellemeleri Kontrol Et
+	Check for updates	Güncellemeleri denetle
+	Checked {ago}	Son denetim: {ago}
+	Checked {ago} · using {sources}	Son denetim: {ago} · {sources} kullanılarak
+	Checking for updates…	Güncellemeler denetleniyor…
+	Checking…	Denetleniyor…
+	Choose version	Sürüm seç
+	Classic	Klasik
+	Classic apps	Klasik uygulamalar
+	Click to enlarge	Büyütmek için tıklayın
+	Click to reverse the order	Sıralamayı tersine çevirmek için tıklayın
+	Click to sort by this column	Bu sütuna göre sıralamak için tıklayın
+	Close	Kapat
+	Close (Esc)	Kapat (Esc)
+	Coming soon	Yakında
+	Community	Topluluk
+	Configuration copied.	Yapılandırma kopyalandı.
+	Copy JSON	JSON'ı kopyala
+	Copy for Codex (TOML)	Codex için kopyala (TOML)
+	Copy for VS Code	VS Code için kopyala
+	Copy the configuration and paste it into the client's MCP settings.	Yapılandırmayı kopyalayın ve istemcinin MCP ayarlarına yapıştırın.
+	Couldn't change the login item: {e}	Oturum açma öğesi değiştirilemedi: {e}
+	Couldn't check for updates: {f}	Güncellemeler denetlenemedi: {f}
+	Couldn't open {name}: {e}	{name} açılamadı: {e}
+	Custom folders use AppImage on Linux.	Özel klasörler Linux'ta AppImage kullanır.
+	Dark	Koyu
+	Debian package (.deb)	Debian paketi (.deb)
+	Default install folder	Varsayılan yükleme klasörü
+	Descending	Azalan
+	Discard download	İndirmeyi sil
+	Discord	Discord
+	Disk image (.dmg)	Disk görüntüsü (.dmg)
+	Dismiss	Reddet
+	Done	Bitti
+	Download	İndir
+	Download again	Tekrar indir
+	Download cancelled	İndirme iptal edildi
+	Download for {os}	{os} için indir
+	Download paused	İndirme duraklatıldı
+	Download selected version	Seçilen sürümü indir
+	Download size: {size}	İndirme boyutu: {size}
+	Downloading	İndiriliyor
+	Downloading {done} of {total}	İndiriliyor: {done} / {total}
+	Downloading…	İndiriliyor…
+	Downloads for {platform}	{platform} için indirmeler
+	Downloads running together share your connection, so each one is slower.	Aynı anda yürütülen indirmeler bağlantınızı paylaşır, bu nedenle her biri daha yavaş olur.
+	Downloads the new version, replaces this one and opens it again	Yeni sürümü indirir, mevcut sürümle değiştirir ve yeniden açar
+	Enable automatic installs in Settings to follow new nightly builds.	Yeni gecelik derlemeleri takip etmek için Ayarlar'da otomatik yüklemeleri etkinleştirin.
+	Enlarge picture	Resmi büyüt
+	Every Craft app	Her Craft uygulaması
+	Features	Özellikler
+	Flags added each time the app is opened	Uygulama her açıldığında eklenen bayraklar
+	Flatpak bundle	Flatpak paketi
+	Frequently used	Sık kullanılanlar
+	Full changelog	Tam değişiklik günlüğü
+	GitHub	GitHub
+	GitHub limit hit; back in {min} min	GitHub sınırına ulaşıldı; {min} dk sonra hazır
+	GitHub repository	GitHub deposu
+	GitHub's hourly limit was reached; full details return in {min} min	GitHub'ın saatlik sınırına ulaşıldı; tüm ayrıntılar {min} dk içinde geri gelecek
+	Grid	Izgara
+	Hidden Apps	Gizli Uygulamalar
+	Hide App	Uygulamayı Gizle
+	Hide ArtCraft Launcher from the Dock while in the background	Arka plandayken ArtCraft Launcher'ı Dock'tan gizle
+	Hide community apps	Topluluk uygulamalarını gizle
+	Include pre-releases (betas and release candidates)	Ön sürümleri dahil et (beta ve sürüm adayları)
+	Inspired by	Esin kaynağı
+	Install	Yükle
+	Install cancelled	Yükleme iptal edildi
+	Install cancelled. The download is kept for the next try.	Yükleme iptal edildi. İndirilen dosya bir sonraki deneme için saklanır.
+	Install folder	Yükleme klasörü
+	Install new apps as	Yeni uygulamaları şu biçimde yükle
+	Install version {version}	{version} sürümünü yükle
+	Installed	Yüklü
+	Installed apps with a newer version	Daha yeni sürümü olan yüklü uygulamalar
+	Installed version	Yüklü sürüm
+	Installed · latest {latest}	Yüklü · en son {latest}
+	Installed · up to date	Yüklü · güncel
+	Installer (.msi)	Yükleyici (.msi)
+	Installing for {platform}	{platform} için yükleniyor
+	Installing on Linux	Linux'a yükleniyor
+	Installing on Windows	Windows'a yükleniyor
+	Installing, then restarting…	Yükleniyor, ardından yeniden başlatılacak…
+	Installing…	Yükleniyor…
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Sistem tepsisinde: tepsi simgesinden açabilir veya çıkabilirsiniz ya da bunu ayarlardan kapatabilirsiniz.
+	Join the ArtCraft Discord	ArtCraft Discord'una katılın
+	Join the ArtCraft community on Discord	Discord'daki ArtCraft topluluğuna katılın
+	Join the Discord	Discord'a katılın
+	Keep running in the tray when the window is closed	Pencere kapatıldığında sistem tepsisinde çalışmaya devam et
+	Language	Dil
+	Last updated: {date}	Son güncelleme: {date}
+	Later	Daha sonra
+	Latest	En son
+	Latest release	En son sürüm
+	Latest version	En son sürüm
+	Launch options…	Başlatma seçenekleri…
+	Launcher version	Başlatıcı sürümü
+	Learn more	Daha fazla bilgi
+	Let AI agents use Craft apps	Yapay zeka ajanlarının Craft uygulamalarını kullanmasına izin ver
+	Light	Açık
+	Like {name}	{name} gibi
+	Loading ArtCraft Launcher…	ArtCraft Launcher yükleniyor…
+	Loading pictures…	Resimler yükleniyor…
+	Match system	Sistemle eşleştir
+	Maximize	Büyüt
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak paketlerini ArtCraft OCI'ye geçir (deneysel)
+	Minimize	Küçült
+	More actions for {name}	{name} için diğer işlemler
+	Move down	Aşağı taşı
+	Move up	Yukarı taşı
+	NEW	YENİ
+	Name	Ad
+	Name (A–Z)	Ad (A–Z)
+	Name (Z–A)	Ad (Z–A)
+	New	Yeni
+	New apps	Yeni uygulamalar
+	New installs use this folder. Updates stay in their current location.	Yeni yüklemeler bu klasörü kullanır. Güncellemeler mevcut konumlarında kalır.
+	Newest release	En yeni sürüm
+	Next app	Sonraki uygulama
+	Next picture (→)	Sonraki resim (→)
+	Nightly	Gecelik
+	Nightly (none published yet)	Gecelik (henüz yayımlanan yok)
+	No apps match	Eşleşen uygulama yok
+	No downloads for this system	Bu sistem için indirme yok
+	No limit	Sınır yok
+	No notes were published with this release.	Bu sürümle birlikte not yayınlanmadı.
+	No release published yet	Henüz yayınlanmış sürüm yok
+	Not available	Kullanılamıyor
+	Not available here	Burada mevcut değil
+	Not checked yet	Henüz denetlenmedi
+	Not installed	Yüklü değil
+	Notify me when an installed app has an update	Yüklü bir uygulama için güncelleme olduğunda beni bilgilendir
+	OK	Tamam
+	Offline	Çevrimdışı
+	Older launcher versions require a manual reinstall.	Daha eski başlatıcı sürümleri elle yeniden yükleme gerektirir.
+	On Linux, custom folders use AppImage format.	Linux'ta özel klasörler AppImage biçimini kullanır.
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Güncellemede, eşleşen paket mevcut olduğunda birinci taraf uygulamaları ona geçir. Aksi halde paket dosyalarını kullanmaya devam et.
+	Only when I ask	Yalnızca ben istediğimde
+	Open	Aç
+	Open ArtCraft Launcher to update.	Güncellemek için ArtCraft Launcher'ı açın.
+	Open Source Tools for Creatives, Makers, and Builders	Yaratıcılar, Üreticiler ve Geliştiriciler için Açık Kaynaklı Araçlar
+	Open link	Bağlantıyı aç
+	Open on GitHub	GitHub'da Aç
+	Open {installed} without updating. {latest} stays available.	Güncellemeden {installed} sürümünü aç. {latest} kullanılabilir durumda kalır.
+	Open {version}	{version} sürümünü aç
+	Other clients	Diğer istemciler
+	Pause download	İndirmeyi duraklat
+	Pictures couldn't be loaded. Reopen this page to try again.	Resimler yüklenemedi. Tekrar denemek için bu sayfayı yeniden açın.
+	Pin to top	Üste sabitle
+	Pin {name} to top	{name} uygulamasını üste sabitle
+	Pinned	Sabitlendi
+	Platforms	Platformlar
+	Portable (.zip)	Taşınabilir (.zip)
+	Previous app	Önceki uygulama
+	Previous picture (←)	Önceki resim (←)
+	Questions, ideas and news from the ArtCraft team	ArtCraft ekibinden sorular, fikirler ve haberler
+	Quick install	Hızlı yükleme
+	Quit ArtCraft Launcher	ArtCraft Launcher'dan Çık
+	RPM package (.rpm)	RPM paketi (.rpm)
+	Recently updated	Son güncellenenler
+	Reconnecting…	Yeniden bağlanılıyor…
+	Reinstall	Yeniden yükle
+	Release notes	Sürüm notları
+	Released	Yayınlandı
+	Released {date}	{date} tarihinde yayınlandı
+	Releases	Sürümler
+	Remove	Kaldır
+	Removing…	Kaldırılıyor…
+	Reorder {name}	{name} sırasını değiştir
+	Replace	Değiştir
+	Replace what's there?	Mevcut olan değiştirilsin mi?
+	Restart {client}	{client} uygulamasını yeniden başlat
+	Restarting {client}…	{client} yeniden başlatılıyor…
+	Restore	Geri yükle
+	Resume	Devam et
+	Resume download	İndirmeyi sürdür
+	Retry install	Yüklemeyi yeniden dene
+	Retry update	Güncellemeyi yeniden dene
+	Retry update to {version}	{version} sürümüne güncellemeyi yeniden dene
+	Running in the background	Arka planda çalışıyor
+	Save	Kaydet
+	Search apps	Uygulama ara
+	Separate flags with spaces. Quote a value that has spaces in it.	Bayrakları boşluklarla ayırın. İçinde boşluk bulunan bir değeri tırnak içine alın.
+	Settings	Ayarlar
+	Show ArtCraft Launcher	ArtCraft Launcher'ı göster
+	Show apps as a table	Uygulamaları tablo olarak göster
+	Show apps as cards	Uygulamaları kart olarak göster
+	Show in Explorer	Explorer'da göster
+	Show in Files	Dosyalar'da göster
+	Show in Finder	Finder'da göster
+	Show the window on the current desktop	Pencereyi geçerli masaüstünde göster
+	Show {n} more changes	{n} değişiklik daha göster
+	Simultaneous downloads	Eş zamanlı indirmeler
+	Sort	Sırala
+	Start ArtCraft Launcher when I log in	Oturum açtığımda ArtCraft Launcher'ı başlat
+	Status	Durum
+	Stop waiting; the update can be started again later	Beklemeyi durdur; güncelleme daha sonra yeniden başlatılabilir
+	Suite order	Paket sırası
+	System default	Sistem varsayılanı
+	System package (recommended)	Sistem paketi (önerilen)
+	Table	Tablo
+	Tarball (.tar.gz)	Tarball (.tar.gz)
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft ağ geçidi (craft-ai-mcp) başlatıcının yanında yüklü değil.
+	The OCI repository is a preview with GPG verification disabled.	OCI deposu, GPG doğrulaması devre dışı bırakılmış bir önizlemedir.
+	The app will be moved to the Trash. Your documents and settings stay.	Uygulama Çöp Sepeti'ne taşınacak. Belgeleriniz ve ayarlarınız korunur.
+	The app will be removed. Your documents and settings stay.	Uygulama kaldırılacak. Belgeleriniz ve ayarlarınız korunur.
+	The download is still here. It's checked again, then installed.	İndirilen dosya hâlâ burada. Yeniden kontrol edilip yüklenecek.
+	The system manages install locations here.	Burada yükleme konumlarını sistem yönetir.
+	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Bu notlar alınamadı (GitHub istek sınırına ulaşıldı). Sürüm sayfasında bulunabilirler.
+	Unhide App	Uygulamayı Göster
+	Uninstall	Kaldır
+	Uninstall cancelled	Kaldırma iptal edildi
+	Uninstall {name}?	{name} kaldırılsın mı?
+	Uninstall…	Kaldır…
+	Unlock	Kilidi aç
+	Unlock version?	Sürüm kilidi açılsın mı?
+	Unpin	Sabitlemeyi kaldır
+	Unpin {name}	{name} sabitlemesini kaldır
+	Update	Güncelleme
+	Update 1 app	1 uygulamayı güncelle
+	Update all ({count})	Tümünü güncelle ({count})
+	Update and restart	Güncelle ve yeniden başlat
+	Update available	Güncelleme mevcut
+	Update cancelled	Güncelleme iptal edildi
+	Update paused	Güncelleme duraklatıldı
+	Update to {v}	{v} sürümüne güncelle
+	Updates	Güncellemeler
+	Updates always use the format an app was installed with.	Güncellemeler her zaman uygulamanın yüklendiği biçimi kullanır.
+	Updating…	Güncelleniyor…
+	Use default	Varsayılanı kullan
+	Verifying checksum…	Sağlama toplamı doğrulanıyor…
+	Verifying…	Doğrulanıyor…
+	Version	Sürüm
+	Version pinned to {version}. Click to unlock.	Sürüm {version} olarak sabitlendi. Kilidi açmak için tıklayın.
+	Version {latest}	Sürüm {latest}
+	Version {version}	Sürüm {version}
+	Version {version} installed	Sürüm {version} yüklü
+	Visit getartcraft.com	getartcraft.com adresini ziyaret et
+	Waiting for another app…	Başka bir uygulama bekleniyor…
+	Waiting for another download…	Başka bir indirme bekleniyor…
+	Waiting for other installs…	Diğer yüklemeler bekleniyor…
+	Website	Web sitesi
+	Website (coming soon)	Web sitesi (yakında)
+	What's new	Yenilikler
+	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Açık olduğunda, başlatıcıyı menü çubuğundan açmak penceresini bulunduğunuz masaüstüne getirir. Kapalı olduğunda, macOS sizi pencerenin bulunduğu masaüstüne geçirir.
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Bu seçenek açıkken Claude, Cursor veya LM Studio gibi MCP kullanan yapay zeka uygulamaları, tek bir giriş üzerinden yüklü tüm Craft uygulamalarıyla çalışabilir. Kapalıyken hiçbir ajan bunlara erişemez ve buraya eklenen girişler kaldırılır.
+	Windows will remove it like any installed program. Your documents and settings stay.	Windows, uygulamayı yüklü herhangi bir program gibi kaldıracaktır. Belgeleriniz ve ayarlarınız korunur.
+	Your files may not open in older versions.	Dosyalarınız daha eski sürümlerde açılmayabilir.
+	Your system's package manager will remove it, and may ask for your password. Your documents and settings stay.	Sisteminizin paket yöneticisi uygulamayı kaldıracaktır ve parolanızı isteyebilir. Belgeleriniz ve ayarlarınız korunur.
+	by {name}	{name} tarafından
+	installed	yüklü
+	just now	az önce
+	latest {version}	en son {version}
+	link	bağlantı
+	yesterday	dün
+	{app} is pinned to {version}. Follow the latest release instead?	{app}, {version} sürümüne sabitlenmiş. Bunun yerine en son sürüm takip edilsin mi?
+	{a} and {b}	{a} ve {b}
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client}, MCP sunucularını yalnızca başlatıldığında yükler; bu nedenle Craft uygulamaları yeniden başlatma sonrasında görünür. Yeniden başlatmak, {client} uygulamasını o sırada yazmakta olduğu bir yanıt da dahil olmak üzere kapatır.
+	{count} updates are available	{count} güncelleme mevcut
+	{done} downloaded	{done} indirildi
+	{done} of {total}	{done} / {total}
+	{done} of {total} downloaded	{done} / {total} indirildi
+	{installed} installed · latest {latest}	{installed} yüklü · en son {latest}
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} yayımlandı, ancak ArtCraft Launcher bunu bu kopyanın üzerine yükleyemiyor.
+	{month} {day}, {year}	{day} {month} {year}
+	{name} details	{name} ayrıntıları
+	{name} icon	{name} simgesi
+	{name} launch options	{name} başlatma seçenekleri
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} açılamadı: başlatma seçeneklerindeki bir tırnak işareti kapatılmamış.
+	{name} {version}	{name} {version}
+	{name} {v} is available	{name} {v} mevcut
+	{path} already exists. Installing {name} will overwrite it.	{path} zaten var. {name} yüklenirse üzerine yazılacak.
+	{version} (latest release)	{version} (en son sürüm)
+	{version} installed → {latest} released	{version} yüklü → {latest} yayınlandı
+	⊞  Grid	⊞  Izgara
+	☰  Table	☰  Tablo
+	🔍  Search apps	🔍  Uygulama ara
+@id	app.download	İndir
+@id	app.github	GitHub
+@id	app.install	Yükle
+@id	app.notes	Notlar
+@id	app.open	Aç
+@id	app.reinstall	Yeniden yükle
+@id	app.releases	Sürümler
+@id	app.reveal	Göster
+@id	app.uninstall	Kaldır
+@id	app.update	Güncelle
+@id	app.website	Web sitesi
+@id	appearance.theme	Tema
+@id	filter.all	Tümü
+@id	filter.installed	Yüklü
+@id	filter.notinstalled	Yüklü değil
+@id	filter.updates	Güncellemeler
+@id	help.discord	Discord
+@id	help.github	GitHub
+@id	help.website	Web sitesi
+@id	launcher.dismiss	Kapat
+@id	launcher.download	İndir
+@id	launcher.notes	Notlar
+@id	launcher.update	Güncelle
+@id	linux.preferred_kind	Tercih edilen paket
+@id	settings.open	Ayarlar
+@id	settings.quit	Çıkış
+@id	sort.inspired	Önerilen
+@id	sort.installed	Yüklü
+@id	sort.latest	En son
+@id	sort.name	Ad
+@id	sort.released	Yayın tarihi
+@id	sort.status	Durum
+@id	sort.suite	Paket
+@id	tray.close_to_tray	Tepsiye küçült
+@id	tray.login_item	Oturum açılışında başlat
+@id	tray.show_on_current_desktop	Geçerli masaüstünde göster
+@id	update.check	Denetle
+@id	update.check_auto	Otomatik denetle
+@id	update.notify	Bildir
+@id	update.prereleases	Ön sürümler
+@id	view.grid	Izgara
+@id	view.table	Tablo
+@msg	A desktop shortcut named {name} already exists	{name} adlı bir masaüstü kısayolu zaten var
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher penceresini {backend} üzerinde başlatamadı: {e}
+@msg	Couldn't create the desktop shortcut: {e}	Masaüstü kısayolu oluşturulamadı: {e}
+@msg	Couldn't open {name}: {e}	{name} açılamadı: {e}
+@msg	Desktop shortcut created for {name}	{name} için masaüstü kısayolu oluşturuldu
+@msg	Download cancelled	İndirme iptal edildi
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} Çöp Sepeti'ne taşınamadı ({reason}). Bunun yerine Finder üzerinden kaldırın.
+@msg	couldn't use install folder {path}: {reason}	kurulum klasörü {path} kullanılamadı: {reason}
+@msg	custom install folders aren't supported on this system	özel kurulum klasörleri bu sistemde desteklenmiyor
+@msg	this release has no AppImage for a custom install folder	bu sürümde özel kurulum klasörü için AppImage bulunmuyor
+@msg	{name} installed: {version}	{name} kuruldu: {version}
+@msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} kuruldu: {version} (bu sürümde sağlama toplamı yayımlanmadığından yalnızca boyutu denetlendi)
+@msg	{name} is running. Quit it, then try again.	{name} çalışıyor. Kapatıp yeniden deneyin.
+@msg	{name} updated to {version}	{name}, {version} sürümüne güncellendi
+@msg	{name} updated to {version} (this release publishes no checksum, so only its size was checked)	{name}, {version} sürümüne güncellendi (bu sürümde sağlama toplamı yayımlanmadığından yalnızca boyutu denetlendi)
+@msg	{name} was installed from the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg})	{name}, AUR üzerinden ({pkg}) kuruldu. AUR yardımcınızla güncelleyin (örneğin: yay -S {pkg})
+@msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name}, AUR üzerinden ({pkg}) kuruldu. {cmd} ile güncelleyin
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name}, {repo} deposundan veya AUR üzerinden ({pkg}) kuruldu. AUR yardımcınızla (örneğin: yay -S {pkg}) veya sudo pacman -Syu ile güncelleyin
+@msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name}, {repo} deposundan veya AUR üzerinden ({pkg}) kuruldu. {cmd} veya sudo pacman -Syu ile güncelleyin
+@msg	{name} was removed	{name} kaldırıldı
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} zaten mevcut ve ArtCraft Launcher tarafından kurulmamış
+@plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} güncelleme mevcut|ArtCraft Launcher · {n} güncelleme mevcut
+@plural	{n} app|{n} apps	{n} uygulama|{n} uygulama
+@plural	{n} day ago|{n} days ago	{n} gün önce|{n} gün önce
+@plural	{n} h ago|{n} h ago	{n} sa önce|{n} sa önce
+@plural	{n} min ago|{n} min ago	{n} dk önce|{n} dk önce
+anicraft	2D vector animation	2B vektör animasyonu
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Sekiz hazır yumuşatma ayarı ve özel yumuşatma eğrileriyle klasik ara kareler, ayrıca bir vektör konturunu diğerine dönüştüren şekil ara kareleri.
+anicraft	Familiar by design	Tasarımıyla tanıdık
+anicraft	Open-source 2D vector animation, built in pure Rust.	Tamamen Rust ile geliştirilmiş açık kaynaklı 2B vektör animasyonu.
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Sahne, araçlar, zaman çizelgesi, katmanlar, anahtar kareler, Özellikler ve Kitaplık animatörlerin beklediği yerlerde; ara kareler için soğan kabuğu görünümüyle.
+anicraft	Tweens that ease	Yumuşak geçişli ara kareler
+anicraft	Vector animation on a timeline you know.	Tanıdık bir zaman çizelgesinde vektör animasyonu.
+artcraft	AI image and video creation	Yapay zeka ile görsel ve video oluşturma
+cadcraft	Computer-aided design and drafting	Bilgisayar destekli tasarım ve teknik çizim
+column	App	Uygulama
+column	Author	Yazar
+column	Installed	Kurulu
+column	Latest	En Yeni
+column	Released	Yayın Tarihi
+column	Version	Sürüm
+craft-anything	Find out how any software works, then craft your own	Herhangi bir yazılımın nasıl çalıştığını keşfedin, ardından kendinizinkini oluşturun
+deckcraft	Presentations and slide shows	Sunumlar ve slayt gösterileri
+designcraft	Page layout and publishing	Sayfa düzeni ve yayıncılık
+effectcraft	Motion graphics and visual effects	Hareketli grafikler ve görsel efektler
+figcraft	Interface design and prototyping	Arayüz tasarımı ve prototipleme
+filmcraft	Video editing, color and sound	Video düzenleme, renk ve ses
+filter	Installed	Kurulu
+gridcraft	Spreadsheets and data	Elektronik tablolar ve veri
+lightcraft	Photo library and raw development	Fotoğraf arşivi ve RAW işleme
+mailcraft	Mail, calendar and contacts	Posta, takvim ve kişiler
+materialcraft	Build materials with node graphs.	Düğüm grafikleriyle materyaller oluşturun.
+materialcraft	Combine noises, patterns and filters.	Gürültüleri, desenleri ve filtreleri birleştirin.
+materialcraft	Create tileable PBR materials and export texture maps.	Döşenebilir PBR materyalleri oluşturun ve doku haritalarını dışa aktarın.
+materialcraft	Live previews	Canlı önizlemeler
+materialcraft	Node graphs	Düğüm grafikleri
+materialcraft	Preview materials in 2D and on 3D models.	Materyalleri 2B olarak ve 3B modeller üzerinde önizleyin.
+materialcraft	Procedural material design	Prosedürel materyal tasarımı
+month	Apr	Nis
+month	Aug	Ağu
+month	Dec	Ara
+month	Feb	Şub
+month	Jan	Oca
+month	Jul	Tem
+month	Jun	Haz
+month	Mar	Mar
+month	May	May
+month	Nov	Kas
+month	Oct	Eki
+month	Sep	Eyl
+pdfcraft	Reading, organizing and protecting PDFs	PDF okuma, düzenleme ve koruma
+photocraft	Image editing	Görüntü düzenleme
+solidcraft	Parametric 3D CAD	Parametrik 3B CAD
+soundcraft	Recording, editing and mixing audio	Ses kaydı, düzenleme ve miksaj
+texturecraft	3D texture painting	3B doku boyama
+texturecraft	Bake mesh maps and use smart materials.	Örgü haritalarını pişirin ve akıllı materyalleri kullanın.
+texturecraft	Materials	Materyaller
+texturecraft	Mesh maps	Örgü haritaları
+texturecraft	Paint materials on 3D models and export textures.	3B modeller üzerine materyal boyayın ve dokuları dışa aktarın.
+texturecraft	Paint textures on 3D models.	3B modeller üzerine doku boyayın.
+vectorcraft	Vector illustration	Vektör çizim
+wordcraft	Writing and document design	Metin yazımı ve belge tasarımı
+	Craft App Suite	Craft App Suite

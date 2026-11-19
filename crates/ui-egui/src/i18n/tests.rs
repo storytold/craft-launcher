@@ -415,6 +415,24 @@ fn bosnian_locales_and_plurals_work() {
 }
 
 #[test]
+fn turkish_locales_and_plurals_work() {
+    for tag in ["tr", "tr-TR", "tr_TR.UTF-8", "tr-CY", "TR_tr"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::TR), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "tr-TR", "en-US"]), Some(Lang::TR));
+    // After a number the noun stays singular; 1 is still the "one" form.
+    for n in [0, 1, 2, 21, 100] {
+        assert_eq!(trn(Lang::TR, n, "{n} app", "{n} apps"), format!("{n} uygulama"));
+        assert_eq!(trn(Lang::TR, n, "{n} day ago", "{n} days ago"), format!("{n} gün önce"));
+    }
+    assert_eq!(trn(Lang::TR, 2, "{n} unknown item", "{n} unknown items"), "2 unknown items");
+    assert_eq!(tr(Lang::TR, "Untranslated diagnostic"), "Untranslated diagnostic");
+    assert_eq!(super::tr_ctx(Lang::TR, "month", "Mar"), "Mar");
+    assert_eq!(tr(Lang::TR, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::TR, "PhotoCraft updated to 0.5.0"), "PhotoCraft, 0.5.0 sürümüne güncellendi");
+}
+
+#[test]
 fn polish_locales_resolve() {
     for tag in ["pl", "pl-PL", "pl_PL.UTF-8", "PL_pl"] {
         assert_eq!(lang_from_tag(tag), Some(Lang::PL), "{tag}");
