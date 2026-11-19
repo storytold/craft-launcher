@@ -31,10 +31,11 @@ fn offset(secs: i64) -> i64 {
     chrono::DateTime::from_timestamp(secs, 0).map_or(0, |at| i64::from(zone.offset_from_utc_datetime(&at.naive_utc()).fix().local_minus_utc()))
 }
 
-/// The system zone: `iana-time-zone` reads the zone name the OS is set to (`TZ`, `/etc/localtime`,
-/// the registry, `CFTimeZone`), `chrono-tz` turns the name into rules with summer time. Looked up
-/// again once [`RECHECK`] has passed, whether it was found or not, so a failure (a bad `TZ`, a bare
-/// container) is not searched for on every date of every frame.
+/// The system zone: `TZ` when it names an IANA zone, otherwise the zone name the OS is set to as
+/// `iana-time-zone` reads it (`/etc/localtime`, the registry, `CFTimeZone`; it never reads `TZ`
+/// itself), with `chrono-tz` turning the name into rules with summer time. Looked up again once
+/// [`RECHECK`] has passed, whether it was found or not, so a failure (a bare container) is not
+/// searched for on every date of every frame.
 #[cfg(not(target_arch = "wasm32"))]
 fn system_zone() -> Option<chrono_tz::Tz> {
     use std::sync::{Mutex, PoisonError};
@@ -55,8 +56,20 @@ fn system_zone() -> Option<chrono_tz::Tz> {
 /// One uncached lookup of the system zone; the error says which step failed.
 #[cfg(not(target_arch = "wasm32"))]
 fn read_system_zone() -> Result<chrono_tz::Tz, String> {
+    if let Some(zone) = zone_from_tz(std::env::var("TZ").ok().as_deref()) {
+        return Ok(zone);
+    }
     let name = iana_time_zone::get_timezone().map_err(|e| e.to_string())?;
     name.parse::<chrono_tz::Tz>().map_err(|e| format!("`{name}`: {e}"))
+}
+
+/// The zone a `TZ` value names, when it is an IANA zone name (`Asia/Tokyo`, or `:Asia/Tokyo` in
+/// the POSIX spelling). `None` when `TZ` is unset or empty, a POSIX rule string
+/// (`EST5EDT,M3.2.0,M11.1.0`) or a file path, so the zone the OS is set to is used instead.
+#[cfg(not(target_arch = "wasm32"))]
+fn zone_from_tz(tz: Option<&str>) -> Option<chrono_tz::Tz> {
+    let tz = tz?;
+    tz.strip_prefix(':').unwrap_or(tz).parse().ok()
 }
 
 /// Seconds east of UTC in the browser's time zone at `secs`; 0 when it gives nothing sensible.
@@ -85,5 +98,20 @@ mod tests {
         assert_eq!(civil_at(1_791_417_660, -7 * 3600), (2026, 10, 7));
         // Out-of-range offsets saturate rather than overflow.
         assert_eq!(civil_at(i64::MAX, 3600), civil_at(i64::MAX, 0));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn tz_wins_when_it_names_a_zone() {
+        use super::zone_from_tz;
+        use chrono_tz::Tz;
+        assert_eq!(zone_from_tz(Some("Asia/Tokyo")), Some(Tz::Asia__Tokyo));
+        // POSIX lets `TZ` start with a colon.
+        assert_eq!(zone_from_tz(Some(":America/Chicago")), Some(Tz::America__Chicago));
+        // A rule string, a path or an empty value leaves it to the zone the OS is set to.
+        assert_eq!(zone_from_tz(Some("EST5EDT,M3.2.0,M11.1.0")), None);
+        assert_eq!(zone_from_tz(Some("/usr/share/zoneinfo/Asia/Tokyo")), None);
+        assert_eq!(zone_from_tz(Some("")), None);
+        assert_eq!(zone_from_tz(None), None);
     }
 }

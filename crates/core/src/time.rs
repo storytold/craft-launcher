@@ -70,35 +70,28 @@ pub fn parse_rfc3339(text: &str) -> Option<i64> {
     Some(days_from_civil(year, month, day)? * 86_400 + hour * 3600 + minute * 60 + second - offset)
 }
 
-/// 1970-01-01. `NaiveDate`'s `Default` is the Unix epoch (`NaiveDate::UNIX_EPOCH` needs chrono
-/// features this wasm-safe build leaves off).
-fn unix_epoch() -> NaiveDate {
-    NaiveDate::default()
-}
-
 /// Days since 1970-01-01 (through chrono's civil calendar). A day past the month's length rolls
 /// over the way the old Hinnant arithmetic did (e.g. `2026-02-30` → `2026-03-02`). `None` for a
 /// year outside chrono's range, or a day before the 1st.
 fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
     let first = NaiveDate::from_ymd_opt(i32::try_from(y).ok()?, u32::try_from(m).ok()?, 1)?;
     let date = first.checked_add_days(Days::new(u64::try_from(d.checked_sub(1)?).ok()?))?;
-    Some(date.signed_duration_since(unix_epoch()).num_days())
+    Some(i64::from(date.to_epoch_days()))
 }
 
 /// (year, month, day) for a Unix time (UTC). chrono's civil calendar spans only about ±262,000
 /// years, far narrower than the whole `i64` the old hand-rolled `Hinnant` code converted, so the
 /// instant is first moved into range by whole 400-year Gregorian cycles (the calendar repeats every
-/// 400 years = `146_097` days; the range extension standards/time.md sanctions) and the real year
+/// 400 years = `146_097` days; the range extension craft-contrib's standards/time.md sanctions) and the real year
 /// restored afterwards. chrono still does the month/day; the cycle count only shifts the year,
 /// keeping every `i64` exact (e.g. `i64::MAX` → year 292277026596, `i64::MIN` → year
 /// -292277022657), with no epoch fallback for a value the old code converted.
 pub fn civil_from_unix(secs: i64) -> (i64, u32, u32) {
-    let epoch = unix_epoch();
     let days = secs.div_euclid(86_400);
     let (cycles, rest) = (days.div_euclid(146_097), days.rem_euclid(146_097));
-    // `rest` is in `0..146_097` (under one 400-year cycle), so `epoch + rest days` always lands in
-    // 1970..=2369, comfortably inside chrono's range.
-    let date = u64::try_from(rest).ok().and_then(|n| epoch.checked_add_days(Days::new(n))).unwrap_or(epoch);
+    // `rest` is in `0..146_097` (under one 400-year cycle), so it fits an `i32` and the date always
+    // lands in 1970..=2369, comfortably inside chrono's range; the 1970-01-01 fallback is unreachable.
+    let date = i32::try_from(rest).ok().and_then(NaiveDate::from_epoch_days).unwrap_or_default();
     // Restore the real year through `i128` so `cycles * 400` can't overflow at the `i64` extremes.
     let y = i128::from(date.year()) + i128::from(cycles) * 400;
     let year = i64::try_from(y).unwrap_or(if y < 0 { i64::MIN } else { i64::MAX });

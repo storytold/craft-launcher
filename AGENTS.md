@@ -174,7 +174,7 @@ borrows the system's Georgian font the same way.
    GitHub release JSON fixtures (small, committed under `crates/core/tests/fixtures/`).
 5. When fetching anything, use a generic `ArtCraft-Launcher/<version>` User-Agent and never put
    a person's name, email or other personal details in requests.
-6. **Time in this repository goes through `chrono`.** Do not hand-roll calendar conversion, and do not add another date/time crate beside it. The system time zone is the one thing chrono lacks: `ui-egui` reads it with `iana-time-zone` and `chrono-tz` (`local_time.rs`). Past chrono's year range, `core::time` shifts by whole 400-year cycles (standards/time.md).
+6. **Time in this repository goes through `chrono`.** Do not hand-roll calendar conversion, and do not add another date/time crate beside it. The system time zone is the one thing chrono lacks: `ui-egui` reads it with `iana-time-zone` and `chrono-tz` (`local_time.rs`). Past chrono's year range, `core::time` shifts by whole 400-year cycles ([standards/time.md](https://github.com/storytold/craft-contrib/blob/main/standards/time.md)).
 
 ## 3. Before you finish a task
 

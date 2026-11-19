@@ -512,19 +512,17 @@ fn unix_now() -> i64 {
 /// `2026-10-10T12:00:00Z` (through chrono's civil calendar). chrono spans only about ±262,000
 /// years, far narrower than the whole `i64` the old hand-rolled Hinnant code converted, so the
 /// instant is moved into range by whole 400-year Gregorian cycles (146_097 days; the range
-/// extension standards/time.md sanctions) and the real year restored afterwards. chrono still does
+/// extension craft-contrib's standards/time.md sanctions) and the real year restored afterwards. chrono still does
 /// the month/day; the cycle count only shifts the year, keeping every `i64` exact (e.g.
 /// `i64::MAX` → year 292277026596) with no epoch fallback.
 fn rfc3339(secs: i64) -> String {
     use chrono::Datelike;
     let rem = secs.rem_euclid(86_400);
-    // `NaiveDate`'s `Default` is 1970-01-01.
-    let epoch = chrono::NaiveDate::default();
     let days = secs.div_euclid(86_400);
     let (cycles, rest) = (days.div_euclid(146_097), days.rem_euclid(146_097));
-    // `rest` is in `0..146_097` (under one 400-year cycle), so `epoch + rest days` lands in
-    // 1970..=2369, inside chrono's range.
-    let date = u64::try_from(rest).ok().and_then(|n| epoch.checked_add_days(chrono::Days::new(n))).unwrap_or(epoch);
+    // `rest` is in `0..146_097` (under one 400-year cycle), so it fits an `i32` and the date lands
+    // in 1970..=2369, inside chrono's range; the 1970-01-01 fallback is unreachable.
+    let date = i32::try_from(rest).ok().and_then(chrono::NaiveDate::from_epoch_days).unwrap_or_default();
     // Restore the real year through `i128` so `cycles * 400` can't overflow at the `i64` extremes.
     let y = i128::from(date.year()) + i128::from(cycles) * 400;
     let y = i64::try_from(y).unwrap_or(if y < 0 { i64::MIN } else { i64::MAX });
