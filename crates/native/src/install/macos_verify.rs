@@ -84,7 +84,7 @@ fn assessment_status(output: &crate::process::RunOutput) -> Result<AssessmentSta
     if stdout == "assessments enabled" && stderr.is_empty() {
         return Ok(AssessmentStatus::Enabled);
     }
-    Err(format!("macOS returned an unknown Gatekeeper status ({}), so the app wasn't installed", printed(stdout, stderr)))
+    Err(format!("macOS returned an unknown Gatekeeper status ({}), so the app wasn't installed", printed(&output.stdout, &output.stderr)))
 }
 
 /// How much of each `spctl --status` stream an error quotes. Its real answers are one short line.
@@ -92,9 +92,12 @@ const STATUS_QUOTE_CHARS: usize = 120;
 
 /// What `spctl --status` printed, for an error a person can send back: each non-empty stream,
 /// cut to [`STATUS_QUOTE_CHARS`] characters and quoted with newlines and control characters
-/// escaped, so an unexpected answer is visible instead of only called unknown.
+/// escaped, so an unexpected answer is visible instead of only called unknown. Takes the
+/// streams as printed: surrounding white space is dropped from an answer that has text, and a
+/// stream of only white space is shown as it is, so "printed nothing" means nothing at all.
 fn printed(stdout: &str, stderr: &str) -> String {
     let quote = |name: &str, text: &str| {
+        let text = if text.trim().is_empty() { text } else { text.trim() };
         let mut cut: String = text.chars().take(STATUS_QUOTE_CHARS).collect();
         if cut.len() < text.len() {
             cut.push('…');
@@ -327,6 +330,25 @@ mod tests {
         let error = assessment_status(&long).unwrap_err();
         assert!(error.contains(&format!("stdout \"{}…\"", "é".repeat(STATUS_QUOTE_CHARS))), "{error}");
         assert!(error.chars().count() < STATUS_QUOTE_CHARS + 200, "{error}");
+    }
+
+    #[test]
+    fn blank_gatekeeper_status_output_is_quoted_not_called_nothing() {
+        // Output that is only white space trims to nothing, but spctl did print it: the error
+        // shows it escaped, and keeps "printed nothing" for streams that really were empty.
+        let cases = [
+            (crate::process::RunOutput::success("\n"), r#"spctl printed stdout "\n""#),
+            (crate::process::RunOutput { stderr: " \t".into(), ..crate::process::RunOutput::success("") }, r#"spctl printed stderr " \t""#),
+            (
+                crate::process::RunOutput { stderr: "\r\n".into(), ..crate::process::RunOutput::success("  ") },
+                r#"spctl printed stdout "  ", stderr "\r\n""#,
+            ),
+        ];
+        for (output, quoted) in cases {
+            let error = assessment_status(&output).unwrap_err();
+            assert!(error.contains(quoted), "{error}");
+            assert!(!error.contains("printed nothing"), "{error}");
+        }
     }
 
     #[test]
