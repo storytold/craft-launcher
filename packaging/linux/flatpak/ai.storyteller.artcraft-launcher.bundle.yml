@@ -47,6 +47,11 @@ finish-args:
   # .deb and .rpm builds are the recommended way to run the launcher on Linux.
   - --talk-name=org.freedesktop.Flatpak
   - --filesystem=home
+  # "Start on login" (crates/native/src/login.rs) writes its entry into the host's autostart
+  # folder ($HOST_XDG_CONFIG_HOME/autostart, else ~/.config/autostart): the host session never
+  # reads the sandbox's own config folder. This grant exposes that folder at its host path, also
+  # when $XDG_CONFIG_HOME sits outside home, and :create makes it on a fresh account. Keep it.
+  - --filesystem=xdg-config/autostart:create
   # The version each app should follow (craft_update::pins), in a host folder of its own so the
   # Craft apps' Flatpaks can be granted read access to it alone. Usually inside home, but
   # $XDG_DATA_HOME may sit elsewhere; :create also makes the folder, so an app's grant mounts it.
@@ -56,6 +61,7 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm755 bin/artcraft-launcher /app/bin/artcraft-launcher
+      - install -Dm755 bin/craft-ai-mcp /app/bin/craft-ai-mcp
       - install -Dm644 share/applications/ai.storyteller.artcraft-launcher.desktop /app/share/applications/ai.storyteller.artcraft-launcher.desktop
       # Already has the release's version and date substituted by package.sh.
       - install -Dm644 share/metainfo/ai.storyteller.artcraft-launcher.metainfo.xml /app/share/metainfo/ai.storyteller.artcraft-launcher.metainfo.xml

@@ -32,7 +32,7 @@ impl Backend for Fake {
         std::mem::take(&mut self.events)
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage }
+        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
@@ -183,7 +183,16 @@ fn korean_switches_persists_and_keeps_install_actions() {
     snapshot(&mut h, "grid-ko-dark");
     h.get_by_label("모두 업데이트(2)").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
+    let installs: Vec<_> = sent
+        .borrow()
+        .iter()
+        .flat_map(|c| match c {
+            Command::Install { app } => std::slice::from_ref(app),
+            Command::InstallAll { apps } => apps.as_slice(),
+            _ => &[],
+        })
+        .cloned()
+        .collect();
     assert_eq!(installs, ["photocraft", "effectcraft"]);
     let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);
     table.run_steps(6);
