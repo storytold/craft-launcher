@@ -373,7 +373,7 @@ impl LauncherUi {
             ui.add_space(6.0);
 
             let mut address = self.account_edit.clone().unwrap_or_else(|| self.settings.account_service.clone());
-            ui.label(tl!("CollabCraft address"));
+            ui.label(tl!("Deployment address"));
             let field = egui::TextEdit::singleline(&mut address).hint_text("https://craft.example.com").desired_width(f32::INFINITY);
             let typing = ui.add(field);
             if typing.changed() {

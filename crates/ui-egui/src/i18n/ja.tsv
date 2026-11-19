@@ -413,7 +413,7 @@ filter	Installed	インストール済み
 # The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
 	Account	アカウント
 	Sign in here once. Every Craft app then uses it.	ここで一度サインインしてください。以降はすべての Craft アプリがこのサインインを使います。
-	CollabCraft address	CollabCraft のアドレス
+	Deployment address	デプロイメントのアドレス
 	Sign in	サインイン
 	Sign out	サインアウト
 	Open {name}	{name} を開く

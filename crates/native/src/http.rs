@@ -186,7 +186,7 @@ impl Http {
     }
 
     /// GET a small JSON resource, with an optional bearer token. Returns the status and the body,
-    /// because a refusal from a CollabCraft deployment is an answer carrying a reason.
+    /// because a refusal from a deployment is an answer carrying a reason.
     ///
     /// `bearer` goes into one header and is never logged. Nothing here formats it into a message.
     ///

@@ -131,7 +131,7 @@ pub struct Settings {
     pub hidden: std::collections::BTreeSet<String>,
     /// The one-time notice that closing the window keeps the launcher in the tray has been shown.
     pub tray_hint_shown: bool,
-    /// The CollabCraft deployment the suite signs in to, as a base URL.
+    /// The deployment the suite signs in to, as a base URL.
     ///
     /// Empty by default. Empty means the launcher offers nothing about an account and makes no
     /// request about one. Signing in is a choice somebody makes, never a step they are put through.

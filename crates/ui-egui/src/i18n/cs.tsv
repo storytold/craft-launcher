@@ -378,7 +378,7 @@ filter	Installed	Nainstalováno
 # The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
 	Account	Účet
 	Sign in here once. Every Craft app then uses it.	Přihlas se zde jednou. Každá aplikace Craft potom použije toto přihlášení.
-	CollabCraft address	Adresa CollabCraft
+	Deployment address	Adresa nasazení
 	Sign in	Přihlásit se
 	Sign out	Odhlásit se
 	Open {name}	Otevřít {name}

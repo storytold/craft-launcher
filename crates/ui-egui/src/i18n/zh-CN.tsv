@@ -378,7 +378,7 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 # The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
 	Account	账户
 	Sign in here once. Every Craft app then uses it.	在此登录一次。之后所有 Craft 应用都会使用该登录。
-	CollabCraft address	CollabCraft 地址
+	Deployment address	部署地址
 	Sign in	登录
 	Sign out	退出登录
 	Open {name}	打开 {name}

@@ -72,7 +72,7 @@ platform has file modes.
 ```
 
 * `format` is `1`. A reader that finds a higher number refuses the file. It never guesses.
-* `service` is the CollabCraft deployment's base URL with no trailing slash.
+* `service` is the deployment's base URL with no trailing slash.
 * `user` is the deployment's own identifier for the account: the OIDC subject, never an address.
 * `id` is the account handle. It is also the keychain entry's user name. It is the first 12 bytes of
   `SHA-256(service + "\n" + user)` in lower-case hex, giving 24 characters. Deriving it keeps one
@@ -87,7 +87,7 @@ platform has file modes.
 ```text
 service  ai.storyteller.artcraft.suite-account
 user     the account handle above
-secret   the CollabCraft session token, as returned by POST /auth/device/poll
+secret   the session token, as returned by POST /auth/device/poll
 ```
 
 One service name covers the whole suite. Every entry the suite ever writes is therefore findable and

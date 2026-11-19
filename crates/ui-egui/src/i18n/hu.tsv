@@ -411,7 +411,7 @@ filter	Installed	Telepítve
 # The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
 	Account	Fiók
 	Sign in here once. Every Craft app then uses it.	Jelentkezz be itt egyszer. Ezután minden Craft alkalmazás ezt használja.
-	CollabCraft address	CollabCraft címe
+	Deployment address	Deployment címe
 	Sign in	Bejelentkezés
 	Sign out	Kijelentkezés
 	Open {name}	{name} megnyitása

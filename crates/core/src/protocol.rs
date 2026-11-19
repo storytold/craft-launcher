@@ -96,7 +96,7 @@ pub enum Command {
     McpRestartClient {
         client: McpClient,
     },
-    /// Sign in to the configured CollabCraft deployment, for the whole Craft App Suite.
+    /// Sign in to the configured deployment, for the whole Craft App Suite.
     ///
     /// The answer arrives as [`Event::Account`]: first
     /// [`SuiteAccount::Waiting`] with the page to open in a browser, then
@@ -146,8 +146,8 @@ pub struct BackendOptions {
     pub prereleases: bool,
     /// Downloads that may run at once (1 to 4; 0 for no limit).
     pub simultaneous_downloads: u8,
-    /// The CollabCraft deployment the suite signs in to, as a base URL. Empty means none is
-    /// configured. Nothing about signing in is then offered or attempted.
+    /// The deployment the suite signs in to, as a base URL. Empty means none is configured.
+    /// Nothing about signing in is then offered or attempted.
     #[serde(default)]
     pub account_service: String,
 }

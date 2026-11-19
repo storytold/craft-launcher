@@ -465,7 +465,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 
 # The suite account: one sign-in every Craft app uses.
 	Account	Обліковий запис
-	CollabCraft address	Адреса CollabCraft
+	Deployment address	Адреса розгортання
 	No storage connected	Сховище не підключено
 	Open {name}	Відкрити {name}
 	Sign in	Увійти

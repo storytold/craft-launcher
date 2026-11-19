@@ -391,7 +391,7 @@ filter	Installed	Instaladas
 # The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
 	Account	Cuenta
 	Sign in here once. Every Craft app then uses it.	Inicia sesión aquí una vez. Después, todas las aplicaciones Craft la usan.
-	CollabCraft address	Dirección de CollabCraft
+	Deployment address	Dirección del despliegue
 	Sign in	Iniciar sesión
 	Sign out	Cerrar sesión
 	Open {name}	Abrir {name}
