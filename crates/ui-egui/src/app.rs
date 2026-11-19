@@ -846,32 +846,36 @@ impl LauncherUi {
 
     fn zoom_input(&mut self, ctx: &egui::Context) {
         use egui::gui_zoom::kb_shortcuts;
+        let notes_open = matches!(self.dialog, Some(Dialog::Notes(_)));
+        let handle_kb = notes_open || cfg!(not(target_arch = "wasm32"));
         let (delta, zoom_in, zoom_out, reset) = ctx.input_mut(|i| {
             let delta = i.zoom_delta();
-            let reset = i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
-            let zoom_in = i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY);
-            let zoom_out = i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);
+            let reset = handle_kb && i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
+            let zoom_in = handle_kb && (i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY));
+            let zoom_out = handle_kb && i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);
             (delta, zoom_in, zoom_out, reset)
         });
         let delta = if delta.is_finite() && delta > 0.0 { delta } else { 1.0 };
-        let factor = if zoom_in {
-            1.1
-        } else if zoom_out {
-            1.0 / 1.1
+        if notes_open {
+            let step = match (zoom_in, zoom_out) {
+                (true, false) => 0.1,
+                (false, true) => -0.1,
+                _ => 0.0,
+            };
+            self.notes_zoom = if reset { 1.0 } else { ((self.notes_zoom + step) * delta).clamp(0.5, 3.0) };
         } else {
-            delta
-        };
-
-        if matches!(self.dialog, Some(Dialog::Notes(_))) {
+            let factor = if zoom_in {
+                1.1
+            } else if zoom_out {
+                1.0 / 1.1
+            } else {
+                delta
+            };
             if reset {
-                self.notes_zoom = 1.0;
+                ctx.set_zoom_factor(1.0);
             } else if factor != 1.0 {
-                self.notes_zoom = (self.notes_zoom * factor).clamp(0.5, 3.0);
+                ctx.set_zoom_factor((ctx.zoom_factor() * factor).clamp(0.2, 5.0));
             }
-        } else if reset {
-            ctx.set_zoom_factor(1.0);
-        } else if factor != 1.0 {
-            ctx.set_zoom_factor((ctx.zoom_factor() * factor).clamp(0.2, 5.0));
         }
     }
 
