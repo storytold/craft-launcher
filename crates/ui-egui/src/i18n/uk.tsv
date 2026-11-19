@@ -142,6 +142,8 @@
 	Pin to top	Закріпити вгорі
 	Unpin	Відкріпити
 	Pinned	Закріплені
+	Pin {name} to top	Закріпити {name} вгорі
+	Unpin {name}	Відкріпити {name}
 	Reorder {name}	Змінити порядок: {name}
 	Move up	Вище
 	Move down	Нижче
