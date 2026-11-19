@@ -89,6 +89,7 @@
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	הוא נמצא בשורת המשימות: ניתן לפתוח אותו או לצאת ממנו דרך סמל שורת המשימות, או לכבות אפשרות זו בהגדרות.
 	Show the window on the current desktop	הצג את החלון בשולחן העבודה הנוכחי
 	Start ArtCraft Launcher when I log in	הפעל את ArtCraft Launcher בעת הכניסה למערכת
+	Hide ArtCraft Launcher from the Dock while in the background	הסתר את ArtCraft Launcher מה-Dock בזמן פעולה ברקע
 	Community	קהילה
 	Questions, ideas and news from the ArtCraft team	שאלות, רעיונות וחדשות מצוות ArtCraft
 	Appearance	מראה
@@ -376,7 +377,9 @@ texturecraft	Bake mesh maps and use smart materials.	אפיית מפות רשת 
 texturecraft	Paint textures on 3D models.	ציור טקסטורות על גבי מודלים בתלת־ממד.
 	Hide community apps	הסתרת יישומי קהילה
 	Pin to top	הצמד לראש
+	Pin {name} to top	הצמד את {name} לראש
 	Unpin	בטל הצמדה
+	Unpin {name}	בטל הצמדה של {name}
 	Pinned	מוצמד
 	Reorder {name}	סדר מחדש את {name}
 	Move up	הזז למעלה
