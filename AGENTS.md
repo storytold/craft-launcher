@@ -215,6 +215,14 @@ Packaging facts the code relies on:
   to know the running copy came from the MSI. Its shortcuts set AppUserModelID
   `ai.storyteller.artcraft-launcher`, which toast notifications need. `portable.txt` beside the exe switches on portable mode
   (`ArtCraftLauncherData\` next to the exe).
+- The MSI removes only folders it created: the Launcher folder and the (empty) `ArtCraft` suite
+  folder. `%LOCALAPPDATA%\Programs` is shared with the user and with every other per-user
+  application, so no `RemoveFolder`/`RemoveFile` row may name it or reach it through another
+  `Directory` row; `check-install-policy.ps1` enforces that on the compiled table and
+  `test-install-policy.ps1` proves the guard catches a regression. A launcher installed by an older MSI
+  still runs its own cached uninstall table during the next major upgrade, so that
+  one-time transition must be proved in a disposable VM, and release-noted on what it measures; the
+  new row set does not fix it.
 - The macOS bundle is `ArtCraft Launcher.app` (executable `Contents/MacOS/ArtCraft Launcher`), a
   normal Dock app that can also sit in the menu bar: `LSUIElement` must never be set.
 - Linux: the tray uses StatusNotifierItem over D-Bus and notifications use
