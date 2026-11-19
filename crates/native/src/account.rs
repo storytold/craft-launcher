@@ -1,8 +1,8 @@
 //! The suite's shared sign-in, as the launcher drives it.
 //!
 //! The launcher is the one place somebody signs in to the Craft App Suite. The account list and
-//! the keychain entry are [`craft_suite_account`]'s. This module is the half that talks to a
-//! CollabCraft deployment, against the contract in [`crate::suite_service`]. It runs the waiting
+//! the keychain entry are [`craft_suite_account`]'s. This module is the half that talks to the
+//! configured deployment, against the contract in [`crate::suite_service`]. It runs the waiting
 //! about on a worker thread, so the window never blocks on it.
 //!
 //! Nothing here is mandatory. With no deployment configured, [`Accounts`] reports
@@ -51,15 +51,15 @@ impl Drop for BusyGuard {
     }
 }
 
-/// A CollabCraft deployment over the launcher's own HTTPS agent. It then follows the same proxy and
-/// the same certificate trust as everything else the launcher fetches.
-pub struct CollabCraft {
+/// The configured deployment, over the launcher's own HTTPS agent. It then follows the same proxy
+/// and the same certificate trust as everything else the launcher fetches.
+pub struct Deployment {
     http: Http,
 }
 
-impl CollabCraft {
-    pub fn new(http: Http) -> CollabCraft {
-        CollabCraft { http }
+impl Deployment {
+    pub fn new(http: Http) -> Deployment {
+        Deployment { http }
     }
 
     fn url(base: &str, path: &str) -> String {
@@ -74,18 +74,18 @@ impl CollabCraft {
     }
 
     fn refused(status: u16, body: &str) -> String {
-        match CollabCraft::code(body) {
+        match Deployment::code(body) {
             Some(code) => format!("the service refused the request ({code})"),
             None => format!("the service answered HTTP {status}"),
         }
     }
 }
 
-impl Service for CollabCraft {
+impl Service for Deployment {
     fn start(&self, base: &str) -> Result<Flow, String> {
-        let (status, body) = self.http.post_json(&CollabCraft::url(base, "/auth/device/start"), "null", None)?;
+        let (status, body) = self.http.post_json(&Deployment::url(base, "/auth/device/start"), "null", None)?;
         if status != 200 {
-            return Err(CollabCraft::refused(status, &body));
+            return Err(Deployment::refused(status, &body));
         }
         #[derive(serde::Deserialize)]
         struct Started {
@@ -102,7 +102,7 @@ impl Service for CollabCraft {
         // The device code is a one-time handle the deployment issued. It still only ever goes in a
         // request body.
         let body = serde_json::json!({ "device_code": device_code }).to_string();
-        let (status, answer) = self.http.post_json(&CollabCraft::url(base, "/auth/device/poll"), &body, None)?;
+        let (status, answer) = self.http.post_json(&Deployment::url(base, "/auth/device/poll"), &body, None)?;
         // A 200 answer carries the bearer token in plain JSON. Held as `Zeroizing` rather than a
         // bare `String` so that plaintext is overwritten once it is parsed out, the same as
         // `Secret` does for the token after that.
@@ -119,12 +119,12 @@ impl Service for CollabCraft {
             // Still waiting on the browser. An ordinary state to loop on.
             428 => Ok(Polled::Pending),
             404 => Ok(Polled::Expired),
-            s => Err(CollabCraft::refused(s, &answer)),
+            s => Err(Deployment::refused(s, &answer)),
         }
     }
 
     fn identity(&self, base: &str, token: &Secret) -> Result<Option<Identity>, String> {
-        let (status, body) = self.http.get_json(&CollabCraft::url(base, "/api/v1/me"), Some(token.expose()))?;
+        let (status, body) = self.http.get_json(&Deployment::url(base, "/api/v1/me"), Some(token.expose()))?;
         match status {
             200 => {
                 #[derive(serde::Deserialize)]
@@ -152,16 +152,16 @@ impl Service for CollabCraft {
             }
             // The deployment no longer honours the token. Nobody is signed in.
             401 | 403 => Ok(None),
-            s => Err(CollabCraft::refused(s, &body)),
+            s => Err(Deployment::refused(s, &body)),
         }
     }
 
     fn revoke(&self, base: &str, token: &Secret) -> Result<(), String> {
-        let (status, body) = self.http.post_json(&CollabCraft::url(base, "/auth/logout"), "null", Some(token.expose()))?;
+        let (status, body) = self.http.post_json(&Deployment::url(base, "/auth/logout"), "null", Some(token.expose()))?;
         match status {
             // Already gone counts as ended.
             200 | 204 | 401 | 403 => Ok(()),
-            s => Err(CollabCraft::refused(s, &body)),
+            s => Err(Deployment::refused(s, &body)),
         }
     }
 }
@@ -201,7 +201,7 @@ impl Accounts {
     pub fn new(http: Http, emit: impl Fn(SuiteAccount) + Send + Sync + 'static) -> Accounts {
         Accounts {
             store: Arc::new(Store::open()),
-            service: Arc::new(CollabCraft::new(http)),
+            service: Arc::new(Deployment::new(http)),
             base: Mutex::new(String::new()),
             busy: Arc::new(AtomicBool::new(false)),
             refused: Arc::new(AtomicBool::new(false)),
@@ -303,10 +303,12 @@ impl Accounts {
             let states: Vec<SuiteAccount> = match current {
                 Ok(Some(id)) => match suite_service::sign_out(&store, service.as_ref(), &id) {
                     Ok(SignedOut::Everywhere) => vec![SuiteAccount::SignedOut],
-                    // The local half is done either way. The session may still be live at the
+                    // The local half is done either way, whether the deployment refused the call,
+                    // could not be reached, or (per `suite_service::sign_out`'s own validation
+                    // gate) was never called at all. The session may still be live at the
                     // deployment. The user therefore needs to hear that it was not told.
                     Ok(SignedOut::LocalOnly { why }) => {
-                        vec![SuiteAccount::SignedOut, SuiteAccount::Failed(format!("Signed out here. The service could not be told ({why})."))]
+                        vec![SuiteAccount::SignedOut, SuiteAccount::Failed(format!("Signed out here. The service was not told ({why})."))]
                     }
                     Err(e) => vec![SuiteAccount::Failed(e.to_string())],
                 },

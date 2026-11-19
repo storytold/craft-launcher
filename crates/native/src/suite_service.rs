@@ -1,10 +1,12 @@
-//! Talking to a CollabCraft deployment, behind a trait, and the sign-out that needs it.
+//! Talking to the configured deployment, behind a trait, and the sign-out that needs it.
 //!
 //! RFC-0025 (storytold/craft-contrib#35) decides that the shared account crate names no provider.
-//! Its point 3: the provider-neutral parts become the shared secret layer, and the CollabCraft
-//! device-flow client "moves out, to live beside the provider adapter it belongs to". The launcher
-//! holds the only implementation of that client, so the contract it implements lives here with it.
-//! `craft-suite-account` keeps the account list, the keychain entry and nothing about a provider.
+//! Its point 3: the provider-neutral parts become the shared secret layer, and the device-flow
+//! client "moves out, to live beside the provider adapter it belongs to". The client itself names
+//! no provider either: a configurable base URL and the four endpoints below are everything it
+//! speaks, and any deployment that serves them answers. The launcher holds the only implementation
+//! of that client today, so the contract it implements lives here with it. `craft-suite-account`
+//! keeps the account list, the keychain entry and nothing about a provider.
 //!
 //! The flow is the deployment's own. Nothing here invents it. A desktop application cannot host a
 //! redirect worth trusting. It therefore starts a sign-in, sends the user to a browser, and polls:
@@ -66,7 +68,8 @@ pub enum Polled {
     Expired,
 }
 
-/// One CollabCraft deployment, as the launcher's sign-in needs it.
+/// One suite deployment, speaking the device sign-in protocol above, as the launcher's sign-in
+/// needs it. Nothing here names a provider: any deployment that serves the four endpoints answers.
 pub trait Service {
     /// Begin a sign-in.
     fn start(&self, base: &str) -> Result<Flow, String>;
@@ -100,27 +103,37 @@ pub enum SignedOut {
 /// for that user, so one action signs the person out of the whole suite and of any other machine
 /// they left a session on.
 ///
-/// A deployment that cannot be reached does not block the local half. The user asked to be signed
-/// out. Clearing the entry and saying the server was not told beats leaving a readable token in
-/// the keychain.
-pub fn sign_out(store: &Store, service: &dyn Service, id: &str) -> Result<SignedOut, Error> {
+/// A deployment that cannot be reached does not block the local half. Neither does a row whose
+/// service or handle failed validation: the network call is refused, but the row is cleared all
+/// the same. The user asked to be signed out. Clearing the entry and saying the server was not
+/// told beats leaving a readable token in the keychain, whichever of the two is why it was not
+/// told.
+pub fn sign_out<S: TokenStore>(store: &Store<S>, service: &dyn Service, id: &str) -> Result<SignedOut, Error> {
     let account = store.accounts()?.get(id).cloned().ok_or_else(|| Error::Unknown(id.to_owned()))?;
     // The same gate `account::state_now` applies before an `identity` call: a row whose `service`
     // was redirected, or whose `id` no longer matches its own handle, must not have its token
-    // presented anywhere, including here, to the deployment's own logout endpoint.
-    if let Err(why) = service_base::validate_account_target(&account) {
-        log::warn!("a stored suite account did not pass target validation on sign-out: {why}");
-        return Err(Error::Malformed(why));
-    }
-    // Read through the same keychain the store writes with: one suite service name, one entry per
-    // handle, so this is the entry `store.discard` is about to remove.
-    let told = match Keychain.get(id) {
-        Ok(Some(token)) => service.revoke(&account.service, &token).err(),
-        // No token to present, so the deployment cannot be told. Its session may still be live
-        // there, and `Everywhere` would claim otherwise. Clearing the row is still the right half
-        // to do.
-        Ok(None) => Some("there was no stored token to present".to_owned()),
-        Err(why) => Some(why),
+    // presented anywhere, including here, to the deployment's own logout endpoint. That gate is
+    // about the network call alone. The local half still has to go: a row a validation failure
+    // refuses to sign out anywhere would be a row nothing can ever remove, and a keychain entry
+    // nothing can ever clear, which is worse than the plain refusal it replaced.
+    let told = match service_base::validate_account_target(&account) {
+        Err(why) => {
+            log::warn!("a stored suite account did not pass target validation on sign-out: {why}");
+            Some(why)
+        }
+        // Read through the same keychain the store writes with: one suite service name, one entry
+        // per handle, so this is the entry `store.discard` is about to remove. Production builds
+        // this with `Store<Keychain>`, where `Keychain.get` and `store`'s own token store are the
+        // same backend under the same handle; a test can substitute `S` to cover `discard` below
+        // without a real keychain, since that read never goes through `store` either way.
+        Ok(()) => match Keychain.get(id) {
+            Ok(Some(token)) => service.revoke(&account.service, &token).err(),
+            // No token to present, so the deployment cannot be told. Its session may still be
+            // live there, and `Everywhere` would claim otherwise. Clearing the row is still the
+            // right half to do.
+            Ok(None) => Some("there was no stored token to present".to_owned()),
+            Err(why) => Some(why),
+        },
     };
     store.discard(id)?;
     Ok(match told {
@@ -133,7 +146,7 @@ pub fn sign_out(store: &Store, service: &dyn Service, id: &str) -> Result<Signed
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use craft_suite_account::{Account, Accounts};
+    use craft_suite_account::{Account, Accounts, Memory};
 
     use super::*;
 
@@ -163,22 +176,29 @@ mod tests {
         }
     }
 
-    /// Seeds `dir` with a one-row account list, bypassing `Store::sign_in`, which always writes
-    /// a row whose `id` is the correct handle for its own `service` and `user`. Both attacks
-    /// under test need a row `sign_in` would never produce.
-    fn seed(dir: &std::path::Path, account: Account) -> Store {
-        let store = Store::at(Some(dir.to_path_buf()), Keychain);
+    /// Seeds `dir` with a one-row account list and a keychain stand-in entry behind it, bypassing
+    /// `Store::sign_in`, which always writes a row whose `id` is the correct handle for its own
+    /// `service` and `user`. Both attacks under test need a row `sign_in` would never produce.
+    ///
+    /// A `Memory` stand-in, not the real `Keychain`: `sign_out`'s own refusal path never reads the
+    /// keychain at all, but `store.discard` always does, win or refuse, and a real keychain is not
+    /// available in every environment this runs in. `sign_out`'s one hard-coded `Keychain.get` on
+    /// the accepted path is unaffected either way, since that read never goes through `store`.
+    fn seed(dir: &std::path::Path, account: Account) -> (Store<Memory>, Memory) {
+        let tokens = Memory::new();
+        let store = Store::at(Some(dir.to_path_buf()), tokens.clone());
         let path = store.path().expect("a store built with a directory has a path");
         let mut list = Accounts { active: Some(account.id.clone()), ..Accounts::default() };
-        list.accounts.push(account);
+        list.accounts.push(account.clone());
         craft_suite_account::accounts::write(&path, &list).expect("writing the seeded account list");
-        store
+        tokens.put(&account.id, &Secret::new("a-session-token")).expect("seeding the token");
+        (store, tokens)
     }
 
     /// A row whose `service` is a plain, non-loopback `http://` address must not have its token
-    /// presented to the deployment's logout endpoint. `sign_out` reads the keychain through its
-    /// own, hard-coded `Keychain`, never through `store`'s, so a passing run here never touches
-    /// it: the validation failure returns before that read, not after it.
+    /// presented to the deployment's logout endpoint. The local half still has to run: the row and
+    /// its keychain entry are gone afterward, the same as a sign-out `sign_out` could tell the
+    /// deployment about.
     #[test]
     fn a_non_loopback_http_service_is_never_told_to_revoke() {
         let dir = tempfile::tempdir().expect("a temporary folder");
@@ -190,18 +210,21 @@ mod tests {
             display: "Someone".to_owned(),
             ..Account::default()
         };
-        let store = seed(dir.path(), account);
+        let (store, tokens) = seed(dir.path(), account);
 
         let service = Counting::default();
         let result = sign_out(&store, &service, &id);
 
-        assert!(result.is_err(), "{result:?}");
+        assert!(matches!(result, Ok(SignedOut::LocalOnly { .. })), "{result:?}");
         assert_eq!(service.revoke_calls.load(Ordering::SeqCst), 0, "the token must never reach a service address that failed validation");
+        assert!(store.accounts().expect("the account list").get(&id).is_none(), "the row must still be removed locally");
+        assert!(!tokens.has(&id), "the keychain stand-in entry must still be cleared locally");
     }
 
     /// A row whose `service` was edited in place while its `id` was left as it was (so the
     /// handle no longer matches what `accounts::handle(service, user)` computes) must be refused
-    /// the same way, not waved through because the address alone looks allowed.
+    /// the same way, not waved through because the address alone looks allowed, and cleared the
+    /// same way too.
     #[test]
     fn an_edited_service_that_kept_the_old_id_is_never_told_to_revoke() {
         let dir = tempfile::tempdir().expect("a temporary folder");
@@ -215,12 +238,14 @@ mod tests {
             display: "Someone".to_owned(),
             ..Account::default()
         };
-        let store = seed(dir.path(), account);
+        let (store, tokens) = seed(dir.path(), account);
 
         let service = Counting::default();
         let result = sign_out(&store, &service, &id);
 
-        assert!(result.is_err(), "{result:?}");
+        assert!(matches!(result, Ok(SignedOut::LocalOnly { .. })), "{result:?}");
         assert_eq!(service.revoke_calls.load(Ordering::SeqCst), 0, "a service edited past its own handle must not receive the token either");
+        assert!(store.accounts().expect("the account list").get(&id).is_none(), "the row must still be removed locally");
+        assert!(!tokens.has(&id), "the keychain stand-in entry must still be cleared locally");
     }
 }
