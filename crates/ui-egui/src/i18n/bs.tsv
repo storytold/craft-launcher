@@ -449,3 +449,8 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 @msg	Desktop shortcut created for {name}	Prečica na radnoj površini je kreirana za {name}
 @msg	Couldn't create the desktop shortcut: {e}	Nije moguće kreirati prečicu na radnoj površini: {e}
 @msg	A desktop shortcut named {name} already exists	Prečica na radnoj površini s nazivom {name} već postoji
+
+# Pinning apps to the top and the macOS Dock setting.
+	Pin {name} to top	Prikači {name} na vrh
+	Unpin {name}	Otkači {name}
+	Hide ArtCraft Launcher from the Dock while in the background	Sakrij ArtCraft Launcher iz Docka dok radi u pozadini
