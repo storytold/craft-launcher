@@ -208,6 +208,13 @@ cargo run --release -p artcraft-launcher   # the desktop app
 cargo xtask ci                             # fmt, clippy, tests and the wasm check
 ```
 
+On Windows, the launcher tries hardware Direct3D 12, then hardware OpenGL, and only then
+Microsoft's CPU-based WARP renderer. A missing adapter or a renderer/surface initialization
+failure advances to the next attempt, so broken legacy drivers can still fall back to
+software without forcing working GPUs onto CPU rendering. There are no vendor- or VM-specific
+exceptions. `WGPU_BACKEND` overrides this selection, and the launcher's log records failures
+and the selected graphics adapter. macOS, Linux, FreeBSD and web retain their existing renderers.
+
 The web version builds with [trunk](https://trunk-rs.github.io/trunk/):
 
 ```sh
