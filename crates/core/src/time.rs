@@ -1,5 +1,5 @@
 //! Just enough calendar to read GitHub's timestamps and show them (the conversion goes through
-//! jiff; this module owns only the parsing and the output format strings).
+//! chrono; this module owns only the parsing and the output format strings).
 //!
 //! # Internationalisation
 //! [`format_ago`] and [`format_date`] are English-only fallbacks. Translatable UI must use
@@ -13,6 +13,8 @@
 //! - [`TimeAgo::Days(n)`] → `trn(n, "{n} day ago", "{n} days ago")`
 //! - [`TimeAgo::Date(secs)`] → `fmt(tl!("{month} {day}, {year}"), …)` with the month from
 //!   [`month_short_en`] translated via `tr_ctx("month", …)` and `{day}` / `{year}` filled in.
+
+use chrono::{Datelike, Days, NaiveDate};
 
 /// What a relative timestamp means, without any language attached.
 ///
@@ -68,32 +70,39 @@ pub fn parse_rfc3339(text: &str) -> Option<i64> {
     Some(days_from_civil(year, month, day)? * 86_400 + hour * 3600 + minute * 60 + second - offset)
 }
 
-/// Days since 1970-01-01 (through jiff's civil calendar). A day past the month's length rolls over
-/// the way the old Hinnant arithmetic did (e.g. `2026-02-30` → `2026-03-02`). `None` for a year
-/// outside jiff's range.
-fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
-    let first = jiff::civil::Date::new(i16::try_from(y).ok()?, i8::try_from(m).ok()?, 1).ok()?;
-    let date = first.checked_add(jiff::SignedDuration::from_hours(d.checked_sub(1)?.checked_mul(24)?)).ok()?;
-    Some(date.duration_since(jiff::civil::Date::constant(1970, 1, 1)).as_secs() / 86_400)
+/// 1970-01-01. `NaiveDate`'s `Default` is the Unix epoch (`NaiveDate::UNIX_EPOCH` needs chrono
+/// features this wasm-safe build leaves off).
+fn unix_epoch() -> NaiveDate {
+    NaiveDate::default()
 }
 
-/// (year, month, day) for a Unix time (UTC). jiff's civil calendar only spans years -9999..=9999,
-/// far narrower than the whole `i64` the old hand-rolled `Hinnant` code converted, so the instant is
-/// first moved into range by whole 400-year Gregorian cycles (the calendar repeats every 400 years
-/// = `146_097` days) and the real year restored afterwards. jiff still does the month/day; the cycle
-/// count only shifts the year, keeping every `i64` exact (e.g. `i64::MAX` → year 292277026596,
-/// `i64::MIN` → year -292277022657), with no epoch fallback for a value the old code converted.
+/// Days since 1970-01-01 (through chrono's civil calendar). A day past the month's length rolls
+/// over the way the old Hinnant arithmetic did (e.g. `2026-02-30` → `2026-03-02`). `None` for a
+/// year outside chrono's range, or a day before the 1st.
+fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
+    let first = NaiveDate::from_ymd_opt(i32::try_from(y).ok()?, u32::try_from(m).ok()?, 1)?;
+    let date = first.checked_add_days(Days::new(u64::try_from(d.checked_sub(1)?).ok()?))?;
+    Some(date.signed_duration_since(unix_epoch()).num_days())
+}
+
+/// (year, month, day) for a Unix time (UTC). chrono's civil calendar spans only about ±262,000
+/// years, far narrower than the whole `i64` the old hand-rolled `Hinnant` code converted, so the
+/// instant is first moved into range by whole 400-year Gregorian cycles (the calendar repeats every
+/// 400 years = `146_097` days; the range extension standards/time.md sanctions) and the real year
+/// restored afterwards. chrono still does the month/day; the cycle count only shifts the year,
+/// keeping every `i64` exact (e.g. `i64::MAX` → year 292277026596, `i64::MIN` → year
+/// -292277022657), with no epoch fallback for a value the old code converted.
 pub fn civil_from_unix(secs: i64) -> (i64, u32, u32) {
-    let epoch = jiff::civil::Date::constant(1970, 1, 1);
+    let epoch = unix_epoch();
     let days = secs.div_euclid(86_400);
     let (cycles, rest) = (days.div_euclid(146_097), days.rem_euclid(146_097));
     // `rest` is in `0..146_097` (under one 400-year cycle), so `epoch + rest days` always lands in
-    // 1970..=2369 — comfortably inside jiff's range — and `rest * 86_400` never overflows.
-    let date = epoch.checked_add(jiff::SignedDuration::from_secs(rest * 86_400)).unwrap_or(epoch);
+    // 1970..=2369, comfortably inside chrono's range.
+    let date = u64::try_from(rest).ok().and_then(|n| epoch.checked_add_days(Days::new(n))).unwrap_or(epoch);
     // Restore the real year through `i128` so `cycles * 400` can't overflow at the `i64` extremes.
     let y = i128::from(date.year()) + i128::from(cycles) * 400;
     let year = i64::try_from(y).unwrap_or(if y < 0 { i64::MIN } else { i64::MAX });
-    (year, u32::try_from(date.month()).unwrap_or(1), u32::try_from(date.day()).unwrap_or(1))
+    (year, date.month(), date.day())
 }
 
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -165,8 +174,8 @@ mod tests {
     fn shows_dates_people_read() {
         assert_eq!(format_date(1_791_471_170), "Oct 8, 2026");
         assert_eq!(civil_from_unix(951_782_400), (2000, 2, 29));
-        // Year 10000 is past jiff's own calendar range, but the 400-year cycle reduction keeps the
-        // old conversion (jiff spans only -9999..=9999).
+        // Year 10000 is inside chrono's range; the `i64` extremes below are far outside it, and the
+        // 400-year cycle reduction keeps the dates the old conversion produced.
         assert_eq!(civil_from_unix(253_402_300_800), (10000, 1, 1));
         // The `i64` extremes stay the dates the old Hinnant code produced, not the epoch.
         assert_eq!(civil_from_unix(i64::MAX), (292_277_026_596, 12, 4));

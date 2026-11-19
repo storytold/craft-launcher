@@ -26,28 +26,37 @@ const RECHECK: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 /// Seconds east of UTC in the system's time zone at `secs`; 0 when the zone can't be read.
 #[cfg(not(target_arch = "wasm32"))]
 fn offset(secs: i64) -> i64 {
+    use chrono::{Offset, TimeZone};
     let Some(zone) = system_zone() else { return 0 };
-    jiff::Timestamp::from_second(secs).map_or(0, |at| i64::from(zone.to_offset(at).seconds()))
+    chrono::DateTime::from_timestamp(secs, 0).map_or(0, |at| i64::from(zone.offset_from_utc_datetime(&at.naive_utc()).fix().local_minus_utc()))
 }
 
-/// The system zone, looked up again once [`RECHECK`] has passed. jiff caches only a zone it found,
-/// so without this an unreadable one (a bad `TZ`, a bare container) would be searched for on
-/// every date of every frame.
+/// The system zone: `iana-time-zone` reads the zone name the OS is set to (`TZ`, `/etc/localtime`,
+/// the registry, `CFTimeZone`), `chrono-tz` turns the name into rules with summer time. Looked up
+/// again once [`RECHECK`] has passed, whether it was found or not, so a failure (a bad `TZ`, a bare
+/// container) is not searched for on every date of every frame.
 #[cfg(not(target_arch = "wasm32"))]
-fn system_zone() -> Option<jiff::tz::TimeZone> {
+fn system_zone() -> Option<chrono_tz::Tz> {
     use std::sync::{Mutex, PoisonError};
     use std::time::Instant;
-    type Cached = Option<(Instant, Option<jiff::tz::TimeZone>)>;
+    type Cached = Option<(Instant, Option<chrono_tz::Tz>)>;
     static CACHE: Mutex<Cached> = Mutex::new(None);
     let mut cache = CACHE.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((at, zone)) = cache.as_ref()
         && at.elapsed() < RECHECK
     {
-        return zone.clone();
+        return *zone;
     }
-    let zone = jiff::tz::TimeZone::try_system().map_err(|e| log::debug!("couldn't read the system time zone, showing dates in UTC: {e}")).ok();
-    *cache = Some((Instant::now(), zone.clone()));
+    let zone = read_system_zone().map_err(|e| log::debug!("couldn't read the system time zone, showing dates in UTC: {e}")).ok();
+    *cache = Some((Instant::now(), zone));
     zone
+}
+
+/// One uncached lookup of the system zone; the error says which step failed.
+#[cfg(not(target_arch = "wasm32"))]
+fn read_system_zone() -> Result<chrono_tz::Tz, String> {
+    let name = iana_time_zone::get_timezone().map_err(|e| e.to_string())?;
+    name.parse::<chrono_tz::Tz>().map_err(|e| format!("`{name}`: {e}"))
 }
 
 /// Seconds east of UTC in the browser's time zone at `secs`; 0 when it gives nothing sensible.
