@@ -106,6 +106,7 @@
 	Updates always use the format an app was installed with.	განახლება ყოველთვის იმ ფორმატს იყენებს, რომლითაც აპლიკაცია დაინსტალირდა.
 	Running in the background	ფონურ რეჟიმში მუშაობა
 	Keep running in the tray when the window is closed	ფანჯრის დახურვის შემდეგ მუშაობის გაგრძელება შეტყობინებების არეში
+	Hide ArtCraft Launcher from the Dock while in the background	ფონურ რეჟიმში ArtCraft Launcher-ის Dock-იდან დამალვა
 	ArtCraft Launcher is still running	ArtCraft Launcher კვლავ მუშაობს
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	ის შეტყობინებების არეშია: გახსენით ან დახურეთ მისი ხატულით, ან გამორთეთ ეს ფუნქცია პარამეტრებში.
 	Show the window on the current desktop	ფანჯრის ჩვენება მიმდინარე სამუშაო მაგიდაზე
@@ -171,6 +172,8 @@
 	Move up	ზემოთ გადატანა
 	Pin to top	ზევით დამაგრება
 	Pinned	დამაგრებული
+	Pin {name} to top	{name}-ის ზევით დამაგრება
+	Unpin {name}	{name}-ის დამაგრების მოხსნა
 	Reorder {name}	{name}-ის თანმიმდევრობის შეცვლა
 	Unpin	დამაგრების მოხსნა
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
