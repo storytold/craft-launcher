@@ -191,7 +191,16 @@ fn japanese_switches_persists_and_keeps_install_actions() {
     snapshot(&mut h, "grid-ja-dark");
     h.get_by_label("すべて更新（2）").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
+    // One InstallAll where updates are batched (always on Linux), else one Install per app.
+    let installs: Vec<_> = sent
+        .borrow()
+        .iter()
+        .flat_map(|c| match c {
+            Command::Install { app } => vec![app.clone()],
+            Command::InstallAll { apps } => apps.clone(),
+            _ => vec![],
+        })
+        .collect();
     assert_eq!(installs, ["photocraft", "effectcraft"]);
 
     let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);

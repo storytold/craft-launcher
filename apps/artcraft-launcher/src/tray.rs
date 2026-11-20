@@ -121,6 +121,12 @@ impl Tray {
         self.rx.try_iter().collect()
     }
 
+    /// Shows or hides the menu-bar icon to match the macOS window lifecycle.
+    #[cfg(target_os = "macos")]
+    pub fn set_visible(&self, visible: bool) -> Result<(), String> {
+        self.icon.set_visible(visible).map_err(|e| e.to_string())
+    }
+
     pub fn set_updates(&mut self, count: usize) {
         let lang = i18n::current();
         if self.language != lang.code() {
