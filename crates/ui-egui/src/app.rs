@@ -114,6 +114,7 @@ pub(crate) enum Dialog {
     UnlockVersion { app: String, tag: String },
     Install { app: String, folder: String },
     Replace { app: String, path: String },
+    MsiUpdate { app: String, plan: artcraft_launcher_core::protocol::MsiUpdatePlan, migrate: bool, accepted: bool },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
@@ -130,6 +131,7 @@ impl Dialog {
             Dialog::UnlockVersion { app, .. } => ("unlock-version", app),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
+            Dialog::MsiUpdate { app, .. } => ("msi-update", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
             Dialog::Versions(id) => ("versions", id),
@@ -171,6 +173,10 @@ pub struct LauncherUi {
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
+    pub(crate) update_choices: std::collections::VecDeque<Dialog>,
+    /// Apps whose update choice was "Keep the current location", waiting for the last pending
+    /// choice so they go to the backend together (see [`LauncherUi::send_kept_updates`]).
+    pub(crate) kept_updates: Vec<String>,
     /// Release-note text scale for this session, independent of the main UI zoom.
     pub(crate) notes_zoom: f32,
     /// The app whose details drawer is open (or closing: see `detail_shown`).
@@ -295,6 +301,8 @@ impl LauncherUi {
             search: String::new(),
             toasts: Vec::new(),
             dialog: None,
+            update_choices: Default::default(),
+            kept_updates: Vec::new(),
             notes_zoom: 1.0,
             detail: None,
             detail_shown: None,
@@ -483,6 +491,7 @@ impl LauncherUi {
             launcher_version: self.settings.launcher_version.clone(),
             simultaneous_downloads: self.settings.simultaneous_downloads,
             install_locations: self.settings.install_locations.clone(),
+            keep_shared_installs: self.settings.keep_shared_installs.clone(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
@@ -646,6 +655,14 @@ impl LauncherUi {
                 }
                 true
             }
+            Event::MsiUpdateChoice { app, plan } => {
+                if let Some(e) = self.entry_mut(&app) {
+                    e.job = None;
+                }
+                self.update_choices.retain(|d| !matches!(d, Dialog::MsiUpdate { app: a, .. } if a == &app));
+                self.update_choices.push_back(Dialog::MsiUpdate { app, plan, migrate: false, accepted: false });
+                false
+            }
             Event::Occupied { app, path } => {
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
@@ -801,6 +818,25 @@ impl LauncherUi {
             tl!("ArtCraft Launcher is still running"),
             tl!("It's in the tray: open it or quit it from the tray icon, or turn this off in the settings."),
         );
+    }
+
+    /// Sends the updates whose all-users copy the person chose to keep, once no other choice is
+    /// pending: as one batch where updates are batched, so Update all keeps its one permission
+    /// prompt, else one install each. The backend first learns that they are kept, so it doesn't
+    /// ask again.
+    pub(crate) fn send_kept_updates(&mut self) {
+        if self.kept_updates.is_empty() || self.update_choices.iter().any(|d| matches!(d, Dialog::MsiUpdate { .. })) {
+            return;
+        }
+        let apps = std::mem::take(&mut self.kept_updates);
+        self.configure();
+        if self.settings.updates_batched() {
+            self.act_command(Command::InstallAll { apps });
+        } else {
+            for app in apps {
+                self.act_command(Command::Install { app });
+            }
+        }
     }
 
     /// When auto-updates are enabled, automatically downloads and installs pending updates.

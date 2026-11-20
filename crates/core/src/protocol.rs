@@ -35,6 +35,12 @@ pub enum Command {
     InstallAll {
         apps: Vec<String>,
     },
+    /// Answers a specific all-users update offer, accepting its migration warning when requested.
+    ConfirmMsiUpdate {
+        app: String,
+        plan: MsiUpdatePlan,
+        migrate: bool,
+    },
     /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
     /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
     /// the user is asked again.
@@ -98,6 +104,14 @@ pub enum Command {
     },
 }
 
+/// The installation and release shown before choosing where to update.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MsiUpdatePlan {
+    pub installed: Installed,
+    pub release_tag: String,
+    pub user_folder: String,
+}
+
 /// Parent folders for new installs. Existing installations keep their recorded location.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -136,6 +150,9 @@ pub struct BackendOptions {
     pub prereleases: bool,
     /// Downloads that may run at once (1 to 4; 0 for no limit).
     pub simultaneous_downloads: u8,
+    /// Windows: apps whose all-users copy the person chose to keep. Their updates stay all-users
+    /// and join Update all's one permission prompt, without asking where to update again.
+    pub keep_shared_installs: std::collections::BTreeSet<String>,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -292,6 +309,11 @@ pub enum Event {
     Occupied {
         app: String,
         path: String,
+    },
+    /// An all-users update waits here, also for Update all and automatic updates.
+    MsiUpdateChoice {
+        app: String,
+        plan: MsiUpdatePlan,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
     /// Clears the app's in-progress job phase in the UI.

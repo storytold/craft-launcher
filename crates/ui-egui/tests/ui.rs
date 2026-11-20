@@ -4754,3 +4754,134 @@ fn ai_agents_stay_hidden_until_their_flag_is_on() {
     assert!(h.query_by_label("Experimental features").is_none(), "flags have no switches in Settings");
     assert!(h.query_by_label("AI agents (MCP)").is_none());
 }
+
+fn migration_offer(id: &str) -> Event {
+    Event::MsiUpdateChoice {
+        app: id.into(),
+        plan: artcraft_launcher_core::protocol::MsiUpdatePlan {
+            installed: Installed {
+                version: version::parse("1.0.0"),
+                source: InstallSource::Msi,
+                location: format!(r"C:\Program Files\ArtCraft\{id}\{id}.exe"),
+                package: Some("{TEST-PRODUCT}".into()),
+                installation: None,
+                externally_managed: false,
+                origin: None,
+            },
+            release_tag: "v1.1.0".into(),
+            user_folder: format!(r"C:\Users\tester\AppData\Local\Programs\ArtCraft\{id}"),
+        },
+    }
+}
+
+#[test]
+fn msi_migration_requires_consent_and_queues_other_apps() {
+    let mut ev = events();
+    ev.extend([migration_offer("photocraft"), migration_offer("gridcraft")]);
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run();
+    snapshot(&mut h, "msi-update-keep");
+    h.get_by_label("Install only for me").click();
+    h.run();
+    snapshot(&mut h, "msi-update-migrate");
+    // Clicking a disabled Update must never send a command.
+    h.get_by_label("Update").click();
+    h.run();
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { .. })));
+    h.get_by_label("I accept removal of the shared copy and the risk to add-ons beside it.").click();
+    h.run();
+    h.get_by_label("Keep the current location").click();
+    h.run();
+    h.get_by_label("Install only for me").click();
+    h.run();
+    h.get_by_label("Update").click();
+    h.run();
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { .. })));
+    h.get_by_label("I accept removal of the shared copy and the risk to add-ons beside it.").click();
+    h.run();
+    h.get_by_label("Update").click();
+    h.run();
+    assert!(
+        sent.borrow()
+            .iter()
+            .any(|c| matches!(c, Command::ConfirmMsiUpdate { app, migrate: true, plan } if app == "photocraft" && plan.release_tag == "v1.1.0"))
+    );
+    h.get_by_label("Choose how to update GridCraft");
+    h.get_by_label("Cancel").click();
+    h.run();
+    assert_eq!(sent.borrow().iter().filter(|c| matches!(c, Command::ConfirmMsiUpdate { .. })).count(), 1);
+}
+
+/// Keeping the current location is the default. It is remembered, the backend learns it before
+/// the update is sent, and the update goes as a plain install, so it is not asked again.
+#[test]
+fn msi_update_keeps_location_by_default() {
+    let mut ev = events();
+    ev.push(migration_offer("photocraft"));
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Light, true, 1.0);
+    h.run();
+    snapshot(&mut h, "msi-update-light");
+    h.get_by_label("Update").click();
+    h.run();
+    let sent = sent.borrow();
+    assert!(!sent.iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { .. })));
+    let kept = sent
+        .iter()
+        .position(|c| matches!(c, Command::Configure(o) if o.keep_shared_installs.contains("photocraft")))
+        .expect("the backend learns the app is kept");
+    // Linux always batches (`Settings::updates_batched`), so the update goes as a batch of one there.
+    let install = sent
+        .iter()
+        .position(|c| match c {
+            Command::Install { app } => !cfg!(target_os = "linux") && app == "photocraft",
+            Command::InstallAll { apps } => cfg!(target_os = "linux") && apps == &["photocraft".to_string()],
+            _ => false,
+        })
+        .expect("the update is sent");
+    assert!(kept < install, "kept before the update is sent");
+    assert!(h.state().as_ref().unwrap().settings.keep_shared_installs.contains("photocraft"));
+}
+
+/// Update all with several all-users apps: each choice to keep waits for the last one, then all go
+/// as one batch, which keeps Update all's one permission prompt. Settings can ask again.
+#[test]
+fn kept_all_users_updates_go_together_and_settings_can_ask_again() {
+    let mut ev = events();
+    ev.extend([migration_offer("photocraft"), migration_offer("gridcraft")]);
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run();
+    h.state_mut().as_mut().unwrap().settings.batch_updates = true;
+    h.get_by_label("Update").click();
+    h.run();
+    let installs = |sent: &RefCell<Vec<Command>>| {
+        sent.borrow().iter().filter(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. })).cloned().collect::<Vec<_>>()
+    };
+    assert!(installs(&sent).is_empty(), "nothing is sent while another choice is pending");
+    h.get_by_label("Choose how to update GridCraft");
+    h.get_by_label("Update").click();
+    h.run();
+    assert_eq!(installs(&sent), [Command::InstallAll { apps: vec!["photocraft".into(), "gridcraft".into()] }]);
+    {
+        let sent = sent.borrow();
+        let kept = sent
+            .iter()
+            .position(|c| {
+                matches!(c, Command::Configure(o)
+                    if o.keep_shared_installs.contains("photocraft") && o.keep_shared_installs.contains("gridcraft"))
+            })
+            .expect("the backend learns both apps are kept");
+        let batch = sent.iter().position(|c| matches!(c, Command::InstallAll { .. })).unwrap();
+        assert!(kept < batch, "kept before the batch is sent");
+    }
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    // Settings hides the batching options on Linux, which always batches, and the reset with them.
+    if cfg!(target_os = "linux") {
+        assert!(h.query_by_label("Ask again how to update apps installed for everyone").is_none());
+        return;
+    }
+    h.get_by_label("Ask again how to update apps installed for everyone").click();
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().settings.keep_shared_installs.is_empty());
+    assert!(h.query_by_label("Ask again how to update apps installed for everyone").is_none());
+}

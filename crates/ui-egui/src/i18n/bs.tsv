@@ -454,3 +454,18 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Pin {name} to top	Prikači {name} na vrh
 	Unpin {name}	Otkači {name}
 	Hide ArtCraft Launcher from the Dock while in the background	Sakrij ArtCraft Launcher iz Docka dok radi u pozadini
+
+# Update installation scope
+	Choose how to update {name}	Odaberite kako ažurirati {name}
+	Keep the current location	Zadrži trenutnu lokaciju
+	Administrator permission is required for each update.	Za svako ažuriranje potrebna je administratorska dozvola.
+	Install only for me	Instaliraj samo za mene
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows će još jednom tražiti administratorsku dozvolu za deinstalaciju stare zajedničke kopije. Nakon premještanja, ažuriranja i deinstalacija za ovaj račun obično ne traže administratorsku dozvolu. Ostali korisnici Windowsa izgubit će pristup.
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Postavke profila i predlošci ostaju gdje jesu. Dodatke pored programa možda će trebati ponovo instalirati; prvo napravite njihovu sigurnosnu kopiju.
+	I accept removal of the shared copy and the risk to add-ons beside it.	Prihvatam uklanjanje zajedničke kopije i rizik za dodatke pored nje.
+	Ask again how to update apps installed for everyone	Ponovo pitaj kako ažurirati aplikacije instalirane za sve
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	Instalacija ili odabrana verzija se promijenila. Provjerite ažuriranja i ponovo odaberite; ništa nije uklonjeno.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Premještanje nije dostupno za ovu verziju. Zadržite trenutnu lokaciju; ništa nije uklonjeno.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	Foldere instalacije nije moguće provjeriti ili je odredište zauzeto. Zadržite trenutnu lokaciju; ništa nije uklonjeno.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Pored programa pronađeni su podaci prenosive verzije. Zadržite trenutnu lokaciju i prvo ručno premjestite te podatke.

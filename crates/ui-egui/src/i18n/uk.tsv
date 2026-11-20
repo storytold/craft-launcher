@@ -465,3 +465,18 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Simultaneous downloads	Одночасні завантаження
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Шлюз Craft (craft-ai-mcp) не встановлено поруч із лаунчером.
 	Waiting for another download…	Очікування іншого завантаження…
+
+# Update installation scope
+	Choose how to update {name}	Виберіть спосіб оновлення {name}
+	Keep the current location	Залишити в поточній папці
+	Administrator permission is required for each update.	Для кожного оновлення потрібен дозвіл адміністратора.
+	Install only for me	Встановити лише для мене
+	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows ще раз запитає дозвіл адміністратора, щоб видалити стару спільну копію. Після перенесення оновлення та видалення для цього облікового запису зазвичай не потребують дозволу адміністратора. Інші користувачі Windows втратять доступ.
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Налаштування та пресети профілю залишаться на місці. Доповнення в папці програми, можливо, доведеться перевстановити; спершу зробіть їх резервну копію.
+	I accept removal of the shared copy and the risk to add-ons beside it.	Я погоджуюся на видалення спільної копії та ризик для доповнень у її папці.
+	Ask again how to update apps installed for everyone	Знову запитати, як оновлювати застосунки, встановлені для всіх
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	Встановлення або вибрана версія змінилися. Перевірте оновлення й виберіть знову; нічого не видалено.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Перенесення недоступне для цієї версії. Залиште поточне розташування; нічого не видалено.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	Не вдалося перевірити папки встановлення, або папку призначення зайнято. Залиште поточне розташування; нічого не видалено.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Поруч із програмою знайдено дані портативної версії. Залиште поточне розташування й спершу перенесіть ці дані вручну.
