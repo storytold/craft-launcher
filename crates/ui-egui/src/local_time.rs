@@ -2,7 +2,7 @@
 //! published late on the 7th in UTC is the 8th in Tokyo: every date the launcher shows goes through
 //! [`civil`], which adds the system time zone's offset at that instant (summer time included).
 //!
-//! Invariants: nothing here panics; when the system zone can't be read, dates fall back to UTC.
+//! Invariants: nothing here panics; when no zone rules can be found at all, dates fall back to UTC.
 //! The desktop looks the zone up at most once every [`RECHECK`], whether that worked or not (a
 //! date is drawn many times a frame), so a laptop that travels keeps up; the web build asks the
 //! browser.
@@ -23,24 +23,41 @@ fn civil_at(secs: i64, offset: i64) -> (i64, u32, u32) {
 #[cfg(not(target_arch = "wasm32"))]
 const RECHECK: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
-/// Seconds east of UTC in the system's time zone at `secs`; 0 when the zone can't be read.
+/// Where the desktop takes its time zone rules from.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Zone {
+    /// A zone with an IANA name, from `TZ` or the OS setting; `chrono-tz` holds its rules.
+    Named(chrono_tz::Tz),
+    /// No usable zone name, so chrono's own `Local` reads the rules: `TZ` as a POSIX rule or a
+    /// TZif path, an `/etc/localtime` that is a copied file rather than a link, and UTC only when
+    /// it finds none of these.
+    Local,
+}
+
+/// Seconds east of UTC in the system's time zone at `secs`; 0 when no zone rules can be found.
 #[cfg(not(target_arch = "wasm32"))]
 fn offset(secs: i64) -> i64 {
     use chrono::{Offset, TimeZone};
-    let Some(zone) = system_zone() else { return 0 };
-    chrono::DateTime::from_timestamp(secs, 0).map_or(0, |at| i64::from(zone.offset_from_utc_datetime(&at.naive_utc()).fix().local_minus_utc()))
+    let Some(at) = chrono::DateTime::from_timestamp(secs, 0) else { return 0 };
+    let at = at.naive_utc();
+    let fixed = match system_zone() {
+        Zone::Named(zone) => zone.offset_from_utc_datetime(&at).fix(),
+        Zone::Local => chrono::Local.offset_from_utc_datetime(&at).fix(),
+    };
+    i64::from(fixed.local_minus_utc())
 }
 
 /// The system zone: `TZ` when it names an IANA zone, otherwise the zone name the OS is set to as
-/// `iana-time-zone` reads it (`/etc/localtime`, the registry, `CFTimeZone`; it never reads `TZ`
-/// itself), with `chrono-tz` turning the name into rules with summer time. Looked up again once
-/// [`RECHECK`] has passed, whether it was found or not, so a failure (a bare container) is not
-/// searched for on every date of every frame.
+/// `iana-time-zone` reads it (the `/etc/localtime` link, the registry, `CFTimeZone`; it never
+/// reads `TZ` itself), and [`Zone::Local`] when neither gives a name `chrono-tz` knows. Looked up
+/// again once [`RECHECK`] has passed, so a laptop that travels keeps up and a failed lookup is not
+/// repeated on every date of every frame.
 #[cfg(not(target_arch = "wasm32"))]
-fn system_zone() -> Option<chrono_tz::Tz> {
+fn system_zone() -> Zone {
     use std::sync::{Mutex, PoisonError};
     use std::time::Instant;
-    type Cached = Option<(Instant, Option<chrono_tz::Tz>)>;
+    type Cached = Option<(Instant, Zone)>;
     static CACHE: Mutex<Cached> = Mutex::new(None);
     let mut cache = CACHE.lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((at, zone)) = cache.as_ref()
@@ -48,19 +65,25 @@ fn system_zone() -> Option<chrono_tz::Tz> {
     {
         return *zone;
     }
-    let zone = read_system_zone().map_err(|e| log::debug!("couldn't read the system time zone, showing dates in UTC: {e}")).ok();
+    let zone = pick_zone(std::env::var("TZ").ok().as_deref(), || iana_time_zone::get_timezone().map_err(|e| e.to_string()));
     *cache = Some((Instant::now(), zone));
     zone
 }
 
-/// One uncached lookup of the system zone; the error says which step failed.
+/// One uncached choice of zone from a `TZ` value and the OS zone name (asked for only when `TZ`
+/// names no zone).
 #[cfg(not(target_arch = "wasm32"))]
-fn read_system_zone() -> Result<chrono_tz::Tz, String> {
-    if let Some(zone) = zone_from_tz(std::env::var("TZ").ok().as_deref()) {
-        return Ok(zone);
+fn pick_zone(tz: Option<&str>, os_zone_name: impl FnOnce() -> Result<String, String>) -> Zone {
+    if let Some(zone) = zone_from_tz(tz) {
+        return Zone::Named(zone);
     }
-    let name = iana_time_zone::get_timezone().map_err(|e| e.to_string())?;
-    name.parse::<chrono_tz::Tz>().map_err(|e| format!("`{name}`: {e}"))
+    match os_zone_name().and_then(|name| name.parse::<chrono_tz::Tz>().map_err(|e| format!("`{name}`: {e}"))) {
+        Ok(zone) => Zone::Named(zone),
+        Err(e) => {
+            log::debug!("couldn't name the system time zone ({e}); letting chrono read its rules, UTC if there are none");
+            Zone::Local
+        }
+    }
 }
 
 /// The zone a `TZ` value names, when it is an IANA zone name (`Asia/Tokyo`, or `:Asia/Tokyo` in
@@ -113,5 +136,19 @@ mod tests {
         assert_eq!(zone_from_tz(Some("/usr/share/zoneinfo/Asia/Tokyo")), None);
         assert_eq!(zone_from_tz(Some("")), None);
         assert_eq!(zone_from_tz(None), None);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn a_zone_the_os_cannot_name_is_read_by_chrono_not_shown_as_utc() {
+        use super::{Zone, pick_zone};
+        use chrono_tz::Tz;
+        // A copied `/etc/localtime` with no `/etc/timezone` beside it: rules, but no name.
+        assert_eq!(pick_zone(None, || Err("no zone name".into())), Zone::Local);
+        // A name chrono-tz doesn't know is no better than none.
+        assert_eq!(pick_zone(None, || Ok("Mars/Olympus".into())), Zone::Local);
+        // A named zone stays named, and a `TZ` that names one still wins.
+        assert_eq!(pick_zone(None, || Ok("Asia/Tokyo".into())), Zone::Named(Tz::Asia__Tokyo));
+        assert_eq!(pick_zone(Some("America/Chicago"), || Ok("Asia/Tokyo".into())), Zone::Named(Tz::America__Chicago));
     }
 }
