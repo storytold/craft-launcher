@@ -455,3 +455,6 @@ materialcraft	Preview materials in 2D and on 3D models.	Materyalleri 2B'de ve 3B
 	Waiting for another download…	Başka bir indirme bekleniyor…
 anicraft	2D vector animation	2B vektör animasyonu
 mailcraft	Mail, calendar and contacts	E-posta, takvim ve kişiler
+	Hide ArtCraft Launcher from the Dock while in the background	Arka plandayken ArtCraft Launcher'ı Dock'ta gizle
+	Pin {name} to top	{name} öğesini başa tuttur
+	Unpin {name}	{name} sabitlemesini kaldır
