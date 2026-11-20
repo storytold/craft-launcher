@@ -111,6 +111,156 @@ pub fn msg(s: &str) -> String {
     out
 }
 
+/// Protected product, suite, brand, and app names that must retain English/ASCII casing.
+/// Ordered with longer compound names first so greedy matching finds the full name.
+pub const PROTECTED_NAMES: &[&str] = &[
+    "ArtCraft Launcher",
+    "Craft App Suite",
+    "Craft Anything",
+    "TextureCraft",
+    "DesignCraft",
+    "VectorCraft",
+    "EffectCraft",
+    "PhotoCraft",
+    "LightCraft",
+    "SolidCraft",
+    "SoundCraft",
+    "FilmCraft",
+    "WordCraft",
+    "DeckCraft",
+    "GridCraft",
+    "ArtCraft",
+    "Launcher",
+    "PdfCraft",
+    "FigCraft",
+    "CADCraft",
+    "Discord",
+    "GitHub",
+];
+
+/// Does `text` match a protected product, suite, brand or app name that must stay in English?
+/// Trailing link arrows (e.g. `GitHub ↗`) and punctuation are trimmed so decorated labels are preserved.
+pub fn is_protected_name(text: &str) -> bool {
+    let clean = text.trim().trim_end_matches(['↗', '→', '…', ':', ' ']);
+    PROTECTED_NAMES.iter().any(|&p| p.eq_ignore_ascii_case(clean)) || artcraft_launcher_core::SUITE.iter().any(|a| a.name.eq_ignore_ascii_case(clean))
+}
+
+/// If a protected product, suite, brand or app name starts at `byte_idx` in `text` at a word
+/// boundary and ends at a word boundary, returns the byte length of that matched name.
+fn find_protected_at(text: &str, byte_idx: usize) -> Option<usize> {
+    if byte_idx > 0
+        && let Some(prev) = text.get(..byte_idx).and_then(|s| s.chars().next_back())
+        && prev.is_alphanumeric()
+    {
+        return None;
+    }
+    let rem = text.get(byte_idx..)?;
+    for &name in PROTECTED_NAMES {
+        if let Some(prefix) = rem.get(..name.len())
+            && prefix.eq_ignore_ascii_case(name)
+        {
+            let after = rem.get(name.len()..)?;
+            let is_end_boundary = match after.chars().next() {
+                None => true,
+                Some(c) => !c.is_alphanumeric(),
+            };
+            if is_end_boundary {
+                return Some(name.len());
+            }
+        }
+    }
+    for app in &artcraft_launcher_core::SUITE {
+        let name = app.name;
+        if let Some(prefix) = rem.get(..name.len())
+            && prefix.eq_ignore_ascii_case(name)
+        {
+            let after = rem.get(name.len()..)?;
+            let is_end_boundary = match after.chars().next() {
+                None => true,
+                Some(c) => !c.is_alphanumeric(),
+            };
+            if is_end_boundary {
+                return Some(name.len());
+            }
+        }
+    }
+    None
+}
+
+/// Case conversion that respects language-specific casing rules (e.g. Turkish dotted and dotless i),
+/// while preserving ASCII casing for protected product and app names.
+pub fn to_uppercase(text: &str) -> String {
+    to_uppercase_in(current(), text)
+}
+
+/// Case conversion in a specific language, preserving ASCII casing for protected names
+/// even when embedded in longer translated phrases (e.g. "GitHub'da Aç" -> "GITHUB'DA AÇ").
+pub fn to_uppercase_in(lang: Lang, text: &str) -> String {
+    if lang != Lang::TR {
+        return text.to_uppercase();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.char_indices().peekable();
+    while let Some((idx, c)) = chars.next() {
+        if let Some(len) = find_protected_at(text, idx) {
+            if let Some(span) = text.get(idx..idx + len) {
+                out.push_str(&span.to_ascii_uppercase());
+            }
+            while let Some(&(next_idx, _)) = chars.peek() {
+                if next_idx < idx + len {
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+        } else {
+            match c {
+                'i' => out.push('İ'),
+                'ı' => out.push('I'),
+                other => out.extend(other.to_uppercase()),
+            }
+        }
+    }
+    out
+}
+
+/// Lowercase conversion that respects language-specific rules (e.g. Turkish dotted and dotless i),
+/// while preserving ASCII casing for protected product and app names.
+pub fn to_lowercase(text: &str) -> String {
+    to_lowercase_in(current(), text)
+}
+
+/// Lowercase conversion in a specific language, preserving ASCII casing for protected names
+/// even when embedded in longer translated phrases (e.g. "GITHUB'DA AÇ" -> "github'da aç").
+pub fn to_lowercase_in(lang: Lang, text: &str) -> String {
+    if lang != Lang::TR {
+        return text.to_lowercase();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.char_indices().peekable();
+    while let Some((idx, c)) = chars.next() {
+        if let Some(len) = find_protected_at(text, idx) {
+            if let Some(span) = text.get(idx..idx + len) {
+                out.push_str(&span.to_ascii_lowercase());
+            }
+            while let Some(&(next_idx, _)) = chars.peek() {
+                if next_idx < idx + len {
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+        } else {
+            match c {
+                'İ' => out.push('i'),
+                'I' => out.push('ı'),
+                other => out.extend(other.to_lowercase()),
+            }
+        }
+    }
+    out
+}
+
 /// A test-only strict drawing policy: while a [`StrictCjkDrawing`] guard is in scope, translating
 /// text into a CJK language whose own face is not the one installed in the drawing context panics,
 /// instead of quietly drawing tofu. It is how a unit test proves a frame cannot select Chinese
