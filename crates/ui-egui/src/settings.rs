@@ -153,10 +153,13 @@ impl Settings {
         cfg!(target_os = "linux") || self.batch_updates
     }
 
-    /// Clear saved catalog filters whose controls were removed from the toolbar.
+    /// Normalize saved choices whose controls were removed from the interface.
     pub fn migrate(&mut self) {
         if !matches!(self.filter, Filter::All | Filter::Hidden) {
             self.filter = Filter::All;
+        }
+        if matches!(self.check_every, CheckEvery::FourHours | CheckEvery::Day) {
+            self.check_every = CheckEvery::Hour;
         }
     }
 
@@ -299,6 +302,26 @@ mod tests {
         let s = Settings { batch_updates: false, ..Settings::default() };
         assert_eq!(s.updates_batched(), cfg!(target_os = "linux"));
         assert!(Settings { batch_updates: true, ..Settings::default() }.updates_batched());
+    }
+
+    #[test]
+    fn legacy_automatic_check_choices_migrate_to_the_current_picker_option() {
+        for saved in ["FourHours", "Day"] {
+            let mut settings: Settings = serde_json::from_value(serde_json::json!({"check_every": saved})).unwrap();
+            let interval = settings.check_every.seconds();
+            settings.migrate();
+            assert_eq!(settings.check_every, CheckEvery::Hour, "{saved}");
+            assert!(CheckEvery::ALL.contains(&settings.check_every), "{saved}");
+            assert_eq!(settings.check_every.seconds(), interval, "{saved}");
+            assert_eq!(serde_json::to_value(&settings).unwrap()["check_every"], "Hour", "{saved}");
+        }
+        for saved in ["Hour", "Never"] {
+            let mut settings: Settings = serde_json::from_value(serde_json::json!({"check_every": saved})).unwrap();
+            let before = settings.check_every;
+            settings.migrate();
+            assert_eq!(settings.check_every, before, "{saved}");
+            assert_eq!(settings.check_every.seconds(), before.seconds(), "{saved}");
+        }
     }
 
     #[test]
