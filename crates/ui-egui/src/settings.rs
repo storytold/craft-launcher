@@ -101,16 +101,24 @@ pub struct Settings {
     /// macOS: showing the window brings it to the current desktop (Space) instead of switching to
     /// the desktop it was on.
     pub show_on_current_desktop: bool,
+    /// macOS: hide the Dock icon while the launcher is running without a visible window.
+    pub hide_from_dock_when_hidden: bool,
     pub check_every: CheckEvery,
     /// Automatically download and install updates when found.
     #[serde(default)]
     pub auto_update: bool,
+    /// Windows: update all apps together behind one permission prompt; off, each app's update
+    /// asks on its own. Linux always batches (see `updates_batched`) and ignores this.
+    #[serde(default)]
+    pub batch_updates: bool,
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
+    /// Downloads that may run at once (1 to 4; 0 for no limit).
+    pub simultaneous_downloads: u8,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
@@ -129,11 +137,21 @@ pub struct Settings {
     pub launches: BTreeMap<String, u32>,
     /// Catalog ids pinned to the top of the grid/table, in the order the user chose.
     pub pinned: Vec<String>,
+    /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
+    /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
+    pub launch_flags: BTreeMap<String, String>,
 }
 
 impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &str = "auto";
+
+    /// Whether "Update all" and auto-update install together behind one permission prompt.
+    /// Always on Linux, where the batch is one `pkexec` call; elsewhere the opt-in setting,
+    /// since Windows' shared UAC session still owes its behavioural-antivirus check (#1235).
+    pub fn updates_batched(&self) -> bool {
+        cfg!(target_os = "linux") || self.batch_updates
+    }
 
     /// Clear saved catalog filters whose controls were removed from the toolbar.
     pub fn migrate(&mut self) {
@@ -237,6 +255,7 @@ pub fn default_preferred_kinds() -> Vec<PackageKind> {
 }
 
 impl Default for Settings {
+    /// The settings a new install starts with.
     fn default() -> Self {
         Self {
             install_locations: Default::default(),
@@ -248,12 +267,15 @@ impl Default for Settings {
             language: "auto".to_string(),
             close_to_tray: true,
             show_on_current_desktop: true,
+            hide_from_dock_when_hidden: false,
             check_every: CheckEvery::Hour,
             auto_update: false,
+            batch_updates: false,
             notify: true,
             prereleases: false,
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
+            simultaneous_downloads: 1,
             preferred_kinds: default_preferred_kinds(),
             dismissed_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
@@ -263,6 +285,7 @@ impl Default for Settings {
             tray_hint_shown: false,
             launches: BTreeMap::new(),
             pinned: Vec::new(),
+            launch_flags: BTreeMap::new(),
         }
     }
 }
@@ -270,6 +293,13 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linux_batches_updates_even_with_the_setting_off() {
+        let s = Settings { batch_updates: false, ..Settings::default() };
+        assert_eq!(s.updates_batched(), cfg!(target_os = "linux"));
+        assert!(Settings { batch_updates: true, ..Settings::default() }.updates_batched());
+    }
 
     #[test]
     fn pin_appends_once_and_unpin_removes() {
