@@ -41,6 +41,9 @@ pub(crate) fn last_updated(e: &AppEntry) -> Option<String> {
 /// `text` in at most `rows` lines, ending in "…" when it is cut.
 pub(crate) fn blurb(ui: &mut Ui, text: &str, color: Color32, rows: usize) {
     let mut job = egui::text::LayoutJob::simple(text.to_string(), FontId::proportional(13.0), color, ui.available_width());
+    if crate::i18n::current().rtl() {
+        job.direction = egui::epaint::text::TextDirection::RightToLeft;
+    }
     job.wrap.max_rows = rows;
     job.wrap.break_anywhere = false;
     job.wrap.overflow_character = Some('…');
