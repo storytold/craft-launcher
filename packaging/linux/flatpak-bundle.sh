@@ -19,6 +19,10 @@ HERE="$ROOT/packaging/linux"
 APP_ID=ai.storyteller.artcraft-launcher
 PKG=artcraft-launcher
 FLATHUB=https://dl.flathub.org/repo/flathub.flatpakrepo
+# The OCI repository serves only the latest stable release, so a prerelease bundle gets no update
+# source: Flatpak would otherwise replace it with that older stable build.
+OCI_REPO=oci+https://getartcraft.com
+if [[ "$VERSION" == *-* ]]; then OCI_REPO=""; fi
 
 TEST=1
 OCI=0
@@ -61,8 +65,16 @@ flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse --forc
   --default-branch=stable --repo="$WORK/repo" --state-dir="$WORK/state" "$WORK/build" "$WORK/$APP_ID.yml"
 
 OUT="$DIST/$BASENAME.flatpak"
+# A release build (the shared release workflow sets SIGNING_FPR, SIGNING_PUBKEY and GNUPGHOME)
+# signs the commit and embeds the public key, so Flatpak verifies the bundle when installing it.
+GPG_KEYS=()
+if [[ -n "${SIGNING_FPR:-}" ]]; then
+  flatpak build-sign "$WORK/repo" "$APP_ID" stable --gpg-sign="$SIGNING_FPR" --gpg-homedir="${GNUPGHOME:?}"
+  GPG_KEYS=(--gpg-keys="${SIGNING_PUBKEY:?}")
+fi
 # --runtime-repo lets `flatpak install` fetch the freedesktop runtime from Flathub if missing.
-flatpak build-bundle --runtime-repo="$FLATHUB" "$WORK/repo" "$OUT" "$APP_ID" stable
+# --repo-url makes the installed origin update from the ArtCraft OCI repository.
+flatpak build-bundle --runtime-repo="$FLATHUB" ${OCI_REPO:+--repo-url="$OCI_REPO"} "${GPG_KEYS[@]}" "$WORK/repo" "$OUT" "$APP_ID" stable
 echo "wrote $OUT"
 
 if [[ "$OCI" = 1 ]]; then
