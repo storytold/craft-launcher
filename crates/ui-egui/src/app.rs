@@ -658,6 +658,13 @@ impl LauncherUi {
                 self.on_notice(result);
                 true
             }
+            Event::DefaultSet { result, .. } => {
+                match result {
+                    Ok(msg) => self.toast(msg, false),
+                    Err(e) => self.toast(e, true),
+                }
+                false
+            }
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;

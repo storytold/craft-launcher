@@ -246,6 +246,8 @@ pub struct NativeBackend {
     /// Runs a job's worker. Each worker gets its own thread; a test swaps this to see what is in
     /// the download line at the moment each one would start.
     spawn: Spawn,
+    /// What `Command::SetDefault` runs: [`crate::default_apps::set_default`] (a test waits in it).
+    set_default: fn(&'static CraftApp) -> Result<String, String>,
 }
 
 /// Runs a job's worker (see [`NativeBackend::spawn`]).
@@ -302,7 +304,7 @@ impl NativeBackend {
         let spawn: Spawn = Arc::new(|work| {
             std::thread::spawn(work);
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform(), pins, spawn };
+        let backend = Self { shared, paths, http, source, platform: native_platform(), pins, spawn, set_default: crate::default_apps::set_default };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -1670,6 +1672,20 @@ impl Backend for NativeBackend {
                     shared.emit(Event::Notice { app: app_id, result });
                 });
             }
+            Command::SetDefault { app } => {
+                let Some(def) = CraftApp::by_id(&app) else { return };
+                if self.installed(&app).is_none() {
+                    self.shared.emit(Event::DefaultSet { app, result: Err(format!("{} isn't installed", def.name)) });
+                    return;
+                }
+                // In the Flatpak the menu-entry lookup can wait on `flatpak-spawn --host`, so it runs off the UI thread.
+                let shared = self.shared.clone();
+                let set_default = self.set_default;
+                std::thread::spawn(move || {
+                    let result = set_default(def);
+                    shared.emit(Event::DefaultSet { app, result });
+                });
+            }
             Command::UpdateLauncher => self.update_launcher(),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::DownloadOrder(order) => install::DOWNLOADS.set_order(order),
@@ -2373,6 +2389,7 @@ mod tests {
             spawn: Arc::new(|work| {
                 std::thread::spawn(work);
             }),
+            set_default: crate::default_apps::set_default,
         }
     }
 
@@ -3229,5 +3246,63 @@ mod tests {
                 assert!(backend.shared.jobs.lock().unwrap().is_empty());
             }
         }
+    }
+
+    /// "Set as default" answers with `DefaultSet`, never `JobFinished`, which would end the
+    /// display of a download or install the app has running.
+    #[test]
+    fn set_default_answers_without_ending_a_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), Platform { os: Os::Linux, arch: Arch::X64 }, None);
+        backend.send(Command::SetDefault { app: APP.into() });
+        let events = backend.poll();
+        assert!(events.iter().any(|e| matches!(e, Event::DefaultSet { app, result: Err(_) } if app == APP)), "{events:?}");
+        assert!(!events.iter().any(|e| matches!(e, Event::JobFinished { .. })), "{events:?}");
+    }
+
+    /// Held by [`set_default_runs_off_the_callers_thread`] while its lookup should be waiting.
+    static LOOKUP_GATE: Mutex<()> = Mutex::new(());
+
+    /// A lookup that waits for [`LOOKUP_GATE`], as `flatpak-spawn --host` can; it gives up after 5 s
+    /// so that a caller holding the gate itself fails the test instead of hanging it.
+    fn gated_set_default(_: &'static CraftApp) -> Result<String, String> {
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(5) {
+            if LOOKUP_GATE.try_lock().is_ok() {
+                return Ok("set".into());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Err("the lookup waited 5 s".into())
+    }
+
+    /// "Set as default" doesn't hold up the caller (the UI thread): `send` returns while the
+    /// lookup is still waiting, and the answer comes once it's done.
+    #[test]
+    fn set_default_runs_off_the_callers_thread() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), Platform { os: Os::Linux, arch: Arch::X64 }, None);
+        backend.set_default = gated_set_default;
+        backend.shared.installed.lock().unwrap().insert(APP.to_string(), copy_of("0.5.0", InstallSource::Launcher, "/opt/photocraft"));
+        let answer = |events: Vec<Event>| {
+            events.into_iter().find_map(|e| match e {
+                Event::DefaultSet { app, result } if app == APP => Some(result),
+                _ => None,
+            })
+        };
+        let gate = LOOKUP_GATE.lock().unwrap_or_else(PoisonError::into_inner);
+        backend.send(Command::SetDefault { app: APP.into() });
+        let early = answer(backend.poll());
+        drop(gate);
+        assert_eq!(early, None, "send waited for the lookup");
+        let start = std::time::Instant::now();
+        let result = loop {
+            if let Some(result) = answer(backend.poll()) {
+                break result;
+            }
+            assert!(start.elapsed() < Duration::from_secs(10), "no answer");
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert_eq!(result, Ok("set".to_string()));
     }
 }

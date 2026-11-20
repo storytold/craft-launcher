@@ -58,6 +58,10 @@ pub enum Command {
     CreateDesktopShortcut {
         app: String,
     },
+    /// Make the installed app the default for the file types its menu entry lists (Linux).
+    SetDefault {
+        app: String,
+    },
     /// Pause a running download, keeping what's downloaded so far (`Install` resumes it).
     Pause {
         app: String,
@@ -302,6 +306,12 @@ pub enum Event {
     /// A short status toast that is not tied to an install/uninstall job phase
     /// (e.g. creating a desktop shortcut). Does not clear `Progress` state.
     Notice {
+        app: String,
+        result: Result<String, String>,
+    },
+    /// What `Command::SetDefault` did, as a short message. It isn't a job, so a download or
+    /// install running for the same app carries on as it was.
+    DefaultSet {
         app: String,
         result: Result<String, String>,
     },
