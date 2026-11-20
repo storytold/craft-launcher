@@ -76,6 +76,7 @@
 	Show in Explorer	Megjelenítés a Fájlkezelőben
 	Show in Files	Megjelenítés a fájlkezelőben
 	Reinstall	Újratelepítés
+	Add desktop shortcut	Asztali parancsikon hozzáadása
 	Uninstall…	Eltávolítás…
 	Launch options…	Indítási beállítások…
 	{name} launch options	{name} indítási beállításai
@@ -109,6 +110,7 @@
 	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
 	Running in the background	Futtatás a háttérben
 	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
+	Hide ArtCraft Launcher from the Dock while in the background	ArtCraft Launcher elrejtése a Dockból a háttérben
 	ArtCraft Launcher is still running	Az ArtCraft Launcher továbbra is fut
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	A tálcára került: az ikonjáról megnyitható vagy bezárható, vagy kapcsolja ki ezt a beállításokban.
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon
@@ -138,6 +140,8 @@
 	Pin to top	Rögzítés felülre
 	Unpin	Rögzítés feloldása
 	Pinned	Rögzítettek
+	Pin {name} to top	{name} rögzítése felülre
+	Unpin {name}	{name} rögzítésének feloldása
 	Reorder {name}	Átrendezés: {name}
 	Move up	Feljebb
 	Move down	Lejjebb
@@ -170,6 +174,10 @@
 	Retry update to {version}	Frissítés újrapróbálása: {version}
 	The download is still here. It's checked again, then installed.	A letöltött fájl megmaradt. Újra ellenőrizzük, majd telepítjük.
 	Waiting for another app…	Várakozás egy másik alkalmazásra…
+	Waiting for another download…	Várakozás egy másik letöltésre…
+	Simultaneous downloads	Egyidejű letöltések
+	No limit	Korlátlan
+	Downloads running together share your connection, so each one is slower.	Az egyidejű letöltések megosztják a kapcsolatot, így mindegyik lassabb.
 	Waiting for other installs…	Várakozás a többi telepítésre…
 
 # Package formats offered for download (PackageKind::label)
@@ -397,6 +405,9 @@ filter	Installed	Telepítve
 @msg	custom install folders aren't supported on this system	ezen a rendszeren nem támogatottak az egyéni telepítési mappák
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	a(z) {path} már létezik, és nem az ArtCraft Launcher telepítette
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	a(z) {path} nem helyezhető a Kukába ({reason}). Távolítsa el a Finderben.
+@msg	Desktop shortcut created for {name}	Asztali parancsikon létrehozva: {name}
+@msg	Couldn't create the desktop shortcut: {e}	Nem sikerült létrehozni az asztali parancsikont: {e}
+@msg	A desktop shortcut named {name} already exists	Már létezik egy {name} nevű asztali parancsikon
 	Apps are placed inside this folder.	Az alkalmazások ebbe a mappába kerülnek.
 	Replace what's there?	Lecseréli, ami ott van?
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
@@ -451,3 +462,23 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Feloldja a verzió zárolását?
 	{app} is pinned to {version}. Follow the latest release instead?	A(z) {app} a(z) {version} verzióra van rögzítve. Inkább a legújabb kiadást kövesse?
 	Unlock	Feloldás
+
+	AI agents	AI-ügynökök
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Amíg ez be van kapcsolva, az MCP-t használó AI-alkalmazások, például a Claude, a Cursor vagy az LM Studio, egyetlen bejegyzésen át dolgozhatnak minden telepített Craft alkalmazással. Kikapcsolva egyetlen ügynök sem éri el őket, és az itt hozzáadott bejegyzések törlődnek.
+	Quick install	Gyors telepítés
+	Adds the Craft apps to that client. Restart the client afterwards.	Hozzáadja a Craft alkalmazásokat ehhez a klienshez. Utána indítsa újra a klienst.
+	Other clients	Más kliensek
+	Copy the configuration and paste it into the client's MCP settings.	Másolja ki a konfigurációt, és illessze be a kliens MCP-beállításaiba.
+	Copy JSON	JSON másolása
+	Copy for VS Code	Másolás VS Code-hoz
+	Copy for Codex (TOML)	Másolás Codexhez (TOML)
+	Configuration copied.	Konfiguráció kimásolva.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	A(z) {client} csak induláskor tölti be az MCP-kiszolgálóit, ezért a Craft alkalmazások újraindítás után jelennek meg. Az újraindítás bezárja a(z) {client} alkalmazást, a még íródó választ is.
+	Restart {client}	{client} újraindítása
+	Restarting {client}…	{client} újraindítása…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	A Craft átjáró (craft-ai-mcp) nincs telepítve az indító mellé.
+	Let AI agents use Craft apps	AI-ügynökök használhatják a Craft alkalmazásokat
+	Apps agents can reach: {count}	Ügynökök által elérhető alkalmazások: {count}
+	Added	Hozzáadva
+	Remove	Eltávolítás
+	Add	Hozzáadás

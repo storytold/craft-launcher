@@ -68,8 +68,9 @@ modules:
         CARGO_HOME: /run/build/artcraft-launcher/cargo
         CARGO_NET_OFFLINE: 'true'
     build-commands:
-      - cargo --offline build --release --locked -p artcraft-launcher
+      - cargo --offline build --release --locked -p artcraft-launcher -p artcraft-launcher-mcp
       - install -Dm755 target/release/artcraft-launcher /app/bin/artcraft-launcher
+      - install -Dm755 target/release/craft-ai-mcp /app/bin/craft-ai-mcp
       - install -Dm644 NOTICE /app/share/doc/artcraft-launcher/NOTICE
       - install -Dm644 packaging/linux/ai.storyteller.artcraft-launcher.desktop /app/share/applications/ai.storyteller.artcraft-launcher.desktop
       - mkdir -p /app/share/icons && cp -R assets/app-icon/hicolor /app/share/icons/

@@ -63,6 +63,7 @@
 	Show in Explorer	Zobrazit v Průzkumníku
 	Show in Files	Zobrazit v Souborech
 	Reinstall	Znovu nainstalovat
+	Add desktop shortcut	Přidat zástupce na plochu
 	Uninstall…	Odinstalovat…
 	Launch options…	Možnosti spuštění…
 	{name} launch options	Možnosti spuštění aplikace {name}
@@ -96,6 +97,7 @@
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
+	Hide ArtCraft Launcher from the Dock while in the background	Skrýt ArtCraft Launcher v Docku při běhu na pozadí
 	ArtCraft Launcher is still running	ArtCraft Launcher stále běží
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Je v oznamovací oblasti: otevřete ho nebo ukončete přes ikonu v ní, nebo to vypněte v nastavení.
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše
@@ -124,6 +126,8 @@
 	Pin to top	Připnout nahoru
 	Unpin	Odepnout
 	Pinned	Připnuté
+	Pin {name} to top	Připnout {name} nahoru
+	Unpin {name}	Odepnout {name}
 	Reorder {name}	Změnit pořadí: {name}
 	Move up	Posunout nahoru
 	Move down	Posunout dolů
@@ -156,6 +160,10 @@
 	Retry update to {version}	Zkusit aktualizaci na {version} znovu
 	The download is still here. It's checked again, then installed.	Stažený soubor je stále k dispozici. Znovu se ověří a poté nainstaluje.
 	Waiting for another app…	Čekání na jinou aplikaci…
+	Waiting for another download…	Čekání na jiné stahování…
+	Simultaneous downloads	Souběžná stahování
+	No limit	Bez omezení
+	Downloads running together share your connection, so each one is slower.	Souběžná stahování sdílejí vaše připojení, takže každé je pomalejší.
 	Waiting for other installs…	Čekání na dokončení ostatních instalací…
 	Installer (.msi)	Instalační program (.msi)
 	Portable (.zip)	Přenosná verze (.zip)
@@ -364,6 +372,9 @@ filter	Installed	Nainstalováno
 @msg	custom install folders aren't supported on this system	vlastní instalační složky nejsou v tomto systému podporovány
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} již existuje a nebylo nainstalováno aplikací ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} nelze přesunout do koše ({reason}). Odstraňte položku ve Finderu.
+@msg	Desktop shortcut created for {name}	Zástupce na ploše pro {name} byl vytvořen
+@msg	Couldn't create the desktop shortcut: {e}	Nepodařilo se vytvořit zástupce na ploše: {e}
+@msg	A desktop shortcut named {name} already exists	Zástupce na ploše s názvem {name} již existuje
 	Apps are placed inside this folder.	Aplikace se umístí do této složky.
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
@@ -418,3 +429,23 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Odemknout verzi?
 	{app} is pinned to {version}. Follow the latest release instead?	Aplikace {app} je uzamčena na verzi {version}. Přejít na nejnovější vydání?
 	Unlock	Odemknout
+
+	AI agents	AI agenti
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Když je tato volba zapnutá, mohou aplikace AI, které používají MCP, například Claude, Cursor nebo LM Studio, pracovat přes jednu položku s každou nainstalovanou aplikací Craft. Když je vypnutá, žádný agent se k nim nedostane a položky přidané zde se odeberou.
+	Quick install	Rychlá instalace
+	Adds the Craft apps to that client. Restart the client afterwards.	Přidá aplikace Craft do tohoto klienta. Potom klienta restartujte.
+	Other clients	Další klienti
+	Copy the configuration and paste it into the client's MCP settings.	Zkopírujte konfiguraci a vložte ji do nastavení MCP klienta.
+	Copy JSON	Kopírovat JSON
+	Copy for VS Code	Kopírovat pro VS Code
+	Copy for Codex (TOML)	Kopírovat pro Codex (TOML)
+	Configuration copied.	Konfigurace zkopírována.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} načítá své servery MCP jen při spuštění, takže aplikace Craft se objeví až po restartu. Restart zavře {client} včetně odpovědi, kterou právě píše.
+	Restart {client}	Restartovat {client}
+	Restarting {client}…	Restartuje se {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Brána Craft (craft-ai-mcp) není nainstalována vedle spouštěče.
+	Let AI agents use Craft apps	Povolit AI agentům používat aplikace Craft
+	Apps agents can reach: {count}	Aplikace dostupné agentům: {count}
+	Added	Přidáno
+	Remove	Odebrat
+	Add	Přidat
