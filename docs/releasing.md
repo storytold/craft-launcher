@@ -27,6 +27,11 @@ Packaging facts the code relies on:
   to know the running copy came from the MSI. Its shortcuts set AppUserModelID
   `ai.storyteller.artcraft-launcher`, which toast notifications need. `portable.txt` beside the exe switches on portable mode
   (`ArtCraftLauncherData\` next to the exe).
+- When automatic updates are enabled, the launcher can update an existing per-user Craft app
+  MSI with `/qn`. First installs, downgrades, machine-scope updates, and launcher self-updates
+  retain visible progress. A queued app update reads the preference when its installer gets its
+  turn; changing the preference does not affect an already-running installer. Required Windows
+  permission prompts are still shown.
 - The macOS bundle is `ArtCraft Launcher.app` (executable `Contents/MacOS/ArtCraft Launcher`), a
   normal Dock app that can also sit in the menu bar; `LSUIElement` is not set.
 - Linux: the tray uses StatusNotifierItem over D-Bus and notifications use
