@@ -190,13 +190,13 @@ fn main() -> ExitCode {
 }
 
 /// The native window and renderer setup. `hidden` only sets the initial visibility; the shell
-/// shows the window after a tray start. `backends` overrides wgpu's backend list for this attempt
+/// shows the window after a tray start. `attempt` selects the backend and hardware/software policy
 /// (`StartupBackends`). Non-macOS windows are undecorated because the header draws the title bar,
 /// while macOS keeps its bundle icon and hides the system title. Window state persists to the
 /// portable-aware settings path, system font fallback is off so the deliberate bundled faces stay
 /// in charge, and wgpu limits are clamped to the adapter so a short adapter cannot fail device
 /// creation.
-fn native_options(hidden: bool, backends: Option<eframe::wgpu::Backends>) -> eframe::NativeOptions {
+fn native_options(hidden: bool, attempt: RendererAttempt) -> eframe::NativeOptions {
     let icon =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/ai.storyteller.artcraft-launcher.png")).ok();
     let mut viewport = egui::ViewportBuilder::default()
@@ -225,7 +225,7 @@ fn native_options(hidden: bool, backends: Option<eframe::wgpu::Backends>) -> efr
         viewport,
         persist_window: true,
         persistence_path: settings_file::path(APP_ID),
-        wgpu_options: within_adapter_limits(wgpu_options(backends)),
+        wgpu_options: within_adapter_limits(wgpu_options(attempt)),
         // The launcher's typography is deliberate (its bundled Latin and monochrome emoji faces
         // plus, for a CJK language, the one system face read by `theme`). eframe's system-font
         // provider would enumerate and select fonts asynchronously, changing which face draws Han
@@ -257,36 +257,62 @@ fn fit_limits(requested: eframe::wgpu::Limits, adapter: &eframe::wgpu::Limits) -
     requested.or_worse_values_from(adapter)
 }
 
-/// The backends a start tries for its window, in order, before it gives up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RendererAttempt {
+    Default,
+    #[cfg(not(target_os = "macos"))]
+    OpenGl,
+    #[cfg(windows)]
+    Software,
+}
+
+impl RendererAttempt {
+    fn backends(self) -> Option<eframe::wgpu::Backends> {
+        match self {
+            Self::Default => None,
+            #[cfg(not(target_os = "macos"))]
+            Self::OpenGl => Some(eframe::wgpu::Backends::GL),
+            #[cfg(windows)]
+            Self::Software => Some(eframe::wgpu::Backends::DX12),
+        }
+    }
+
+    #[cfg(windows)]
+    fn accepts(self, device_type: eframe::wgpu::DeviceType) -> bool {
+        let software = device_type == eframe::wgpu::DeviceType::Cpu;
+        match self {
+            Self::Software => software,
+            Self::Default | Self::OpenGl => !software,
+        }
+    }
+}
+
+/// The renderer attempts a start tries, in order, before it gives up.
 ///
-/// The first attempt uses wgpu's own backend list. If the renderer can't be created on it — the
-/// driver refuses the UI pipeline — the next attempt uses [`fallback_backends`] instead. Without
-/// this the launcher exits before its window appears and looks like it never started at all:
-/// Direct3D 12 fails to create `egui_pipeline` on some drivers (#111, #1081), and a 32-bit build
-/// fails it on every Direct3D 12 adapter even where the 64-bit build of the same commit draws
-/// fine (reproduced here: `windows-x86` from v0.14.0 on Windows 10 22H2, NVIDIA 32.0.16.1742 and
-/// the AMD integrated GPU alike).
+/// Windows tries hardware D3D12, hardware GL, then software D3D12. Both renderer creation and
+/// initial surface configuration errors are returned by egui-wgpu, so a broken legacy GL driver
+/// can fall back to WARP without preferring CPU rendering on machines with working hardware GL.
+/// Other platforms keep their default backend list and GL fallback (Metal alone on macOS).
 ///
 /// `WGPU_BACKEND` is the user's own choice, so a start that names one tries that alone.
 struct StartupBackends {
-    /// What to try next, in order. An entry of `None` means wgpu's own backend list.
-    remaining: Vec<Option<eframe::wgpu::Backends>>,
+    current: RendererAttempt,
+    remaining: Vec<RendererAttempt>,
 }
 
 impl StartupBackends {
     /// The plan for a start, where `named_by_env` says `WGPU_BACKEND` picked the backend itself.
     fn new(named_by_env: bool) -> Self {
-        Self { remaining: startup_plan(named_by_env) }
+        Self { current: RendererAttempt::Default, remaining: startup_plan(named_by_env).into_iter().skip(1).collect() }
     }
 
-    /// The backends to start with, or `None` for wgpu's own list.
-    fn current(&self) -> Option<eframe::wgpu::Backends> {
-        self.remaining.first().copied().flatten()
+    fn current(&self) -> RendererAttempt {
+        self.current
     }
 
     /// The backends to try after `error` ended the attempt, or `None` when there is nothing left
     /// to try and the launcher should report the failure and exit.
-    fn after_failure(&mut self, error: &eframe::Error) -> Option<eframe::wgpu::Backends> {
+    fn after_failure(&mut self, error: &eframe::Error) -> Option<RendererAttempt> {
         // Only a renderer that couldn't be created is worth another backend. A window that failed
         // for another reason — no event loop, no display — fails the same way on all of them, and
         // retrying would only hide the first error.
@@ -294,10 +320,11 @@ impl StartupBackends {
             self.remaining.clear();
             return None;
         }
-        if !self.remaining.is_empty() {
-            self.remaining.remove(0);
+        if self.remaining.is_empty() {
+            return None;
         }
-        self.current()
+        self.current = self.remaining.remove(0);
+        Some(self.current)
     }
 }
 
@@ -324,8 +351,8 @@ fn startup_language(saved: Option<Settings>) -> i18n::Lang {
 /// (#1081). The log file says the same thing, but someone whose launcher only ever fails to start
 /// never sees a log, and a silent exit code 1 reads as "the launcher is broken" with nothing to
 /// act on.
-fn report_startup_failure(backend: Option<eframe::wgpu::Backends>, error: &eframe::Error, lang: i18n::Lang) {
-    let message = startup_failure_message(lang, &backend_label(backend), &error.to_string());
+fn report_startup_failure(attempt: RendererAttempt, error: &eframe::Error, lang: i18n::Lang) {
+    let message = startup_failure_message(lang, &backend_label(attempt), &error.to_string());
     log::error!("{message}");
     rfd::MessageDialog::new()
         .set_title("ArtCraft Launcher")
@@ -344,8 +371,8 @@ fn startup_failure_message(lang: i18n::Lang, backend: &str, error: &str) -> Stri
 
 /// Names the backend set a start asked wgpu for, for the dialog. `WGPU_BACKEND` outranks the
 /// fallback, so a start that names one is described by it.
-fn backend_label(backends: Option<eframe::wgpu::Backends>) -> String {
-    match backends.or_else(eframe::wgpu::Backends::from_env) {
+fn backend_label(attempt: RendererAttempt) -> String {
+    match eframe::wgpu::Backends::from_env().or_else(|| attempt.backends()) {
         Some(backends) => name_backends(backends),
         None => DEFAULT_BACKENDS_LABEL.to_owned(),
     }
@@ -366,7 +393,7 @@ fn name_backends(backends: eframe::wgpu::Backends) -> String {
 /// wgpu's own backend list, as [`wgpu_options`] configures it. The only other place that knows
 /// which backends a start with no override asks for.
 #[cfg(windows)]
-const DEFAULT_BACKENDS_LABEL: &str = "Direct3D 12 and OpenGL";
+const DEFAULT_BACKENDS_LABEL: &str = "Direct3D 12";
 #[cfg(not(any(windows, target_os = "macos")))]
 const DEFAULT_BACKENDS_LABEL: &str = "Vulkan and OpenGL";
 /// macOS leaves egui-wgpu's `PRIMARY | GL` mask alone, but that doesn't put OpenGL in reach: wgpu's
@@ -375,31 +402,25 @@ const DEFAULT_BACKENDS_LABEL: &str = "Vulkan and OpenGL";
 #[cfg(target_os = "macos")]
 const DEFAULT_BACKENDS_LABEL: &str = "Metal";
 
-/// [`StartupBackends`]' order: wgpu's own list, then the fallback.
-fn startup_plan(named_by_env: bool) -> Vec<Option<eframe::wgpu::Backends>> {
-    match (named_by_env, fallback_backends()) {
-        (true, _) | (false, None) => vec![None],
-        (false, Some(fallback)) => vec![None, Some(fallback)],
+fn startup_plan(named_by_env: bool) -> Vec<RendererAttempt> {
+    if named_by_env {
+        return vec![RendererAttempt::Default];
+    }
+    #[cfg(windows)]
+    {
+        vec![RendererAttempt::Default, RendererAttempt::OpenGl, RendererAttempt::Software]
+    }
+    #[cfg(target_os = "macos")]
+    {
+        vec![RendererAttempt::Default]
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        vec![RendererAttempt::Default, RendererAttempt::OpenGl]
     }
 }
 
-/// The backend a start falls back to when wgpu's own list can't create the UI pipeline, if the
-/// platform has one to offer.
-#[cfg(target_os = "macos")]
-fn fallback_backends() -> Option<eframe::wgpu::Backends> {
-    // Metal is the only backend macOS has; a Metal failure has no second backend to fall back to.
-    None
-}
-
-/// OpenGL, which draws the launcher everywhere else: it needs no vendor ICDs and no overlay
-/// layers, and on Windows it is already the launcher's second choice (`wgpu_options`). Vulkan is
-/// deliberately not tried, for the reason given there.
-#[cfg(not(target_os = "macos"))]
-fn fallback_backends() -> Option<eframe::wgpu::Backends> {
-    Some(eframe::wgpu::Backends::GL)
-}
-
-/// wgpu's backend list. On Windows that is Direct3D 12 with GL as the fallback, not Vulkan:
+/// Windows tries hardware D3D12, then hardware GL, then WARP (`startup_plan`), not Vulkan:
 /// Vulkan goes through vendor ICDs and third-party overlay layers, and on hybrid AMD laptops whose
 /// integrated and discrete GPUs run different driver packages (common on OEM machines, where the
 /// Adrenalin installer leaves the integrated GPU on the OEM driver) it crashes inside
@@ -411,7 +432,7 @@ fn fallback_backends() -> Option<eframe::wgpu::Backends> {
 /// the window is then stretched over it vertically by the compositor, blurring every horizontal
 /// edge and line of text. `WGPU_DX12_PRESENTATION_SYSTEM` still overrides it.
 #[cfg(windows)]
-fn wgpu_options(backends: Option<eframe::wgpu::Backends>) -> eframe::WgpuConfiguration {
+fn wgpu_options(attempt: RendererAttempt) -> eframe::WgpuConfiguration {
     use eframe::wgpu::{Backends, Dx12Compiler, Dx12SwapchainKind, PowerPreference};
     let mut config = eframe::WgpuConfiguration::default();
     pin_dx12_compiler(&mut config, Dx12Compiler::from_env());
@@ -419,19 +440,17 @@ fn wgpu_options(backends: Option<eframe::wgpu::Backends>) -> eframe::WgpuConfigu
         setup.instance_descriptor.backend_options.dx12.presentation_system =
             Dx12SwapchainKind::from_env().unwrap_or(Dx12SwapchainKind::DxgiFromVisual);
         let named = Backends::from_env();
-        setup.instance_descriptor.backends = named.or(backends).unwrap_or(Backends::DX12 | Backends::GL);
+        setup.instance_descriptor.backends = named.or_else(|| attempt.backends()).unwrap_or(Backends::DX12);
         if named.is_none() {
             let integrated = setup.power_preference == PowerPreference::LowPower;
             setup.native_adapter_selector = Some(Arc::new(move |adapters, surface| {
                 adapters
                     .iter()
                     .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
-                    .min_by_key(|a| {
-                        let info = a.get_info();
-                        adapter_rank(info.backend, info.device_type, integrated)
-                    })
+                    .filter(|a| attempt.accepts(a.get_info().device_type))
+                    .min_by_key(|a| adapter_rank(&a.get_info(), integrated))
                     .cloned()
-                    .ok_or_else(|| "no graphics adapter can draw to the window".to_owned())
+                    .ok_or_else(|| format!("no graphics adapter for {attempt:?} can draw to the window"))
             }));
         }
     }
@@ -451,21 +470,19 @@ fn pin_dx12_compiler(config: &mut eframe::WgpuConfiguration, env_choice: Option<
     }
 }
 
-/// wgpu's own adapter order (by device type, then enumeration order), except that any Direct3D 12
-/// adapter, the WARP software one included, comes before GL. wgpu ranks WARP last, so on GPUs with
-/// no D3D12 driver (Intel HD 4000, Radeon TeraScale) it picked the GL one, whose legacy driver
-/// failed `Surface::configure` and wgpu panicked before the window opened.
+/// Hardware before software, with D3D12 preferred within each group and the power preference
+/// deciding between discrete and integrated GPUs. Driver names and vendors do not affect it.
 #[cfg(any(windows, test))]
-fn adapter_rank(backend: eframe::wgpu::Backend, device_type: eframe::wgpu::DeviceType, integrated: bool) -> (bool, u8) {
+fn adapter_rank(info: &eframe::wgpu::AdapterInfo, integrated: bool) -> (bool, bool, u8) {
     use eframe::wgpu::{Backend, DeviceType};
-    let device = match device_type {
+    let device = match info.device_type {
         DeviceType::DiscreteGpu => 1 + u8::from(integrated),
         DeviceType::IntegratedGpu => 2 - u8::from(integrated),
         DeviceType::Other => 3,
         DeviceType::VirtualGpu => 4,
         DeviceType::Cpu => 5,
     };
-    (backend != Backend::Dx12, device)
+    (info.device_type == DeviceType::Cpu, info.backend != Backend::Dx12, device)
 }
 
 /// wgpu's adapter on Linux and the BSDs: the GPU the desktop runs on. egui asks for the
@@ -478,11 +495,11 @@ fn adapter_rank(backend: eframe::wgpu::Backend, device_type: eframe::wgpu::Devic
 /// software rasterizer only wins when nothing else can draw. `WGPU_POWER_PREF` (`low`, `high` or
 /// `none`) still overrides it, and then wgpu picks the adapter itself.
 #[cfg(not(any(windows, target_os = "macos")))]
-fn wgpu_options(backends: Option<eframe::wgpu::Backends>) -> eframe::WgpuConfiguration {
+fn wgpu_options(attempt: RendererAttempt) -> eframe::WgpuConfiguration {
     use eframe::wgpu::{DeviceType, PowerPreference};
     let mut config = eframe::WgpuConfiguration::default();
     if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut config.wgpu_setup {
-        if let Some(backends) = backends {
+        if let Some(backends) = attempt.backends() {
             setup.instance_descriptor.backends = backends;
         }
         if let Some(preference) = PowerPreference::from_env() {
@@ -505,11 +522,11 @@ fn wgpu_options(backends: Option<eframe::wgpu::Backends>) -> eframe::WgpuConfigu
 /// Returns wgpu's defaults, except that Intel Macs skip the indirect-call validation shaders
 /// ([`skips_indirect_validation`]).
 #[cfg(target_os = "macos")]
-fn wgpu_options(backends: Option<eframe::wgpu::Backends>) -> eframe::WgpuConfiguration {
+fn wgpu_options(attempt: RendererAttempt) -> eframe::WgpuConfiguration {
     use eframe::wgpu::InstanceFlags;
     let mut config = eframe::WgpuConfiguration::default();
     if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut config.wgpu_setup {
-        if let Some(backends) = backends {
+        if let Some(backends) = attempt.backends() {
             setup.instance_descriptor.backends = backends;
         }
         if skips_indirect_validation(std::env::consts::OS, cfg!(target_arch = "x86_64")) {
@@ -821,6 +838,9 @@ impl Launcher {
     /// Readies the launcher for a new window. Unless the launcher started in the tray, the first
     /// one brings the saved settings and the tray icon.
     fn open(&mut self, cc: &eframe::CreationContext<'_>, waker: &Arc<Waker>) {
+        if let Some(state) = &cc.wgpu_render_state {
+            log::info!("graphics adapter: {}", eframe::egui_wgpu::adapter_info_summary(&state.adapter.get_info()));
+        }
         waker.set_window(Some(cc.egui_ctx.clone()));
         if !self.started {
             self.start(cc.storage.and_then(|s| eframe::get_value(s, SETTINGS_KEY)), waker);
@@ -1536,29 +1556,26 @@ mod tests {
         assert_eq!(name_backends(Backends::VULKAN | Backends::GL), "Vulkan and OpenGL");
         // An attempt that names no backend is the platform's own list (`wgpu_options`).
         if Backends::from_env().is_none() {
-            assert_eq!(backend_label(None), DEFAULT_BACKENDS_LABEL);
+            assert_eq!(backend_label(RendererAttempt::Default), DEFAULT_BACKENDS_LABEL);
+            // The fallback names itself.
+            #[cfg(not(target_os = "macos"))]
+            assert_eq!(backend_label(RendererAttempt::OpenGl), "OpenGL");
         }
-        // The fallback names itself.
-        assert_eq!(backend_label(Some(Backends::GL)), "OpenGL");
     }
 
-    /// A renderer that couldn't be created is retried once, on the fallback, and then the
-    /// launcher reports the failure. macOS has no second backend, so it retries nothing.
+    /// Renderer failures exhaust the platform's plan; they never cycle back to a failed attempt.
     #[test]
     fn a_renderer_that_cannot_start_is_retried_on_the_fallback() {
         // What eframe returns when the driver refuses the UI pipeline (#111, #1081).
         let failure = || eframe::Error::Wgpu(eframe::egui_wgpu::WgpuError::NoSurfaceFormatsAvailable);
         let mut backends = StartupBackends::new(false);
-        assert_eq!(backends.current(), None, "the first attempt uses wgpu's own backend list");
-        match fallback_backends() {
-            Some(fallback) => {
-                assert_eq!(backends.after_failure(&failure()), Some(fallback));
-                // The fallback is the last try: a driver that fails it too ends the launcher.
-                assert_eq!(backends.after_failure(&failure()), None);
-            }
-            // Metal is the only backend macOS has.
-            None => assert_eq!(backends.after_failure(&failure()), None),
+        assert_eq!(backends.current(), RendererAttempt::Default);
+        for expected in startup_plan(false).into_iter().skip(1) {
+            assert_eq!(backends.after_failure(&failure()), Some(expected));
+            assert_eq!(backends.current(), expected);
         }
+        assert_eq!(backends.after_failure(&failure()), None);
+        assert_eq!(backends.after_failure(&failure()), None);
     }
 
     /// `WGPU_BACKEND` is the user's own choice, so a failure on it ends the start rather than
@@ -1566,7 +1583,7 @@ mod tests {
     #[test]
     fn a_start_that_names_a_backend_is_not_overruled() {
         // `WGPU_BACKEND` is the user's own choice, so a failure on it ends the start.
-        assert_eq!(startup_plan(true), vec![None]);
+        assert_eq!(startup_plan(true), vec![RendererAttempt::Default]);
         let mut backends = StartupBackends::new(true);
         let failure = eframe::Error::Wgpu(eframe::egui_wgpu::WgpuError::NoSurfaceFormatsAvailable);
         assert_eq!(backends.after_failure(&failure), None);
@@ -1583,13 +1600,30 @@ mod tests {
         assert_eq!(backends.after_failure(&error), None);
     }
 
-    /// The fallback is OpenGL wherever it exists, never Vulkan (`wgpu_options` says why).
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
     #[test]
-    fn the_fallback_backend_is_opengl() {
-        // Direct3D 12 and Vulkan both fail the UI pipeline on drivers where OpenGL draws fine
-        // (#111, #1081), and Vulkan is deliberately not a Windows backend (see `wgpu_options`).
-        assert_eq!(fallback_backends(), Some(eframe::wgpu::Backends::GL));
+    fn a_failed_hardware_surface_falls_back_to_software() {
+        use eframe::egui_wgpu::WgpuError;
+        let surface_failure = || {
+            eframe::Error::Wgpu(WgpuError::ConfigureSurface(eframe::wgpu::Error::Validation {
+                source: Box::new(std::io::Error::other("legacy GL driver failed")),
+                description: "Failed to wait for GPU to come idle before reconfiguring the Surface".to_owned(),
+            }))
+        };
+        let mut backends = StartupBackends::new(false);
+        assert_eq!(backends.current(), RendererAttempt::Default);
+        assert_eq!(backends.after_failure(&surface_failure()), Some(RendererAttempt::OpenGl));
+        assert_eq!(backends.after_failure(&surface_failure()), Some(RendererAttempt::Software));
+        assert_eq!(backends.after_failure(&surface_failure()), None);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn other_platforms_keep_their_startup_backends() {
+        #[cfg(target_os = "macos")]
+        assert_eq!(startup_plan(false), vec![RendererAttempt::Default]);
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(startup_plan(false), vec![RendererAttempt::Default, RendererAttempt::OpenGl]);
     }
 
     /// A fallback attempt configures wgpu with GL alone, rather than the default list — read
@@ -1600,7 +1634,7 @@ mod tests {
     fn a_fallback_attempt_starts_only_that_backend() {
         use eframe::egui_wgpu::WgpuSetup;
         /// The backend list `native_options` asks wgpu for: the path a start actually takes.
-        fn backends(requested: Option<eframe::wgpu::Backends>) -> eframe::wgpu::Backends {
+        fn backends(requested: RendererAttempt) -> eframe::wgpu::Backends {
             match native_options(false, requested).wgpu_options.wgpu_setup {
                 WgpuSetup::CreateNew(setup) => setup.instance_descriptor.backends,
                 WgpuSetup::Existing(_) => panic!("the launcher creates its own wgpu instance"),
@@ -1611,8 +1645,9 @@ mod tests {
             // covers that it is then the only attempt.
             return;
         }
-        assert_eq!(backends(None), eframe::wgpu::Backends::DX12 | eframe::wgpu::Backends::GL);
-        assert_eq!(backends(Some(eframe::wgpu::Backends::GL)), eframe::wgpu::Backends::GL);
+        assert_eq!(backends(RendererAttempt::Default), eframe::wgpu::Backends::DX12);
+        assert_eq!(backends(RendererAttempt::OpenGl), eframe::wgpu::Backends::GL);
+        assert_eq!(backends(RendererAttempt::Software), eframe::wgpu::Backends::DX12);
     }
 
     #[test]
@@ -1636,7 +1671,7 @@ mod tests {
                 WgpuSetup::Existing(_) => panic!("the launcher creates its own wgpu instance"),
             }
         }
-        let launcher = flags(wgpu_options(None));
+        let launcher = flags(wgpu_options(RendererAttempt::Default));
         if !cfg!(target_arch = "x86_64") {
             // Apple silicon keeps wgpu's flags.
             assert_eq!(launcher, flags(eframe::WgpuConfiguration::default()));
@@ -1669,17 +1704,43 @@ mod tests {
     }
 
     #[test]
-    fn warp_beats_a_gl_gpu_but_not_a_d3d12_gpu() {
-        use eframe::wgpu::{Backend, DeviceType};
-        // Intel HD 4000 + Radeon HD 7600M have no D3D12 driver; their GL one fails to configure.
-        let warp = adapter_rank(Backend::Dx12, DeviceType::Cpu, false);
-        assert!(warp < adapter_rank(Backend::Gl, DeviceType::IntegratedGpu, false));
-        assert!(warp < adapter_rank(Backend::Gl, DeviceType::Other, false));
-        // Hardware D3D12 still wins, in wgpu's order for the power preference.
+    fn hardware_and_power_preferences_do_not_depend_on_the_backend() {
+        use eframe::wgpu::{AdapterInfo, Backend, DeviceType};
+        let rank = |backend, device_type, integrated| adapter_rank(&AdapterInfo::new(device_type, backend), integrated);
+        let warp = rank(Backend::Dx12, DeviceType::Cpu, false);
         let (discrete, integrated) = (DeviceType::DiscreteGpu, DeviceType::IntegratedGpu);
-        assert!(adapter_rank(Backend::Dx12, integrated, false) < warp);
-        assert!(adapter_rank(Backend::Dx12, discrete, false) < adapter_rank(Backend::Dx12, integrated, false));
-        assert!(adapter_rank(Backend::Dx12, integrated, true) < adapter_rank(Backend::Dx12, discrete, true));
+        for backend in [Backend::Dx12, Backend::Gl] {
+            for device in [discrete, integrated, DeviceType::Other, DeviceType::VirtualGpu] {
+                assert!(rank(backend, device, false) < warp);
+            }
+            assert!(rank(backend, discrete, false) < rank(backend, integrated, false));
+            assert!(rank(backend, integrated, true) < rank(backend, discrete, true));
+        }
+    }
+
+    #[test]
+    fn hardware_gl_beats_warp_without_vendor_detection() {
+        use eframe::wgpu::{AdapterInfo, Backend, DeviceType};
+        let hardware_gl = AdapterInfo::new(DeviceType::IntegratedGpu, Backend::Gl);
+        let warp = AdapterInfo::new(DeviceType::Cpu, Backend::Dx12);
+        let hardware = AdapterInfo::new(DeviceType::IntegratedGpu, Backend::Dx12);
+        for integrated in [false, true] {
+            assert!(adapter_rank(&hardware_gl, integrated) < adapter_rank(&warp, integrated));
+            assert!(adapter_rank(&hardware, integrated) < adapter_rank(&hardware_gl, integrated));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn software_adapters_are_only_selected_in_the_last_attempt() {
+        use eframe::wgpu::DeviceType;
+        let attempts = startup_plan(false);
+        for attempt in &attempts {
+            for device in [DeviceType::IntegratedGpu, DeviceType::DiscreteGpu, DeviceType::Other, DeviceType::VirtualGpu, DeviceType::Cpu] {
+                assert_eq!(attempt.accepts(device), (*attempt == RendererAttempt::Software) == (device == DeviceType::Cpu));
+            }
+        }
+        assert_eq!(attempts.last(), Some(&RendererAttempt::Software));
     }
 
     #[test]
@@ -1700,7 +1761,7 @@ mod tests {
     #[test]
     fn linux_draws_on_the_desktops_gpu_unless_told_otherwise() {
         use eframe::wgpu::PowerPreference;
-        let config = wgpu_options(None);
+        let config = wgpu_options(RendererAttempt::Default);
         let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &config.wgpu_setup else {
             panic!("the launcher creates its own wgpu instance");
         };
