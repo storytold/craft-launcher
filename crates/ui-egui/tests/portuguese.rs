@@ -80,8 +80,12 @@ fn events() -> Vec<Event> {
 }
 
 fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
+    harness_with_events(view, events())
+}
+
+fn harness_with_events(view: ViewMode, events: Vec<Event>) -> Harness<'static, Option<LauncherUi>> {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
-    let mut backend = Some(Fake { events: events(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake { events, clock: Rc::new(Cell::new(NOW)) });
     let settings =
         Settings { view, notify: false, language: "pt-BR".into(), theme: artcraft_launcher_ui_egui::theme::ThemeChoice::Dark, ..Settings::default() };
     Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(egui::Theme::Dark).build_ui_state(
@@ -118,11 +122,21 @@ fn portuguese_ui_translates_labels_dates_and_messages() {
     assert!(table.query_all_by_label_contains("de ago. de 2026").count() >= 1);
 }
 
-/// Brazilian Portuguese writes the launcher's longest dates ("29 de set. de 2026"): the table's
-/// released column must show one whole, not cut to "29 de set...".
+/// Brazilian Portuguese writes the launcher's longest dates ("29 de ago. de 2026"): the table's
+/// released column must show one whole, not cut to "29 de ago...".
 #[test]
 fn the_table_shows_the_longest_dates_whole() {
-    let mut h = harness(ViewMode::Table);
+    // The UI shows local dates. Fix the release at local noon so this layout regression
+    // exercises the same two-digit date in every time zone, including across UTC midnight.
+    let zone = jiff::tz::TimeZone::try_system().unwrap_or(jiff::tz::TimeZone::UTC);
+    let at = jiff::civil::date(2026, 8, 29).at(12, 0, 0, 0).to_zoned(zone).unwrap().timestamp().as_second();
+    let mut events = events();
+    for event in &mut events {
+        if let Event::Latest { latest: LatestRelease::Found(release), .. } = event {
+            release.published_at = Some(at);
+        }
+    }
+    let mut h = harness_with_events(ViewMode::Table, events);
     h.run_steps(4);
     let text = "29 de ago. de 2026";
     let font = egui::TextStyle::Body.resolve(&h.ctx.global_style());

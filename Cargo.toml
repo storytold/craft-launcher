@@ -27,6 +27,7 @@ egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
 eframe = { version = "0.37", default-features = false }
 egui_extras = { version = "0.37", default-features = false }
 egui_kittest = "0.37"
+egui-wgpu = { version = "0.37", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = { version = "1", features = ["serde"] }
