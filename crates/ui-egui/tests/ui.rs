@@ -4829,7 +4829,15 @@ fn msi_update_keeps_location_by_default() {
         .iter()
         .position(|c| matches!(c, Command::Configure(o) if o.keep_shared_installs.contains("photocraft")))
         .expect("the backend learns the app is kept");
-    let install = sent.iter().position(|c| matches!(c, Command::Install { app } if app == "photocraft")).expect("the update is sent");
+    // Linux always batches (`Settings::updates_batched`), so the update goes as a batch of one there.
+    let install = sent
+        .iter()
+        .position(|c| match c {
+            Command::Install { app } => !cfg!(target_os = "linux") && app == "photocraft",
+            Command::InstallAll { apps } => cfg!(target_os = "linux") && apps == &["photocraft".to_string()],
+            _ => false,
+        })
+        .expect("the update is sent");
     assert!(kept < install, "kept before the update is sent");
     assert!(h.state().as_ref().unwrap().settings.keep_shared_installs.contains("photocraft"));
 }
@@ -4853,8 +4861,25 @@ fn kept_all_users_updates_go_together_and_settings_can_ask_again() {
     h.get_by_label("Update").click();
     h.run();
     assert_eq!(installs(&sent), [Command::InstallAll { apps: vec!["photocraft".into(), "gridcraft".into()] }]);
+    {
+        let sent = sent.borrow();
+        let kept = sent
+            .iter()
+            .position(|c| {
+                matches!(c, Command::Configure(o)
+                    if o.keep_shared_installs.contains("photocraft") && o.keep_shared_installs.contains("gridcraft"))
+            })
+            .expect("the backend learns both apps are kept");
+        let batch = sent.iter().position(|c| matches!(c, Command::InstallAll { .. })).unwrap();
+        assert!(kept < batch, "kept before the batch is sent");
+    }
     h.get_by_label("Settings").click();
     h.run_steps(4);
+    // Settings hides the batching options on Linux, which always batches, and the reset with them.
+    if cfg!(target_os = "linux") {
+        assert!(h.query_by_label("Ask again how to update apps installed for everyone").is_none());
+        return;
+    }
     h.get_by_label("Ask again how to update apps installed for everyone").click();
     h.run_steps(2);
     assert!(h.state().as_ref().unwrap().settings.keep_shared_installs.is_empty());
