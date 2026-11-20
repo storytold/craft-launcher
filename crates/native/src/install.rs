@@ -1980,7 +1980,9 @@ mod tree {
         std::fs::create_dir_all(staging).map_err(|e| format!("couldn't create {} ({e})", staging.display()))?;
         let gz = std::fs::File::open(file).map_err(|e| e.to_string())?;
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(gz));
-        archive.set_preserve_permissions(true);
+        // Keep the default mode sanitising: an archive must not install setuid/setgid files or
+        // control the exact modes under /usr/local (audit: launcher #3).
+        archive.set_preserve_permissions(false);
         unpack_entries(&mut archive, staging)?;
         let top = single_top_folder(staging)?;
         if top.join("bin").join(app.id).is_file() {
@@ -2032,10 +2034,15 @@ mod tree {
             if total_unpacked > MAX_UNPACKED_BYTES {
                 return Err("archive exceeds maximum unpacked size".into());
             }
-            if entry.header().entry_type().is_dir() {
+            let kind = entry.header().entry_type();
+            if kind.is_dir() {
                 directories.push(entry);
-            } else {
+            } else if kind.is_file() {
                 entry.unpack_in(staging).map_err(|e| format!("couldn't unpack archive entry ({e})"))?;
+            } else {
+                // Symlinks and hardlinks could redirect a later write outside the staging folder,
+                // and device/FIFO entries have no place in an app package (audit: launcher #3).
+                return Err("archive contains a symlink, hardlink or special file".into());
             }
         }
         // Delay directory entries until child entries are written so restrictive modes do not break child extraction.
@@ -3228,6 +3235,27 @@ mod tests {
         let bad = dir.path().join("bad.tar.gz");
         tarball(&bad, &["x/README.md"]);
         assert!(tree::unpack(app, &bad, &dir.path().join("staging")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_unpack_rejects_link_entries() {
+        let app = CraftApp::by_id("wordcraft").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("link.tar.gz");
+        {
+            let enc = flate2::write::GzEncoder::new(std::fs::File::create(&file).unwrap(), flate2::Compression::default());
+            let mut b = tar::Builder::new(enc);
+            let mut h = tar::Header::new_gnu();
+            h.set_entry_type(tar::EntryType::Symlink);
+            h.set_size(0);
+            h.set_mode(0o777);
+            h.set_link_name("/etc/passwd").unwrap();
+            h.set_cksum();
+            b.append_data(&mut h, "wordcraft-0.3.0-freebsd-x86_64/bin/wordcraft", &[][..]).unwrap();
+            b.into_inner().unwrap().finish().unwrap();
+        }
+        assert!(tree::unpack(app, &file, &dir.path().join("staging")).is_err());
     }
 
     #[cfg(unix)]
