@@ -111,7 +111,7 @@ pub(super) fn plural_bosnian(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 15] = [
+pub static LANGUAGES: [LangInfo; 16] = [
     LangInfo {
         code: "en",
         name: "English",
