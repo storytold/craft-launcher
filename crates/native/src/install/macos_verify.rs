@@ -426,7 +426,15 @@ mod tests {
         let old = dir.path().join("old.app");
         std::fs::write(&staged, b"new fixture bytes").unwrap();
         std::fs::write(&old, b"old fixture bytes").unwrap();
-        let found = Installed { version: None, source: InstallSource::MacApp, location: staged.display().to_string(), package: None };
+        let found = Installed {
+            version: None,
+            source: InstallSource::MacApp,
+            location: staged.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let expect = Expect { team: app.mac_team, version: None };
         let mut calls = Vec::new();
 
@@ -476,8 +484,15 @@ mod tests {
         let app = solidcraft();
         let destination = destination_dir.join("SolidCraft.app");
         let version = Version::new(0, 28, 0);
-        let found =
-            Installed { version: Some(version.clone()), source: InstallSource::MacApp, location: staged.display().to_string(), package: None };
+        let found = Installed {
+            version: Some(version.clone()),
+            source: InstallSource::MacApp,
+            location: staged.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
         let expect = Expect { team: app.mac_team, version: Some(&version) };
         check_and_swap(app, &staged, &destination, &found, &expect, |program, args, timeout| {
             if program == SPCTL && args == ["--status"] {

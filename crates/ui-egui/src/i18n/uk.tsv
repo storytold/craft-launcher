@@ -109,6 +109,7 @@
 	Updates always use the format an app was installed with.	Оновлення завжди використовують формат, у якому застосунок було встановлено.
 	Running in the background	Робота у фоновому режимі
 	Keep running in the tray when the window is closed	Продовжувати роботу в треї після закриття вікна
+	Hide ArtCraft Launcher from the Dock while in the background	Приховувати ArtCraft Launcher з Dock під час роботи у фоновому режимі
 	ArtCraft Launcher is still running	ArtCraft Launcher усе ще працює
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Він у треї: відкрийте або закрийте його через значок у треї або вимкніть це в налаштуваннях.
 	Show the window on the current desktop	Показувати вікно на поточному робочому столі
@@ -142,6 +143,8 @@
 	Pin to top	Закріпити вгорі
 	Unpin	Відкріпити
 	Pinned	Закріплені
+	Pin {name} to top	Закріпити {name} вгорі
+	Unpin {name}	Відкріпити {name}
 	Reorder {name}	Змінити порядок: {name}
 	Move up	Вище
 	Move down	Нижче

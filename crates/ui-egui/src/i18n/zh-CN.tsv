@@ -92,6 +92,7 @@
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
+	Hide ArtCraft Launcher from the Dock while in the background	在后台运行时从 Dock 中隐藏 ArtCraft Launcher
 	ArtCraft Launcher is still running	ArtCraft Launcher 仍在运行
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它已进入系统托盘：可通过托盘图标打开或退出，也可在设置中关闭此行为。
 	Show the window on the current desktop	在当前桌面显示窗口
@@ -289,6 +290,8 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Pin to top	置顶
 	Unpin	取消置顶
 	Pinned	已置顶
+	Pin {name} to top	将 {name} 置顶
+	Unpin {name}	取消置顶 {name}
 	Reorder {name}	重新排序 {name}
 	Move up	上移
 	Move down	下移

@@ -112,6 +112,7 @@
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
+	Hide ArtCraft Launcher from the Dock while in the background	バックグラウンド実行中はArtCraft LauncherをDockに表示しない
 	ArtCraft Launcher is still running	ArtCraft Launcher は実行中です
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	トレイに入りました。トレイのアイコンから開くか終了できます。設定でこの動作を無効にすることもできます。
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示
@@ -141,6 +142,8 @@
 	Pin to top	上部にピン留め
 	Unpin	ピン留めを外す
 	Pinned	ピン留め
+	Pin {name} to top	{name}を上部にピン留め
+	Unpin {name}	{name}のピン留めを外す
 	Reorder {name}	{name}の順序を変更
 	Move up	上へ
 	Move down	下へ

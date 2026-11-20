@@ -196,7 +196,8 @@ impl LauncherUi {
             {
                 self.trigger_auto_updates();
             }
-            if self.caps.manage_apps {
+            // Linux always batches (`Settings::updates_batched`), so there is nothing to choose.
+            if self.caps.manage_apps && !cfg!(target_os = "linux") {
                 ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
                 let mut at_once = self.settings.simultaneous_downloads.min(4);
                 let no_limit = tl!("No limit").to_string();
@@ -343,6 +344,9 @@ impl LauncherUi {
                 ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop")).on_hover_text(tl!(
                     "When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."
                 ));
+                ui.add_enabled_ui(host.has_tray() && self.settings.close_to_tray, |ui| {
+                    ui.checkbox(&mut self.settings.hide_from_dock_when_hidden, tl!("Hide ArtCraft Launcher from the Dock while in the background"));
+                });
             }
             if let Some(mut on) = host.login_item()
                 && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()

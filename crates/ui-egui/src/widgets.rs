@@ -162,6 +162,8 @@ pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -
 /// How far in from the window's edges a custom title bar's window resizes ([`window_edges`]).
 /// The title bar's own controls leave this band alone.
 const RESIZE_EDGE: f32 = 5.0;
+/// Width of one caption button, as Windows' own.
+const CAPTION_W: f32 = 46.0;
 
 /// How wide the resize band along the window's edges is right now: nothing while the window is
 /// maximized or full screen, when `window_edges` offers no resizing and the edges are the screen's,
@@ -261,23 +263,36 @@ enum WindowButton {
 }
 
 /// Minimize, maximize (or restore) and close, `height` tall, for a right-to-left layout: close
-/// ends up at the right.
+/// ends up at the right. Under a dialog egui ignores the header, so there they are drawn in a
+/// layer above the dialog's backdrop, as a system title bar is: the first click on Close closes
+/// the window, not the dialog (#853). The details drawer and the lightbox still cover them, since
+/// their own controls and the apps' menus can sit in that corner.
 pub fn window_buttons(ui: &mut Ui, height: f32) {
     let ctx = ui.ctx().clone();
     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+    let (rect, _) = ui.allocate_exact_size(vec2(3.0 * CAPTION_W, height), Sense::hover());
+    let mut row = egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::Center));
+    let mut sense = Sense::click();
+    if !ctx.memory(|m| m.is_above_modal_layer(ui.layer_id())) {
+        row = row.layer_id(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("window-buttons")));
+        // Pointer only: Tab stays in the dialog.
+        sense = Sense::CLICK;
+    }
     // The first frame after a restore hit-tests the maximized buttons, so an edge press can land on them.
     let inside = ctx.content_rect().shrink(resize_band(&ctx));
     let clicked = |resp: Response| resp.clicked() && resp.interact_pointer_pos().is_none_or(|p| inside.contains(p));
-    if clicked(window_button(ui, WindowButton::Close, height)) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-    }
-    let size = if maximized { WindowButton::Restore } else { WindowButton::Maximize };
-    if clicked(window_button(ui, size, height)) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-    }
-    if clicked(window_button(ui, WindowButton::Minimize, height)) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-    }
+    ui.scope_builder(row, |ui| {
+        if clicked(window_button(ui, WindowButton::Minimize, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        }
+        let size = if maximized { WindowButton::Restore } else { WindowButton::Maximize };
+        if clicked(window_button(ui, size, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+        }
+        if clicked(window_button(ui, WindowButton::Close, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    });
     rule(ui, height);
 }
 
@@ -285,15 +300,15 @@ pub fn window_buttons(ui: &mut Ui, height: f32) {
 /// command. Hit-testing excludes the top resize band (and, for close, the right-edge band) so
 /// the window edges stay resizable; when maximized there is no band and close reaches the
 /// corner.
-fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
+fn window_button(ui: &mut Ui, button: WindowButton, height: f32, sense: Sense) -> Response {
     let t = Tokens::get(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(46.0, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(CAPTION_W, height), Sense::hover());
     // Clickable below the resize band along the top (and, for close, the right edge); maximized,
     // there is no band and the close button takes the screen's corner, as Windows' own does.
     let band = resize_band(ui.ctx());
     let right = if button == WindowButton::Close { band } else { 0.0 };
     let hit = Rect::from_min_max(rect.min + vec2(0.0, band), rect.max - vec2(right, 0.0));
-    let resp = ui.interact(hit, ui.scope_id().with(("window-button", button as u8)), Sense::click());
+    let resp = ui.interact(hit, ui.scope_id().with(("window-button", button as u8)), sense);
     let (fill, ink) = match (button, resp.hovered()) {
         (WindowButton::Close, true) => (Color32::from_rgb(0xc4, 0x2b, 0x1c), Color32::WHITE),
         (_, true) => (t.line, t.ink_strong),
@@ -730,6 +745,10 @@ pub enum Glyph {
     Lock,
     /// Six-dot grip for reordering pinned apps.
     Grip,
+    /// Outline bookmark: pin an unpinned app to the top.
+    Pin,
+    /// Filled bookmark: unpin a pinned app.
+    PinFilled,
 }
 
 /// Paints one of the launcher's symbols with the painter, centred in `rect`.
@@ -809,6 +828,28 @@ fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
             }
             shapes
         }
+        Glyph::Pin | Glyph::PinFilled => {
+            // Bookmark ribbon with a V cut at the bottom — reads clearly at CONTROL_H.
+            let half_w = 4.2;
+            let top = m.y - 6.5;
+            let notch_y = m.y + 3.0;
+            let tip = egui::pos2(m.x, m.y + 6.5);
+            let left = m.x - half_w;
+            let right = m.x + half_w;
+            let tl = egui::pos2(left, top);
+            let tr = egui::pos2(right, top);
+            let bl = egui::pos2(left, notch_y);
+            let br = egui::pos2(right, notch_y);
+            if glyph == Glyph::PinFilled {
+                // Fill is convex-only: body rect + tip triangle (the outline path is concave).
+                vec![
+                    egui::Shape::rect_filled(Rect::from_min_max(tl, br), CornerRadius::ZERO, color),
+                    egui::Shape::convex_polygon(vec![bl, br, tip], color, Stroke::NONE),
+                ]
+            } else {
+                vec![egui::Shape::closed_line(vec![tl, tr, br, tip, bl], Stroke::new(1.5, color))]
+            }
+        }
     }
 }
 
@@ -842,6 +883,32 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
         p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
     }
     let c = if hovered { t.invert_fg } else { t.muted };
+    paint_glyph(p, rect, glyph, c);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Pin toggle: outline bookmark when unpinned, filled accent bookmark when pinned.
+pub fn pin_button(ui: &mut Ui, pinned: bool, tip: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
+    let hovered = resp.hovered();
+    let p = ui.painter();
+    if hovered {
+        p.rect_filled(rect, CornerRadius::ZERO, t.invert_bg);
+    } else if pinned {
+        p.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
+    } else {
+        p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+    }
+    let c = if hovered {
+        t.invert_fg
+    } else if pinned {
+        t.accent
+    } else {
+        t.muted
+    };
+    let glyph = if pinned { Glyph::PinFilled } else { Glyph::Pin };
     paint_glyph(p, rect, glyph, c);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -1222,7 +1289,7 @@ mod tests {
     /// the tool-button and header-cell sizes, or a click target would draw outside its hit rect.
     #[test]
     fn every_painter_glyph_stays_inside_its_control() {
-        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip, Glyph::Lock] {
+        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Lock, Glyph::Grip, Glyph::Pin, Glyph::PinFilled] {
             for side in [20.0, crate::theme::CONTROL_H, 48.0] {
                 let rect = Rect::from_min_size(egui::pos2(100.0, 200.0), egui::vec2(side, side));
                 let shapes = glyph_shapes(rect, glyph, Color32::WHITE);
@@ -1329,22 +1396,25 @@ mod tests {
     #[test]
     fn each_glyph_has_its_own_shapes() {
         let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(crate::theme::CONTROL_H, crate::theme::CONTROL_H));
-        let bounds: Vec<[u32; 4]> = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Grip, Glyph::Lock]
-            .into_iter()
-            .map(|glyph| {
-                let union = glyph_shapes(rect, glyph, Color32::WHITE)
-                    .into_iter()
-                    .map(|shape| shape.visual_bounding_rect())
-                    .reduce(|a, b| a.union(b))
-                    .expect("every glyph draws at least one shape");
-                [union.min.x.to_bits(), union.min.y.to_bits(), union.max.x.to_bits(), union.max.y.to_bits()]
-            })
-            .collect();
-        for (i, a) in bounds.iter().enumerate() {
-            for b in &bounds[i + 1..] {
-                assert_ne!(a, b, "two glyphs share one bounding box");
+        let box_of = |glyph: Glyph| {
+            let union = glyph_shapes(rect, glyph, Color32::WHITE)
+                .into_iter()
+                .map(|shape| shape.visual_bounding_rect())
+                .reduce(|a, b| a.union(b))
+                .expect("every glyph draws at least one shape");
+            [union.min.x.to_bits(), union.min.y.to_bits(), union.max.x.to_bits(), union.max.y.to_bits()]
+        };
+        // PinFilled is outline vs fill of Pin — may differ by stroke width; treat Pin as the
+        // representative and require every other glyph pair to differ.
+        let distinct = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh, Glyph::Lock, Glyph::Grip, Glyph::Pin];
+        let bounds: Vec<_> = distinct.iter().map(|g| (*g, box_of(*g))).collect();
+        for (i, (ga, a)) in bounds.iter().enumerate() {
+            for (gb, b) in &bounds[i + 1..] {
+                assert_ne!(a, b, "{ga:?} and {gb:?} share one bounding box");
             }
         }
+        // PinFilled still draws (covered by every_painter_glyph_stays_inside_its_control).
+        let _ = box_of(Glyph::PinFilled);
     }
 
     #[test]
