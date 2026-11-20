@@ -368,6 +368,29 @@ mod tests {
     }
 
     #[test]
+    fn a_long_retry_after_survives_a_restart_with_jitter() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("feed-throttle.json");
+        for j in [0.0, 0.5, 0.99] {
+            let mut t = FeedThrottle::load(&file, NOW);
+            t.finished(Outcome::Throttled { retry_after: Some(MAX_RETRY_AFTER) }, NOW, j);
+            let again = FeedThrottle::load(&file, NOW + 60);
+            assert_eq!(again.wait(NOW + 60), t.wait(NOW + 60), "jitter: {j}");
+            assert!(again.throttled(NOW + 60));
+        }
+    }
+
+    #[test]
+    fn a_saturated_clock_preserves_a_saved_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("feed-throttle.json");
+        let saved = Saved { not_before: i64::MAX, ..Saved::default() };
+        std::fs::write(&file, serde_json::to_vec(&saved).unwrap()).unwrap();
+        let now = i64::MAX - 60;
+        assert_eq!(FeedThrottle::load(&file, now).wait(now), 60);
+    }
+
+    #[test]
     fn a_broken_or_absurd_saved_file_means_no_wait() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("feed-throttle.json");
