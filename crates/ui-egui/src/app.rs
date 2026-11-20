@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
+    SuiteAccount,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -207,6 +208,20 @@ pub struct LauncherUi {
     /// Versions of apps or the launcher already queued for auto-update during this session,
     /// preventing repeated install loops if an update fails or is in progress.
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
+    /// The suite's shared sign-in. `Unconfigured` until a backend says otherwise. That is where the
+    /// web build stays.
+    pub(crate) account: SuiteAccount,
+    /// The sign-in page already opened in a browser. Coming back to the window then does not open
+    /// a second tab.
+    opened_verify_url: Option<String>,
+    /// A sign-in page to open once a pass with a context runs. `handle` has none (see `logic`).
+    pending_verify_url: Option<String>,
+    /// What is being typed into the deployment address, before it is committed.
+    ///
+    /// Held here because committing on every keystroke would ask the backend about an account at
+    /// every half-finished URL, one network request per character. It is committed when the field
+    /// loses focus and when the Settings dialog closes.
+    pub(crate) account_edit: Option<String>,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
     /// UI actions drawn in this pass, not sent yet.
@@ -313,6 +328,10 @@ impl LauncherUi {
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
+            account: SuiteAccount::Unconfigured,
+            opened_verify_url: None,
+            pending_verify_url: None,
+            account_edit: None,
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
             pending: Vec::new(),
             frame: None,
@@ -396,6 +415,16 @@ impl LauncherUi {
         if self.frame != Some(frame) {
             self.frame = Some(frame);
             self.flushed.clear();
+        }
+    }
+
+    /// Takes whatever was typed into the deployment address as the setting.
+    pub(crate) fn commit_account_address(&mut self) {
+        if let Some(typed) = self.account_edit.take() {
+            let typed = typed.trim();
+            if typed != self.settings.account_service {
+                self.settings.account_service = typed.to_owned();
+            }
         }
     }
 
@@ -483,6 +512,7 @@ impl LauncherUi {
             launcher_version: self.settings.launcher_version.clone(),
             simultaneous_downloads: self.settings.simultaneous_downloads,
             install_locations: self.settings.install_locations.clone(),
+            account_service: self.settings.account_service.trim().to_string(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
@@ -535,6 +565,9 @@ impl LauncherUi {
         // Messages made here (toasts, alerts) are drawn later, so use the language the UI can
         // actually show: English where the system has no CJK face for the preference.
         set_current(effective_lang(&self.settings.language));
+        if !matches!(self.dialog, Some(Dialog::Settings)) {
+            self.commit_account_address();
+        }
         self.configure();
         // A kept version's card notes a newer release; that needs the app's published list.
         self.request_pinned_lists();
@@ -563,6 +596,11 @@ impl LauncherUi {
         let mut changed = false;
         for event in self.backend.poll() {
             changed |= self.handle(event);
+        }
+        // The sign-in page a Waiting event asked for, opened by the pass that heard it, through
+        // the same guard as every other external link.
+        if let Some(url) = self.pending_verify_url.take() {
+            crate::widgets::open_external_link(ctx, &url);
         }
         if changed {
             self.announce_updates(host);
@@ -659,6 +697,29 @@ impl LauncherUi {
                 true
             }
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
+            Event::Account(state) => {
+                // A failure is a passing state: report it, then ask again what is true.
+                if let SuiteAccount::Failed(why) = &state {
+                    let why = crate::i18n::msg(why);
+                    self.toast(why, true);
+                    self.backend.send(Command::AccountRefresh);
+                    return false;
+                }
+                // Nothing happens at the service until the user has been to the sign-in page, so it
+                // is opened as soon as it is known, and only once. This runs with no context in
+                // hand, so the next pass that holds one opens it (see `logic`).
+                if let SuiteAccount::Waiting { verify_url } = &state {
+                    if self.opened_verify_url.as_deref() != Some(verify_url.as_str()) {
+                        self.opened_verify_url = Some(verify_url.clone());
+                        self.pending_verify_url = Some(verify_url.clone());
+                    }
+                } else {
+                    self.opened_verify_url = None;
+                    self.pending_verify_url = None;
+                }
+                self.account = state;
+                false
+            }
             Event::CheckStarted => {
                 self.checking = true;
                 false

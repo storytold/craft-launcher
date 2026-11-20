@@ -23,6 +23,9 @@ todo = "warn"
 artcraft-launcher-core = { path = "crates/core" }
 artcraft-launcher-ui-egui = { path = "crates/ui-egui" }
 artcraft-launcher-native = { path = "crates/native" }
+# The suite's account list and keychain entry, provider-neutral after the split RFC-0025 asked
+# for. storytold/craft-libs#665 merged this crate on 2026-11-18; the revision below is that merge.
+craft-suite-account = { git = "https://github.com/storytold/craft-libs", rev = "ec6583848740ad94c56c92aa6cc92a994d118658" }
 egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
 eframe = { version = "0.37", default-features = false }
 egui_extras = { version = "0.37", default-features = false }

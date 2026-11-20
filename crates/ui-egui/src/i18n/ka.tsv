@@ -479,3 +479,16 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	დამატებულია
 	Remove	წაშლა
 	Add	დამატება
+
+# The suite account: one sign-in every Craft app uses.
+	Account	ანგარიში
+	Deployment address	დეპლოიმენტის მისამართი
+	No storage connected	საცავი არ არის დაკავშირებული
+	Open {name}	{name}-ის გახსნა
+	Sign in	შესვლა
+	Sign in here once. Every Craft app then uses it.	შედით აქ ერთხელ. შემდეგ ამ შესვლას ყველა Craft აპლიკაცია გამოიყენებს.
+	Sign out	გასვლა
+	Signing out ends the session for every Craft app.	გასვლა ასრულებს სესიას ყველა Craft აპლიკაციისთვის.
+	Storage connected	საცავი დაკავშირებულია
+	The shared sign-in couldn't be read.	გაზიარებული შესვლის წაკითხვა ვერ მოხერხდა.
+	Your browser is open. Finish signing in there.	ბრაუზერი გახსნილია. დაასრულეთ შესვლა მასში.

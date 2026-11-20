@@ -7,6 +7,7 @@ use artcraft_launcher_core::protocol::{CANCELLED, PAUSED};
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 
 const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"));
 /// Largest JSON or text answer we read.
@@ -182,6 +183,54 @@ impl Http {
             200 => read_text_capped(&mut resp, MAX_SMALL).map_err(|e| failed(format!("unreadable answer ({e})"))),
             s => Err(FeedError { why: format!("{} answered HTTP {s}", host(url)), throttled: s == 429, retry_after }),
         }
+    }
+
+    /// GET a small JSON resource, with an optional bearer token. Returns the status and the body,
+    /// because a refusal from a deployment is an answer carrying a reason.
+    ///
+    /// `bearer` goes into one header and is never logged. Nothing here formats it into a message.
+    ///
+    /// A request carrying a bearer token must not follow a redirect: a cross-origin `Location`
+    /// could otherwise be used to point an authenticated request at a different host. ureq 3.5
+    /// strips `Authorization` on a redirect by default, so the token itself does not leak, but a
+    /// redirected `/api/v1/me` then arrives without it, answers 401, and a caller checking the
+    /// session (`account::state_now`) reads that as "signed out" and discards the stored session.
+    /// `get_api` already picks `no_redirect` the same way for a token-bearing GitHub request.
+    pub fn get_json(&self, url: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+        let agent = if bearer.is_some() { &self.no_redirect } else { &self.small };
+        let mut req = agent.get(url).header("Accept", "application/json");
+        let header = bearer.map(|token| Zeroizing::new(format!("Bearer {token}")));
+        if let Some(header) = &header {
+            req = req.header("Authorization", header.as_str());
+        }
+        let mut resp = req.call().map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let status = resp.status().as_u16();
+        if bearer.is_some() && (300..400).contains(&status) {
+            return Err(format!("{} answered with a redirect, refused for a token-bearing request", host(url)));
+        }
+        let body = resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| format!("unreadable answer ({e})"))?;
+        Ok((status, body))
+    }
+
+    /// POST a small JSON body, with an optional bearer token. Returns the status and the body.
+    ///
+    /// `bearer` goes into one header and is never logged. See [`Http::get_json`] for why a
+    /// token-bearing request uses `no_redirect` and treats a 3xx as an error rather than a status
+    /// to hand back.
+    pub fn post_json(&self, url: &str, body: &str, bearer: Option<&str>) -> Result<(u16, String), String> {
+        let agent = if bearer.is_some() { &self.no_redirect } else { &self.small };
+        let mut req = agent.post(url).header("Content-Type", "application/json").header("Accept", "application/json");
+        let header = bearer.map(|token| Zeroizing::new(format!("Bearer {token}")));
+        if let Some(header) = &header {
+            req = req.header("Authorization", header.as_str());
+        }
+        let mut resp = req.send(body).map_err(|e| format!("couldn't reach {} ({e})", host(url)))?;
+        let status = resp.status().as_u16();
+        if bearer.is_some() && (300..400).contains(&status) {
+            return Err(format!("{} answered with a redirect, refused for a token-bearing request", host(url)));
+        }
+        let answer = resp.body_mut().with_config().limit(MAX_SMALL).read_to_string().map_err(|e| format!("unreadable answer ({e})"))?;
+        Ok((status, answer))
     }
 
     /// GET a small text file (following redirects).
@@ -1145,5 +1194,61 @@ pub(crate) mod tests {
         let result = http.get_bytes(&format!("http://127.0.0.1:{port}/test.bin"), 100);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("more than 100 bytes"));
+    }
+
+    /// A token-bearing `get_json` must not follow a redirect: `no_redirect` is the agent that
+    /// goes with the bearer header, and a 3xx answer from it is an error, not a status this call
+    /// hands back to the caller. Without this, a redirected `/api/v1/me` would answer 401 and a
+    /// caller checking the session would read that as "signed out".
+    #[test]
+    fn get_json_with_a_bearer_refuses_a_redirect() {
+        let url = answer_once("HTTP/1.1 302 Found\r\nLocation: http://attacker.example/me\r\n".to_owned());
+        let err = Http::new().unwrap().get_json(&url, Some("a-session-token")).unwrap_err();
+        assert!(err.contains("redirect"), "{err}");
+    }
+
+    /// The same for `post_json`, which carries the bearer on `/auth/device/poll` and
+    /// `/auth/logout`.
+    #[test]
+    fn post_json_with_a_bearer_refuses_a_redirect() {
+        let url = answer_once("HTTP/1.1 302 Found\r\nLocation: http://attacker.example/logout\r\n".to_owned());
+        let err = Http::new().unwrap().post_json(&url, "null", Some("a-session-token")).unwrap_err();
+        assert!(err.contains("redirect"), "{err}");
+    }
+
+    /// A request with no bearer at all (`/auth/device/start`, `/auth/device/poll` before a token
+    /// exists) keeps following redirects as before: there is no token to protect, and the old
+    /// `small` agent's behaviour is otherwise unchanged here.
+    #[test]
+    fn json_with_no_bearer_still_follows_a_redirect() {
+        let (target, _) = serve_json_once("{}".to_owned());
+        let url = answer_once(format!("HTTP/1.1 302 Found\r\nLocation: {target}\r\n"));
+        let (status, body) = Http::new().unwrap().get_json(&url, None).unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body, "{}");
+    }
+
+    /// A one-shot raw HTTP server that always answers `body` as a 200 JSON response, for the
+    /// redirect target in [`json_with_no_bearer_still_follows_a_redirect`].
+    fn serve_json_once(body: String) -> (String, std::net::SocketAddr) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{addr}/json");
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                    break;
+                }
+            }
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+        });
+        (url, addr)
     }
 }

@@ -133,6 +133,12 @@ pub struct Settings {
     pub hidden: std::collections::BTreeSet<String>,
     /// The one-time notice that closing the window keeps the launcher in the tray has been shown.
     pub tray_hint_shown: bool,
+    /// The deployment the suite signs in to, as a base URL.
+    ///
+    /// Empty by default. Empty means the launcher offers nothing about an account and makes no
+    /// request about one. Signing in is a choice somebody makes, never a step they are put through.
+    #[serde(default)]
+    pub account_service: String,
     /// How many times each app was opened from the launcher (catalog id → count), for "Frequently used".
     pub launches: BTreeMap<String, u32>,
     /// Catalog ids pinned to the top of the grid/table, in the order the user chose.
@@ -283,6 +289,7 @@ impl Default for Settings {
             hide_community_apps: false,
             hidden: std::collections::BTreeSet::new(),
             tray_hint_shown: false,
+            account_service: String::new(),
             launches: BTreeMap::new(),
             pinned: Vec::new(),
             launch_flags: BTreeMap::new(),
