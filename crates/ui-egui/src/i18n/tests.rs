@@ -4,7 +4,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use super::catalog::{Catalog, unescape};
-use super::lang::{name_sort_key, plural_czech, plural_east_slavic, plural_polish};
+use super::lang::{name_sort_key, plural_bosnian, plural_czech, plural_east_slavic, plural_polish};
 use super::{LANGUAGES, Lang, LangInfo, fmt, lang_from_tag, message, tr, trn};
 
 #[test]
@@ -37,10 +37,12 @@ fn rows(lang: &LangInfo) -> Vec<(usize, &str, &str, &str)> {
     out
 }
 
+/// Every catalog that carries rows (English is the built-in source, with no file of its own).
 fn catalogs() -> impl Iterator<Item = &'static LangInfo> {
     LANGUAGES.iter().filter(|l| !l.source.is_empty())
 }
 
+/// The `{name}` placeholders a source or translation line carries, for comparison.
 fn placeholders(template: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let mut rest = template;
@@ -224,6 +226,28 @@ fn russian_plural_rule_works() {
 }
 
 #[test]
+fn ukrainian_locales_and_plurals_work() {
+    for tag in ["uk", "uk-UA", "uk_UA.UTF-8", "UK_ua"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::UK), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "uk-UA", "en-US"]), Some(Lang::UK));
+    // Ukrainian counts share Russian's rule: 1 (but not 11) is "one", 2–4 (but not 12–14) "few",
+    // everything else "many".
+    assert_eq!(trn(Lang::UK, 1, "{n} app", "{n} apps"), "1 застосунок");
+    assert_eq!(trn(Lang::UK, 3, "{n} app", "{n} apps"), "3 застосунки");
+    assert_eq!(trn(Lang::UK, 5, "{n} app", "{n} apps"), "5 застосунків");
+    assert_eq!(trn(Lang::UK, 21, "{n} day ago", "{n} days ago"), "21 день тому");
+    assert_eq!(trn(Lang::UK, 22, "{n} day ago", "{n} days ago"), "22 дні тому");
+    assert_eq!(trn(Lang::UK, 12, "{n} day ago", "{n} days ago"), "12 днів тому");
+    // A key the Ukrainian catalog doesn't carry falls back to the English forms.
+    assert_eq!(trn(Lang::UK, 3, "{n} unknown item", "{n} unknown items"), "3 unknown items");
+    assert_eq!(super::tr_ctx(Lang::UK, "month", "Mar"), "бер.");
+    assert_eq!(tr(Lang::UK, "{month} {day}, {year}"), "{day} {month} {year}");
+    assert_eq!(message(Lang::UK, "PhotoCraft updated to 0.5.0"), "Застосунок PhotoCraft оновлено до 0.5.0");
+    assert_eq!(tr(Lang::UK, "Untranslated diagnostic"), "Untranslated diagnostic");
+}
+
+#[test]
 fn czech_plural_rule_works() {
     for n in [0, 5, 11, 21, 22, 25] {
         assert_eq!(plural_czech(n), 2, "{n}");
@@ -361,6 +385,33 @@ fn spanish_locales_and_plurals_work() {
     assert_eq!(trn(Lang::ES, 3, "{n} day ago", "{n} days ago"), "hace 3 días");
     assert_eq!(tr(Lang::ES, "{month} {day}, {year}"), "{day} {month} {year}");
     assert_eq!(message(Lang::ES, "PhotoCraft updated to 0.5.0"), "PhotoCraft actualizada a 0.5.0");
+}
+
+/// Bosnian locale tags resolve to Bosnian, its plural rule picks `one`, `few` and `other` at the
+/// edges (21 is `one`, 12–14 are `other`), and counts, dates and messages read in Bosnian.
+#[test]
+fn bosnian_locales_and_plurals_work() {
+    for tag in ["bs", "bs-BA", "bs_BA.UTF-8", "bs-Latn-BA", "BS_ba"] {
+        assert_eq!(lang_from_tag(tag), Some(Lang::BS), "{tag}");
+    }
+    assert_eq!(super::detect::first_supported(["xx-XX", "bs-BA", "en-US"]), Some(Lang::BS));
+    for n in [1, 21, 101] {
+        assert_eq!(plural_bosnian(n), 0, "{n}");
+    }
+    for n in [2, 3, 4, 22, 104] {
+        assert_eq!(plural_bosnian(n), 1, "{n}");
+    }
+    for n in [0, 5, 11, 12, 14, 15, 100, 111] {
+        assert_eq!(plural_bosnian(n), 2, "{n}");
+    }
+    assert_eq!(trn(Lang::BS, 1, "{n} app", "{n} apps"), "1 aplikacija");
+    assert_eq!(trn(Lang::BS, 3, "{n} app", "{n} apps"), "3 aplikacije");
+    assert_eq!(trn(Lang::BS, 5, "{n} app", "{n} apps"), "5 aplikacija");
+    assert_eq!(trn(Lang::BS, 21, "{n} day ago", "{n} days ago"), "prije 21 dan");
+    assert_eq!(tr(Lang::BS, "{month} {day}, {year}"), "{day}. {month} {year}.");
+    assert_eq!(super::tr_ctx(Lang::BS, "month", "Mar"), "mar");
+    assert_eq!(super::tr_ctx(Lang::BS, "month", "May"), "maj");
+    assert_eq!(message(Lang::BS, "PhotoCraft updated to 0.5.0"), "PhotoCraft je ažuriran na 0.5.0");
 }
 
 #[test]
@@ -650,6 +701,8 @@ fn complete_catalogs_translate_package_formats() {
     }
 }
 
+/// The Settings picker lists English first, then every other language by its own name with accents
+/// folded (Bosanski under B, Čeština under C), Latin names before Cyrillic and Cyrillic before CJK.
 #[test]
 fn picker_lists_english_first_then_names_alphabetically() {
     let order = Lang::for_picker();
@@ -658,6 +711,7 @@ fn picker_lists_english_first_then_names_alphabetically() {
     let keys: Vec<String> = order[1..].iter().map(|l| name_sort_key(l.name())).collect();
     assert!(keys.windows(2).all(|w| w[0] <= w[1]), "{keys:?}");
     let pos = |code: &str| order.iter().position(|l| l.code() == code).unwrap_or_else(|| panic!("{code} registered"));
+    assert!(pos("bs") < pos("cs"), "Bosanski sorts under B");
     assert!(pos("cs") < pos("de"), "Čeština sorts under C, not after Z");
     assert!(pos("fr") < pos("hu"), "Magyar sorts under M, not under its code");
     assert!(pos("pt-BR") < pos("ru"), "Latin names come before Cyrillic");
