@@ -2717,7 +2717,7 @@ mod tests {
             *backend.shared.launcher_release.lock().unwrap() = Some((release, String::new()));
             let offered = backend.capabilities().self_update;
             if !offered {
-                backend.update_launcher();
+                backend.update_launcher(false);
                 let events = backend.poll();
                 assert!(
                     matches!(&events[..], [Event::JobFinished { app, result: Err(_) }] if app == LAUNCHER_ID),
