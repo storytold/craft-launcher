@@ -101,12 +101,14 @@ pub struct Settings {
     /// macOS: showing the window brings it to the current desktop (Space) instead of switching to
     /// the desktop it was on.
     pub show_on_current_desktop: bool,
+    /// macOS: hide the Dock icon while the launcher is running without a visible window.
+    pub hide_from_dock_when_hidden: bool,
     pub check_every: CheckEvery,
     /// Automatically download and install updates when found.
     #[serde(default)]
     pub auto_update: bool,
-    /// Update all apps together behind one permission prompt where the platform asks for one
-    /// (Linux and Windows); off, each app's update asks on its own.
+    /// Windows: update all apps together behind one permission prompt; off, each app's update
+    /// asks on its own. Linux always batches (see `updates_batched`) and ignores this.
     #[serde(default)]
     pub batch_updates: bool,
     /// macOS: install each app's command-line tool with it, and keep it at the app's version.
@@ -146,6 +148,13 @@ pub struct Settings {
 impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &str = "auto";
+
+    /// Whether "Update all" and auto-update install together behind one permission prompt.
+    /// Always on Linux, where the batch is one `pkexec` call; elsewhere the opt-in setting,
+    /// since Windows' shared UAC session still owes its behavioural-antivirus check (#1235).
+    pub fn updates_batched(&self) -> bool {
+        cfg!(target_os = "linux") || self.batch_updates
+    }
 
     /// Clear saved catalog filters whose controls were removed from the toolbar.
     pub fn migrate(&mut self) {
@@ -261,6 +270,7 @@ impl Default for Settings {
             language: "auto".to_string(),
             close_to_tray: true,
             show_on_current_desktop: true,
+            hide_from_dock_when_hidden: false,
             check_every: CheckEvery::Hour,
             auto_update: false,
             batch_updates: false,
@@ -287,6 +297,13 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linux_batches_updates_even_with_the_setting_off() {
+        let s = Settings { batch_updates: false, ..Settings::default() };
+        assert_eq!(s.updates_batched(), cfg!(target_os = "linux"));
+        assert!(Settings { batch_updates: true, ..Settings::default() }.updates_batched());
+    }
 
     #[test]
     fn pin_appends_once_and_unpin_removes() {

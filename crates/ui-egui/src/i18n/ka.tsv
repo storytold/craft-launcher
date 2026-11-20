@@ -79,6 +79,7 @@
 	Show in Explorer	Explorer-ში ჩვენება
 	Show in Files	Files-ში ჩვენება
 	Reinstall	ხელახლა ინსტალაცია
+	Add desktop shortcut	სამუშაო მაგიდის მალსახმობის დამატება
 	Uninstall…	დეინსტალაცია…
 	All releases	ყველა გამოშვება
 	ArtCraft Launcher {version} is available.	ხელმისაწვდომია ArtCraft Launcher {version}.
@@ -108,6 +109,7 @@
 	Updates always use the format an app was installed with.	განახლება ყოველთვის იმ ფორმატს იყენებს, რომლითაც აპლიკაცია დაინსტალირდა.
 	Running in the background	ფონურ რეჟიმში მუშაობა
 	Keep running in the tray when the window is closed	ფანჯრის დახურვის შემდეგ მუშაობის გაგრძელება შეტყობინებების არეში
+	Hide ArtCraft Launcher from the Dock while in the background	ფონურ რეჟიმში ArtCraft Launcher-ის Dock-იდან დამალვა
 	ArtCraft Launcher is still running	ArtCraft Launcher კვლავ მუშაობს
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	ის შეტყობინებების არეშია: გახსენით ან დახურეთ მისი ხატულით, ან გამორთეთ ეს ფუნქცია პარამეტრებში.
 	Show the window on the current desktop	ფანჯრის ჩვენება მიმდინარე სამუშაო მაგიდაზე
@@ -173,6 +175,8 @@
 	Move up	ზემოთ გადატანა
 	Pin to top	ზევით დამაგრება
 	Pinned	დამაგრებული
+	Pin {name} to top	{name}-ის ზევით დამაგრება
+	Unpin {name}	{name}-ის დამაგრების მოხსნა
 	Reorder {name}	{name}-ის თანმიმდევრობის შეცვლა
 	Unpin	დამაგრების მოხსნა
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
@@ -404,6 +408,9 @@ filter	Installed	დაინსტალირებული
 @msg	custom install folders aren't supported on this system	ამ სისტემაზე ინსტალაციის საქაღალდის არჩევა არ არის მხარდაჭერილი
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} უკვე არსებობს და ის ArtCraft Launcher-ს არ დაუინსტალირებია
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} ნაგავში ვერ გადავიდა ({reason}). წაშალეთ ის Finder-ში.
+@msg	Desktop shortcut created for {name}	{name}-ის სამუშაო მაგიდის მალსახმობი შეიქმნა
+@msg	Couldn't create the desktop shortcut: {e}	სამუშაო მაგიდის მალსახმობის შექმნა ვერ მოხერხდა: {e}
+@msg	A desktop shortcut named {name} already exists	სამუშაო მაგიდის მალსახმობი სახელით {name} უკვე არსებობს
 	Apps are placed inside this folder.	აპლიკაციები ამ საქაღალდეში განთავსდება.
 	Replace what's there?	ჩანაცვლდეს არსებული?
 	{path} already exists. Installing {name} will overwrite it.	{path} უკვე არსებობს. {name}-ის ინსტალაცია მას გადააწერს.
