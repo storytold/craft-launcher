@@ -9,8 +9,8 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
-    Source, VersionTrack,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, InstallFailure, JobPhase, LatestRelease, Origin, PAUSED,
+    PausedDownload, Source, VersionTrack,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
@@ -503,6 +503,8 @@ impl NativeBackend {
                 let job = job;
                 let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
                 let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+                // What stopped an install, for the app's card.
+                let mut failure = None;
                 let result = if uninstall {
                     shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                     let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
@@ -534,6 +536,7 @@ impl NativeBackend {
                         &stop,
                         approved,
                         source.as_deref(),
+                        &mut failure,
                         batch,
                         place,
                     );
@@ -564,6 +567,9 @@ impl NativeBackend {
                 publish_detected(app, found, &shared, platform);
                 report_partial(app, &shared, &paths, platform);
                 drop(job);
+                if !uninstall {
+                    shared.emit(Event::Blocked { app: app.id.to_string(), failure: failure.filter(|_| result.is_err()) });
+                }
                 shared.emit(Event::JobFinished { app: app.id.to_string(), result });
             }));
         }))
@@ -821,6 +827,7 @@ fn run_install(
     stop: &Stop,
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
+    failure: &mut Option<InstallFailure>,
     batch: Option<crate::queue::Gather>,
     place: Option<crate::downloads::Place<'static>>,
 ) -> Result<String, String> {
@@ -918,6 +925,7 @@ fn run_install(
         replace,
         approved_path,
         downgrade,
+        failure: None,
         batch: batch.take(),
         place,
     };
@@ -929,7 +937,9 @@ fn run_install(
         *manifest = updated;
         Ok(())
     };
-    let new_record = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record))?;
+    let installed = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record));
+    *failure = job.failure.take();
+    let new_record = installed?;
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let changed = match new_record {
