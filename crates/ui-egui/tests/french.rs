@@ -129,4 +129,17 @@ fn french_ui_translates_labels_dates_and_messages() {
     snapshot(&mut table, "table-fr-dark");
     table.get_by_label("Version");
     assert!(table.query_all_by_label_contains("août 2026").count() >= 1);
+
+    // Search matches the tagline shown in either view, while keeping English and product names.
+    for h in [&mut h, &mut table] {
+        for query in ["retouche", " RETOUCHE ", "image editing", "PhotoCraft"] {
+            h.state_mut().as_mut().unwrap().set_search_for_test(query);
+            h.run_steps(2);
+            assert_eq!(h.state().as_ref().unwrap().visible_ids_for_test(), ["photocraft"], "{query}");
+            h.get_by_label("Retouche d'images");
+        }
+        h.state_mut().as_mut().unwrap().set_search_for_test("zzzz-no-match");
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().visible_ids_for_test().is_empty());
+    }
 }
