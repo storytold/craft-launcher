@@ -111,6 +111,9 @@ pub struct Settings {
     /// asks on its own. Linux always batches (see `updates_batched`) and ignores this.
     #[serde(default)]
     pub batch_updates: bool,
+    /// macOS: install each app's command-line tool with it, and keep it at the app's version.
+    #[serde(default)]
+    pub install_cli: bool,
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
@@ -271,6 +274,7 @@ impl Default for Settings {
             check_every: CheckEvery::Hour,
             auto_update: false,
             batch_updates: false,
+            install_cli: false,
             notify: true,
             prereleases: false,
             versions: BTreeMap::new(),

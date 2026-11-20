@@ -23,9 +23,24 @@ pub struct Record {
     pub needs_root: bool,
 }
 
+/// One command-line tool the launcher installed beside an app (macOS).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CliRecord {
+    pub version: String,
+    /// The folder the tool was installed into, under the launcher's own `cli` folder.
+    pub folder: PathBuf,
+    /// The link to the tool in the launcher's `cli/bin` folder, the one place a PATH line needs.
+    pub link: PathBuf,
+    /// Unix seconds.
+    pub installed_at: i64,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
     pub apps: BTreeMap<String, Record>,
+    /// Command-line tools, by app id.
+    #[serde(default)]
+    pub cli: BTreeMap<String, CliRecord>,
 }
 
 impl Manifest {
