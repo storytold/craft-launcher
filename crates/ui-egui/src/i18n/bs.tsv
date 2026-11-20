@@ -454,3 +454,16 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Pin {name} to top	Prikači {name} na vrh
 	Unpin {name}	Otkači {name}
 	Hide ArtCraft Launcher from the Dock while in the background	Sakrij ArtCraft Launcher iz Docka dok radi u pozadini
+
+# The suite's shared sign-in (the launcher is where somebody signs in once for every Craft app)
+	Account	Račun
+	Sign in here once. Every Craft app then uses it.	Prijavite se ovdje jednom. Svaka Craft aplikacija zatim koristi tu prijavu.
+	Deployment address	Adresa deploymenta
+	Sign in	Prijavi se
+	Sign out	Odjavi se
+	Open {name}	Otvori {name}
+	Your browser is open. Finish signing in there.	Vaš preglednik je otvoren. Završite prijavu tamo.
+	Storage connected	Spremište povezano
+	No storage connected	Nema povezanog spremišta
+	Signing out ends the session for every Craft app.	Odjava završava sesiju za svaku Craft aplikaciju.
+	The shared sign-in couldn't be read.	Zajednička prijava se nije mogla pročitati.
