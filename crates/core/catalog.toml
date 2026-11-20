@@ -1043,3 +1043,44 @@ title = "Files"
 [[apps.details.features]]
 text = "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."
 title = "Desktop, web and agents"
+
+[[apps]]
+bundle = "io.github.drdmo.accountingcraft"
+color = [17, 122, 122]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "accountingcraft"
+binary = "accountingcraft"
+mac_bundle_name = "AccountingCraft"
+website = "https://github.com/DrDMo/accountingcraft"
+windows_msi_publisher = "AccountingCraft contributors"
+desktop_categories = ["Office", "Finance"]
+startup_wm_class = "AccountingCraft"
+icon_url = "https://getartcraft.com/launcher-app-icons/accountingcraft-f92dad6f9330d4c7943804f084a2eb5ec8773d966655f96aed5c8c3a89c14fb8.png"
+icon_sha256 = "f92dad6f9330d4c7943804f084a2eb5ec8773d966655f96aed5c8c3a89c14fb8"
+ink_dark = [120, 205, 200]
+ink_light = [8, 84, 84]
+kind = "community"
+msi_publisher = "AccountingCraft contributors"
+name = "AccountingCraft"
+publisher = "Shoreline Consulting Group, LLC"
+repo = "DrDMo/accountingcraft"
+site = "https://github.com/DrDMo/accountingcraft"
+tagline = "Bookkeeping for small businesses"
+[apps.details]
+headline = "Bookkeeping for a small business, kept on your own computer."
+about = "A free, open-source bookkeeping app written in Rust: real double-entry books behind plain screens for quotes, invoices, banking and reports. Your books are one encrypted file on your computer, and nothing leaves it unless you connect a bank feed."
+platforms = "Windows, Linux"
+[[apps.details.features]]
+text = "Quotes, invoices with sales tax, deposits and payments, jobs and billable time, and PDF invoices sent from your own mail program."
+title = "Sales"
+[[apps.details.features]]
+text = "Bank and card CSV files or a SimpleFIN bank feed, rules that file transactions for you, and reconciling against statements."
+title = "Banking"
+[[apps.details.features]]
+text = "Profit and loss, balance sheet, sales tax, money owed to you, mileage and depreciation, as CSV or PDF, plus a package for your accountant."
+title = "Reports"
+[[apps.details.features]]
+text = "Encrypted books, owner, bookkeeper and view-only logins, automatic backups, and a change history with undo."
+title = "Private by design"
