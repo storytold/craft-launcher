@@ -414,49 +414,93 @@ mod tests {
         );
         assert!(!seen.get());
     }
-    /// OS fixture only, never a PhotoCraft production trust value. The reference is independently
-    /// chain-verified in the OS system directory, identified as Microsoft, and never executed.
+    #[derive(Debug, PartialEq, Eq)]
+    enum SignedFixtureResource {
+        Missing,
+        Supplied(std::path::PathBuf),
+    }
+
+    fn signed_fixture_resource(path: Option<std::ffi::OsString>, required: Option<std::ffi::OsString>) -> Result<SignedFixtureResource, String> {
+        let required = match required {
+            None => false,
+            Some(value) if value.is_empty() => false,
+            Some(value) if value == "1" => true,
+            Some(_) => return Err("CRAFT_NIGHTLY_SIGNED_FIXTURE_REQUIRED accepts only 1, unset or empty.".into()),
+        };
+        match path.filter(|value| !value.is_empty()) {
+            Some(path) => {
+                let path = std::path::PathBuf::from(path);
+                if !path.is_absolute() { return Err("CRAFT_NIGHTLY_SIGNED_FIXTURE must be an absolute path to the pinned external executable.".into()); }
+                Ok(SignedFixtureResource::Supplied(path))
+            }
+            None if required => Err("CRAFT_NIGHTLY_SIGNED_FIXTURE_REQUIRED=1 requires CRAFT_NIGHTLY_SIGNED_FIXTURE pointing to the pinned signed reference; no operational check ran.".into()),
+            None => Ok(SignedFixtureResource::Missing),
+        }
+    }
+
+    #[test]
+    fn signed_fixture_required_mode_cannot_hide_missing_invalid_or_configured_inputs() {
+        use std::ffi::OsString;
+        assert_eq!(signed_fixture_resource(None, None).unwrap(), SignedFixtureResource::Missing);
+        assert_eq!(signed_fixture_resource(Some(OsString::new()), Some(OsString::new())).unwrap(), SignedFixtureResource::Missing);
+        assert!(signed_fixture_resource(None, Some("1".into())).is_err());
+        assert!(signed_fixture_resource(Some(OsString::new()), Some("1".into())).is_err());
+        for value in ["0", "true", " 1 "] {
+            assert!(signed_fixture_resource(None, Some(value.into())).is_err());
+        }
+        let root = test_system_directory();
+        // A supplied input is never converted into an optional-resource skip, even when its
+        // actual file/crypto checks will fail; required=false does not forgive bad fixtures.
+        assert_eq!(signed_fixture_resource(Some(root.clone().into_os_string()), None).unwrap(), SignedFixtureResource::Supplied(root));
+        assert!(signed_fixture_resource(Some("relative-fixture.exe".into()), None).is_err());
+    }
+
+    /// Released MIT fixture only, never a PhotoCraft production identity. This native integration
+    /// case may need OCSP/CRL network access and exceeds unit-test timing because it exercises
+    /// the actual OS verifier and fixed subprocess. Required runs must provision the resource.
     #[cfg(windows)]
     #[test]
-    fn actual_windows_system_fixture_verifies_metadata_and_is_held_until_released() {
+    fn actual_windows_signed_fixture_verifies_metadata_and_is_held_until_released() {
+        use std::io::Write;
         use std::os::windows::fs::OpenOptionsExt;
-        let system = std::path::PathBuf::from(winsafe::GetSystemDirectory().expect("native OS system directory"));
+        let resource =
+            signed_fixture_resource(std::env::var_os("CRAFT_NIGHTLY_SIGNED_FIXTURE"), std::env::var_os("CRAFT_NIGHTLY_SIGNED_FIXTURE_REQUIRED"))
+                .unwrap();
+        let reference = match resource {
+            SignedFixtureResource::Supplied(path) => dunce::canonicalize(path).expect("configured signed fixture must exist"),
+            SignedFixtureResource::Missing => {
+                // Direct I/O bypasses libtest's captured println/eprintln, so this reason is
+                // listed even by plain cargo test. Its eventual `ok` is NOT native coverage.
+                writeln!(std::io::stdout().lock(),"SKIP actual_windows_signed_fixture_verifies_metadata_and_is_held_until_released: pinned external signed fixture unavailable; set CRAFT_NIGHTLY_SIGNED_FIXTURE and CRAFT_NIGHTLY_SIGNED_FIXTURE_REQUIRED=1 for required operational coverage").unwrap();
+                return;
+            }
+        };
+        let fixture: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/windows-signed-reference.json")).unwrap();
+        let artifact = &fixture["artifact"];
+        let expected = artifact["subject"].as_str().unwrap();
+        let _held_reference =
+            std::fs::OpenOptions::new().read(true).share_mode(1).open(&reference).expect("configured fixture must be readable and stable");
+        assert_eq!(
+            std::fs::metadata(&reference).unwrap().len(),
+            artifact["size"].as_u64().unwrap(),
+            "fixture size must match the independently checked official ZIP entry"
+        );
+        assert_eq!(
+            crate::http::sha256_file(&reference).unwrap(),
+            artifact["sha256"].as_str().unwrap(),
+            "fixture must be the exact pinned official ZIP entry"
+        );
         let verifier =
             verifysign::CodeSignVerifier::new(verifysign::VerifyPolicy::new().revocation(verifysign::Revocation::Chain).allow_network(true)).unwrap();
-        let mut failures = Vec::new();
-        let mut selected = None;
-        for relative in [r"WindowsPowerShell\v1.0\powershell.exe", "cmd.exe", "msiexec.exe", "notepad.exe"] {
-            let reference = system.join(relative);
-            let checked = (|| -> Result<_, String> {
-                let held = std::fs::OpenOptions::new().read(true).share_mode(1).open(&reference).map_err(|error| error.to_string())?;
-                let native = verifier.verify_file(&reference).map_err(|error| error.to_string())?;
-                if native.subject_name().organization.as_deref() != Some("Microsoft Corporation") {
-                    return Err("OS reference is not independently chain-verified as Microsoft Corporation".into());
-                }
-                let text = read_windows_metadata(&reference)?;
-                if text.len() > 16 * 1024 {
-                    return Err("OS reference metadata exceeds its limit".into());
-                }
-                let evidence: WindowsEvidence = serde_json::from_str(&text).map_err(|error| error.to_string())?;
-                match_windows(&evidence, Some(&evidence.subject), &native.sha256_thumbprint())?;
-                Ok((reference.clone(), held, evidence.subject))
-            })();
-            match checked {
-                Ok(fixture) => {
-                    selected = Some(fixture);
-                    break;
-                }
-                Err(error) => failures.push(format!("{}: {error}", reference.display())),
-            }
-        }
-        let (reference, _held_reference, expected) = selected
-            .unwrap_or_else(|| panic!("No native embedded timestamped Microsoft OS fixture qualified (NOT a skipped pass): {}", failures.join("; ")));
+        let native = verifier.verify_file(&reference).expect("configured fixture requires genuine native chain/revocation trust");
+        windows_metadata_with(&reference, Some(expected), &native.sha256_thumbprint(), read_windows_metadata)
+            .expect("configured fixture requires exact reviewed subject, real embedded timestamped metadata and same leaf");
         let directory = tempfile::tempdir().unwrap();
         let executable = directory.path().join("photocraft.exe");
         std::fs::copy(&reference, &executable).unwrap();
         std::fs::OpenOptions::new().write(true).open(&executable).expect("fixture must be writable before authentication");
         let before = crate::http::sha256_file(&executable).unwrap();
-        let held = authenticate_windows_as(directory.path(), &[std::path::PathBuf::from("photocraft.exe")], &expected)
+        let held = authenticate_windows_as(directory.path(), &[std::path::PathBuf::from("photocraft.exe")], expected)
             .expect("real native trust, fixed full-subject/timestamp query and same-leaf binding");
         let renamed = directory.path().join("renamed.exe");
         assert!(std::fs::OpenOptions::new().write(true).open(&executable).is_err(), "held executable admitted a writer");

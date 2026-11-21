@@ -51,3 +51,35 @@ fail-before-swap preservation. Test keys never populate production inputs. Genui
 Windows signing, macOS signing/notarization, production-key Linux and live-feed admission
 remain separate acceptance checks. Mock native metadata and disposable-key success do
 not prove them. The external frozen unsigned diagnostic fixture remains unchanged.
+
+## Required Windows operational fixture and CI gap
+
+The native test `actual_windows_signed_fixture_verifies_metadata_and_is_held_until_released`
+uses the independently pinned external reference in
+`crates/native/tests/fixtures/windows-signed-reference.json`, not an assumption that
+stock Windows files have embedded signatures. Many are catalog-signed and correctly
+fail production admission. The reference is never executed by this test.
+
+Provision the original official PowerShell v7.7.0 Windows x64 ZIP from the manifest,
+verify its archive SHA-256 before extracting root `pwsh.exe`, and retain upstream
+MIT licence/notices with the external resource. The test checks that entry's exact
+size/hash, full subject, actual native chain/revocation trust, embedded timestamped
+metadata and same-leaf binding before exercising the actual hold/release behavior.
+Do not substitute another installed PowerShell or vendor the binary here.
+
+Set `CRAFT_NIGHTLY_SIGNED_FIXTURE` to the absolute executable path and
+`CRAFT_NIGHTLY_SIGNED_FIXTURE_REQUIRED=1` in the required Windows run. Required unset
+or empty permits an absent-resource SKIP reason printed directly to the run output;
+`1` fails when missing, and every other value fails. Any configured bad, corrupt or
+untrusted fixture fails even when required is unset. This input is **cfg(test) only**;
+production signer configuration is still source-owned and unavailable by default.
+
+Plain libtest counts a test function returning after a resource SKIP as `ok`; that
+count is **not operational coverage**. The explicit SKIP line must be retained, and
+only the required=1 run with no SKIP can establish this native path was exercised.
+The ordinary public CI/`cargo xtask ci` currently does **not** provision this pinned
+fixture or set required=1. A separate bounded Windows CI setup must fetch/check the
+manifest resource, set both variables and run Native tests; no workflow change is
+included here. Until that setup and a real required run exist, do not describe default
+CI as covering this path or the signed consumer as shipping-ready. The coordinator's
+private required run is separate evidence, not an assertion that public CI is wired.
