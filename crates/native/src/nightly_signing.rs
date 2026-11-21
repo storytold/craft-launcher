@@ -244,13 +244,27 @@ finally { $hash.Dispose() }
 "#;
 
 #[cfg(any(windows, test))]
-fn windows_command(program: &std::path::Path, path: &std::path::Path) -> std::process::Command {
-    let mut command = crate::process::command(program);
+fn windows_command(
+    path: &std::path::Path,
+    system_directory: impl FnOnce() -> Result<std::path::PathBuf, String>,
+) -> Result<std::process::Command, String> {
+    // Production supplies GetSystemDirectory, never an environment variable or PATH lookup.
+    let system = system_directory()?;
+    if !system.is_absolute() {
+        return Err("The native Windows system directory is not absolute.".into());
+    }
+    let root = system.parent().ok_or("The native Windows system directory has no root.")?;
+    let powershell = system.join(r"WindowsPowerShell\v1.0\powershell.exe");
+    let modules = system.join(r"WindowsPowerShell\v1.0\Modules");
+    let mut command = crate::process::command(powershell);
     command
         .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_QUERY])
         .env("CRAFT_NIGHTLY_VERIFIED_FILE", path)
-        .env_remove("PSModulePath");
-    command
+        .env("SystemRoot", root)
+        .env("windir", root)
+        .env("PATH", &system)
+        .env("PSModulePath", modules);
+    Ok(command)
 }
 
 #[cfg(any(windows, test))]
@@ -262,11 +276,17 @@ fn textual_notice(bytes: &[u8]) -> bool {
 
 #[cfg(windows)]
 pub(crate) fn authenticate_windows(root: &std::path::Path, files: &[std::path::PathBuf]) -> Result<std::fs::File, String> {
-    use std::io::Read;
-    use std::os::windows::fs::OpenOptionsExt;
-    use std::time::Duration;
     let expected = crate::nightly_trust::WINDOWS_SUBJECT
         .ok_or("No independently trusted Windows Nightly publisher is configured; the installed copy and data were left unchanged.")?;
+    authenticate_windows_as(root, files, expected)
+}
+
+// This private helper receives only source trust from the production wrapper. A cfg(test)
+// native OS fixture supplies its own independently verified Microsoft reference identity.
+#[cfg(windows)]
+fn authenticate_windows_as(root: &std::path::Path, files: &[std::path::PathBuf], expected: &str) -> Result<std::fs::File, String> {
+    use std::io::Read;
+    use std::os::windows::fs::OpenOptionsExt;
     let executable = dunce::canonicalize(root.join("photocraft.exe")).map_err(|error| error.to_string())?;
     // FILE_SHARE_READ only: deny mutation, deletion or rename from before either check through
     // the installer copying these same bytes and committing the ownership record.
@@ -287,20 +307,18 @@ pub(crate) fn authenticate_windows(root: &std::path::Path, files: &[std::path::P
     let verifier = verifysign::CodeSignVerifier::new(policy).map_err(|error| error.to_string())?;
     let signature = verifier.verify_file(&executable).map_err(|error| format!("Nightly Authenticode verification failed ({error})."))?;
     let native_thumbprint = signature.sha256_thumbprint();
-    let system = std::env::var_os("SystemRoot")
-        .map(std::path::PathBuf::from)
-        .filter(|root| root.is_absolute())
-        .ok_or("No absolute Windows system root is available.")?;
-    let powershell = system.join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
-    windows_metadata_with(&executable, Some(expected), &native_thumbprint, |path| {
-        let command = windows_command(&powershell, path);
-        let output = crate::process::run_command_with_output(command, "Nightly Authenticode metadata", Duration::from_secs(60))?;
-        if !output.success || !output.stderr.trim().is_empty() {
-            return Err("The native Nightly Authenticode metadata query failed.".into());
-        }
-        Ok(output.stdout)
-    })?;
+    windows_metadata_with(&executable, Some(expected), &native_thumbprint, read_windows_metadata)?;
     Ok(held)
+}
+
+#[cfg(windows)]
+fn read_windows_metadata(path: &std::path::Path) -> Result<String, String> {
+    let command = windows_command(path, || winsafe::GetSystemDirectory().map(std::path::PathBuf::from).map_err(|error| error.to_string()))?;
+    let output = crate::process::run_command_with_output(command, "Nightly Authenticode metadata", std::time::Duration::from_secs(60))?;
+    if !output.success || !output.stderr.trim().is_empty() {
+        return Err("The native Nightly Authenticode metadata query failed.".into());
+    }
+    Ok(output.stdout)
 }
 
 #[cfg(test)]
@@ -354,10 +372,33 @@ mod tests {
         }
     }
 
+    fn test_system_directory() -> std::path::PathBuf {
+        if cfg!(windows) {
+            std::path::PathBuf::from(r"C:\os-selected\Windows\System32")
+        } else {
+            std::path::PathBuf::from("/os-selected/Windows/System32")
+        }
+    }
+
+    #[test]
+    fn windows_helper_is_os_selected_and_inherited_lookup_inputs_are_overridden() {
+        let directory = test_system_directory();
+        let command = windows_command(Path::new("owned.exe"), || Ok(directory.clone())).unwrap();
+        assert!(Path::new(command.get_program()).starts_with(&directory));
+        // Explicit child values override any hostile inherited SystemRoot/PATH/PSModulePath;
+        // the only helper selection input is the successful native directory result.
+        let env: std::collections::BTreeMap<_, _> = command.get_envs().collect();
+        assert_eq!(env.get(std::ffi::OsStr::new("SystemRoot")), Some(&directory.parent().map(Path::as_os_str)));
+        assert_eq!(env.get(std::ffi::OsStr::new("PATH")), Some(&Some(directory.as_os_str())));
+        assert!(Path::new(env[std::ffi::OsStr::new("PSModulePath")].unwrap()).starts_with(&directory));
+        assert!(windows_command(Path::new("owned.exe"), || Err("native system directory unavailable".into())).is_err());
+        assert!(windows_command(Path::new("owned.exe"), || Ok(std::path::PathBuf::from("relative-attacker-root"))).is_err());
+    }
+
     #[test]
     fn windows_query_keeps_owned_paths_as_data_not_executable_script() {
         let path = Path::new(r"C:\private path\a'; throw 'injected' ; [x].exe");
-        let command = windows_command(Path::new("trusted-system-powershell"), path);
+        let command = windows_command(path, || Ok(test_system_directory())).unwrap();
         let args: Vec<_> = command.get_args().collect();
         assert_eq!(args.last(), Some(&std::ffi::OsStr::new(WINDOWS_QUERY)));
         assert!(!WINDOWS_QUERY.contains(path.to_str().unwrap()));
@@ -372,5 +413,59 @@ mod tests {
             .is_err()
         );
         assert!(!seen.get());
+    }
+    /// OS fixture only, never a PhotoCraft production trust value. The reference is independently
+    /// chain-verified in the OS system directory, identified as Microsoft, and never executed.
+    #[cfg(windows)]
+    #[test]
+    fn actual_windows_system_fixture_verifies_metadata_and_is_held_until_released() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let system = std::path::PathBuf::from(winsafe::GetSystemDirectory().expect("native OS system directory"));
+        let verifier =
+            verifysign::CodeSignVerifier::new(verifysign::VerifyPolicy::new().revocation(verifysign::Revocation::Chain).allow_network(true)).unwrap();
+        let mut failures = Vec::new();
+        let mut selected = None;
+        for relative in [r"WindowsPowerShell\v1.0\powershell.exe", "cmd.exe", "msiexec.exe", "notepad.exe"] {
+            let reference = system.join(relative);
+            let checked = (|| -> Result<_, String> {
+                let held = std::fs::OpenOptions::new().read(true).share_mode(1).open(&reference).map_err(|error| error.to_string())?;
+                let native = verifier.verify_file(&reference).map_err(|error| error.to_string())?;
+                if native.subject_name().organization.as_deref() != Some("Microsoft Corporation") {
+                    return Err("OS reference is not independently chain-verified as Microsoft Corporation".into());
+                }
+                let text = read_windows_metadata(&reference)?;
+                if text.len() > 16 * 1024 {
+                    return Err("OS reference metadata exceeds its limit".into());
+                }
+                let evidence: WindowsEvidence = serde_json::from_str(&text).map_err(|error| error.to_string())?;
+                match_windows(&evidence, Some(&evidence.subject), &native.sha256_thumbprint())?;
+                Ok((reference.clone(), held, evidence.subject))
+            })();
+            match checked {
+                Ok(fixture) => {
+                    selected = Some(fixture);
+                    break;
+                }
+                Err(error) => failures.push(format!("{}: {error}", reference.display())),
+            }
+        }
+        let (reference, _held_reference, expected) = selected
+            .unwrap_or_else(|| panic!("No native embedded timestamped Microsoft OS fixture qualified (NOT a skipped pass): {}", failures.join("; ")));
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("photocraft.exe");
+        std::fs::copy(&reference, &executable).unwrap();
+        std::fs::OpenOptions::new().write(true).open(&executable).expect("fixture must be writable before authentication");
+        let before = crate::http::sha256_file(&executable).unwrap();
+        let held = authenticate_windows_as(directory.path(), &[std::path::PathBuf::from("photocraft.exe")], &expected)
+            .expect("real native trust, fixed full-subject/timestamp query and same-leaf binding");
+        let renamed = directory.path().join("renamed.exe");
+        assert!(std::fs::OpenOptions::new().write(true).open(&executable).is_err(), "held executable admitted a writer");
+        assert!(std::fs::remove_file(&executable).is_err(), "held executable admitted deletion");
+        assert!(std::fs::rename(&executable, &renamed).is_err(), "held executable admitted rename");
+        assert_eq!(crate::http::sha256_file(&executable).unwrap(), before);
+        drop(held);
+        std::fs::OpenOptions::new().write(true).open(&executable).expect("write sharing must be restored after guard release");
+        std::fs::rename(&executable, &renamed).expect("rename must succeed after release");
+        std::fs::remove_file(renamed).expect("ordinary fixture cleanup after release");
     }
 }
