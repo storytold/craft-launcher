@@ -77,9 +77,25 @@ production signer configuration is still source-owned and unavailable by default
 Plain libtest counts a test function returning after a resource SKIP as `ok`; that
 count is **not operational coverage**. The explicit SKIP line must be retained, and
 only the required=1 run with no SKIP can establish this native path was exercised.
-The ordinary public CI/`cargo xtask ci` currently does **not** provision this pinned
-fixture or set required=1. A separate bounded Windows CI setup must fetch/check the
-manifest resource, set both variables and run Native tests; no workflow change is
-included here. Until that setup and a real required run exist, do not describe default
-CI as covering this path or the signed consumer as shipping-ready. The coordinator's
-private required run is separate evidence, not an assertion that public CI is wired.
+The Windows CI hook now runs `packaging/windows/prepare-signed-test-fixture.ps1`
+and its small data-only regression script before the existing Clippy/tests. The shared
+gate runs that hook in bash: it normalizes
+the fixture directory with `cygpath -aw`, exports the exact native Windows file path
+and required=1 **before** setup, and passes the same directory explicitly to the
+script. Setup failure stops the command chain. No child-environment or GITHUB_ENV
+propagation is assumed. Local `cargo test`/`cargo xtask ci` still use the resource
+contract above; they do not download the reference automatically.
+
+The setup streams at most the pinned archive length with a five-minute cancellation
+bound, verifies its exact length/hash before ZIP parsing, rejects duplicate/case-aliased
+entries, and extracts only the exact root executable plus `LICENSE.txt` and
+`ThirdPartyNotices.txt`. It checks executable size/hash, preserves notices unchanged,
+refuses an existing final destination, and publishes its own staging directory only
+on success. The fixture is never executed; no secrets, latest endpoint, broad unpack,
+binary vendoring or skip fallback is involved.
+
+Data-only regressions run with `pwsh -NoProfile -File
+packaging/windows/test-signed-test-fixture.ps1 -OutputDirectory <owned scratch>`.
+The CI hook is source-wired, but its **hosted Windows execution remains pending an
+approved push**. Local script checks and the separately accepted private required
+native run do not constitute a hosted CI pass or shipping-ready release acceptance.

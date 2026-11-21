@@ -33,6 +33,11 @@ jobs:
       packages: libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev
       # Windows checks what differs by platform: clippy and the tests.
       windows-command: |
+        fixture_directory="$(cygpath -aw "$RUNNER_TEMP/craft-launcher-signed-fixture")"
+        export CRAFT_NIGHTLY_SIGNED_FIXTURE="$fixture_directory\pwsh.exe"
+        export CRAFT_NIGHTLY_SIGNED_FIXTURE_REQUIRED=1
+        pwsh -NoLogo -NoProfile -NonInteractive -File packaging/windows/test-signed-test-fixture.ps1 -OutputDirectory "$fixture_directory.checks"
+        pwsh -NoLogo -NoProfile -NonInteractive -File packaging/windows/prepare-signed-test-fixture.ps1 -Destination "$fixture_directory"
         cargo clippy --workspace --all-targets --locked -- -D warnings
         cargo test --workspace --locked
 

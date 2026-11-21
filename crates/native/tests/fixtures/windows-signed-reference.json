@@ -17,5 +17,9 @@
     "sha256": "f2833e07a5a7d59153ffc63db83bd6b62f6c63ffd8b5b5099a2feadf6b605336",
     "subject": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
   },
-  "provenance": "Independent read-only binding of official original archive size/hash, streamed root entry hash, and native Valid embedded Authenticode/timestamp/full subject observation. The reference is copied as test data, never executed or installed."
+  "provenance": "Independent read-only binding of official original archive size/hash, streamed root entry hash, and native Valid embedded Authenticode/timestamp/full subject observation. The reference is copied as test data, never executed or installed.",
+  "notices": [
+    "LICENSE.txt",
+    "ThirdPartyNotices.txt"
+  ]
 }
