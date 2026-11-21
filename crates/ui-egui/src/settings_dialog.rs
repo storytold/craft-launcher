@@ -347,7 +347,7 @@ impl LauncherUi {
             ui.add_space(10.0);
             widgets::hud(ui, tl!("Sources"), Tokens::get(ui.ctx()).faint);
             ui.add_space(2.0);
-            let lang = crate::app::effective_lang(&self.settings.language);
+            let lang = crate::app::drawable_lang(&self.settings.language, self.cjk_font);
             self.fonts.sources_ui(ui, &self.settings.fonts, lang.code());
         });
     }
