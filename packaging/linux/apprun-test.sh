@@ -50,6 +50,13 @@ fail() {
   exit 1
 }
 
+# A version query with extra arguments does not install desktop files or icons.
+for flag in --version -V; do
+  out="$("$APPDIR/AppRun" open "$flag")" || fail "AppRun $flag exited non-zero"
+  [[ "$out" = "stub: open $flag" ]] || fail "version arguments not forwarded: $out"
+  [[ ! -e "$XDG_DATA_HOME" ]] || fail "$flag performed desktop integration"
+done
+
 # 1. Launch works and passes arguments through.
 out="$("$APPDIR/AppRun" open file.png)" || fail "AppRun exited non-zero"
 [[ "$out" = "stub: open file.png" ]] || fail "arguments not forwarded: $out"
