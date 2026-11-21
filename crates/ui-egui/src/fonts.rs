@@ -229,7 +229,13 @@ impl FontsTab {
             .body_returned;
         if toggled {
             match self.installer.set_previews_enabled(enabled) {
-                Ok(()) => self.preview_settings_changed(now),
+                // Only the switch changed: a refused address typed meanwhile stays, with its error.
+                Ok(()) => {
+                    field.enabled = enabled;
+                    if let Some(panel) = self.panel.as_mut() {
+                        panel.reload_preview_settings();
+                    }
+                }
                 Err(e) => self.preview_error(fmt(tl!("Couldn't change the font previews setting: {e}"), &[("e", &e.to_string())])),
             }
         }
