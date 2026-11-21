@@ -489,6 +489,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts for every Craft app	შრიფტები ყველა Craft აპლიკაციისთვის
 # The font preview settings in Settings' Fonts box.
 	Show font previews	შრიფტების გადახედვის ჩვენება
+	Advanced	დამატებითი
 	Font preview server	შრიფტების გადახედვის სერვერი
 	Couldn't use this server: {e}	ამ სერვერის გამოყენება ვერ მოხერხდა: {e}
 	Couldn't change the font previews setting: {e}	შრიფტების გადახედვის პარამეტრის შეცვლა ვერ მოხერხდა: {e}

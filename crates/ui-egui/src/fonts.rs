@@ -188,34 +188,46 @@ impl FontsTab {
         let Some(field) = self.preview.as_mut() else { return };
         let mut enabled = field.enabled;
         let toggled = ui.checkbox(&mut enabled, tl!("Show font previews")).changed();
-        let label = ui.label(tl!("Font preview server"));
         let from_env = field.source == PreviewServiceSource::Env;
-        let edit = egui::TextEdit::singleline(&mut field.text).id(id).hint_text(DEFAULT_PREVIEW_SERVICE).desired_width(f32::INFINITY);
-        let response = ui.add_enabled(!from_env, edit).labelled_by(label.id);
-        if response.changed() {
-            field.error = None;
-        }
         let small = |ui: &mut egui::Ui, text: &str, color: egui::Color32| {
             ui.add(egui::Label::new(egui::RichText::new(text).size(12.0).color(color)).wrap());
         };
-        if let Some(error) = &field.error {
-            small(ui, error, t.bad);
-        }
-        if from_env {
-            small(ui, &fmt(tl!("Set by {name} in the environment."), &[("name", PREVIEW_SERVICE_ENV)]), t.muted);
-        }
-        small(
-            ui,
-            tl!("Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server."),
-            t.muted,
-        );
+        // The server address is for people who host their own: collapsed, and held open while the
+        // address is refused or fixed by the environment so the reason stays visible.
+        let force_open = (field.error.is_some() || from_env).then_some(true);
+        let response = egui::CollapsingHeader::new(tl!("Advanced"))
+            .id_salt("font-preview-advanced")
+            .open(force_open)
+            .show(ui, |ui| {
+                let label = ui.label(tl!("Font preview server"));
+                let edit = egui::TextEdit::singleline(&mut field.text).id(id).hint_text(DEFAULT_PREVIEW_SERVICE).desired_width(f32::INFINITY);
+                let response = ui.add_enabled(!from_env, edit).labelled_by(label.id);
+                if response.changed() {
+                    field.error = None;
+                }
+                if let Some(error) = &field.error {
+                    small(ui, error, t.bad);
+                }
+                if from_env {
+                    small(ui, &fmt(tl!("Set by {name} in the environment."), &[("name", PREVIEW_SERVICE_ENV)]), t.muted);
+                }
+                small(
+                    ui,
+                    tl!(
+                        "Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server."
+                    ),
+                    t.muted,
+                );
+                response
+            })
+            .body_returned;
         if toggled {
             match self.installer.set_previews_enabled(enabled) {
                 Ok(()) => self.preview_settings_changed(now),
                 Err(e) => self.preview_error(fmt(tl!("Couldn't change the font previews setting: {e}"), &[("e", &e.to_string())])),
             }
         }
-        if response.lost_focus() {
+        if response.is_some_and(|r| r.lost_focus()) {
             self.apply_preview_server(now);
         }
     }

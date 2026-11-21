@@ -212,6 +212,12 @@ fn preview_settings_are_set_in_settings() {
     click(&mut h, "Settings");
     assert_eq!(service(), None, "the fake store has no default server");
 
+    // The server field is collapsed under "Advanced".
+    assert!(h.query_all_by_label("Font preview server").next().is_none(), "the server field starts collapsed");
+    assert!(h.query_all_by_label("Show font previews").next().is_some(), "the previews switch stays visible");
+    // The Fonts box can be below the dialog's fold, where a click wouldn't land.
+    h.get_by_label("Advanced").click_accesskit();
+    settle(&mut h);
     let field = "Font preview server";
     h.get_by_role_and_label(Role::TextInput, field).focus();
     h.step();

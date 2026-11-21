@@ -449,6 +449,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts for every Craft app	供所有 Craft 應用程式使用的字型
 # The font preview settings in Settings' Fonts box.
 	Show font previews	顯示字型預覽
+	Advanced	進階
 	Font preview server	字型預覽伺服器
 	Couldn't use this server: {e}	無法使用這部伺服器：{e}
 	Couldn't change the font previews setting: {e}	無法變更字型預覽設定：{e}
