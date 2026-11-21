@@ -13,6 +13,7 @@ pub mod distro;
 pub mod feed;
 pub mod hosted_catalog;
 pub mod mcp_config;
+pub mod nightly;
 pub mod platform;
 pub mod protocol;
 pub mod release;

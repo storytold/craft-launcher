@@ -143,10 +143,59 @@ pub fn install_at(
     job: &mut Job<'_>,
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
-    #[cfg(windows)]
+    install_at_with_profile(InstallRequest { app, release, asset, kind, existing, previous }, job, commit, None)
+}
+
+pub(crate) fn install_nightly_at(
+    verified: &crate::nightly::VerifiedRelease,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+) -> Result<Option<Record>, String> {
+    let profile = verified.adapter();
+    let app = CraftApp::by_id(profile.app()).ok_or("The nightly profile has no known app.")?;
+    let request = InstallRequest { app, release: verified.release(), asset: verified.asset(), kind: profile.kind(), existing, previous };
+    install_at_with_profile(request, job, commit, Some(profile))
+}
+
+struct InstallRequest<'a> {
+    app: &'a CraftApp,
+    release: &'a Release,
+    asset: &'a Asset,
+    kind: PackageKind,
+    existing: Option<&'a Installed>,
+    previous: Option<&'a Record>,
+}
+
+fn install_at_with_profile(
+    request: InstallRequest<'_>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+    profile: Option<crate::nightly_profile::Adapter>,
+) -> Result<Option<Record>, String> {
+    let InstallRequest { app, release, asset, kind, existing, previous } = request;
+    if let Some(profile) = profile {
+        // A typed caller cannot accidentally inherit stable destinations, package batches or
+        // unrecorded-file replacement permission. Refuse before download or filesystem writes.
+        if profile.app() != app.id
+            || kind != profile.kind()
+            || job.replace
+            || job.downgrade.is_some()
+            || job.batch.is_some()
+            || job.install_locations.folder(app.id).is_some()
+            || existing.is_some_and(|installed| installed.source != InstallSource::Launcher || previous.is_none())
+        {
+            return Err("The nightly install has no private portable context. No installed copy or data was changed.".into());
+        }
+        profile.validate_profile(job.paths)?;
+        crate::nightly_profile::validate_download(job.paths, asset)?;
+        profile.launch_arguments(job.paths, &[])?;
+        if let Some(previous) = previous {
+            profile.validate_record(job.paths, previous)?;
+        }
+    }
     let mut commit = commit;
-    #[cfg(not(windows))]
-    let _ = commit;
     // Every early way out below gives the job's place in its batch back (see [`BatchPlace`]).
     #[cfg_attr(not(any(target_os = "linux", windows)), allow(unused_mut, unused_variables))]
     let mut batch = BatchPlace(job.batch.take());
@@ -165,7 +214,10 @@ pub fn install_at(
     {
         return Err(managed_elsewhere(app, installed, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
     }
-    bind_artifact_version(app, release, asset)?;
+    match profile {
+        Some(profile) => profile.bind_release(release, asset)?,
+        None => bind_artifact_version(app, release, asset)?,
+    }
     // A feed can't send an app back to an older build; only a version the person chose by name
     // (a downgrade with a way back if it fails) gets past this.
     if !job.replace
@@ -214,6 +266,18 @@ pub fn install_at(
     (job.phase)(JobPhase::Installing);
     #[allow(unused_variables)]
     let version = release.version_label();
+    #[cfg(unix)]
+    if let Some(profile) = profile {
+        let installed = crate::nightly_unix::install(
+            crate::nightly_unix::Package { adapter: profile, file: &file, version: &version, previous, paths: job.paths },
+            &mut |record| match commit.as_deref_mut() {
+                Some(commit) => commit(record),
+                None => Ok(()),
+            },
+        )?;
+        let _ = std::fs::remove_file(&file);
+        return Ok(Some(installed));
+    }
     let result = match kind {
         // No team to check the signature against: refuse rather than install it unchecked.
         #[cfg(target_os = "macos")]
@@ -260,15 +324,34 @@ pub fn install_at(
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {
-            crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
+            let mut accept = |record: &Record| {
                 if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
                     return Err("The portable executable does not match the selected version. The installation was rolled back.".into());
+                }
+                if let Some(profile) = profile {
+                    profile.validate_record(job.paths, record)?;
                 }
                 match commit.as_deref_mut() {
                     Some(commit) => commit(record),
                     None => Ok(()),
                 }
-            })
+            };
+            match profile {
+                Some(profile) => crate::portable::install_checked(
+                    crate::portable::Package {
+                        app,
+                        file: &file,
+                        version: &version,
+                        previous,
+                        paths: job.paths,
+                        directory: destination.as_deref(),
+                        replace: job.replace,
+                    },
+                    &|files, entries| profile.validate_layout(files, entries),
+                    &mut accept,
+                ),
+                None => crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut accept),
+            }
             .map(Some)
         }
         #[cfg(target_os = "linux")]
@@ -1736,7 +1819,7 @@ pub(crate) mod linux {
 }
 
 #[cfg(target_os = "macos")]
-mod macos_verify;
+pub(crate) mod macos_verify;
 
 #[cfg(target_os = "macos")]
 pub mod macos {

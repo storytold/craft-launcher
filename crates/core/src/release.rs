@@ -69,7 +69,9 @@ fn is_hex64(s: &str) -> bool {
 /// `https://` web link never needs these characters unescaped, we refuse any URL that contains a
 /// shell/cmd metacharacter rather than rely on the opener to neutralise it.
 pub fn safe_web_link(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("https://") else { return false };
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     url.len() <= 2000
         && !authority.is_empty()
@@ -124,13 +126,17 @@ pub fn download_prefix(repo: &str) -> String {
 /// segments with no traversal (`.`/`..`), no additional slashes, no query or fragment, and no
 /// backslash or percent-encoded separators that a client could later re-interpret.
 pub fn download_url_under(url: &str, prefix: &str) -> bool {
-    let Some(rest) = url.strip_prefix(prefix) else { return false };
+    let Some(rest) = url.strip_prefix(prefix) else {
+        return false;
+    };
     download_suffix_ok(rest)
 }
 
 /// Whether `url` sits under a developer mirror `base` (ending in `/`) without escaping it.
 pub fn download_url_under_mirror(url: &str, base: &str) -> bool {
-    let Some(rest) = url.strip_prefix(base) else { return false };
+    let Some(rest) = url.strip_prefix(base) else {
+        return false;
+    };
     // A mirror serves `<tag>/<name>` just like GitHub, but we only require that it can't climb out
     // of its own folder; its layout is otherwise the developer's business.
     !rest.is_empty() && !url.contains(['?', '#', '\\']) && !contains_traversal(rest) && !contains_encoded_separator(rest)
@@ -142,7 +148,9 @@ fn download_suffix_ok(rest: &str) -> bool {
         return false;
     }
     let mut parts = rest.split('/');
-    let (Some(tag), Some(name), None) = (parts.next(), parts.next(), parts.next()) else { return false };
+    let (Some(tag), Some(name), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
     valid_tag(tag) && valid_file_name(name)
 }
 
@@ -191,11 +199,32 @@ pub fn is_nightly(release: &Release) -> bool {
     release.prerelease && release.version.as_ref().is_some_and(|v| v.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly")))
 }
 
-/// Selects a published release. A nightly must be explicitly marked; a pin never falls back.
+/// Canonical parser-level Nightly eligibility, not descriptor or target validation.
+///
+/// Only a strict SemVer tag, optionally prefixed with lowercase `v`, qualifies. The parsed
+/// version must agree with the release, including build metadata, and its first prerelease
+/// component must be exactly `nightly`. Short canonical tags remain candidates for the native
+/// layer to validate against their descriptors.
+pub fn canonical_nightly_version(release: &Release) -> Option<Version> {
+    if !release.prerelease {
+        return None;
+    }
+    let tag = release.tag.strip_prefix('v').unwrap_or(&release.tag);
+    let parsed = Version::parse(tag).ok()?;
+    if parsed.to_string() != tag || release.version.as_ref() != Some(&parsed) || parsed.pre.as_str().split('.').next() != Some("nightly") {
+        return None;
+    }
+    Some(parsed)
+}
+
+/// Whether a release has a published checksum or checksum-list asset.
 pub fn has_published_checksum(r: &Release) -> bool {
     r.sums_asset().is_some() || r.assets.iter().any(|a| a.sha256.is_some())
 }
 
+/// Selects a published release. A nightly must be canonical and have a published checksum;
+/// a pin never falls back. Nightlies use SemVer precedence, ignoring build metadata. Equal
+/// precedence prefers the lexically smallest tag, never publication time or a separate run ordinal.
 pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrack) -> Option<Release> {
     use crate::protocol::VersionTrack;
     match track {
@@ -204,13 +233,18 @@ pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrac
             .filter(|r| !r.prerelease && r.version.as_ref().is_some_and(version::is_stable))
             .max_by(|a, b| a.version.cmp(&b.version))
             .cloned(),
-        VersionTrack::Nightly => releases.iter().filter(|r| is_nightly(r) && has_published_checksum(r)).max_by_key(|r| r.published_at).cloned(),
+        VersionTrack::Nightly => releases
+            .iter()
+            .filter(|r| has_published_checksum(r))
+            .filter_map(|r| canonical_nightly_version(r).map(|v| (r, v)))
+            .max_by(|(a, av), (b, bv)| version::compare(av, bv).then_with(|| b.tag.cmp(&a.tag)))
+            .map(|(r, _)| r.clone()),
         VersionTrack::Pinned(tag) => releases.iter().find(|r| r.tag == *tag).cloned(),
     }
 }
 
 /// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
-/// `allow_prerelease`) published release.
+/// `allow_prerelease`) published release. Explicit nightly builds use the separate channel.
 ///
 /// # Errors
 ///
@@ -223,9 +257,13 @@ pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool)
         if item["draft"].as_bool().unwrap_or(false) {
             continue;
         }
-        let Ok(r) = release_from_value(item, repo) else { continue };
-        let Some(ver) = r.version.as_ref() else { continue };
-        if !allow_prerelease && (r.prerelease || !version::is_stable(ver)) {
+        let Ok(r) = release_from_value(item, repo) else {
+            continue;
+        };
+        let Some(ver) = r.version.as_ref() else {
+            continue;
+        };
+        if is_nightly(&r) || (!allow_prerelease && (r.prerelease || !version::is_stable(ver))) {
             continue;
         }
         let newer = best.as_ref().and_then(|b| b.version.as_ref()).is_none_or(|b| version::is_newer(ver, b));
@@ -351,6 +389,18 @@ mod tests {
     use super::*;
 
     const REPO: &str = "storytold/photocraft";
+
+    #[test]
+    fn generic_prerelease_updates_cannot_select_a_separate_nightly() {
+        let json = r#"[
+            {"tag_name":"v9.0.0-nightly.20261120","prerelease":true},
+            {"tag_name":"v1.0.0-beta.1","prerelease":true},
+            {"tag_name":"v0.9.0","prerelease":false}
+        ]"#;
+        let release = parse_github_release_list(json, "storytold/photocraft", true).unwrap().unwrap();
+        assert!(!is_nightly(&release));
+        assert_eq!(release.version, crate::version::parse("v1.0.0-beta.1"));
+    }
 
     #[test]
     fn truncate_keeps_whole_characters() {
@@ -488,6 +538,127 @@ mod tests {
         assert!(is_nightly(&choices[0]));
         assert!(!is_nightly(&choices[1]));
         assert!(!is_nightly(&choices[2]));
+    }
+
+    fn nightly_release(tag: &str, published_at: Option<i64>) -> Release {
+        Release {
+            tag: tag.into(),
+            version: version::parse(tag),
+            prerelease: true,
+            published_at,
+            assets: vec![Asset { name: "app.zip".into(), sha256: Some(HASH.into()), ..Default::default() }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn nightly_selection_requires_canonical_matching_tags_but_not_descriptor_shape() {
+        use crate::protocol::VersionTrack;
+        for tag in ["1.2.3-nightly", "v1.2.3-nightly.20261120.runA", "v1.2.3-nightly+build.02"] {
+            let release = nightly_release(tag, None);
+            assert_eq!(canonical_nightly_version(&release), release.version, "{tag}");
+            assert_eq!(choose_version(&[release], &VersionTrack::Nightly).unwrap().tag, tag);
+        }
+        for tag in [
+            " 1.2.3-nightly",
+            "1.2.3-nightly ",
+            "V1.2.3-nightly",
+            "artcraft-v1.2.3-nightly",
+            "v1.2-nightly",
+            "v01.2.3-nightly",
+            "v1.2.3-Nightly",
+            "v1.2.3-beta.nightly",
+            "v1.2.3-nightlyish",
+            "v1.2.3",
+        ] {
+            let release = nightly_release(tag, None);
+            assert!(canonical_nightly_version(&release).is_none(), "{tag}");
+            assert!(choose_version(&[release], &VersionTrack::Nightly).is_none(), "{tag}");
+        }
+        let canonical = nightly_release("v1.2.3-nightly+build.a", None);
+        let mut unmarked = canonical.clone();
+        unmarked.prerelease = false;
+        let mut missing_version = canonical.clone();
+        missing_version.version = None;
+        let mut mismatched_version = canonical.clone();
+        mismatched_version.version = version::parse("v1.2.4-nightly+build.a");
+        let mut mismatched_build = canonical;
+        mismatched_build.version = version::parse("v1.2.3-nightly+build.b");
+        for release in [unmarked, missing_version, mismatched_version, mismatched_build] {
+            assert!(canonical_nightly_version(&release).is_none());
+            assert!(choose_version(&[release], &VersionTrack::Nightly).is_none());
+        }
+    }
+
+    #[test]
+    fn later_publication_of_an_older_nightly_cannot_replace_a_newer_version() {
+        use crate::protocol::VersionTrack;
+        let older = nightly_release("v1.2.3-nightly.20261120.runA", Some(200));
+        let newer = nightly_release("v1.3.0-nightly.20261119.runB", Some(100));
+        let old_policy = [older.clone(), newer.clone()];
+        assert_eq!(
+            old_policy.iter().max_by_key(|release| release.published_at).unwrap().tag,
+            older.tag,
+            "the old publication-time policy selects the counterexample's older SemVer"
+        );
+        for list in [[older.clone(), newer.clone()], [newer.clone(), older]] {
+            assert_eq!(choose_version(&list, &VersionTrack::Nightly).unwrap().tag, newer.tag);
+        }
+    }
+
+    #[test]
+    fn rerun_dates_and_opaque_ids_are_compared_only_as_semver_components() {
+        use crate::protocol::VersionTrack;
+        for (older, newer) in [
+            // A rerun retains its original tag date even when it is published later.
+            ("v1.2.3-nightly.20261119.run999", "v1.2.3-nightly.20261120.run1"),
+            // Opaque alphanumeric IDs follow SemVer lexical order, not extracted integers.
+            ("v1.2.3-nightly.20261120.run10", "v1.2.3-nightly.20261120.run9"),
+            // Numeric components still follow SemVer numeric order, not raw tag order.
+            ("v1.2.3-nightly.20261120.9", "v1.2.3-nightly.20261120.10"),
+        ] {
+            let older = nightly_release(older, Some(200));
+            let newer = nightly_release(newer, None);
+            for list in [[older.clone(), newer.clone()], [newer.clone(), older]] {
+                assert_eq!(choose_version(&list, &VersionTrack::Nightly).unwrap().tag, newer.tag);
+            }
+        }
+    }
+
+    #[test]
+    fn equal_nightly_precedence_prefers_smallest_tag_without_metadata_or_publication_ordering() {
+        use crate::protocol::VersionTrack;
+        for tags in [["v1.2.3-nightly+z", "v1.2.3-nightly+a"], ["v1.2.3-nightly+a", "v1.2.3-nightly"], ["v1.2.3-nightly", "1.2.3-nightly+z"]] {
+            let larger_tag = nightly_release(tags[0], Some(200));
+            let smaller_tag = nightly_release(tags[1], Some(100));
+            for list in [[larger_tag.clone(), smaller_tag.clone()], [smaller_tag.clone(), larger_tag]] {
+                assert_eq!(choose_version(&list, &VersionTrack::Nightly).unwrap().tag, smaller_tag.tag);
+            }
+        }
+        let older = nightly_release("v1.2.3-nightly.9+z", Some(200));
+        let newer = nightly_release("v1.2.3-nightly.10+a", Some(100));
+        assert_eq!(choose_version(&[older, newer.clone()], &VersionTrack::Nightly).unwrap().tag, newer.tag);
+    }
+
+    #[test]
+    fn ordinary_version_list_keeps_its_order_limit_beta_filtering_and_exact_pins() {
+        use crate::protocol::VersionTrack;
+        let mut items: Vec<_> = (0..105).map(|i| serde_json::json!({"tag_name": format!("v0.1.{i}"), "prerelease": false})).collect();
+        items[0] = serde_json::json!({"tag_name": "v99.0.0-nightly", "prerelease": true});
+        items[1] = serde_json::json!({"tag_name": "v9.0.0-beta.1", "prerelease": true});
+        let json = serde_json::to_string(&items).unwrap();
+        let list = parse_github_versions(&json, REPO).unwrap();
+        assert_eq!(list.len(), 100);
+        assert_eq!(list[0].tag, "v99.0.0-nightly");
+        assert_eq!(list[99].tag, "v0.1.99");
+        assert_eq!(choose_version(&list, &VersionTrack::Stable).unwrap().tag, "v0.1.99");
+        // Pinned releases retain exact matching, with neither checksum nor Nightly fallback.
+        assert_eq!(choose_version(&list, &VersionTrack::Pinned("v99.0.0-nightly".into())).unwrap().tag, "v99.0.0-nightly");
+        assert_eq!(choose_version(&list, &VersionTrack::Pinned("v0.1.99".into())).unwrap().tag, "v0.1.99");
+        assert!(choose_version(&list, &VersionTrack::Pinned("v0.1.100".into())).is_none());
+        assert!(choose_version(&list, &VersionTrack::Pinned("0.1.99".into())).is_none());
+        assert_eq!(parse_github_release_list(&json, REPO, false).unwrap().unwrap().tag, "v0.1.104");
+        assert_eq!(parse_github_release_list(&json, REPO, true).unwrap().unwrap().tag, "v9.0.0-beta.1");
     }
 
     #[test]

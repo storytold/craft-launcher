@@ -96,6 +96,8 @@ pub(crate) struct Toast {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum UiAction {
     Command(Command),
+    NightlyCommand(Command),
+    NightlyConsent(bool),
     /// [`Command::Launch`] with the app's launch flags, plus one launch-count increment.
     Launch(String),
     /// Re-run the manual update check, clearing the auto-update back-off.
@@ -142,6 +144,7 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    pub(crate) nightly: crate::nightly::NightlyState,
     /// AI agents: the gateway switch and the MCP clients.
     pub(crate) mcp_agents: McpAgents,
     /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
@@ -268,9 +271,11 @@ impl LauncherUi {
         let platform = backend.platform();
         let mut settings = settings;
         settings.migrate();
+        let nightly = crate::nightly::NightlyState::new(backend.nightly_context(), platform);
         Self {
             backend,
             settings,
+            nightly,
             entries: artcraft_launcher_core::hosted_catalog::apps()
                 .iter()
                 .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
@@ -378,7 +383,7 @@ impl LauncherUi {
 
     /// Queues one user action. Distinct controls may queue equal payloads in the same pass; the
     /// per-frame duplicate check happens in [`Self::flush_actions`] when the draw order is known.
-    fn act(&mut self, action: UiAction) {
+    pub(crate) fn act(&mut self, action: UiAction) {
         self.pending.push(action);
     }
 
@@ -416,6 +421,13 @@ impl LauncherUi {
             }
             match action {
                 UiAction::Command(command) => self.backend.send(command.clone()),
+                UiAction::NightlyCommand(command) => self.nightly.send(command.clone(), self.settings.nightly_enabled),
+                UiAction::NightlyConsent(enabled) => {
+                    self.settings.nightly_enabled = *enabled;
+                    self.nightly.consent_open = false;
+                    self.nightly.active = true;
+                    self.nightly.configure(&self.settings);
+                }
                 UiAction::Launch(id) => {
                     let flags = self.settings.launch_flags.get(id).map_or("", String::as_str);
                     // The dialog only saves flags that split, but the settings file can be edited by hand.
@@ -479,6 +491,7 @@ impl LauncherUi {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
+            nightly_enabled: false, // The stable backend never acquires nightly consent.
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             simultaneous_downloads: self.settings.simultaneous_downloads,
@@ -536,6 +549,7 @@ impl LauncherUi {
         // actually show: English where the system has no CJK face for the preference.
         set_current(effective_lang(&self.settings.language));
         self.configure();
+        self.nightly.logic(&self.settings);
         // A kept version's card notes a newer release; that needs the app's published list.
         self.request_pinned_lists();
         if !self.started {
@@ -658,6 +672,7 @@ impl LauncherUi {
                 self.on_notice(result);
                 true
             }
+            Event::NightlyStatus { .. } => false, // Nightly metadata never changes Stable scheduling or presentation.
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;
@@ -927,6 +942,11 @@ impl LauncherUi {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
             .show(ui, |ui| {
+                ui.add_space(12.0);
+                if self.nightly.active {
+                    self.nightly_page(ui);
+                    return;
+                }
                 self.toolbar(ui);
                 ui.add_space(18.0);
                 let ids = self.visible_ids();
@@ -958,6 +978,7 @@ impl LauncherUi {
             });
         self.details_drawer(&ctx);
         self.dialogs(&ctx, host);
+        self.nightly_consent_modal(&ctx);
         self.flush_actions();
         self.draw_toasts(&ctx);
         if host.title_bar() == TitleBar::Custom {

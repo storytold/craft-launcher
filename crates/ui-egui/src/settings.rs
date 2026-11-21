@@ -114,6 +114,8 @@ pub struct Settings {
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
+    /// Explicit one-time consent for independent nightly copies. Disabling never removes data.
+    pub nightly_enabled: bool,
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
@@ -215,7 +217,9 @@ impl Settings {
     /// [`Lang::from_pref`](crate::i18n::Lang::from_pref).
     pub fn language_label(code: &str, installed: Option<crate::i18n::Lang>) -> String {
         match crate::i18n::Lang::from_code(code) {
-            Some(lang) if lang.needs_cjk_font() && installed == Some(lang) => format!("{} ({})", lang.english_name(), lang.name()),
+            Some(lang) if lang.needs_cjk_font() && installed == Some(lang) => {
+                format!("{} ({})", lang.english_name(), lang.name())
+            }
             Some(lang) if lang.needs_cjk_font() => lang.english_name().to_string(),
             Some(lang) => lang.name().to_string(),
             None => t("Auto").to_string(),
@@ -273,6 +277,7 @@ impl Default for Settings {
             batch_updates: false,
             notify: true,
             prereleases: false,
+            nightly_enabled: false,
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
             simultaneous_downloads: 1,

@@ -22,7 +22,9 @@ impl LauncherUi {
 
     /// A lock beside a version opens a confirmation; clicking it never changes the saved choice.
     pub(crate) fn version_lock(&mut self, ui: &mut Ui, id: &str) {
-        let Some(tag) = self.pinned_version(id).map(str::to_string) else { return };
+        let Some(tag) = self.pinned_version(id).map(str::to_string) else {
+            return;
+        };
         let tip = crate::fmt(tl!("Version pinned to {version}. Click to unlock."), &[("version", &tag)]);
         if widgets::inline_glyph_button(ui, widgets::Glyph::Lock, &tip).clicked() {
             self.dialog = Some(crate::app::Dialog::UnlockVersion { app: id.to_string(), tag });
@@ -76,7 +78,9 @@ impl LauncherUi {
 
     /// The per-app selector stays in its dialog. The launcher's selector is drawn in Settings.
     pub(crate) fn version_dialog(&mut self, ui: &mut Ui, id: &str) -> bool {
-        let Some(app) = CraftApp::by_id(id) else { return true };
+        let Some(app) = CraftApp::by_id(id) else {
+            return true;
+        };
         let t = Tokens::get(ui.ctx());
         ui.set_width(480.0f32.min((ui.ctx().content_rect().width() - 80.0).max(240.0)));
         ui.heading(format!("{} · {}", app.name, tl!("Choose version")));
@@ -115,7 +119,9 @@ impl LauncherUi {
     /// The dialog closed without installing: the choice made in it was only a draft, so put the
     /// one it had before back, and check again so the card shows that release (Open, not Install).
     pub(crate) fn revert_version_choice(&mut self) {
-        let Some((id, before)) = self.version_before.take() else { return };
+        let Some((id, before)) = self.version_before.take() else {
+            return;
+        };
         if self.settings.versions.get(&id).cloned().unwrap_or_default() == before {
             return;
         }
@@ -196,8 +202,8 @@ impl LauncherUi {
             .width(width)
             .height(390.0)
             .show_ui(ui, |ui| {
-                // The combo already scrolls its entire menu. Keep every option, including
-                // Nightly, in that one scroll region. Rows touch: with a gap, the selected row's
+                // The combo already scrolls its entire menu. Keep each stable/beta choice
+                // in that one scroll region. Rows touch: with a gap, the selected row's
                 // highlight covers only part of its slot and the spacing looks uneven around it.
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let option_size = egui::vec2(ui.available_width(), 42.0);
@@ -205,15 +211,6 @@ impl LauncherUi {
                     && ui.add(egui::Button::selectable(choice == VersionTrack::Stable, tl!("Latest release")).min_size(option_size)).clicked()
                 {
                     picked = Some(VersionTrack::Stable);
-                }
-                let nightly = list
-                    .as_ref()
-                    .and_then(|r| r.as_ref().ok())
-                    .is_some_and(|rs| rs.iter().any(|r| is_nightly(r) && self.has_version_download(app, r)));
-                // Without a build, the reason rides in the disabled row itself, not a line of its own.
-                let label = if nightly { tl!("Nightly") } else { tl!("Nightly (none published yet)") };
-                if ui.add_enabled(nightly, egui::Button::selectable(choice == VersionTrack::Nightly, label).min_size(option_size)).clicked() {
-                    picked = Some(VersionTrack::Nightly);
                 }
                 match &list {
                     None => {
@@ -228,7 +225,7 @@ impl LauncherUi {
                             ui.label(tl!("No release published yet"));
                         }
                         for r in releases {
-                            if !self.has_version_download(app, r) {
+                            if is_nightly(r) || !self.has_version_download(app, r) {
                                 continue;
                             }
                             let pin = VersionTrack::Pinned(r.tag.clone());
@@ -334,7 +331,9 @@ impl LauncherUi {
     }
 
     fn has_version_download(&self, app: &CraftApp, r: &Release) -> bool {
-        let Some(platform) = self.platform else { return false };
+        let Some(platform) = self.platform else {
+            return false;
+        };
         let stems: Vec<&str> = app.stems().collect();
         pick_asset(r, &stems, platform, platform.download_kinds()).is_some_and(|(asset, _)| asset.sha256.is_some() || r.sums_asset().is_some())
     }

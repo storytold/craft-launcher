@@ -407,13 +407,13 @@ fn app_and_launcher_offer_version_choices_without_starting_an_install() {
     h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
     h.run_steps(3);
     h.get_by_label("Latest release");
-    h.get_by_label("Nightly (none published yet)");
+    assert!(h.query_by_label("Nightly (none published yet)").is_none(), "fresh OFF must not promote pre-releases in the Stable version menu");
     assert!(h.query_by_label("Launcher versions").is_none(), "version selection belongs in Settings, not another dialog");
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::ListVersions { app } if app == artcraft_launcher_core::catalog::LAUNCHER_ID)));
 }
 
 #[test]
-fn version_choices_have_room_and_nightly_scrolls_with_the_versions() {
+fn stable_version_choices_have_room_and_scroll_with_evenly_spaced_rows() {
     let releases: Vec<_> = (1..=25)
         .rev()
         .map(|v| {
@@ -431,13 +431,14 @@ fn version_choices_have_room_and_nightly_scrolls_with_the_versions() {
     h.run_steps(4);
     h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
     h.run_steps(5);
-    let nightly_before = h.get_by_label("Nightly (none published yet)").rect();
+    assert!(h.query_by_label("Nightly (none published yet)").is_none(), "pre-releases do not belong in the Stable version menu");
     // The newest release carries the label; there is no separate "Latest release" row.
     let first = h.get_by_label("v0.25.0 (latest release)").rect();
+    let second = h.get_by_label("v0.24.0").rect();
     assert!(h.query_by_label("Latest release").is_none(), "the latest version is labelled in place");
-    assert!(nightly_before.height() >= 40.0, "dropdown rows need a comfortable target: {nightly_before:?}");
-    // Rows touch, so a selected row's highlight fills its whole slot and the spacing stays even.
-    assert!((first.top() - nightly_before.bottom()).abs() < 1.0, "rows sit at an even pitch: {nightly_before:?} {first:?}");
+    assert!(first.height() >= 40.0 && second.height() >= 40.0, "dropdown rows need comfortable targets: {first:?} {second:?}");
+    // Stable rows still touch and scroll at an even pitch; only the old Nightly promotion is gone.
+    assert!((second.top() - first.bottom()).abs() < 1.0, "rows sit at an even pitch: {first:?} {second:?}");
     h.event(egui::Event::PointerMoved(first.center()));
     h.event(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
@@ -447,8 +448,8 @@ fn version_choices_have_room_and_nightly_scrolls_with_the_versions() {
         modifiers: egui::Modifiers::NONE,
     });
     h.run_steps(30);
-    let nightly_after = h.get_by_label("Nightly (none published yet)").rect();
-    assert!(nightly_after.top() < nightly_before.top() - 80.0, "Nightly must scroll with release rows: {nightly_before:?} -> {nightly_after:?}");
+    let first_after = h.get_by_label("v0.25.0 (latest release)").rect();
+    assert!(first_after.top() < first.top() - 80.0, "the release rows must scroll: {first:?} -> {first_after:?}");
 }
 
 /// A backend that answers ListVersions, unlike the shared Fake: the dialog clears the cached

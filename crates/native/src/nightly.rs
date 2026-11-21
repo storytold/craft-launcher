@@ -1,0 +1,179 @@
+//! Verified nightly discovery and the sole source-owned per-target admission token.
+//! A raw release or descriptor cannot construct this token or redirect the stable installer.
+
+use artcraft_launcher_core::protocol::VersionTrack;
+use artcraft_launcher_core::{Asset, CraftApp, InstallSource, Installed, Platform, Release};
+
+use crate::http::Http;
+use crate::manifest::Record;
+use crate::nightly_profile::{self, Adapter};
+use crate::paths::Paths;
+
+#[derive(Clone, Debug)]
+pub(crate) struct VerifiedRelease {
+    release: Release,
+    asset: Asset,
+    adapter: Adapter,
+}
+
+impl VerifiedRelease {
+    pub(crate) fn release(&self) -> &Release {
+        &self.release
+    }
+    pub(crate) fn asset(&self) -> &Asset {
+        &self.asset
+    }
+    pub(crate) fn adapter(&self) -> Adapter {
+        self.adapter
+    }
+}
+
+pub fn nightly_track(track: &VersionTrack) -> bool {
+    match track {
+        VersionTrack::Nightly => true,
+        VersionTrack::Pinned(tag) => {
+            artcraft_launcher_core::version::parse(tag).is_some_and(|v| v.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly")))
+        }
+        VersionTrack::Stable => false,
+    }
+}
+
+/// Only this function can create an installable release. Both independently published
+/// checksums, the exact logical GitHub release and the typed profile row must agree.
+pub(crate) fn verify(app: &CraftApp, mut release: Release, http: &Http, platform: Platform) -> Result<VerifiedRelease, String> {
+    use artcraft_launcher_core::nightly::{MANIFEST_NAME, MAX_MANIFEST_BYTES};
+    nightly_profile::for_app(app, platform)?;
+    if let Some(sums) = release.sums_asset() {
+        let expected = format!("https://github.com/{}/releases/download/{}/{}", app.repo, release.tag, sums.name);
+        if sums.url != expected || !artcraft_launcher_core::release::valid_file_name(&sums.name) {
+            return Err("The nightly checksums are outside the selected catalog release.".into());
+        }
+        let text = http.get_text(&sums.url)?.ok_or("The nightly checksums are not published.")?;
+        release.apply_sums(&artcraft_launcher_core::release::parse_sha256sums(&text));
+    }
+    let descriptor = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == MANIFEST_NAME)
+        .ok_or("This nightly has no verified isolation descriptor; the stable copy was left alone.")?;
+    if descriptor.size == 0 || descriptor.size > MAX_MANIFEST_BYTES as u64 || descriptor.sha256.is_none() {
+        return Err("This nightly has no bounded, checksum-verifiable isolation descriptor.".into());
+    }
+    let expected = format!("https://github.com/{}/releases/download/{}/NIGHTLY.json", app.repo, release.tag);
+    if descriptor.url != expected
+        || !artcraft_launcher_core::release::download_url_under(&descriptor.url, &artcraft_launcher_core::release::download_prefix(app.repo))
+    {
+        return Err("The nightly descriptor is outside the selected catalog release.".into());
+    }
+    let body = http.get_bytes(&descriptor.url, MAX_MANIFEST_BYTES)?.ok_or("The nightly descriptor is not published.")?;
+    let descriptor = artcraft_launcher_core::nightly::parse(&body, app, &release)?;
+    let (artifact, adapter) = descriptor
+        .artifacts
+        .iter()
+        .find_map(|artifact| nightly_profile::adapter(app, &release, artifact, platform).ok().map(|adapter| (artifact, adapter)))
+        .ok_or("No verified separate-profile installation adapter is available for this nightly target.")?;
+    let asset = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == artifact.asset.name)
+        .ok_or("The verified nightly payload is missing from the selected release.")?
+        .clone();
+    Ok(VerifiedRelease { release, asset, adapter })
+}
+
+/// Both discovery and the legacy verifier use the current descriptor validator. A valid
+/// descriptor without a source-owned matching row is unsupported, not an invalid descriptor.
+pub(crate) fn verified_descriptor(app: &CraftApp, release: Release, body: &[u8], platform: Platform) -> Result<Option<VerifiedRelease>, String> {
+    let descriptor = artcraft_launcher_core::nightly::parse(body, app, &release)?;
+    let Some((artifact, adapter)) = descriptor
+        .artifacts
+        .iter()
+        .find_map(|artifact| nightly_profile::adapter(app, &release, artifact, platform).ok().map(|adapter| (artifact, adapter)))
+    else {
+        return Ok(None);
+    };
+    let asset = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == artifact.asset.name)
+        .ok_or("The verified nightly payload is missing from the selected release.")?
+        .clone();
+    Ok(Some(VerifiedRelease { release, asset, adapter }))
+}
+
+/// Retained copies come only from the private manifest and the known profile row. This never
+/// asks the host package manager, searches PATH or adopts an OS-detected stable installation.
+pub(crate) fn owned_installation(app: &CraftApp, record: &Record, paths: &Paths, platform: Platform) -> Result<Installed, String> {
+    let adapter = nightly_profile::for_app(app, platform)?;
+    adapter.validate_record(paths, record)?;
+    if !record.path.is_file() {
+        return Err("The recorded nightly executable is missing.".into());
+    }
+    #[cfg(windows)]
+    if crate::detect::windows::executable_version(&record.path) != artcraft_launcher_core::version::parse(&record.version) {
+        return Err("The retained program no longer matches its recorded nightly version; it was not opened.".into());
+    }
+    let location = record.path.to_str().ok_or("The nightly program path cannot be represented without loss.")?.to_owned();
+    Ok(Installed {
+        version: artcraft_launcher_core::version::parse(&record.version),
+        source: InstallSource::Launcher,
+        location,
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    })
+}
+
+/// OFF preserves this operation: only an owned program and the fixed source-owned profile
+/// selector are used. Caller filenames follow the literal option delimiter.
+pub(crate) fn launch(app: &CraftApp, record: &Record, paths: &Paths, platform: Platform, files: &[String]) -> Result<(), String> {
+    owned_installation(app, record, paths, platform)?;
+    let adapter = nightly_profile::for_app(app, platform)?;
+    adapter.validate_profile(paths)?;
+    let profile = adapter.profile_root(paths)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&profile).map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(unix))]
+    std::fs::create_dir_all(&profile).map_err(|error| error.to_string())?;
+    adapter.validate_profile(paths)?;
+    crate::process::launch_binary(&record.path, &adapter.launch_arguments(paths, files)?)
+}
+
+/// Removal is program-only. Persistent profiles live outside this directory and are never
+/// included in the recorded portable files; there is no stable/OS uninstall fallback.
+pub(crate) fn remove(app: &CraftApp, record: &Record, paths: &Paths, platform: Platform, stop: &crate::http::Stop) -> Result<(), String> {
+    owned_installation(app, record, paths, platform)?;
+    stop.check()?;
+    if crate::process::is_running(&record.path) {
+        return Err(format!("{} is running. Quit it, then try again.", app.name));
+    }
+    #[cfg(windows)]
+    {
+        crate::portable::remove(app, record)
+    }
+    #[cfg(unix)]
+    {
+        crate::nightly_unix::remove(crate::nightly_profile::for_app(app, platform)?, record, paths)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        Err("This nightly installation is unavailable on this system.".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_nightly_and_pinned_nightly_settings_cannot_redirect_stable_updaters() {
+        assert!(nightly_track(&VersionTrack::Nightly));
+        assert!(nightly_track(&VersionTrack::Pinned("v1.0.0-nightly.20261120.1.1.gabcdefabcdef".into())));
+        assert!(!nightly_track(&VersionTrack::Stable));
+        assert!(!nightly_track(&VersionTrack::Pinned("v1.0.0-beta.1".into())));
+    }
+}

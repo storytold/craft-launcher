@@ -20,6 +20,11 @@ pub mod login;
 pub mod manifest;
 #[cfg(any(windows, test))]
 mod msi_context;
+mod nightly;
+mod nightly_lookup;
+mod nightly_profile;
+#[cfg(unix)]
+mod nightly_unix;
 pub mod packages;
 pub mod paths;
 pub mod pins;
