@@ -76,12 +76,18 @@ pub(crate) struct FontsTab {
     watch: Option<Watch>,
 }
 
+/// The launcher's defaults for the shared store: previews from the default server, and downloads
+/// allowed. Neither is saved, so a choice the user made, in this app or another, still wins.
+fn with_launcher_defaults(store: SuiteStore) -> SuiteStore {
+    store.with_default_preview_service(DEFAULT_PREVIEW_SERVICE).with_default_network(craft_font_store::Network::On)
+}
+
 impl FontsTab {
     /// The process's font catalog and the user's font store.
     pub(crate) fn new() -> FontsTab {
         let catalog = Arc::clone(Catalog::global());
         let installer: Arc<dyn Installer> = match SuiteStore::for_user(Arc::clone(&catalog)) {
-            Some(store) => Arc::new(store.with_default_preview_service(DEFAULT_PREVIEW_SERVICE)),
+            Some(store) => Arc::new(with_launcher_defaults(store)),
             None => Arc::new(NoStore),
         };
         FontsTab { catalog, installer, panel: None, options: None, consent: None, preview: None, watch: None }
@@ -319,5 +325,29 @@ fn look() -> Look {
         caps: true,
         corner: egui::CornerRadius::ZERO,
         control_height: theme::CONTROL_H,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use craft_font_manager::FontEnv;
+
+    fn store_in(dir: &std::path::Path) -> Option<SuiteStore> {
+        let env = FontEnv { font_store: Some(dir.to_path_buf()), ..FontEnv::default() };
+        SuiteStore::for_user(Arc::new(Catalog::new(env))).map(with_launcher_defaults)
+    }
+
+    #[test]
+    fn downloads_are_allowed_on_a_fresh_store_and_an_explicit_off_persists() {
+        let dir = std::env::temp_dir().join(format!("launcher-fonts-default-network-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(std::fs::create_dir_all(&dir).is_ok());
+        let Some(store) = store_in(&dir) else { return };
+        assert!(store.downloads_allowed(), "on by default");
+        assert!(store.allow_downloads(false).is_ok());
+        let Some(again) = store_in(&dir) else { return };
+        assert!(!again.downloads_allowed(), "an explicit off is kept");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
