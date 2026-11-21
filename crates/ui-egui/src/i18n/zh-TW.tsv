@@ -439,3 +439,19 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	已加入
 	Remove	移除
 	Add	加入
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	字型
+	Allow font downloads	允許下載字型
+	Couldn't change the font download setting: {e}	無法變更字型下載設定：{e}
+	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	只有在你安裝或預覽字型時，才會從其來源下載字型。所有 Craft 應用程式共用這項設定。
+	Sources	來源
+	Apps	應用程式
+	Fonts for every Craft app	供所有 Craft 應用程式使用的字型
+# The font preview settings in Settings' Fonts box.
+	Show font previews	顯示字型預覽
+	Advanced	進階
+	Font preview server	字型預覽伺服器
+	Couldn't use this server: {e}	無法使用這部伺服器：{e}
+	Couldn't change the font previews setting: {e}	無法變更字型預覽設定：{e}
+	Set by {name} in the environment.	由環境變數 {name} 設定。
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	尚未安裝的字型會從這部伺服器顯示預覽，安裝時也會先試用這部伺服器。留空則使用預設伺服器。
