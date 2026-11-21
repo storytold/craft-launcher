@@ -4654,7 +4654,8 @@ fn ai_agents_switch_and_client_buttons_send_their_commands() {
         h.run_steps(3);
         assert!(h.query_all_by_label("Configuration copied.").next().is_some(), "{label}");
     }
-    h.get_by_label("Add").click();
+    // The font sources' "Add" button comes last in the tree: it sits in the other column.
+    h.get_all_by_label("Add").next().expect("client Add button").click();
     h.run_steps(3);
     h.get_by_label("Remove").click();
     h.run_steps(3);
@@ -4693,6 +4694,7 @@ fn ai_agents_offer_to_restart_a_client_right_after_adding_it() {
     h.get_by_label("Quick install").scroll_to_me();
     h.run_steps(4);
     assert!(h.query_by_label("Restart Claude Desktop").is_none(), "nothing to restart before adding");
+    // The font sources' "Add" button comes last in the tree: it sits in the other column.
     let adds: Vec<_> = h.get_all_by_label("Add").collect();
     adds[0].click();
     adds[1].click();
@@ -4744,7 +4746,8 @@ fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
     h.run_steps(4);
     h.get_by_label("Apps agents can reach: 2").scroll_to_me();
     h.run_steps(6);
-    assert!(h.query_by_label("Add").is_none(), "nothing to add without the gateway");
+    // Only the font sources' "Add" remains.
+    assert_eq!(h.query_all_by_label("Add").count(), 1, "nothing to add without the gateway");
     h.get_by_label("Remove").click();
     h.run_steps(3);
     h.get_by_label("Let AI agents use Craft apps").click();

@@ -1060,7 +1060,7 @@ dependencies = [
 [[package]]
 name = "craft-atomic"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "rustix 1.1.5",
 ]
@@ -1068,7 +1068,7 @@ dependencies = [
 [[package]]
 name = "craft-flags"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "craft-atomic",
  "dirs 7.0.0",
@@ -1078,7 +1078,7 @@ dependencies = [
 [[package]]
 name = "craft-font-catalog"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "fontique",
  "harfrust 0.13.3",
@@ -1093,7 +1093,7 @@ dependencies = [
 [[package]]
 name = "craft-font-manager"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "craft-font-catalog",
  "craft-font-store",
@@ -1109,7 +1109,7 @@ dependencies = [
 [[package]]
 name = "craft-font-store"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "cap-primitives",
  "craft-atomic",
@@ -1130,12 +1130,12 @@ dependencies = [
 [[package]]
 name = "craft-fonts-build"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 
 [[package]]
 name = "craft-i18n"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "fixed_decimal",
  "icu_decimal",
@@ -1158,7 +1158,7 @@ dependencies = [
 [[package]]
 name = "craft-quit"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "dispatch2",
  "egui",
@@ -1169,7 +1169,7 @@ dependencies = [
 [[package]]
 name = "craft-ui"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "craft-fonts-build",
  "craft-i18n",
@@ -1189,7 +1189,7 @@ dependencies = [
 [[package]]
 name = "craft-update"
 version = "0.1.0"
-source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
+source = "git+https://github.com/aiongg/craft-libs?rev=c50f931b85124c674f723c2ada445e09b67f82da#c50f931b85124c674f723c2ada445e09b67f82da"
 dependencies = [
  "chrono",
  "dunce",
