@@ -128,13 +128,13 @@ installed by hand (and the launcher finds apps you installed yourself):
 |---|---|---|
 | macOS | `/Applications/<App>.app` | Copied from the signed, notarized release DMG |
 | Windows | `C:\Program Files\ArtCraft\<App>` (`Program Files (x86)` for a 32-bit build) | The release MSI, through Windows Installer, for everyone on the computer (with Start menu entry and Apps & features entry). Windows asks for administrator permission for each new install. An app already installed for your account only (`%LOCALAPPDATA%\Programs\ArtCraft\<App>`) keeps its folder and scope when updated; to move it, uninstall it and install it again |
-| Linux | `/usr/bin`, `/usr/share/applications` | The release `.deb` (apt) or `.rpm` (dnf, zypper), with your system's password prompt. Without those, a Flatpak, or an AppImage in `~/Applications` |
+| Linux | `/usr/bin`, `/usr/share/applications` | The release `.deb` (apt), `.rpm` (dnf, zypper), or `.pkg.tar.zst` (pacman), with your system's password prompt. Without those, a Flatpak, or an AppImage in `~/Applications` |
 | Linux, inside the launcher's Flatpak, with no Flatpak on the host | `~/.var/app/ai.storyteller.artcraft-launcher/data/artcraft-launcher/apps/<app>` | The release tarball, unpacked into the launcher's own folder and run inside the same sandbox, with its settings in a `home/` folder beside it. Nothing is installed on the host, and each app's configuration stays in the sandbox |
 | FreeBSD | `/usr/local` | The release tree, with a password prompt (polkit); `~/.local` when polkit isn't installed |
 
 ArtCraft Launcher keeps itself current too: when a new version is out, **Update and restart**
 downloads it, verifies it, puts it where this copy is installed (the `.app`, the Windows Installer
-package or portable folder, the AppImage, or the `.deb`/`.rpm`) and reopens it.
+package or portable folder, the AppImage, or the `.deb`, `.rpm`, or `.pkg.tar.zst` package) and reopens it.
 
 Updates use the same format an app was installed with. Every download is checked against the
 release's published SHA-256 before it is installed, and a running app is never replaced.
@@ -171,6 +171,7 @@ Download the build for your computer from the [latest release](https://github.co
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.AppImage` | Runs on almost any distro without installing; `chmod +x` and run. The `.AppImage.zsync` beside it lets AppImageUpdate fetch only what changed |
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.deb` | Debian, Ubuntu, Mint, Pop!_OS: `sudo apt install ./artcraft-launcher-…deb` |
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.rpm` | Fedora, openSUSE, RHEL: `sudo dnf install ./artcraft-launcher-…rpm` |
+| `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.pkg.tar.zst` | Arch-based systems: `sudo pacman -U ./artcraft-launcher-…pkg.tar.zst` |
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.flatpak` | Flatpak bundle: `flatpak install --user artcraft-launcher-…flatpak`. Inside the sandbox the launcher installs apps as Flatpaks on the host through `flatpak-spawn --host`; where the host has no Flatpak it falls back to each app's release tarball, unpacked and run inside the sandbox with the app's settings kept in it. Either way it can only reach the host as far as that permission allows; the AppImage, .deb and .rpm builds are the recommended way to run the launcher on Linux |
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.tar.gz` | Plain tree (`bin/`, `share/`) for everyone else and for scripts |
 
