@@ -23,6 +23,8 @@ mod msi_context;
 mod nightly;
 mod nightly_lookup;
 mod nightly_profile;
+mod nightly_signing;
+mod nightly_trust;
 #[cfg(unix)]
 mod nightly_unix;
 pub mod packages;

@@ -370,6 +370,7 @@ mod tests {
             ..Default::default()
         };
         let artifact = Artifact {
+            signature: None,
             target: Target { os: "windows".into(), arch: "x86_64".into(), format: "portable_zip".into() },
             asset: Download {
                 name: format!("photocraft-{}-windows-x86_64-nightly.zip", release.version.as_ref().unwrap()),

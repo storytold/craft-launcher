@@ -13,6 +13,7 @@ use crate::paths::Paths;
 pub(crate) struct VerifiedRelease {
     release: Release,
     asset: Asset,
+    signature: Option<artcraft_launcher_core::nightly::Download>,
     adapter: Adapter,
 }
 
@@ -22,6 +23,9 @@ impl VerifiedRelease {
     }
     pub(crate) fn asset(&self) -> &Asset {
         &self.asset
+    }
+    pub(crate) fn signature(&self) -> Option<&artcraft_launcher_core::nightly::Download> {
+        self.signature.as_ref()
     }
     pub(crate) fn adapter(&self) -> Adapter {
         self.adapter
@@ -78,7 +82,7 @@ pub(crate) fn verify(app: &CraftApp, mut release: Release, http: &Http, platform
         .find(|asset| asset.name == artifact.asset.name)
         .ok_or("The verified nightly payload is missing from the selected release.")?
         .clone();
-    Ok(VerifiedRelease { release, asset, adapter })
+    Ok(VerifiedRelease { release, asset, signature: artifact.signature.clone(), adapter })
 }
 
 /// Both discovery and the legacy verifier use the current descriptor validator. A valid
@@ -98,7 +102,7 @@ pub(crate) fn verified_descriptor(app: &CraftApp, release: Release, body: &[u8],
         .find(|asset| asset.name == artifact.asset.name)
         .ok_or("The verified nightly payload is missing from the selected release.")?
         .clone();
-    Ok(Some(VerifiedRelease { release, asset, adapter }))
+    Ok(Some(VerifiedRelease { release, asset, signature: artifact.signature.clone(), adapter }))
 }
 
 /// Retained copies come only from the private manifest and the known profile row. This never

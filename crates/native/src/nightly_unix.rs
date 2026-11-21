@@ -1,7 +1,7 @@
 //! Dedicated Unix nightly flavors. Stable tree/DMG installation is deliberately not reused:
 //! it has integration hooks and different ownership/layout rules. This follows portable.rs's
 //! bounded extraction, recorded-file backup, create-new writes and commit/rollback pattern.
-//! Windows portable.rs stays byte-identical. Nothing in this module launches an app to inspect it.
+//! Nothing in this module launches an app to inspect it. Authentication precedes extraction.
 
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
@@ -404,12 +404,20 @@ pub(crate) fn validate_record(adapter: Adapter, paths: &Paths, record: &Record) 
     verify_program(adapter, &root, &record.version)
 }
 
+fn verify_archive_digest(file: &Path, expected: &str) -> Result<(), String> {
+    if expected.len() != 64 || !crate::http::sha256_file(file)?.eq_ignore_ascii_case(expected) {
+        return Err("The authenticated Nightly archive changed before replacement; the installed copy was left unchanged.".into());
+    }
+    Ok(())
+}
+
 pub(crate) struct Package<'a> {
     pub adapter: Adapter,
     pub file: &'a Path,
     pub version: &'a str,
     pub previous: Option<&'a Record>,
     pub paths: &'a Paths,
+    pub archive_sha256: String,
 }
 
 /// Roll back only files this transaction created. Restore through create_new so an arriving
@@ -420,6 +428,7 @@ pub(crate) fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> R
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Checkpoint {
+    ArchiveExtracted,
     RootReserved,
     BackupsSaved,
     BeforeCommit,
@@ -432,7 +441,8 @@ fn install_with_checkpoints(
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
     checkpoint: &mut dyn FnMut(Checkpoint) -> Result<(), String>,
 ) -> Result<Record, String> {
-    let Package { adapter, file, version, previous, paths } = package;
+    let Package { adapter, file, version, previous, paths, archive_sha256 } = package;
+    verify_archive_digest(file, &archive_sha256)?;
     adapter.validate_profile(paths)?;
     if let Some(previous) = previous {
         adapter.validate_record(paths, previous)?;
@@ -457,6 +467,9 @@ fn install_with_checkpoints(
     layout(adapter, &inventory.files, &inventory.entries)?;
     verify_content(adapter, &unpacked, &inventory.files)?;
     verify_program(adapter, &unpacked, version)?;
+    checkpoint(Checkpoint::ArchiveExtracted)?;
+    // Detect any mutation/replacement between authentication and extraction, before touching old files.
+    verify_archive_digest(file, &archive_sha256)?;
     let old_files: Vec<_> = previous.map(|record| record.files.clone()).unwrap_or_default();
     for relative in &inventory.files {
         let target = root.join(relative);

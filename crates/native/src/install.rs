@@ -143,7 +143,7 @@ pub fn install_at(
     job: &mut Job<'_>,
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
-    install_at_with_profile(InstallRequest { app, release, asset, kind, existing, previous }, job, commit, None)
+    install_at_with_profile(InstallRequest { app, release, asset, kind, existing, previous, signature: None }, job, commit, None)
 }
 
 pub(crate) fn install_nightly_at(
@@ -155,7 +155,15 @@ pub(crate) fn install_nightly_at(
 ) -> Result<Option<Record>, String> {
     let profile = verified.adapter();
     let app = CraftApp::by_id(profile.app()).ok_or("The nightly profile has no known app.")?;
-    let request = InstallRequest { app, release: verified.release(), asset: verified.asset(), kind: profile.kind(), existing, previous };
+    let request = InstallRequest {
+        app,
+        release: verified.release(),
+        asset: verified.asset(),
+        kind: profile.kind(),
+        existing,
+        previous,
+        signature: verified.signature(),
+    };
     install_at_with_profile(request, job, commit, Some(profile))
 }
 
@@ -166,6 +174,7 @@ struct InstallRequest<'a> {
     kind: PackageKind,
     existing: Option<&'a Installed>,
     previous: Option<&'a Record>,
+    signature: Option<&'a artcraft_launcher_core::nightly::Download>,
 }
 
 fn install_at_with_profile(
@@ -174,7 +183,7 @@ fn install_at_with_profile(
     commit: RecordCommit<'_>,
     profile: Option<crate::nightly_profile::Adapter>,
 ) -> Result<Option<Record>, String> {
-    let InstallRequest { app, release, asset, kind, existing, previous } = request;
+    let InstallRequest { app, release, asset, kind, existing, previous, signature } = request;
     if let Some(profile) = profile {
         // A typed caller cannot accidentally inherit stable destinations, package batches or
         // unrecorded-file replacement permission. Refuse before download or filesystem writes.
@@ -261,6 +270,24 @@ fn install_at_with_profile(
         let (file, sha256) = download(release, asset, job)?;
         (rollback, file, sha256)
     };
+    // Only this signed-v2 route can supply a Linux signature. No cache/feed/debug mode
+    // changes its trust source. The private verified copy, not the mutable download, is unpacked.
+    #[cfg(target_os = "linux")]
+    let authenticated = if profile.is_some() {
+        Some(crate::nightly_signing::prepare_linux(
+            &file,
+            asset,
+            signature.ok_or("The signed Nightly archive has no detached signature.")?,
+            job.http,
+            job.paths,
+        )?)
+    } else {
+        None
+    };
+    #[cfg(not(target_os = "linux"))]
+    let _ = signature;
+    #[cfg(target_os = "linux")]
+    let file = authenticated.as_ref().map_or(file.as_path(), |archive| archive.file.as_path()).to_path_buf();
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -269,7 +296,14 @@ fn install_at_with_profile(
     #[cfg(unix)]
     if let Some(profile) = profile {
         let installed = crate::nightly_unix::install(
-            crate::nightly_unix::Package { adapter: profile, file: &file, version: &version, previous, paths: job.paths },
+            crate::nightly_unix::Package {
+                adapter: profile,
+                file: &file,
+                version: &version,
+                previous,
+                paths: job.paths,
+                archive_sha256: sha256.clone(),
+            },
             &mut |record| match commit.as_deref_mut() {
                 Some(commit) => commit(record),
                 None => Ok(()),
@@ -337,7 +371,7 @@ fn install_at_with_profile(
                 }
             };
             match profile {
-                Some(profile) => crate::portable::install_checked(
+                Some(profile) => crate::portable::install_signed(
                     crate::portable::Package {
                         app,
                         file: &file,

@@ -224,6 +224,27 @@ pub(crate) fn install_checked(
     check_layout: &dyn Fn(&[PathBuf], &[PathBuf]) -> Result<(), String>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
+    install_with_authentication(package, check_layout, None, commit)
+}
+
+/// The signed Nightly entry point always authenticates its permitted staged executable.
+/// Stable's transaction entry point and policy are unchanged.
+pub(crate) fn install_signed(
+    package: Package<'_>,
+    check_layout: &dyn Fn(&[PathBuf], &[PathBuf]) -> Result<(), String>,
+    commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+) -> Result<Record, String> {
+    install_with_authentication(package, check_layout, Some(&crate::nightly_signing::authenticate_windows), commit)
+}
+
+type Authenticate = dyn Fn(&Path, &[PathBuf]) -> Result<std::fs::File, String>;
+
+fn install_with_authentication(
+    package: Package<'_>,
+    check_layout: &dyn Fn(&[PathBuf], &[PathBuf]) -> Result<(), String>,
+    authenticate: Option<&Authenticate>,
+    commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+) -> Result<Record, String> {
     let Package { app, file, version, previous, paths, directory, replace } = package;
     let (destination, mut old_files) = match previous {
         Some(record) => {
@@ -248,6 +269,7 @@ pub(crate) fn install_checked(
     std::fs::create_dir(&unpacked).map_err(|e| e.to_string())?;
     let (files, entries) = extract(file, &unpacked)?;
     check_layout(&files, &entries)?;
+    let _held_verified_executable = authenticate.map(|verify| verify(&unpacked, &files)).transpose()?;
     // Accept both a flat layout (files at the ZIP root) and a single wrapper-folder layout,
     // but never arbitrary nesting.
     let (unpacked, files) = flatten_zip_layout(app, &unpacked, files, &entries)?;
@@ -582,6 +604,65 @@ mod tests {
         assert_eq!(std::fs::read(&exe).unwrap(), b"old launcher");
         assert!(!folder.join("README.md").exists());
         assert!(!staging.exists());
+    }
+
+    #[test]
+    fn refused_nightly_authentication_never_moves_old_files_or_commits_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(&dir.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let adapter = crate::nightly_profile::Adapter::PhotoCraftWindowsV1;
+        let file = archive(dir.path(), "signed-successor.zip", &[("photocraft.exe", b"old program"), ("LICENSE-MIT", b"notice")]);
+        let old = install_checked(
+            Package {
+                app,
+                file: &file,
+                version: "1.0.0-nightly.20261121.2.1.gabcdefabcdef",
+                previous: None,
+                paths: &paths,
+                directory: None,
+                replace: false,
+            },
+            &|files, entries| adapter.validate_layout(files, entries),
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+        let profile = adapter.profile_root(&paths).unwrap();
+        std::fs::create_dir_all(&profile).unwrap();
+        let personal = profile.join("preferences.json");
+        std::fs::write(&personal, b"personal state").unwrap();
+        std::fs::write(paths.manifest(), b"old ownership record").unwrap();
+        let new = archive(dir.path(), "new-signed-successor.zip", &[("photocraft.exe", b"new program"), ("NOTICE", b"new notice")]);
+        let before = std::fs::metadata(&old.path).unwrap().modified().unwrap();
+        let mut committed = false;
+        let result = install_with_authentication(
+            Package {
+                app,
+                file: &new,
+                version: "1.0.0-nightly.20261121.3.1.gabcdefabcdef",
+                previous: Some(&old),
+                paths: &paths,
+                directory: None,
+                replace: false,
+            },
+            &|files, entries| adapter.validate_layout(files, entries),
+            Some(&|root, files| {
+                assert!(root.join("photocraft.exe").is_file());
+                assert!(files.contains(&PathBuf::from("photocraft.exe")));
+                Err("wrong publisher or invalid timestamp".into())
+            }),
+            &mut |_| {
+                committed = true;
+                Ok(())
+            },
+        );
+        assert!(result.unwrap_err().contains("wrong publisher"));
+        assert!(!committed);
+        assert_eq!(std::fs::read(&old.path).unwrap(), b"old program");
+        assert_eq!(std::fs::metadata(&old.path).unwrap().modified().unwrap(), before);
+        assert!(!old.path.parent().unwrap().join("NOTICE").exists());
+        assert_eq!(std::fs::read(personal).unwrap(), b"personal state");
+        assert_eq!(std::fs::read(paths.manifest()).unwrap(), b"old ownership record");
     }
 
     #[test]

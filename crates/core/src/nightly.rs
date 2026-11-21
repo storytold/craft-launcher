@@ -15,6 +15,7 @@ use crate::release::{self, Release};
 pub const MANIFEST_NAME: &str = "NIGHTLY.json";
 pub const MAX_MANIFEST_BYTES: usize = 256 * 1024;
 pub const MAX_ARTIFACTS: usize = 64;
+pub const MAX_SIGNATURE_BYTES: usize = 16 * 1024;
 
 /// An immutable backend/install namespace, not a preference supplied by a feed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -43,6 +44,8 @@ pub struct Descriptor {
 pub struct Artifact {
     pub target: Target,
     pub asset: Download,
+    /// Required only for Linux tar archives; this binds bytes, never supplies signer trust.
+    pub signature: Option<Download>,
     pub isolation: Isolation,
 }
 
@@ -103,7 +106,7 @@ pub fn parse(body: &[u8], app: &CraftApp, release: &Release) -> Result<Descripto
         return Err("the nightly descriptor is outside the selected release".into());
     }
     let descriptor: Descriptor = serde_json::from_slice(body).map_err(|e| format!("unreadable nightly descriptor ({e})"))?;
-    if descriptor.schema != "craft-nightly/v1"
+    if descriptor.schema != "craft-nightly/v2"
         || descriptor.channel != "nightly"
         || descriptor.app != app.id
         || descriptor.repository != app.repo
@@ -139,6 +142,20 @@ pub fn parse(body: &[u8], app: &CraftApp, release: &Release) -> Result<Descripto
         {
             return Err("the nightly descriptor has an unsupported target or isolation declaration".into());
         }
+        match (&artifact.signature, artifact.target.os.as_str(), artifact.target.format.as_str()) {
+            (Some(signature), "linux", "tar_gz") => {
+                if signature.name != format!("{}.asc", artifact.asset.name)
+                    || !names.insert(&signature.name)
+                    || signature.size == 0
+                    || signature.size > MAX_SIGNATURE_BYTES as u64
+                    || !published_download(signature, app, release)
+                {
+                    return Err("the nightly detached signature does not match its bounded published archive identity".into());
+                }
+            }
+            (None, "linux", _) | (Some(_), _, _) => return Err("the nightly has a missing or unsupported detached signature declaration".into()),
+            (None, _, _) => {}
+        }
         let asset = &artifact.asset;
         let published: Vec<_> = release.assets.iter().filter(|a| a.name == asset.name).collect();
         let [published] = published.as_slice() else {
@@ -157,6 +174,16 @@ pub fn parse(body: &[u8], app: &CraftApp, release: &Release) -> Result<Descripto
         }
     }
     Ok(descriptor)
+}
+
+fn published_download(download: &Download, app: &CraftApp, release: &Release) -> bool {
+    let assets: Vec<_> = release.assets.iter().filter(|asset| asset.name == download.name).collect();
+    let [asset] = assets.as_slice() else { return false };
+    download.size == asset.size
+        && download.url == asset.url
+        && exact_asset_url(app.repo, &release.tag, &download.name, &download.url)
+        && hex(&download.sha256, 64)
+        && asset.sha256.as_ref().is_some_and(|sha| sha.eq_ignore_ascii_case(&download.sha256))
 }
 
 fn immutable_tag(tag: &str, source: &str) -> bool {
@@ -202,7 +229,7 @@ mod tests {
         let url = format!("https://github.com/{}/releases/download/{tag}/photocraft-nightly.zip", app.repo);
         let sha = "a".repeat(64);
         let value = json!({
-            "schema":"craft-nightly/v1", "channel":"nightly", "app":app.id,
+            "schema":"craft-nightly/v2", "channel":"nightly", "app":app.id,
             "repository":app.repo, "tag":tag, "source_commit":"abcdefabcdefabcdefabcdefabcdefabcdefabcd",
             "published_at":1795190400_i64, "artifacts":[{
                 "target":{"os":"windows","arch":"x86_64","format":"portable_zip"},
@@ -273,7 +300,7 @@ mod tests {
             ("repository", "attacker/photocraft"),
             ("tag", "nightly"),
             ("channel", "stable"),
-            ("schema", "craft-nightly/v2"),
+            ("schema", "craft-nightly/v1"),
             ("source_commit", "bad"),
         ] {
             let (mut value, mut release, app) = fixture();
@@ -328,5 +355,62 @@ mod tests {
         value["artifacts"] = json!([]);
         let body = bind(&value, &mut release);
         assert!(parse(&body, app, &release).is_err());
+    }
+    fn signed_linux() -> (Value, Release, &'static CraftApp) {
+        let (mut value, mut release, app) = fixture();
+        value["artifacts"][0]["target"] = json!({"os":"linux","arch":"x86_64","format":"tar_gz"});
+        let name = "photocraft-nightly.tar.gz";
+        let signature_name = format!("{name}.asc");
+        let url = format!("https://github.com/{}/releases/download/{}/{name}", app.repo, release.tag);
+        value["artifacts"][0]["asset"]["name"] = name.into();
+        value["artifacts"][0]["asset"]["url"] = url.clone().into();
+        release.assets[0].name = name.into();
+        release.assets[0].url = url;
+        let signature_url = format!("https://github.com/{}/releases/download/{}/{signature_name}", app.repo, release.tag);
+        value["artifacts"][0]["signature"] = json!({"name":signature_name,"url":signature_url,"size":128,"sha256":"b".repeat(64)});
+        release.assets.push(Asset { name: signature_name, url: signature_url, size: 128, sha256: Some("b".repeat(64)) });
+        (value, release, app)
+    }
+
+    #[test]
+    fn signed_v2_requires_exact_bounded_unique_linux_signature_binding() {
+        let (value, mut release, app) = signed_linux();
+        let body = bind(&value, &mut release);
+        assert!(parse(&body, app, &release).is_ok());
+        for (field, invalid) in [
+            ("name", json!("foreign.asc")),
+            ("url", json!("https://github.com/attacker/repo/releases/download/tag/a.asc")),
+            ("size", json!(0)),
+            ("size", json!(MAX_SIGNATURE_BYTES + 1)),
+            ("sha256", json!("c".repeat(64))),
+            ("command", json!("untrusted")),
+        ] {
+            let (mut value, mut release, app) = signed_linux();
+            value["artifacts"][0]["signature"][field] = invalid;
+            let body = bind(&value, &mut release);
+            assert!(parse(&body, app, &release).is_err(), "{field}");
+        }
+        for variant in 0..5 {
+            let (mut value, mut release, app) = signed_linux();
+            match variant {
+                0 => {
+                    value["artifacts"][0].as_object_mut().unwrap().remove("signature");
+                }
+                1 => {
+                    release.assets.push(release.assets[1].clone());
+                }
+                2 => {
+                    release.assets[1].sha256 = None;
+                }
+                3 => {
+                    value["schema"] = "craft-nightly/v1".into();
+                }
+                _ => {
+                    value["artifacts"][0]["target"]["os"] = "windows".into();
+                }
+            }
+            let body = bind(&value, &mut release);
+            assert!(parse(&body, app, &release).is_err(), "variant {variant}");
+        }
     }
 }

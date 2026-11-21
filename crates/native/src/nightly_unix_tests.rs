@@ -37,7 +37,7 @@ fn program() -> Vec<u8> {
     bytes
 }
 fn package<'a>(file: &'a Path, paths: &'a Paths, previous: Option<&'a Record>) -> Package<'a> {
-    Package { adapter: Adapter::PhotoCraftLinuxV1, file, version: VERSION, previous, paths }
+    Package { adapter: Adapter::PhotoCraftLinuxV1, file, version: VERSION, previous, paths, archive_sha256: crate::http::sha256_file(file).unwrap() }
 }
 
 #[cfg(target_os = "linux")]
@@ -434,4 +434,42 @@ fn mac_full_nightly_identity_has_no_numeric_or_leading_v_fallback() {
     }
     assert!(!exact_full_version(Some(&format!("v{VERSION}")), VERSION));
     assert!(!exact_full_version(Some(VERSION), "1.0.0"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn archive_mutation_after_extraction_refuses_before_old_program_or_records_move() {
+    let temp = tempfile::tempdir().unwrap();
+    let paths = paths(temp.path());
+    let file = temp.path().join("new-signed-successor.tar.gz");
+    archive(&file, &[("photocraft", &program(), 0o755)]);
+    let old = install(package(&file, &paths, None), &mut |_| Ok(())).unwrap();
+    let before = std::fs::read(&old.path).unwrap();
+    let profile = Adapter::PhotoCraftLinuxV1.profile_root(&paths).unwrap();
+    std::fs::create_dir_all(&profile).unwrap();
+    let personal = profile.join("private.txt");
+    std::fs::write(&personal, b"do not change").unwrap();
+    std::fs::write(paths.manifest(), b"old ownership record").unwrap();
+    let mut replacement = program();
+    replacement.extend_from_slice(b"new executable");
+    archive(&file, &[("photocraft", &replacement, 0o755)]);
+    let mut committed = false;
+    let result = install_with_checkpoints(
+        package(&file, &paths, Some(&old)),
+        &mut |_| {
+            committed = true;
+            Ok(())
+        },
+        &mut |point| {
+            if point == Checkpoint::ArchiveExtracted {
+                std::fs::write(&file, b"changed after extraction").unwrap();
+            }
+            Ok(())
+        },
+    );
+    assert!(result.unwrap_err().contains("authenticated Nightly archive changed"));
+    assert!(!committed);
+    assert_eq!(std::fs::read(old.path).unwrap(), before);
+    assert_eq!(std::fs::read(personal).unwrap(), b"do not change");
+    assert_eq!(std::fs::read(paths.manifest()).unwrap(), b"old ownership record");
 }

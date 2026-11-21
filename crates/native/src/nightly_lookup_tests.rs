@@ -32,14 +32,23 @@ pub(crate) fn candidate(tag: &str, linux: bool) -> (Value, String, Vec<u8>) {
     };
     let name = format!("photocraft-{version}-{suffix}");
     let prefix = format!("https://github.com/{}/releases/download/{tag}/", app().repo);
-    let body = serde_json::to_vec(&json!({"schema":"craft-nightly/v1","channel":"nightly","app":"photocraft","repository":app().repo,
+    let mut value = json!({"schema":"craft-nightly/v2","channel":"nightly","app":"photocraft","repository":app().repo,
         "tag":tag,"source_commit":"abcdefabcdefabcdefabcdefabcdefabcdefabcd","published_at":NOW,
         "artifacts":[{"target":{"os":os,"arch":arch,"format":format},"asset":{"name":name,"url":format!("{prefix}{name}"),"size":123,"sha256":"a".repeat(64)},
-            "isolation":{"package_identity":"ai.storyteller.photocraft.nightly","profile_contract":"nightly","profile_version":1,"associations":"none"}}]})).unwrap();
+            "isolation":{"package_identity":"ai.storyteller.photocraft.nightly","profile_contract":"nightly","profile_version":1,"associations":"none"}}]});
+    let signature_name = format!("{name}.asc");
+    if linux {
+        value["artifacts"][0]["signature"] =
+            json!({"name":signature_name,"url":format!("{prefix}{signature_name}"),"size":123,"sha256":"b".repeat(64)});
+    }
+    let body = serde_json::to_vec(&value).unwrap();
     let url = format!("{prefix}NIGHTLY.json");
-    let item = json!({"draft":false,"prerelease":true,"tag_name":tag,"published_at":"2026-11-20T16:00:00Z","assets":[
+    let mut item = json!({"draft":false,"prerelease":true,"tag_name":tag,"published_at":"2026-11-20T16:00:00Z","assets":[
         {"name":name,"browser_download_url":format!("{prefix}{name}"),"size":123,"digest":format!("sha256:{}","a".repeat(64))},
         {"name":"NIGHTLY.json","browser_download_url":url,"size":body.len(),"digest":format!("sha256:{:x}",Sha256::digest(&body))}]});
+    if linux {
+        item["assets"].as_array_mut().unwrap().push(json!({"name":signature_name,"browser_download_url":format!("{prefix}{signature_name}"),"size":123,"digest":format!("sha256:{}","b".repeat(64))}));
+    }
     (item, url, body)
 }
 fn ordinary(index: usize) -> Value {
