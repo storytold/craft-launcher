@@ -218,10 +218,12 @@ pub(crate) struct Package<'a> {
     pub replace: bool,
 }
 
+type CheckLayout<'a> = dyn Fn(&[PathBuf], &[PathBuf]) -> Result<(), String> + 'a;
+
 /// Extra flavor policy is checked on the actually extracted archive, before old files move.
 pub(crate) fn install_checked(
     package: Package<'_>,
-    check_layout: &dyn Fn(&[PathBuf], &[PathBuf]) -> Result<(), String>,
+    check_layout: &CheckLayout<'_>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
     install_with_authentication(package, check_layout, None, commit)
@@ -231,7 +233,7 @@ pub(crate) fn install_checked(
 /// Stable's transaction entry point and policy are unchanged.
 pub(crate) fn install_signed(
     package: Package<'_>,
-    check_layout: &dyn Fn(&[PathBuf], &[PathBuf]) -> Result<(), String>,
+    check_layout: &CheckLayout<'_>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
     install_with_authentication(package, check_layout, Some(&crate::nightly_signing::authenticate_windows), commit)
@@ -241,7 +243,7 @@ type Authenticate = dyn Fn(&Path, &[PathBuf]) -> Result<std::fs::File, String>;
 
 fn install_with_authentication(
     package: Package<'_>,
-    check_layout: &dyn Fn(&[PathBuf], &[PathBuf]) -> Result<(), String>,
+    check_layout: &CheckLayout<'_>,
     authenticate: Option<&Authenticate>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {

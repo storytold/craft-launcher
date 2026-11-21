@@ -23,7 +23,7 @@ fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
         let bytes = b"synthetic badge fixture";
         let mut header = tar::Header::new_gnu();
         header.set_size(bytes.len() as u64);
-        header.set_mode(0o644);
+        header.set_mode(0o600);
         header.set_cksum();
         tar.append_data(&mut header, "photocraft-nightly.png", &bytes[..]).unwrap();
     }
