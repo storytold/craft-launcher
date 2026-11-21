@@ -479,3 +479,11 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	დამატებულია
 	Remove	წაშლა
 	Add	დამატება
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	შრიფტები
+	Allow font downloads	შრიფტების ჩამოტვირთვის დაშვება
+	Couldn't change the font download setting: {e}	შრიფტების ჩამოტვირთვის პარამეტრის შეცვლა ვერ მოხერხდა: {e}
+	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	შრიფტები მათი წყაროებიდან მხოლოდ მაშინ ჩამოიტვირთება, როცა შრიფტს აინსტალირებთ ან მის გადახედვას ხსნით. ამ პარამეტრს ყველა Craft აპლიკაცია იზიარებს.
+	Sources	წყაროები
+	Apps	აპლიკაციები
+	Fonts for every Craft app	შრიფტები ყველა Craft აპლიკაციისთვის

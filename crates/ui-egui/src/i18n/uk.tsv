@@ -465,3 +465,11 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Simultaneous downloads	Одночасні завантаження
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Шлюз Craft (craft-ai-mcp) не встановлено поруч із лаунчером.
 	Waiting for another download…	Очікування іншого завантаження…
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Шрифти
+	Allow font downloads	Дозволити завантаження шрифтів
+	Couldn't change the font download setting: {e}	Не вдалося змінити налаштування завантаження шрифтів: {e}
+	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	Шрифти завантажуються з їхніх джерел лише тоді, коли ви встановлюєте шрифт або переглядаєте його. Це налаштування спільне для всіх застосунків Craft.
+	Sources	Джерела
+	Apps	Застосунки
+	Fonts for every Craft app	Шрифти для всіх застосунків Craft

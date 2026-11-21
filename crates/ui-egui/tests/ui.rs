@@ -3778,11 +3778,26 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
 }
 
 #[test]
-/// At 720–1180 px refresh, search, sort and view share one unclipped toolbar row without
-/// overlaps.
+/// From 880 px refresh, search, sort and view share one unclipped toolbar row without overlaps;
+/// narrower, beside the page toggle, the sort picker moves to a second row under them.
 fn toolbar_keeps_navigation_refresh_search_and_view_on_one_unclipped_row() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    for width in [720.0, 800.0, 1180.0] {
+    for width in [720.0, 800.0] {
+        h.set_size(egui::vec2(width, 900.0));
+        h.run_steps(6);
+        let refresh = h.get_by_label("Check for updates").rect();
+        let search = h.query_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().rect();
+        let view = h.get_by_label("Show apps as cards").rect();
+        let sort = h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Sort").rect();
+        assert!(refresh.top() > 48.0, "{width}: refresh belongs in the toolbar, not the header: {refresh:?}");
+        assert!((refresh.center().y - search.center().y).abs() < 2.0, "{width}: refresh and search must share a row");
+        assert!(refresh.right() <= search.left() + 1.0, "{width}: refresh overlaps search: {refresh:?}, {search:?}");
+        assert!(search.right() <= view.left() + 1.0 && view.right() <= width, "{width}: search overlaps view or view is clipped");
+        assert!(sort.top() >= search.bottom(), "{width}: sort belongs on the second row: {sort:?}, {search:?}");
+        assert!(sort.left() >= 0.0 && sort.right() <= width, "{width}: sort is outside the window: {sort:?}");
+        h.check_accessibility();
+    }
+    for width in [880.0, 1180.0] {
         h.set_size(egui::vec2(width, 900.0));
         h.run_steps(6);
         let refresh = h.get_by_label("Check for updates").rect();

@@ -87,7 +87,12 @@ you when an update is out. It is a small native app that can sit in your menu ba
   </tr>
 </table>
 
-The web version shows the same catalog in the browser, with the latest download for each app.
+The **Fonts** page is Craft Font Manager: browse the Google Fonts and Noto collections (and index
+URLs you add) and install families into the font store every Craft app reads. Nothing downloads
+until you allow font downloads in Settings or confirm an install.
+
+The web version shows the same catalog in the browser, with the latest download for each app; the
+Fonts page is desktop only.
 
 ## Interface languages
 

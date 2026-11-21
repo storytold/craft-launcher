@@ -481,3 +481,11 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Hozzáadva
 	Remove	Eltávolítás
 	Add	Hozzáadás
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Betűtípusok
+	Allow font downloads	Betűtípus-letöltések engedélyezése
+	Couldn't change the font download setting: {e}	Nem sikerült módosítani a betűtípus-letöltési beállítást: {e}
+	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	A betűtípusok csak telepítéskor vagy előnézetkor töltődnek le a forrásukból. Ez a beállítás minden Craft-alkalmazásra érvényes.
+	Sources	Források
+	Apps	Alkalmazások
+	Fonts for every Craft app	Betűtípusok minden Craft-alkalmazáshoz

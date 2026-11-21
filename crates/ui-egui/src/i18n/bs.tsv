@@ -454,3 +454,11 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Pin {name} to top	Prikači {name} na vrh
 	Unpin {name}	Otkači {name}
 	Hide ArtCraft Launcher from the Dock while in the background	Sakrij ArtCraft Launcher iz Docka dok radi u pozadini
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Fontovi
+	Allow font downloads	Dozvoli preuzimanje fontova
+	Couldn't change the font download setting: {e}	Nije moguće promijeniti postavku preuzimanja fontova: {e}
+	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	Fontovi se preuzimaju iz svojih izvora samo kada instalirate font ili otvorite njegov pregled. Ovu postavku dijele sve Craft aplikacije.
+	Sources	Izvori
+	Apps	Aplikacije
+	Fonts for every Craft app	Fontovi za sve Craft aplikacije
