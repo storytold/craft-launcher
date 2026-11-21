@@ -24,8 +24,12 @@ log = { workspace = true }
 sys-locale = "0.3"
 # Finding the Simplified Chinese face in a system font collection; egui already uses it.
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
-# The system time zone, so dates read as this computer's calendar; already in the desktop build.
-jiff = { workspace = true }
+# The system time zone, so dates read as this computer's calendar: iana-time-zone names the zone
+# the OS is set to, chrono-tz holds the rules that give its offset at an instant, and chrono's
+# `clock` feature (desktop only) reads the rules itself when no name can be found.
+chrono = { workspace = true, features = ["clock"] }
+chrono-tz = { version = "0.10", default-features = false }
+iana-time-zone = "0.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The browser's time zone, for the same dates.
