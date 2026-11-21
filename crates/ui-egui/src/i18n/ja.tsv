@@ -491,3 +491,10 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Sources	ソース
 	Apps	アプリ
 	Fonts for every Craft app	すべての Craft アプリで使えるフォント
+# The font preview settings in Settings' Fonts box.
+	Show font previews	フォントのプレビューを表示
+	Font preview server	フォントプレビューサーバー
+	Couldn't use this server: {e}	このサーバーは使用できません: {e}
+	Couldn't change the font previews setting: {e}	フォントのプレビュー設定を変更できませんでした: {e}
+	Set by {name} in the environment.	環境変数 {name} で設定されています。
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	インストールしていないフォントは、このサーバーからプレビューを表示します。インストール時もまずこのサーバーを試します。空欄の場合は既定のサーバーを使います。

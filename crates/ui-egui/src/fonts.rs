@@ -1,13 +1,14 @@
-//! The Fonts page: Craft Font Manager's panel in the launcher's look, and the download consent the
-//! Settings dialog shows. Desktop only: the web build has no font store.
+//! The Fonts page: Craft Font Manager's panel in the launcher's look, and the download consent and
+//! preview settings the Settings dialog shows. Desktop only: the web build has no font store.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::i18n::fmt;
 use crate::settings::FontSettings;
 use crate::theme::{self, Tokens};
 use craft_font_manager::craft_font_catalog::Watch;
-use craft_font_manager::store::{Installer, NoStore, SuiteStore};
+use craft_font_manager::store::{Installer, NoStore, PREVIEW_SERVICE_ENV, PreviewServiceSource, SuiteStore};
 use craft_font_manager::{Catalog, FontsPanel, Look, Options, Palette, Preset, Runner};
 
 fn to_panel(settings: &FontSettings) -> craft_font_manager::Settings {
@@ -46,6 +47,21 @@ const CONSENT_RECHECK_SECS: f64 = 3.0;
 /// shows them without input.
 const CATALOG_WATCH: Duration = Duration::from_secs(2);
 
+/// The suite's font preview server, used while neither `CRAFT_FONT_PREVIEW_URL` nor the user sets
+/// one. The store keeps it as the host's default and never saves it as the user's choice.
+const DEFAULT_PREVIEW_SERVICE: &str = "https://fonts.artcraft.build";
+
+/// The preview settings in Settings, as shown and typed.
+struct PreviewField {
+    text: String,
+    /// Where the server in effect comes from; the environment's can't be edited.
+    source: PreviewServiceSource,
+    enabled: bool,
+    /// Why the last change wasn't saved, from the font store.
+    error: Option<String>,
+    read_at: f64,
+}
+
 pub(crate) struct FontsTab {
     catalog: Arc<Catalog>,
     installer: Arc<dyn Installer>,
@@ -55,6 +71,7 @@ pub(crate) struct FontsTab {
     /// What the panel is built from, when a test supplies it.
     options: Option<Options>,
     consent: Option<(bool, f64)>,
+    preview: Option<PreviewField>,
     /// Repaints the page when the catalog changes while the window is idle.
     watch: Option<Watch>,
 }
@@ -64,10 +81,10 @@ impl FontsTab {
     pub(crate) fn new() -> FontsTab {
         let catalog = Arc::clone(Catalog::global());
         let installer: Arc<dyn Installer> = match SuiteStore::for_user(Arc::clone(&catalog)) {
-            Some(store) => Arc::new(store),
+            Some(store) => Arc::new(store.with_default_preview_service(DEFAULT_PREVIEW_SERVICE)),
             None => Arc::new(NoStore),
         };
-        FontsTab { catalog, installer, panel: None, options: None, consent: None, watch: None }
+        FontsTab { catalog, installer, panel: None, options: None, consent: None, preview: None, watch: None }
     }
 
     /// A page built from `options` (tests: a font folder, a fake store and a small index).
@@ -78,6 +95,7 @@ impl FontsTab {
             panel: None,
             options: Some(options),
             consent: None,
+            preview: None,
             watch: None,
         }
     }
@@ -103,6 +121,103 @@ impl FontsTab {
             None => self.installer.allow_downloads(allowed),
         };
         result.map_err(|e| e.to_string())
+    }
+
+    /// The server the user saved, or the environment's; empty while the default (shown as the
+    /// field's placeholder) or none is in effect.
+    fn typed_preview_service(&self, source: PreviewServiceSource) -> Option<String> {
+        match source {
+            PreviewServiceSource::Env | PreviewServiceSource::Saved => self.installer.preview_service(),
+            PreviewServiceSource::Default | PreviewServiceSource::None => None,
+        }
+    }
+
+    fn read_preview_field(&self, now: f64) -> PreviewField {
+        let source = self.installer.preview_service_source();
+        PreviewField {
+            text: self.typed_preview_service(source).unwrap_or_default(),
+            source,
+            enabled: self.installer.previews_enabled(),
+            error: None,
+            read_at: now,
+        }
+    }
+
+    /// The panel reads the preview settings again on its next frame.
+    fn preview_settings_changed(&mut self, now: f64) {
+        if let Some(panel) = self.panel.as_mut() {
+            panel.reload_preview_settings();
+        }
+        self.preview = Some(self.read_preview_field(now));
+    }
+
+    fn preview_error(&mut self, error: String) {
+        if let Some(field) = self.preview.as_mut() {
+            field.error = Some(error);
+        }
+    }
+
+    /// Saves the typed preview server in the font store, which every Craft app shares; empty
+    /// clears it. The store checks the address.
+    fn apply_preview_server(&mut self, now: f64) {
+        let Some(field) = self.preview.as_ref() else { return };
+        let text = field.text.trim();
+        let url = (!text.is_empty()).then_some(text);
+        let saved = self.typed_preview_service(self.installer.preview_service_source());
+        if url.map(|u| u.trim_end_matches('/')) == saved.as_deref() {
+            return;
+        }
+        match self.installer.set_preview_service(url) {
+            Ok(()) => self.preview_settings_changed(now),
+            Err(e) => self.preview_error(fmt(tl!("Couldn't use this server: {e}"), &[("e", &e.to_string())])),
+        }
+    }
+
+    /// The previews switch and the preview server field, for the Settings dialog. The address is
+    /// saved when the field loses focus or on Enter; both are read again from the store every
+    /// few seconds while the field isn't being edited.
+    pub(crate) fn preview_settings_ui(&mut self, ui: &mut egui::Ui) {
+        let t = Tokens::get(ui.ctx());
+        let now = ui.input(|i| i.time);
+        let id = ui.make_persistent_id("font-preview-server");
+        let focused = ui.memory(|m| m.has_focus(id));
+        let stale = self.preview.as_ref().is_none_or(|f| f.error.is_none() && !focused && !(0.0..CONSENT_RECHECK_SECS).contains(&(now - f.read_at)));
+        if stale {
+            self.preview = Some(self.read_preview_field(now));
+        }
+        let Some(field) = self.preview.as_mut() else { return };
+        let mut enabled = field.enabled;
+        let toggled = ui.checkbox(&mut enabled, tl!("Show font previews")).changed();
+        let label = ui.label(tl!("Font preview server"));
+        let from_env = field.source == PreviewServiceSource::Env;
+        let edit = egui::TextEdit::singleline(&mut field.text).id(id).hint_text(DEFAULT_PREVIEW_SERVICE).desired_width(f32::INFINITY);
+        let response = ui.add_enabled(!from_env, edit).labelled_by(label.id);
+        if response.changed() {
+            field.error = None;
+        }
+        let small = |ui: &mut egui::Ui, text: &str, color: egui::Color32| {
+            ui.add(egui::Label::new(egui::RichText::new(text).size(12.0).color(color)).wrap());
+        };
+        if let Some(error) = &field.error {
+            small(ui, error, t.bad);
+        }
+        if from_env {
+            small(ui, &fmt(tl!("Set by {name} in the environment."), &[("name", PREVIEW_SERVICE_ENV)]), t.muted);
+        }
+        small(
+            ui,
+            tl!("Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server."),
+            t.muted,
+        );
+        if toggled {
+            match self.installer.set_previews_enabled(enabled) {
+                Ok(()) => self.preview_settings_changed(now),
+                Err(e) => self.preview_error(fmt(tl!("Couldn't change the font previews setting: {e}"), &[("e", &e.to_string())])),
+            }
+        }
+        if response.lost_focus() {
+            self.apply_preview_server(now);
+        }
     }
 
     /// Repaints `ctx` whenever the catalog rescans for fonts installed or removed meanwhile.

@@ -489,3 +489,10 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Sources	Források
 	Apps	Alkalmazások
 	Fonts for every Craft app	Betűtípusok minden Craft-alkalmazáshoz
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Betűtípus-előnézetek megjelenítése
+	Font preview server	Betűtípus-előnézeti kiszolgáló
+	Couldn't use this server: {e}	Ez a kiszolgáló nem használható: {e}
+	Couldn't change the font previews setting: {e}	Nem sikerült módosítani a betűtípus-előnézetek beállítását: {e}
+	Set by {name} in the environment.	A környezetben a(z) {name} állítja be.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	A nem telepített betűtípusok előnézete erről a kiszolgálóról jön, és a telepítés is először ezt próbálja. Üresen hagyva az alapértelmezett kiszolgáló.

@@ -142,6 +142,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc-no-stdlib"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2fb6cfd47bf496ff64095c20eaba0c201404ee38714d4142fcfa1dc334fcc7a"
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -695,6 +701,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "brotli-decompressor"
+version = "6.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc031cd87c6529082b0b65c604e86af0ed7744841b17ccfe60b1e31fa606179e"
+dependencies = [
+ "alloc-no-stdlib",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1045,7 +1060,7 @@ dependencies = [
 [[package]]
 name = "craft-atomic"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "rustix 1.1.5",
 ]
@@ -1053,7 +1068,7 @@ dependencies = [
 [[package]]
 name = "craft-flags"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "craft-atomic",
  "dirs 7.0.0",
@@ -1063,7 +1078,7 @@ dependencies = [
 [[package]]
 name = "craft-font-catalog"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "fontique",
  "harfrust 0.13.3",
@@ -1078,7 +1093,7 @@ dependencies = [
 [[package]]
 name = "craft-font-manager"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "craft-font-catalog",
  "craft-font-store",
@@ -1087,12 +1102,14 @@ dependencies = [
  "egui",
  "log",
  "serde",
+ "skrifa 0.47.0",
+ "wuff",
 ]
 
 [[package]]
 name = "craft-font-store"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "cap-primitives",
  "craft-atomic",
@@ -1113,12 +1130,12 @@ dependencies = [
 [[package]]
 name = "craft-fonts-build"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 
 [[package]]
 name = "craft-i18n"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "fixed_decimal",
  "icu_decimal",
@@ -1141,7 +1158,7 @@ dependencies = [
 [[package]]
 name = "craft-quit"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=453b0da782ccef39be9a6dac8d27c80b553ef1cc#453b0da782ccef39be9a6dac8d27c80b553ef1cc"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "dispatch2",
  "egui",
@@ -1152,7 +1169,7 @@ dependencies = [
 [[package]]
 name = "craft-ui"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "craft-fonts-build",
  "craft-i18n",
@@ -1172,7 +1189,7 @@ dependencies = [
 [[package]]
 name = "craft-update"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=ad0cb48e82ca7aaa96736081ab20164894a44f06#ad0cb48e82ca7aaa96736081ab20164894a44f06"
+source = "git+https://github.com/aiongg/craft-libs?rev=06b484aa6340de6d74b4aafb107831a09c438fdd#06b484aa6340de6d74b4aafb107831a09c438fdd"
 dependencies = [
  "chrono",
  "dunce",
@@ -6598,6 +6615,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 dependencies = [
  "either",
+]
+
+[[package]]
+name = "wuff"
+version = "0.2.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6a992b57b3d1ee972b2e3fd9225e44793104d49818836dd812d5459187712dd"
+dependencies = [
+ "brotli-decompressor",
+ "bytes",
 ]
 
 [[package]]

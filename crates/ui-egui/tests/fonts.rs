@@ -1,5 +1,5 @@
 //! The Fonts page: Craft Font Manager beside the apps in the toolbar's page toggle, and its
-//! download switch and sources in Settings. The page runs against the bundled Google Fonts
+//! download switch, preview settings and sources in Settings. The page runs against the bundled Google Fonts
 //! index, a font folder made per test (the launcher's own Inter, Archivo and Geist Mono, and
 //! egui's Ubuntu Light, as installed fonts) and a fake font store.
 //! `ARTCRAFT_LAUNCHER_SNAPSHOTS=<dir>` also saves screenshots; `ARTCRAFT_LAUNCHER_SNAPSHOT_FONTS=<dir>`
@@ -21,7 +21,7 @@ use craft_font_manager::store::FakeStore;
 use craft_font_manager::{Catalog, FontEnv, Options, Runner};
 use egui::accesskit::Role;
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{By, Queryable};
 
 struct Quiet;
 
@@ -199,6 +199,51 @@ fn sources_are_added_in_settings() {
     add_source(&mut h);
     assert_eq!(results(&h).len(), before + 1);
     assert!(h.query_all_by_label("Not curated").next().is_some());
+}
+
+#[test]
+fn preview_settings_are_set_in_settings() {
+    let (mut h, store) = launcher("preview-server", "en", Runner::Inline);
+    let service = || craft_font_manager::store::Installer::preview_service(&*store);
+    let refused = |h: &Harness<'_, Option<LauncherUi>>| {
+        h.query_all(By::new().predicate(|n| n.value().or(n.label()).is_some_and(|l| l.contains("Couldn't use this server")))).next().is_some()
+    };
+    settle(&mut h);
+    click(&mut h, "Settings");
+    assert_eq!(service(), None, "the fake store has no default server");
+
+    let field = "Font preview server";
+    h.get_by_role_and_label(Role::TextInput, field).focus();
+    h.step();
+    h.get_by_role_and_label(Role::TextInput, field).type_text("http://192.0.2.1/");
+    h.step();
+    h.key_press(egui::Key::Enter);
+    settle(&mut h);
+    assert_eq!(service(), None, "plain http only to this computer");
+    assert!(refused(&h));
+
+    h.get_by_role_and_label(Role::TextInput, field).focus();
+    h.step();
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    h.get_by_role_and_label(Role::TextInput, field).type_text("http://127.0.0.1:9/");
+    h.step();
+    h.key_press(egui::Key::Enter);
+    settle(&mut h);
+    assert_eq!(service().as_deref(), Some("http://127.0.0.1:9"));
+    assert!(!refused(&h));
+
+    // Space toggles the focused switch: the Fonts box can be below the dialog's fold.
+    let enabled = || craft_font_manager::store::Installer::previews_enabled(&*store);
+    assert!(enabled(), "previews are on by default");
+    let switch = "Show font previews";
+    h.get_by_role_and_label(Role::CheckBox, switch).focus();
+    h.step();
+    h.key_press(egui::Key::Space);
+    settle(&mut h);
+    assert!(!enabled());
+    h.key_press(egui::Key::Space);
+    settle(&mut h);
+    assert!(enabled());
 }
 
 /// Types the example source into Settings and adds it, then waits for its index.

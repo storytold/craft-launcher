@@ -456,3 +456,10 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Sources	Zdroje
 	Apps	Aplikace
 	Fonts for every Craft app	Písma pro všechny aplikace Craft
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Zobrazovat náhledy písem
+	Font preview server	Server náhledů písem
+	Couldn't use this server: {e}	Tento server nelze použít: {e}
+	Couldn't change the font previews setting: {e}	Nastavení náhledů písem nelze změnit: {e}
+	Set by {name} in the environment.	Nastaveno proměnnou {name} v prostředí.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Nenainstalovaná písma zobrazují náhledy z tohoto serveru a instalace jej zkoušejí jako první. Prázdné pole použije výchozí server.

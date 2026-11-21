@@ -490,3 +490,10 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Sources	Źródła
 	Apps	Aplikacje
 	Fonts for every Craft app	Czcionki dla wszystkich aplikacji Craft
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Pokazuj podglądy czcionek
+	Font preview server	Serwer podglądów czcionek
+	Couldn't use this server: {e}	Nie można użyć tego serwera: {e}
+	Couldn't change the font previews setting: {e}	Nie udało się zmienić ustawienia podglądów czcionek: {e}
+	Set by {name} in the environment.	Ustawione przez {name} w środowisku.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Niezainstalowane czcionki pokazują podglądy z tego serwera, a instalacja próbuje go najpierw. Puste pole oznacza serwer domyślny.

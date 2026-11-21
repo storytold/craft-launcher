@@ -462,3 +462,10 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Sources	Izvori
 	Apps	Aplikacije
 	Fonts for every Craft app	Fontovi za sve Craft aplikacije
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Prikaži preglede fontova
+	Font preview server	Server za preglede fontova
+	Couldn't use this server: {e}	Ovaj server nije moguće koristiti: {e}
+	Couldn't change the font previews setting: {e}	Nije moguće promijeniti postavku pregleda fontova: {e}
+	Set by {name} in the environment.	Postavljeno varijablom {name} u okruženju.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Fontovi koje niste instalirali prikazuju pregled s ovog servera, a instalacije ga prvo pokušavaju. Prazno znači zadani server.
