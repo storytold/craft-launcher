@@ -258,6 +258,8 @@ fn windows_command(
     let modules = system.join(r"WindowsPowerShell\v1.0\Modules");
     let mut command = crate::process::command(powershell);
     command
+        .env_clear()
+        .current_dir(&system)
         .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_QUERY])
         .env("CRAFT_NIGHTLY_VERIFIED_FILE", path)
         .env("SystemRoot", root)
