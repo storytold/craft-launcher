@@ -149,7 +149,7 @@ impl AppDetails {
     }
 
     pub fn paragraphs(&self) -> impl Iterator<Item = &'static str> {
-        self.about.split("\n\n").map(str::trim).filter(|p| !p.is_empty())
+        self.about.split("\n\n").flat_map(|p| p.split("\n\r\n")).map(str::trim).filter(|p| !p.is_empty())
     }
 }
 
@@ -256,6 +256,14 @@ mod tests {
         assert!(!screenshot_within_budget(&jpeg_of(0, 100)));
         // A non-JPEG (or a JPEG we can't size) is refused rather than trusted.
         assert!(!screenshot_within_budget(b"<html>"));
+    }
+
+    #[test]
+    fn descriptions_keep_paragraphs_with_lf_crlf_and_mixed_line_endings() {
+        for about in [" First \n\n Second ", " First \r\n\r\n Second ", "First\n\r\nSecond", "First\r\n\nSecond"] {
+            let page = AppDetails { about, ..DETAILS[0] };
+            assert_eq!(page.paragraphs().collect::<Vec<_>>(), ["First", "Second"]);
+        }
     }
 
     #[test]
