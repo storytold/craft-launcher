@@ -1,3 +1,5 @@
+# Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0
+# Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0
 # Russian (ru) catalog for ArtCraft Launcher.
 # Format: context<TAB>source<TAB>translation
 # Empty context = plain UI string (tl!, t).
@@ -476,3 +478,8 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Добавлено
 	Remove	Удалить
 	Add	Добавить
+	Classic	Классические
+	Inspired by	По мотивам
+	Like {name}	Как {name}
+	Website (coming soon)	Веб-сайт (скоро)
+@id	sort.inspired	По мотивам
