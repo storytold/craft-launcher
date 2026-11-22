@@ -590,3 +590,87 @@ fn review_manifest_directory_barrier_preserves_ordinary_success_and_rollback() {
         }
     }
 }
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    static DIAGNOSTIC_LOCK_ATTEMPT: Cell<usize> = const { Cell::new(0) };
+    static DIAGNOSTIC_SPAWNER: RefCell<Option<std::thread::JoinHandle<std::process::ExitStatus>>> = const { RefCell::new(None) };
+}
+#[cfg(target_os = "linux")]
+pub(super) fn diagnose_lock_attempt(path: &Path, file: &File, acquired: bool) {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::MetadataExt;
+    let Some(root) = std::env::var_os("ARTCRAFT_NIGHTLY_LOCK_DIAG") else { return };
+    if path.file_name().unwrap() != ".nightly-photocraft-mutation-v1.lock" {
+        return;
+    }
+    let root = PathBuf::from(root);
+    let attempt = DIAGNOSTIC_LOCK_ATTEMPT.get() + 1;
+    DIAGNOSTIC_LOCK_ATTEMPT.set(attempt);
+    let metadata = file.metadata().unwrap();
+    let observation = serde_json::json!({"attempt":attempt,"path":path,"acquired":acquired,"fd":file.as_raw_fd(),"device":metadata.dev(),"inode":metadata.ino(),"pid":std::process::id(),"fdinfo":std::fs::read_to_string(format!("/proc/self/fdinfo/{}",file.as_raw_fd())).unwrap()});
+    std::fs::write(root.join(format!("attempt-{attempt}.json")), serde_json::to_vec_pretty(&observation).unwrap()).unwrap();
+    let wait = |name: &str| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        while !root.join(name).exists() {
+            assert!(std::time::Instant::now() < deadline, "diagnostic handshake timed out at {name}");
+            std::thread::yield_now();
+        }
+    };
+    if attempt == 2 && acquired {
+        DIAGNOSTIC_SPAWNER.with(|slot| {
+            *slot.borrow_mut() = Some(std::thread::spawn(|| {
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .arg("--list")
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .unwrap()
+            }))
+        });
+        wait("fork-held");
+    } else if attempt == 3 {
+        std::fs::write(root.join("release"), []).unwrap();
+        wait("fork-released");
+        DIAGNOSTIC_SPAWNER.with(|slot| assert!(slot.borrow_mut().take().unwrap().join().unwrap().success()));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn review_lock_guard_retirement_releases_mutation_and_manifest_with_retained_description() {
+    const TEST: &str = "review_lock_guard_retirement_releases_mutation_and_manifest_with_retained_description";
+    if isolated(TEST) {
+        return;
+    }
+    let mut observed = Vec::new();
+    for mutation in [true, false] {
+        let temp = tempfile::tempdir().unwrap();
+        let (paths, _) = fixture(temp.path());
+        let lease = Lease::acquire(&paths, adapter()).unwrap();
+        if mutation {
+            let retained = lease._lock.0.try_clone().unwrap();
+            assert!(Lease::acquire(&paths, adapter()).is_err(), "the actual live owner must still exclude a second mutation");
+            drop(lease);
+            let next = Lease::acquire(&paths, adapter());
+            observed.push(("mutation", next.is_ok()));
+            if let Ok(next) = next {
+                drop(retained);
+                assert!(Lease::acquire(&paths, adapter()).is_err(), "closing an old description must not unlock the new owner");
+                drop(next);
+            }
+        } else {
+            let guard = lock(&lease.data, ".nightly-manifest-v1.lock").unwrap();
+            let retained = guard.0.try_clone().unwrap();
+            assert!(lease.manifest().is_err(), "the live manifest owner must still exclude a second guard");
+            drop(guard);
+            observed.push(("manifest", lease.manifest().is_ok()));
+            drop(retained);
+        }
+    }
+    eprintln!("actual guard retirement with old open descriptions retained: {observed:?}");
+    assert!(
+        observed.iter().all(|(_, released)| *released),
+        "an operation's retired lock must not depend on another description's later close: {observed:?}"
+    );
+}

@@ -71,15 +71,29 @@ pub(crate) struct Lease {
     apps: Dir,
     paths: Paths,
     adapter: Adapter,
-    _lock: File,
+    _lock: LockGuard,
     // Only this live lease can reconcile an append it attempted. Restart stays strict.
     unreconciled_append: Mutex<Option<String>>,
 }
 
-fn lock(directory: &Dir, name: &str) -> Result<File, String> {
+struct LockGuard(File);
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        // A concurrent fork can retain our CLOEXEC file description until exec. Retire
+        // this operation's lock now, rather than waiting for that last copy to close.
+        if let Err(error) = self.0.unlock() {
+            log::warn!("couldn't release the private Nightly lock: {error}");
+        }
+    }
+}
+
+fn lock(directory: &Dir, name: &str) -> Result<LockGuard, String> {
     let file = directory.update(Path::new(name), true)?;
-    file.try_lock().map_err(|error| format!("Another Nightly operation is using this storage. Try again when it finishes: {error}"))?;
-    Ok(file)
+    let acquired = file.try_lock();
+    #[cfg(all(test, target_os = "linux"))]
+    review_tests::diagnose_lock_attempt(&directory.path().join(name), &file, acquired.is_ok());
+    acquired.map_err(|error| format!("Another Nightly operation is using this storage. Try again when it finishes: {error}"))?;
+    Ok(LockGuard(file))
 }
 
 fn read(directory: &Dir, name: &Path) -> Result<Option<Vec<u8>>, String> {
