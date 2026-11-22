@@ -443,7 +443,9 @@ fn review_probe_obsolete_detection_does_not_overwrite_worker_commit() {
     let app = CraftApp::by_id(APP).unwrap();
     let installed = crate::nightly::owned_installation(app, &record, &paths, backend.platform.unwrap()).unwrap();
     publish_detected(app, Some(installed.clone()), &backend.shared, backend.platform);
-    assert!(!publish_nightly_detection(app, None, None, &backend.shared, backend.platform));
+    let mut stale = nightly_detection_snapshot(&backend.shared, app);
+    stale.record = None;
+    assert!(!publish_nightly_detection(app, &stale, None, &backend.shared, backend.platform));
     assert_eq!(backend.shared.installed.lock().unwrap().get(APP), Some(&installed));
 }
 
@@ -703,4 +705,64 @@ fn review_probe_unjournaled_metadata_orphan_refuses_before_program_mutation() {
     assert_eq!(std::fs::read(&scratch).unwrap(), b"unknown preserved metadata");
     assert!(!paths.data.join(".nightly-photocraft-journal-v1.jsonl").exists());
     assert_retained(&paths);
+}
+
+#[test]
+fn review_lifecycle_real_detector_cannot_hide_same_record_restored_by_failed_removal() {
+    const TEST: &str = "review_lifecycle_real_detector_cannot_hide_same_record_restored_by_failed_removal";
+    if isolated_probe(TEST) {
+        return;
+    }
+    use std::sync::mpsc;
+    let temp = tempfile::tempdir().unwrap();
+    let (paths, record) = baseline(temp.path());
+    let backend = Arc::new(fresh_backend(&paths));
+    let app = CraftApp::by_id(APP).unwrap();
+    let installed = crate::nightly::owned_installation(app, &record, &paths, backend.platform.unwrap()).unwrap();
+    assert_eq!(backend.installed(APP), Some(installed.clone()), "ordinary no-mutation detection must publish the valid retained copy");
+    let (staged_tx, staged_rx) = mpsc::channel();
+    let (rollback_tx, rollback_rx) = mpsc::channel();
+    let (observed_tx, observed_rx) = mpsc::channel();
+    let (publish_tx, publish_rx) = mpsc::channel();
+    *backend.shared.nightly_detection_observer.lock().unwrap() = Some(Box::new(move |missing| {
+        assert!(missing, "detector must actually observe the staged-away executable");
+        observed_tx.send(()).unwrap();
+        publish_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    }));
+    let worker = {
+        let backend = backend.clone();
+        std::thread::spawn(move || {
+            REVIEW_BEFORE_NIGHTLY_PUBLISH.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    staged_tx.send(()).unwrap();
+                    rollback_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                    Err("controlled returned removal publication failure".into())
+                }))
+            });
+            assert!(backend.start_job(APP, Work::Uninstall));
+        })
+    };
+    staged_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(!record.path.exists());
+    backend.detect_nightly_records();
+    observed_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    rollback_tx.send(()).unwrap();
+    worker.join().unwrap();
+    assert_eq!(backend.shared.manifest.lock().unwrap().apps.get(APP), Some(&record));
+    assert_eq!(backend.installed(APP), Some(installed.clone()));
+    assert!(std::fs::read(&record.path).unwrap().ends_with(b"old owned program bytes"));
+    assert_retained(&paths);
+    publish_tx.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while backend.shared.detecting.load(Ordering::SeqCst) {
+        assert!(Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    assert_eq!(
+        backend.installed(APP),
+        Some(installed),
+        "paused staged-away detection hid a real restored installation with an unchanged manifest record"
+    );
+    assert!(backend.shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, result: Err(error) } if app == APP && error.contains("controlled returned removal publication failure"))));
+    assert!(!backend.has_active_jobs());
 }

@@ -10,8 +10,9 @@ use crate::paths::Paths;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 
 const LIMIT: u64 = 16 * 1024 * 1024;
 const NODES: usize = 40_000;
@@ -71,6 +72,8 @@ pub(crate) struct Lease {
     paths: Paths,
     adapter: Adapter,
     _lock: File,
+    // Only this live lease can reconcile an append it attempted. Restart stays strict.
+    unreconciled_append: Mutex<Option<String>>,
 }
 
 fn lock(directory: &Dir, name: &str) -> Result<File, String> {
@@ -98,11 +101,30 @@ impl Lease {
         let data = Dir::ensure(&paths.data)?;
         let apps = Dir::ensure(&paths.apps())?;
         let guard = lock(&data, &format!(".nightly-{}-mutation-v1.lock", adapter.app()))?;
-        let lease = Self { data, apps, paths: paths.clone(), adapter, _lock: guard };
+        let lease = Self { data, apps, paths: paths.clone(), adapter, _lock: guard, unreconciled_append: Mutex::new(None) };
         // Loading is strict even without a journal. The lock precedes choosing the old record.
         lease.manifest()?;
         lease.recover()?;
         Ok(lease)
+    }
+
+    fn append_ready(&self) -> Result<(), String> {
+        match self.unreconciled_append.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
+            None => Ok(()),
+            Some(error) => Err(format!(
+                "The live Nightly journal append could not be reconciled; its preparation and journal were preserved at {}: {error}",
+                self.paths.data.join(self.journal_name()).display()
+            )),
+        }
+    }
+    fn append_entry(&self, file: &mut File, entry: &Entry) -> Result<(), String> {
+        self.append_ready()?;
+        append(file, entry).map_err(|failure| {
+            if failure.unreconciled {
+                *self.unreconciled_append.lock().unwrap_or_else(PoisonError::into_inner) = Some(failure.error.clone());
+            }
+            failure.error
+        })
     }
 
     fn stage_name(&self) -> PathBuf {
@@ -148,6 +170,7 @@ impl Lease {
         self.read_manifest()
     }
     pub(crate) fn publish(&self, previous: Option<&Record>, next: Option<&Record>) -> Result<Manifest, String> {
+        self.append_ready()?;
         let _guard = lock(&self.data, ".nightly-manifest-v1.lock")?;
         self.check_namespace()?;
         let mut manifest = self.read_manifest()?;
@@ -175,7 +198,7 @@ impl Lease {
                 use std::io::{Seek, SeekFrom};
                 let mut journal = self.data.update(&self.journal_name(), false)?;
                 journal.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
-                append(&mut journal, &Entry::Metadata(Node { path: scratch.into(), id: id.clone(), directory: false }))?;
+                self.append_entry(&mut journal, &Entry::Metadata(Node { path: scratch.into(), id: id.clone(), directory: false }))?;
             }
             #[cfg(test)]
             crate::backend::review_before_manifest_save();
@@ -195,6 +218,7 @@ impl Lease {
     }
 
     pub(crate) fn prepare(&self) -> Result<Preparation<'_>, String> {
+        self.append_ready()?;
         self.check_namespace()?;
         if self.apps.info(&self.stage_name())?.is_some() || self.data.info(&self.journal_name())?.is_some() {
             return Err(format!(
@@ -216,7 +240,7 @@ impl Lease {
         };
         let header = Header { version: 1, app: self.adapter.app().into(), apps: self.apps.id()?, stage: stage.id()? };
         let initialized = (|| {
-            append(&mut file, &Entry::Header(header.clone()))?;
+            self.append_entry(&mut file, &Entry::Header(header.clone()))?;
             self.apps.sync()?;
             self.data.sync()
         })();
@@ -337,14 +361,66 @@ impl Lease {
     }
 }
 
-fn append(file: &mut File, entry: &Entry) -> Result<(), String> {
-    let mut bytes = serde_json::to_vec(entry).map_err(|e| e.to_string())?;
-    bytes.push(b'\n');
-    if file.metadata().map_err(|e| e.to_string())?.len().saturating_add(bytes.len() as u64) > LIMIT {
-        return Err("The bounded Nightly ownership log is full.".into());
+#[derive(Debug)]
+struct AppendFailure {
+    error: String,
+    unreconciled: bool,
+}
+impl AppendFailure {
+    fn unchanged(error: impl Into<String>) -> Self {
+        Self { error: error.into(), unreconciled: false }
     }
-    file.write_all(&bytes).map_err(|e| e.to_string())?;
-    file.sync_all().map_err(|e| e.to_string())
+}
+fn append(file: &mut File, entry: &Entry) -> Result<(), AppendFailure> {
+    let mut bytes = serde_json::to_vec(entry).map_err(|e| AppendFailure::unchanged(e.to_string()))?;
+    bytes.push(b'\n');
+    let limit = {
+        #[cfg(test)]
+        {
+            review_tests::journal_limit().unwrap_or(LIMIT)
+        }
+        #[cfg(not(test))]
+        {
+            LIMIT
+        }
+    };
+    // The longest terminal phase must fit in the SAME total bound, for every
+    // accepted nonterminal entry, not just Plan/Metadata or an extra cleanup budget.
+    let reserve = if matches!(entry, Entry::Clean { .. }) {
+        0
+    } else {
+        serde_json::to_vec(&Entry::Clean { committed: Some(false) }).map_err(|e| AppendFailure::unchanged(e.to_string()))?.len() as u64 + 1
+    };
+    let previous = file.seek(SeekFrom::End(0)).map_err(|e| AppendFailure::unchanged(e.to_string()))?;
+    if previous.saturating_add(bytes.len() as u64).saturating_add(reserve) > limit {
+        return Err(AppendFailure::unchanged("The bounded Nightly ownership log is full; terminal cleanup space was retained."));
+    }
+    let written = (|| {
+        #[cfg(test)]
+        if let Some(result) = review_tests::injected_append(file, entry, &bytes) {
+            return result;
+        }
+        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())
+    })();
+    if let Err(error) = written {
+        // We own this live append and its known preceding complete prefix. This is
+        // NOT restart repair: never truncate an arbitrary malformed recovered log.
+        let repaired = (|| {
+            #[cfg(test)]
+            if review_tests::refuse_repair() {
+                return Err("injected owned-prefix repair refusal".to_owned());
+            }
+            file.set_len(previous).map_err(|e| e.to_string())?;
+            file.seek(SeekFrom::Start(previous)).map_err(|e| e.to_string())?;
+            file.sync_all().map_err(|e| e.to_string())
+        })();
+        return Err(match repaired {
+            Ok(()) => AppendFailure::unchanged(error),
+            Err(repair) => AppendFailure { error: format!("{error}; owned append prefix could not be restored: {repair}"), unreconciled: true },
+        });
+    }
+    Ok(())
 }
 fn validate_node(node: &Node, root: bool) -> Result<(), String> {
     if !(root && node.path.as_os_str().is_empty() && node.directory) {
@@ -373,14 +449,42 @@ impl Preparation<'_> {
     pub(crate) fn path(&self) -> PathBuf {
         self.lease.apps.path().join(self.lease.stage_name())
     }
-    fn register(&mut self, node: Node) -> Result<(), String> {
-        validate_node(&node, false)?;
-        if self.entries.len() >= NODES {
+    fn admit_node(&self, path: &Path) -> Result<(), String> {
+        self.lease.append_ready()?;
+        self.file.as_ref().ok_or("The preparation is read-only.")?;
+        relative(path)?;
+        if path.as_os_str().len() > 4096 {
+            return Err("A Nightly journal path is too long.".into());
+        }
+        let limit = {
+            #[cfg(test)]
+            {
+                review_tests::node_limit().unwrap_or(NODES)
+            }
+            #[cfg(not(test))]
+            {
+                NODES
+            }
+        };
+        if self.entries.len() >= limit {
             return Err("The Nightly preparation has too many nodes.".into());
         }
-        append(self.file.as_mut().ok_or("The preparation is read-only.")?, &Entry::Created(node.clone()))?;
+        Ok(())
+    }
+    fn register(&mut self, node: Node) -> Result<(), String> {
+        self.admit_node(&node.path)?;
+        validate_node(&node, false)?;
+        self.lease.append_entry(self.file.as_mut().ok_or("The preparation is read-only.")?, &Entry::Created(node.clone()))?;
         self.entries.insert(node.path.clone(), node);
         Ok(())
+    }
+    fn registration_failed(directory: &Dir, name: &Path, node: &Node, error: String) -> String {
+        // Only the exact captured object created by this live call. Unknown arrivals
+        // and recovered unregistered nodes are never adopted or recursively swept.
+        match directory.remove(name, &node.id, node.directory).and_then(|()| directory.sync()) {
+            Ok(()) => error,
+            Err(cleanup) => format!("{error}; the live-created object was preserved at {}: {cleanup}", directory.path().join(name).display()),
+        }
     }
     pub(crate) fn directories(&mut self, path: &Path) -> Result<Dir, String> {
         relative(path)?;
@@ -396,21 +500,32 @@ impl Preparation<'_> {
                 }
                 child
             } else {
+                self.admit_node(&current)?;
                 let child = directory.mkdir(name)?;
-                self.register(Node { path: current.clone(), id: child.id()?, directory: true })?;
+                let node = Node { path: current.clone(), id: child.id()?, directory: true };
+                if let Err(error) = self.register(node.clone()) {
+                    // Windows holds a no-delete handle: release our own child before removal.
+                    drop(child);
+                    return Err(Self::registration_failed(&directory, name, &node, error));
+                }
                 child
             };
         }
         Ok(directory)
     }
-    #[cfg(unix)]
+    #[cfg(any(unix, test))]
     pub(crate) fn create(&mut self, path: &Path) -> Result<File, String> {
         relative(path)?;
         let parent = path.parent().ok_or("Missing preparation parent.")?;
         let directory = if parent.as_os_str().is_empty() { self.stage.clone() } else { self.directories(parent)? };
         let name = path.file_name().map(Path::new).ok_or("Missing preparation filename.")?;
+        self.admit_node(path)?;
         let file = directory.file(name, true)?;
-        self.register(Node { path: path.into(), id: directory.file_id(name, &file)?, directory: false })?;
+        let node = Node { path: path.into(), id: directory.file_id(name, &file)?, directory: false };
+        if let Err(error) = self.register(node.clone()) {
+            drop(file);
+            return Err(Self::registration_failed(&directory, name, &node, error));
+        }
         Ok(file)
     }
 
@@ -518,7 +633,7 @@ impl Preparation<'_> {
         };
         self.validate_plan(&plan)?;
         self.stage.sync()?;
-        append(self.file.as_mut().ok_or("Missing preparation writer.")?, &Entry::Plan(Box::new(plan.clone())))?;
+        self.lease.append_entry(self.file.as_mut().ok_or("Missing preparation writer.")?, &Entry::Plan(Box::new(plan.clone())))?;
         self.plan = Some(plan);
         Ok(())
     }
@@ -830,6 +945,7 @@ impl Preparation<'_> {
         }
     }
     fn cleanup(&mut self) -> Result<(), String> {
+        self.lease.append_ready()?;
         if self.stage.id()? != self.header.stage {
             return Err("The Nightly preparation identity changed.".into());
         }
@@ -858,8 +974,10 @@ impl Preparation<'_> {
             use std::io::{Seek, SeekFrom};
             let mut journal = self.lease.data.update(&self.lease.journal_name(), false)?;
             journal.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
-            append(&mut journal, &Entry::Clean { committed: self.finished })?;
+            self.lease.append_entry(&mut journal, &Entry::Clean { committed: self.finished })?;
             self.clean = true;
+            #[cfg(test)]
+            review_tests::after_clean();
         }
         if let Some(committed) = self.finished {
             self.prune_root(committed)?;
@@ -936,3 +1054,7 @@ pub(crate) fn refresh(paths: &Paths, adapter: Adapter) -> Result<Manifest, Strin
     }
     stored_manifest(paths)
 }
+
+#[cfg(test)]
+#[path = "nightly_transaction_review_tests.rs"]
+mod review_tests;

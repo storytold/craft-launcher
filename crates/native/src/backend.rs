@@ -63,6 +63,23 @@ impl DownloadSize {
     }
 }
 
+#[derive(Default)]
+struct ProcessLifecycle {
+    // Held for admission, restart claiming, and detection publication. Keys retain the
+    // channel: Stable and Nightly may operate on the same app without colliding.
+    jobs: Mutex<HashMap<String, Arc<Stop>>>,
+    restarting: AtomicBool,
+    // Bounded by admitted catalog app identities. Kept after retirement to reject ABA
+    // snapshots even when rollback restores an identical manifest record.
+    revisions: Mutex<HashMap<String, u64>>,
+}
+#[derive(PartialEq, Eq)]
+enum Admission {
+    Reserved,
+    AlreadyActive,
+    Restarting,
+}
+
 struct Shared {
     /// Immutable: Configure cannot turn the stable backend into a nightly installer.
     channel: artcraft_launcher_core::nightly::InstallChannel,
@@ -81,11 +98,13 @@ struct Shared {
     latest: Mutex<HashMap<String, Release>>,
     nightly_verified: Mutex<HashMap<String, crate::nightly::VerifiedRelease>>,
     nightly_state: Mutex<crate::nightly_lookup::State>,
+    #[cfg(test)]
+    nightly_detection_observer: Mutex<Option<ReviewDetectionHook>>,
     download_sizes: Mutex<HashMap<String, DownloadSize>>,
     installed: Mutex<HashMap<String, Installed>>,
     jobs: Mutex<HashMap<String, Arc<Stop>>>,
-    /// The launcher is replacing itself and will restart: no new job starts.
-    restarting: AtomicBool,
+    /// Process lifetime is shared; per-channel installed state and job views are not.
+    lifecycle: Arc<ProcessLifecycle>,
     manifest: Mutex<Manifest>,
     options: Mutex<BackendOptions>,
     checking: AtomicBool,
@@ -154,7 +173,10 @@ struct JobGuard {
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
+        let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
         self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
+        process.remove(&self.shared.job_key(&self.app_id));
     }
 }
 
@@ -162,6 +184,30 @@ impl Drop for JobGuard {
 const SYSTEM_KINDS_FOR: Duration = Duration::from_secs(60);
 
 impl Shared {
+    fn job_key(&self, app: &str) -> String {
+        if self.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly { format!("nightly:{app}") } else { app.to_owned() }
+    }
+    fn reserve_job(&self, app: &str, stop: Arc<Stop>) -> Admission {
+        let _reporting = self.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut process = self.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut jobs = self.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        let key = self.job_key(app);
+        if jobs.contains_key(app) || process.contains_key(&key) {
+            return Admission::AlreadyActive;
+        }
+        if self.lifecycle.restarting.load(Ordering::SeqCst) {
+            return Admission::Restarting;
+        }
+        if self.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
+            let mut revisions = self.lifecycle.revisions.lock().unwrap_or_else(PoisonError::into_inner);
+            let revision = revisions.entry(key.clone()).or_default();
+            *revision = revision.wrapping_add(1);
+        }
+        jobs.insert(app.to_owned(), stop.clone());
+        process.insert(key, stop);
+        Admission::Reserved
+    }
+
     fn store_latest(&self, app: &str, release: &Release) {
         let mut latest = self.latest.lock().unwrap_or_else(PoisonError::into_inner);
         if latest.get(app) != Some(release) {
@@ -276,6 +322,14 @@ impl NativeBackend {
     }
 
     fn with_paths(channel: artcraft_launcher_core::nightly::InstallChannel, waker: impl Fn() + Send + Sync + 'static, paths: Paths) -> Self {
+        Self::with_lifecycle(channel, waker, paths, Arc::new(ProcessLifecycle::default()))
+    }
+    fn with_lifecycle(
+        channel: artcraft_launcher_core::nightly::InstallChannel,
+        waker: impl Fn() + Send + Sync + 'static,
+        paths: Paths,
+        lifecycle: Arc<ProcessLifecycle>,
+    ) -> Self {
         let waker: Waker = Arc::new(waker);
         let http = match Http::new().and_then(|http| {
             if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly { http.with_nightly_test_transport() } else { Ok(http) }
@@ -294,6 +348,8 @@ impl NativeBackend {
 
         let shared = Arc::new(Shared {
             channel,
+            #[cfg(test)]
+            nightly_detection_observer: Mutex::new(None),
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
@@ -309,7 +365,7 @@ impl NativeBackend {
             download_sizes: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
-            restarting: AtomicBool::new(false),
+            lifecycle,
             manifest: Mutex::new(Manifest::load(&paths.manifest())),
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
@@ -371,14 +427,13 @@ impl NativeBackend {
                 },
                 None => Manifest::default(),
             };
-            let manifest = {
+            {
                 let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
                 let mut current = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
                 if *current == initial {
                     *current = refreshed;
                 }
-                current.clone()
-            };
+            }
             let valid = crate::nightly_profile::validate_paths(&paths).is_ok();
             if valid && let Err(error) = crate::nightly_profile::clean_downloads(&paths) {
                 log::warn!("Nightly download-cache housekeeping was left unchanged: {error}");
@@ -389,15 +444,23 @@ impl NativeBackend {
                 .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
                 .chain(std::iter::once(&LAUNCHER))
             {
+                let snapshot = nightly_detection_snapshot(&shared, app);
                 let found = valid
-                    .then(|| manifest.apps.get(app.id).and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok()))
+                    .then(|| snapshot.record.as_ref().and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok()))
                     .flatten();
-                if !publish_nightly_detection(app, manifest.apps.get(app.id), found, &shared, platform) {
+                #[cfg(test)]
+                if app.id == "photocraft" {
+                    let hook = shared.nightly_detection_observer.lock().unwrap_or_else(PoisonError::into_inner).take();
+                    if let Some(hook) = hook {
+                        hook(found.is_none());
+                    }
+                }
+                if !publish_nightly_detection(app, &snapshot, found, &shared, platform) {
                     // At most one re-evaluation. Continued churn keeps the worker’s newer result,
                     // rather than publishing an obsolete None or spinning while mutations run.
-                    let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
-                    let found = record.as_ref().and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok());
-                    publish_nightly_detection(app, record.as_ref(), found, &shared, platform);
+                    let snapshot = nightly_detection_snapshot(&shared, app);
+                    let found = snapshot.record.as_ref().and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok());
+                    publish_nightly_detection(app, &snapshot, found, &shared, platform);
                 }
                 report_partial(app, &shared, &paths, platform);
             }
@@ -749,21 +812,14 @@ impl NativeBackend {
         #[cfg(test)]
         tests::note_job_preparation("job reservation");
         let stop = Arc::new(Stop::default());
-        let restarting = {
-            let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
-            if jobs.contains_key(app.id) {
+        match self.shared.reserve_job(app.id, stop.clone()) {
+            Admission::AlreadyActive => return None,
+            Admission::Restarting => {
+                let result = Err("ArtCraft Launcher is restarting to finish its update. Try again once it's back.".into());
+                self.shared.emit(Event::JobFinished { app: app.id.to_string(), result });
                 return None;
             }
-            let restarting = self.shared.restarting.load(Ordering::SeqCst);
-            if !restarting {
-                jobs.insert(app.id.to_string(), stop.clone());
-            }
-            restarting
-        };
-        if restarting {
-            let result = Err("ArtCraft Launcher is restarting to finish its update. Try again once it's back.".into());
-            self.shared.emit(Event::JobFinished { app: app.id.to_string(), result });
-            return None;
+            Admission::Reserved => {}
         }
         let shared = self.shared.clone();
         let job = JobGuard { shared: shared.clone(), app_id: app.id.to_string() };
@@ -946,12 +1002,8 @@ impl NativeBackend {
             return refuse();
         };
         let stop = Arc::new(Stop::default());
-        {
-            let mut jobs = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
-            if jobs.contains_key(&id) {
-                return;
-            }
-            jobs.insert(id.clone(), stop.clone());
+        if self.shared.reserve_job(&id, stop.clone()) != Admission::Reserved {
+            return;
         }
         let job = JobGuard { shared: self.shared.clone(), app_id: id.clone() };
         let (shared, paths, http) = (self.shared.clone(), self.paths.clone(), self.http.clone());
@@ -968,7 +1020,7 @@ impl NativeBackend {
             };
             let last = || {
                 let mut waiting = || shared.emit(Event::Progress { app: LAUNCHER_ID.to_string(), phase: JobPhase::Waiting });
-                claim_restart(&shared.jobs, &shared.restarting, &stop, RESTART_WAIT, &mut waiting)
+                claim_backend_restart(&shared, &stop, RESTART_WAIT, &mut waiting)
             };
             let result = match http.as_ref() {
                 Some(http) => crate::self_update::update(&install, &release, &repo, platform, http, &paths, &stop, &mut phase, &last),
@@ -978,11 +1030,16 @@ impl NativeBackend {
             match result {
                 Ok(()) => shared.emit(Event::LauncherRestarting),
                 Err(e) => {
-                    shared.restarting.store(false, Ordering::SeqCst);
+                    shared.lifecycle.restarting.store(false, Ordering::SeqCst);
                     shared.emit(Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) });
                 }
             }
         });
+    }
+
+    fn nightly_with_paths(&self, paths: Paths) -> Self {
+        let waker = self.shared.waker.clone();
+        Self::with_lifecycle(artcraft_launcher_core::nightly::InstallChannel::Nightly, move || waker(), paths, self.shared.lifecycle.clone())
     }
 
     fn installed(&self, app: &str) -> Option<Installed> {
@@ -1486,6 +1543,10 @@ fn landed(before: Option<&Installed>, after: Option<&Installed>, latest: &versio
 /// The restart that follows would otherwise cut their installs short. The user can cancel the
 /// wait (`stop`); after `limit` it gives up and names the apps still busy, since one may be
 /// stuck behind a password prompt nobody has answered.
+fn claim_backend_restart(shared: &Shared, stop: &Stop, limit: Duration, waiting: &mut dyn FnMut()) -> Result<(), String> {
+    claim_restart(&shared.lifecycle.jobs, &shared.lifecycle.restarting, stop, limit, waiting)
+}
+
 fn claim_restart(
     jobs: &Mutex<HashMap<String, Arc<Stop>>>,
     restarting: &AtomicBool,
@@ -1499,7 +1560,11 @@ fn claim_restart(
         stop.check()?;
         let busy: Vec<&'static str> = {
             let jobs = jobs.lock().unwrap_or_else(PoisonError::into_inner);
-            let busy = jobs.keys().filter(|id| *id != LAUNCHER_ID).map(|id| CraftApp::by_id(id).map_or("another app", |a| a.name)).collect();
+            let busy = jobs
+                .keys()
+                .filter(|id| *id != LAUNCHER_ID)
+                .map(|id| CraftApp::by_id(id.strip_prefix("nightly:").unwrap_or(id)).map_or("another app", |a| a.name))
+                .collect();
             if jobs.keys().all(|id| id == LAUNCHER_ID) {
                 restarting.store(true, Ordering::SeqCst);
                 return Ok(());
@@ -2158,8 +2223,7 @@ impl Backend for NativeBackend {
         let channel = artcraft_launcher_core::nightly::InstallChannel::Nightly;
         let paths = Paths::new().ok()?.for_channel(channel);
         crate::nightly_profile::validate_paths(&paths).ok()?;
-        let waker = self.shared.waker.clone();
-        Some(Box::new(Self::with_paths(channel, move || waker(), paths)))
+        Some(Box::new(self.nightly_with_paths(paths)))
     }
 
     /// Carries out a command from the UI. Long work (checks, installs, removals) runs on its own
@@ -2446,6 +2510,10 @@ mod nightly_phase1_tests;
 mod nightly_review_tests;
 
 #[cfg(test)]
+#[path = "backend_nightly_lifecycle_review_tests.rs"]
+mod nightly_lifecycle_review_tests;
+
+#[cfg(test)]
 mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::sync::mpsc;
@@ -2692,6 +2760,7 @@ mod tests {
     pub(super) fn shared() -> Shared {
         Shared {
             channel: artcraft_launcher_core::nightly::InstallChannel::Stable,
+            nightly_detection_observer: Mutex::new(None),
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
@@ -2703,7 +2772,7 @@ mod tests {
             download_sizes: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
-            restarting: AtomicBool::new(false),
+            lifecycle: Arc::new(ProcessLifecycle::default()),
             manifest: Mutex::new(Manifest::default()),
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
@@ -4080,6 +4149,8 @@ fn run_nightly_remove(app: &CraftApp, shared: &Shared, paths: &Paths, platform: 
     let (lease, record, platform) = nightly_worker_record(app, shared, paths, platform)?;
     let result = crate::nightly::remove(app, &record, paths, platform, stop, &lease, &mut || {
         stop.check()?;
+        #[cfg(test)]
+        REVIEW_BEFORE_NIGHTLY_PUBLISH.with(|hook| hook.borrow_mut().take().map_or(Ok(()), |hook| hook()))?;
         let manifest = lease.publish(Some(&record), None)?;
         store_nightly_manifest(shared, manifest);
         Ok(())
@@ -4119,15 +4190,38 @@ fn selected_nightly(app: &CraftApp, shared: &Shared, platform: Platform) -> Resu
         .cloned()
         .ok_or_else(|| "No verified separate-profile nightly is available. Check for updates first.".into())
 }
+struct NightlyDetectionSnapshot {
+    record: Option<crate::manifest::Record>,
+    revision: u64,
+    active: bool,
+}
+fn nightly_detection_snapshot(shared: &Shared, app: &CraftApp) -> NightlyDetectionSnapshot {
+    let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+    let process = shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+    let key = shared.job_key(app.id);
+    let revision = shared.lifecycle.revisions.lock().unwrap_or_else(PoisonError::into_inner).get(&key).copied().unwrap_or_default();
+    NightlyDetectionSnapshot {
+        record: shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned(),
+        revision,
+        active: process.contains_key(&key),
+    }
+}
 fn publish_nightly_detection(
     app: &CraftApp,
-    record: Option<&crate::manifest::Record>,
+    snapshot: &NightlyDetectionSnapshot,
     found: Option<Installed>,
     shared: &Shared,
     platform: Option<Platform>,
 ) -> bool {
     let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
-    if shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id) != record {
+    let process = shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+    let key = shared.job_key(app.id);
+    let revision = shared.lifecycle.revisions.lock().unwrap_or_else(PoisonError::into_inner).get(&key).copied().unwrap_or_default();
+    if snapshot.active
+        || process.contains_key(&key)
+        || snapshot.revision != revision
+        || shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id) != snapshot.record.as_ref()
+    {
         return false;
     }
     shared.store_detected(app.id, found.as_ref());
@@ -4137,10 +4231,13 @@ fn publish_nightly_detection(
 }
 
 #[cfg(test)]
+type ReviewDetectionHook = Box<dyn FnOnce(bool) + Send>;
+#[cfg(test)]
 type ReviewManifestReplaceHook = Box<dyn FnOnce() -> Result<(), String>>;
 #[cfg(test)]
 thread_local! {
     static REVIEW_AFTER_MANIFEST_REPLACE: std::cell::RefCell<Option<ReviewManifestReplaceHook>> = std::cell::RefCell::new(None);
+    static REVIEW_BEFORE_NIGHTLY_PUBLISH: std::cell::RefCell<Option<ReviewManifestReplaceHook>> = std::cell::RefCell::new(None);
     static REVIEW_AFTER_MANIFEST_SCRATCH_CREATED: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = std::cell::RefCell::new(None);
     static REVIEW_AFTER_STAGE_REMOVED: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = std::cell::RefCell::new(None);
 }

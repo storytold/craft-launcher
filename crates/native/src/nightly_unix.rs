@@ -341,6 +341,7 @@ fn verify_mac_metadata(root: &Path, version: &str) -> Result<(), String> {
 #[cfg(target_os = "macos")]
 fn verify_mac(root: &Path, version: &str) -> Result<(), String> {
     verify_mac_metadata(root, version)?;
+    let bundle = root.join("PhotoCraft Nightly.app");
     let executable = root.join(Adapter::PhotoCraftMacV1.executable());
     let path = executable.to_str().ok_or("The nightly executable path cannot be checked losslessly.")?;
     let architecture = crate::process::run_with_output("/usr/bin/lipo", &["-archs", path], std::time::Duration::from_secs(60))?;
