@@ -481,3 +481,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Hozzáadva
 	Remove	Eltávolítás
 	Add	Hozzáadás
+	Announcements	Közlemények
+	No announcements	Nincsenek közlemények
+@plural	Announcements, {n} unread|Announcements, {n} unread	Közlemények, {n} olvasatlan|Közlemények, {n} olvasatlan

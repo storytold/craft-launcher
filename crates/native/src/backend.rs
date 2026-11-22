@@ -325,8 +325,8 @@ impl NativeBackend {
                 publish_latest(app, latest, from, &self.shared, self.platform);
             }
         }
-        if let Some(f) = feed {
-            self.shared.emit(Event::Notices { announcements: f.announcements, alerts: f.alerts });
+        if let Some(n) = crate::notices::load(None, &self.paths, now) {
+            self.shared.emit(Event::Notices { announcements: n.announcements, alerts: n.alerts });
         }
     }
 
@@ -414,8 +414,8 @@ impl NativeBackend {
             crate::hosted_catalog::load_once(Some(&http), &paths);
             shared.emit(Event::CatalogUpdated);
             let (feed, fallback) = check_plan(&http, mirror.as_ref(), pre, &paths, &shared);
-            if let Some(f) = &feed {
-                shared.emit(Event::Notices { announcements: f.announcements.clone(), alerts: f.alerts.clone() });
+            if let Some(n) = crate::notices::load(Some(&http), &paths, crate::now()) {
+                shared.emit(Event::Notices { announcements: n.announcements, alerts: n.alerts });
             }
             let now = crate::now();
             let queue = Mutex::new(

@@ -20,6 +20,7 @@ pub mod login;
 pub mod manifest;
 #[cfg(any(windows, test))]
 mod msi_context;
+pub mod notices;
 pub mod packages;
 pub mod paths;
 pub mod pins;

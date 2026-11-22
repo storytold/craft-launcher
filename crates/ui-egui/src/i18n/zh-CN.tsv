@@ -448,3 +448,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	已添加
 	Remove	移除
 	Add	添加
+	Announcements	公告
+	No announcements	暂无公告
+@plural	Announcements, {n} unread|Announcements, {n} unread	公告，{n} 条未读

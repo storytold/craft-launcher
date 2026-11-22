@@ -77,6 +77,16 @@ pub fn social(service: &str) -> Option<ImageSource<'static>> {
     })
 }
 
+/// The header's Settings gear (Lucide, white, for tinting).
+pub fn settings() -> ImageSource<'static> {
+    egui::include_image!("../../../assets/ui-icons/settings.svg")
+}
+
+/// The header's announcements bell (Lucide, white, for tinting).
+pub fn bell() -> ImageSource<'static> {
+    egui::include_image!("../../../assets/ui-icons/bell.svg")
+}
+
 /// The ArtCraft "A" mark in blue, as supplied: the launcher's app icon and getartcraft.com's favicon.
 pub fn artcraft_mark() -> ImageSource<'static> {
     egui::include_image!("../../../docs/brand/artcraft-mark.svg")
