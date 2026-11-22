@@ -32,14 +32,14 @@ fn baseline(root: &Path) -> (Paths, crate::manifest::Record) {
     let file = root.join("payload.tar.gz");
     let mut old = program();
     old.extend_from_slice(b"old owned program bytes");
-    archive(&file, &[("photocraft", &old, 0o751)]);
+    archive(&file, &[("photocraft", &old, 0o700)]);
     let record = nightly_unix::install(package(&file, &paths, None), &mut |record| {
         let mut manifest = Manifest::default();
         manifest.apps.insert(APP.into(), record.clone());
         manifest.save(&paths.manifest())
     })
     .unwrap();
-    std::fs::set_permissions(&record.path, std::fs::Permissions::from_mode(0o751)).unwrap();
+    std::fs::set_permissions(&record.path, std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::write(paths.apps().join(APP).join("user.txt"), b"foreign program-root file").unwrap();
     let profile = ADAPTER.profile_root(&paths).unwrap();
     std::fs::create_dir_all(&profile).unwrap();
@@ -111,7 +111,7 @@ fn review_probe_abrupt_replace_can_restart_with_old_record() {
     let ownership = ADAPTER.validate_record(&paths, &saved);
     assert!(ownership.is_ok(), "actual abrupt exit left the persisted record unrecoverable: {ownership:?}");
     assert!(std::fs::read(&saved.path).unwrap().ends_with(b"old owned program bytes"));
-    assert_eq!(std::fs::metadata(&saved.path).unwrap().permissions().mode() & 0o777, 0o751);
+    assert_eq!(std::fs::metadata(&saved.path).unwrap().permissions().mode() & 0o777, 0o700);
     assert_retained(&paths);
 }
 
@@ -549,7 +549,7 @@ fn nested_install_with_action(
     for (path, bytes) in payload {
         let mut file = preparation.create(&Path::new("unpacked").join(path))?;
         file.write_all(bytes).map_err(|e| e.to_string())?;
-        file.set_permissions(std::fs::Permissions::from_mode(0o751)).map_err(|e| e.to_string())?;
+        file.set_permissions(std::fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
     }
     preparation.seal(previous.as_ref(), Some(&next))?;
@@ -602,7 +602,7 @@ fn review_probe_nested_unmoved_parents_restore_fresh_and_update_after_real_exit(
         drop(recovered);
         if let Some(old) = &old {
             assert_eq!(std::fs::read(&old.path).unwrap(), b"synthetic nested program");
-            assert_eq!(std::fs::metadata(&old.path).unwrap().mode() & 0o777, 0o751);
+            assert_eq!(std::fs::metadata(&old.path).unwrap().mode() & 0o777, 0o700);
         } else {
             assert!(!paths.apps().join(APP).exists());
         }
