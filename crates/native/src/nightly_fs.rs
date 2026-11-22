@@ -362,6 +362,8 @@ impl Dir {
     }
 
     pub(crate) fn sync(&self) -> Result<(), String> {
+        #[cfg(test)]
+        crate::nightly_transaction::review_directory_sync(self.path())?;
         #[cfg(unix)]
         {
             self.file.sync_all().map_err(|e| e.to_string())

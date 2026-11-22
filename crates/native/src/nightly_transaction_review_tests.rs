@@ -16,6 +16,9 @@ thread_local! {
     static REFUSE_REPAIR: Cell<bool> = const { Cell::new(false) };
     static AFTER_CLEAN: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
     static APPEND_ACTION: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    static DIRECTORY_SYNC_TARGET: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    static REFUSE_DIRECTORY_SYNC: Cell<bool> = const { Cell::new(false) };
+    static DIRECTORY_SYNC_CALLS: Cell<usize> = const { Cell::new(0) };
 }
 pub(super) fn refuse_repair() -> bool {
     REFUSE_REPAIR.replace(false)
@@ -434,4 +437,156 @@ fn review_test_owned_alias_root_is_resolved_but_production_alias_is_refused() {
     let lease = Lease::acquire(&resolved, adapter()).unwrap();
     kept(&resolved, &record);
     retry(&lease, &record);
+}
+
+// Returned error at the existing shared API boundary. On Windows this models its
+// caller contract, not a new native durability syscall or physical power loss.
+pub(super) fn directory_sync(path: &Path) -> Result<(), String> {
+    if !DIRECTORY_SYNC_TARGET.with(|target| target.borrow().as_deref() == Some(path)) {
+        return Ok(());
+    }
+    DIRECTORY_SYNC_CALLS.set(DIRECTORY_SYNC_CALLS.get() + 1);
+    if REFUSE_DIRECTORY_SYNC.get() { Err("injected returned manifest-directory sync error".into()) } else { Ok(()) }
+}
+
+type BackupSnapshot = Vec<(PathBuf, Identity, Vec<u8>)>;
+fn barrier_preparation<'a>(lease: &'a Lease, record: &Record) -> (Preparation<'a>, Option<Dir>, String, Vec<u8>, BackupSnapshot) {
+    let mut preparation = lease.prepare().unwrap();
+    preparation.seal(Some(record), None).unwrap();
+    let mut held = None;
+    preparation.apply(&mut held, &mut |_| Ok(())).unwrap();
+    assert!(!record.path.exists(), "the actual executable has been staged into the backup");
+    let backups = preparation
+        .plan
+        .as_ref()
+        .unwrap()
+        .old
+        .iter()
+        .map(|node| {
+            let path = preparation.path().join("backup").join(&node.path);
+            let bytes = std::fs::read(&path).unwrap();
+            assert_eq!(bytes, b"nonexecuted synthetic owned mechanics bytes");
+            (path, node.id.clone(), bytes)
+        })
+        .collect();
+    DIRECTORY_SYNC_TARGET.with(|target| *target.borrow_mut() = Some(lease.paths.data.clone()));
+    DIRECTORY_SYNC_CALLS.set(0);
+    REFUSE_DIRECTORY_SYNC.set(true);
+    let error = lease.publish(Some(record), None).unwrap_err();
+    assert!(error.contains("injected returned manifest-directory sync error"));
+    assert_eq!(DIRECTORY_SYNC_CALLS.get(), 1, "the actual publish rename reached its directory barrier and returned an error");
+    assert!(!lease.manifest().unwrap().apps.contains_key(adapter().app()), "the renamed manifest is already visibly next despite the sync error");
+    let journal = std::fs::read(lease.paths.data.join(lease.journal_name())).unwrap();
+    let entries: Vec<Entry> =
+        journal.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()).map(|line| serde_json::from_slice(line).unwrap()).collect();
+    assert!(entries.iter().any(|entry| matches!(entry, Entry::Plan(_))));
+    assert!(!entries.iter().any(|entry| matches!(entry, Entry::Clean { .. })));
+    (preparation, held, error, journal, backups)
+}
+fn barrier_retained(paths: &Paths, record: &Record, journal: &[u8], backups: &BackupSnapshot) {
+    let journal_path = paths.data.join(format!(".nightly-{}-journal-v1.jsonl", adapter().app()));
+    let found = std::fs::read(&journal_path).ok();
+    let all_bytes_retained = backups.iter().all(|(path, _, bytes)| std::fs::read(path).as_ref().ok() == Some(bytes));
+    eprintln!(
+        "failed manifest barrier: exact sealed journal retained={}, all actual backup bytes retained={all_bytes_retained}",
+        found.as_deref() == Some(journal)
+    );
+    assert!(found.as_deref() == Some(journal), "no Clean append or journal retirement before a successful manifest-directory barrier");
+    assert!(all_bytes_retained, "the actual rollback files must remain until a successful directory barrier");
+    for (path, id, _) in backups {
+        let parent = Dir::open(path.parent().unwrap()).unwrap();
+        assert_eq!(parent.info(Path::new(path.file_name().unwrap())).unwrap(), Some((id.clone(), false)), "preserve the captured backup identity");
+    }
+    assert!(!record.path.exists());
+    assert!(!Manifest::load(&paths.manifest()).apps.contains_key(adapter().app()));
+    assert_eq!(std::fs::read(paths.apps().join(adapter().app()).join("foreign.txt")).unwrap(), b"foreign bytes");
+    assert_eq!(std::fs::read(adapter().profile_root(paths).unwrap().join("preferences")).unwrap(), b"profile bytes");
+}
+fn barrier_removed(paths: &Paths, record: &Record) {
+    assert!(!record.path.exists());
+    assert!(!Manifest::load(&paths.manifest()).apps.contains_key(adapter().app()));
+    assert!(!paths.data.join(format!(".nightly-{}-journal-v1.jsonl", adapter().app())).exists());
+    assert!(!paths.apps().join(format!(".nightly-{}-preparation-v1", adapter().app())).exists());
+    assert_eq!(std::fs::read(paths.apps().join(adapter().app()).join("foreign.txt")).unwrap(), b"foreign bytes");
+    assert_eq!(std::fs::read(adapter().profile_root(paths).unwrap().join("preferences")).unwrap(), b"profile bytes");
+}
+
+#[test]
+fn review_manifest_directory_barrier_preserves_live_backups_until_successful_retry() {
+    const TEST: &str = "review_manifest_directory_barrier_preserves_live_backups_until_successful_retry";
+    if isolated(TEST) {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let (paths, record) = fixture(temp.path());
+    let lease = Lease::acquire(&paths, adapter()).unwrap();
+    let (mut preparation, held, error, journal, backups) = barrier_preparation(&lease, &record);
+    let failure = preparation.finish(Err(error.clone()), held, false).unwrap_err();
+    assert!(failure.contains("injected returned manifest-directory sync error"));
+    barrier_retained(&paths, &record, &journal, &backups);
+    assert!(preparation.finished.is_none(), "a failed barrier must not advance live finalization state");
+    REFUSE_DIRECTORY_SYNC.set(false);
+    let result = preparation.finish(Err(error), None, false);
+    assert!(result.unwrap_err().contains("The new Nightly state is committed"), "successful recovery retains the original returned publish error");
+    assert_eq!(preparation.finished, Some(true));
+    assert!(DIRECTORY_SYNC_CALLS.get() > 2, "retry actually revisits the existing directory-sync API");
+    barrier_removed(&paths, &record);
+    eprintln!("live barrier retry succeeded; sealed journal/backups retired only after successful sync");
+}
+
+#[test]
+fn review_manifest_directory_barrier_preserves_fresh_lease_backups_until_successful_retry() {
+    const TEST: &str = "review_manifest_directory_barrier_preserves_fresh_lease_backups_until_successful_retry";
+    if isolated(TEST) {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let (paths, record) = fixture(temp.path());
+    let lease = Lease::acquire(&paths, adapter()).unwrap();
+    let (preparation, held, _, journal, backups) = barrier_preparation(&lease, &record);
+    drop(held);
+    drop(preparation);
+    drop(lease);
+    let refused = Lease::acquire(&paths, adapter());
+    assert!(refused.as_ref().err().is_some_and(|error| error.contains("injected returned manifest-directory sync error")));
+    drop(refused);
+    barrier_retained(&paths, &record, &journal, &backups);
+    REFUSE_DIRECTORY_SYNC.set(false);
+    let recovered = Lease::acquire(&paths, adapter()).unwrap();
+    assert!(DIRECTORY_SYNC_CALLS.get() > 2, "fresh lease retry actually revisits the existing directory-sync API");
+    barrier_removed(&paths, &record);
+    drop(recovered);
+    eprintln!("fresh-lease barrier retry succeeded; sealed journal/backups retired only after successful sync");
+}
+
+#[test]
+fn review_manifest_directory_barrier_preserves_ordinary_success_and_rollback() {
+    const TEST: &str = "review_manifest_directory_barrier_preserves_ordinary_success_and_rollback";
+    if isolated(TEST) {
+        return;
+    }
+    for committed in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let (paths, record) = fixture(temp.path());
+        let lease = Lease::acquire(&paths, adapter()).unwrap();
+        let mut preparation = lease.prepare().unwrap();
+        preparation.seal(Some(&record), None).unwrap();
+        let mut held = None;
+        preparation.apply(&mut held, &mut |_| Ok(())).unwrap();
+        let outcome = if committed {
+            lease.publish(Some(&record), None).unwrap();
+            Ok(())
+        } else {
+            Err("injected ordinary failure before manifest publication".into())
+        };
+        let result = preparation.finish(outcome, held, committed);
+        assert_eq!(result.is_ok(), committed);
+        if committed {
+            barrier_removed(&paths, &record);
+        } else {
+            kept(&paths, &record);
+            assert!(!paths.data.join(lease.journal_name()).exists());
+            assert!(!paths.apps().join(lease.stage_name()).exists());
+        }
+    }
 }

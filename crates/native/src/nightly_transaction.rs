@@ -340,8 +340,8 @@ impl Lease {
                 }
                 preparation.verify_clean()?;
             } else if current == plan.next.as_ref() && current != plan.previous.as_ref() {
-                preparation.finished = Some(true);
                 preparation.committed(None)?;
+                preparation.finished = Some(true);
             } else if current == plan.previous.as_ref() {
                 preparation.finished = Some(false);
                 preparation.rollback(None)?;
@@ -862,6 +862,10 @@ impl Preparation<'_> {
                 return Err("A committed Nightly file changed identity; cleanup was preserved.".into());
             }
         }
+        // A visible manifest rename may have returned a directory-sync error. Both live
+        // finalization and fresh recovery must establish that barrier before losing backups.
+        self.lease.check_namespace()?;
+        self.lease.data.sync()?;
         for node in &plan.old {
             if let Some((directory, name)) = self.stage_location(&Path::new("backup").join(&node.path))? {
                 directory.remove(&name, &node.id, false)?;
@@ -908,8 +912,10 @@ impl Preparation<'_> {
         };
         let recovery = if committed { self.committed(held.as_ref()) } else { self.rollback(held.as_ref()) };
         drop(held);
-        self.finished = Some(committed);
-        if let Err(error) = recovery.and_then(|()| self.cleanup()) {
+        if let Err(error) = recovery.and_then(|()| {
+            self.finished = Some(committed);
+            self.cleanup()
+        }) {
             let prefix = if committed {
                 "The new Nightly state is committed; cleanup is pending"
             } else {
@@ -1053,6 +1059,11 @@ pub(crate) fn refresh(paths: &Paths, adapter: Adapter) -> Result<Manifest, Strin
         return Lease::acquire(paths, adapter)?.manifest();
     }
     stored_manifest(paths)
+}
+
+#[cfg(test)]
+pub(crate) fn review_directory_sync(path: &Path) -> Result<(), String> {
+    review_tests::directory_sync(path)
 }
 
 #[cfg(test)]
