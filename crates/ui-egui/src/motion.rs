@@ -3,10 +3,34 @@
 //! The shell says what the OS wants ([`crate::Host::reduce_motion`]); this makes egui follow it.
 //! Progress bars and spinners keep moving: they say that work is going on.
 
+use std::time::Duration;
+
 use egui::{Event, MouseWheelUnit, RawInput, TouchPhase};
 
 /// Seconds between asking the shell again: the setting can change while the launcher runs.
 pub(crate) const RECHECK_EVERY: f64 = 1.0;
+
+/// The shortest wait between the launcher's own timed redraws while the window is drawn on the
+/// processor ([`crate::Host::software_rendering`]): every frame then redraws the whole window in
+/// software, so progress bars and polling move about four times a second instead of twenty or at
+/// the display's rate. Input still redraws at once.
+pub(crate) const SOFTWARE_TICK: Duration = Duration::from_millis(250);
+
+fn software_id() -> egui::Id {
+    egui::Id::unique("artcraft-launcher-software-rendering")
+}
+
+/// Records for this context whether its window is drawn on the processor, for the widgets that
+/// pace their own redraws ([`tick`]).
+pub(crate) fn set_software(ctx: &egui::Context, on: bool) {
+    ctx.data_mut(|d| d.insert_temp(software_id(), on));
+}
+
+/// How long to wait before a timed redraw that would come after `normal`: at least
+/// [`SOFTWARE_TICK`] while the window is drawn on the processor, `normal` otherwise.
+pub(crate) fn tick(ctx: &egui::Context, normal: Duration) -> Duration {
+    if ctx.data(|d| d.get_temp::<bool>(software_id())).unwrap_or(false) { normal.max(SOFTWARE_TICK) } else { normal }
+}
 
 /// With `reduce`, popups, tooltips and dialogs appear at once instead of fading in, and scrolling
 /// to a place jumps there. Without it, egui's own timings.
@@ -160,6 +184,19 @@ mod tests {
                 raw.events
             );
         }
+    }
+
+    #[test]
+    fn software_drawing_slows_timed_redraws_only() {
+        let ctx = egui::Context::default();
+        let fast = Duration::from_millis(50);
+        assert_eq!(tick(&ctx, fast), fast);
+        set_software(&ctx, true);
+        assert!(tick(&ctx, fast) > fast);
+        let slow = Duration::from_secs(60);
+        assert_eq!(tick(&ctx, slow), slow, "a wait longer than the software pace stays as it was");
+        set_software(&ctx, false);
+        assert_eq!(tick(&ctx, fast), fast);
     }
 
     #[test]

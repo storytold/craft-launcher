@@ -530,6 +530,14 @@ fn skips_indirect_validation(os: &str, intel: bool) -> bool {
     os == "macos" && intel
 }
 
+/// Whether wgpu draws on the processor: Windows' WARP ("Microsoft Basic Render Driver", the only
+/// adapter on a Windows 365 Cloud PC or a virtual machine without a GPU, where OpenGL is 1.1 and
+/// wgpu's GL backend finds nothing), Mesa's llvmpipe and lavapipe. wgpu reports all of them as
+/// `DeviceType::Cpu`.
+fn is_software_adapter(device_type: eframe::wgpu::DeviceType) -> bool {
+    device_type == eframe::wgpu::DeviceType::Cpu
+}
+
 /// Wakes whatever is running the launcher: the window while there is one, the tray loop otherwise.
 struct Waker {
     window: Mutex<Option<egui::Context>>,
@@ -675,6 +683,8 @@ struct DesktopHost {
     /// Settings asks once per app's package, and the macOS answer probes the disk. There are
     /// only a handful of distinct questions (format and architecture).
     default_folders: Vec<DefaultFolderAnswer>,
+    /// The window's graphics adapter is a software one ([`is_software_adapter`]).
+    software: bool,
 }
 
 impl Host for DesktopHost {
@@ -739,6 +749,10 @@ impl Host for DesktopHost {
         motion::reduced()
     }
 
+    fn software_rendering(&self) -> bool {
+        self.software
+    }
+
     fn discord_url(&self) -> &'static str {
         artcraft_launcher_native::process::discord_url()
     }
@@ -784,7 +798,7 @@ impl Launcher {
             system_theme: system_theme::Monitor::default(),
             ui: LauncherUi::new(&windowless, backend, Settings::default()),
             tray: None,
-            host: DesktopHost { tray: false, quit: false, default_folders: Vec::new() },
+            host: DesktopHost { tray: false, quit: false, default_folders: Vec::new(), software: false },
             starts,
             windowless,
             run_again,
@@ -822,6 +836,15 @@ impl Launcher {
     /// one brings the saved settings and the tray icon.
     fn open(&mut self, cc: &eframe::CreationContext<'_>, waker: &Arc<Waker>) {
         waker.set_window(Some(cc.egui_ctx.clone()));
+        if let Some(state) = &cc.wgpu_render_state {
+            let info = state.adapter.get_info();
+            self.host.software = is_software_adapter(info.device_type);
+            if self.host.software {
+                log::warn!("drawing in software on {} ({:?}): animations are off and timed redraws are slower", info.name, info.backend);
+            } else {
+                log::info!("drawing on {} ({:?}, {:?})", info.name, info.backend, info.device_type);
+            }
+        }
         if !self.started {
             self.start(cc.storage.and_then(|s| eframe::get_value(s, SETTINGS_KEY)), waker);
         }

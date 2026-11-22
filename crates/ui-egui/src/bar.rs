@@ -73,7 +73,7 @@ pub fn refresh_button(ui: &mut Ui, tip: &str, busy: bool) -> egui::Response {
     }
     p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
     if busy {
-        egui::Spinner::new().size(16.0).color(t.muted).paint_at(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)));
+        crate::widgets::spinner(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)), t.muted);
     } else {
         crate::widgets::paint_glyph(p, rect, crate::widgets::Glyph::Refresh, if hovered { t.ink_strong } else { t.muted });
     }

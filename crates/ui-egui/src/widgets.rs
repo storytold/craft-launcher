@@ -150,7 +150,7 @@ pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -
     }
     p.vline(rect.left() + 0.5, rect.y_range(), t.hairline());
     if busy {
-        egui::Spinner::new().size(16.0).color(t.muted).paint_at(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)));
+        spinner(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)), t.muted);
     } else {
         paint_glyph(p, rect, glyph, if hovered { t.invert_fg } else { t.muted });
     }
@@ -692,6 +692,29 @@ fn paint_cell<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opt: &T, cell: &C
     (rect, changed)
 }
 
+/// A busy spinner in `rect`. egui's own spinner asks for a redraw on every frame; while the window
+/// is drawn in software (`motion::tick`) this one turns in steps, at the software pace, instead of
+/// redrawing the whole window at the display's rate.
+pub(crate) fn spinner(ui: &Ui, rect: Rect, color: Color32) {
+    let pace = crate::motion::tick(ui.ctx(), std::time::Duration::ZERO);
+    if pace.is_zero() {
+        egui::Spinner::new().size(rect.height().min(rect.width())).color(color).paint_at(ui, rect);
+        return;
+    }
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    ui.ctx().request_repaint_after(pace);
+    // Three quarters of a circle, a quarter turn further at each step.
+    let steps = (ui.input(|i| i.time) / pace.as_secs_f64()).floor();
+    let start = (steps * std::f64::consts::FRAC_PI_2).rem_euclid(std::f64::consts::TAU) as f32;
+    let radius = rect.height().min(rect.width()) * 0.5 - 2.0;
+    const POINTS: usize = 24;
+    let points =
+        (0..=POINTS).map(|i| rect.center() + radius * egui::Vec2::angled(start + i as f32 / POINTS as f32 * 1.5 * std::f32::consts::PI)).collect();
+    ui.painter().add(egui::Shape::line(points, Stroke::new(3.0, color)));
+}
+
 /// A slim square progress bar with a caption above it.
 pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color32, width: f32) {
     let t = Tokens::get(ui.ctx());
@@ -714,7 +737,7 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
                     p.rect_filled(seg, CornerRadius::ZERO, color);
                 }
             }
-            ui.ctx().request_repaint();
+            ui.ctx().request_repaint_after(crate::motion::tick(ui.ctx(), std::time::Duration::ZERO));
         }
     }
     p.text(egui::pos2(rect.left(), rect.top() + 9.0), egui::Align2::LEFT_CENTER, caption, egui::FontId::new(12.0, theme::medium()), t.muted);
