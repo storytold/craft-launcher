@@ -404,6 +404,12 @@ pub struct Capabilities {
 
 /// The UI's view of a backend.
 pub trait Backend {
+    /// Admitted mutation/Open jobs, including the gap before their first progress event.
+    /// Must be a cheap in-memory query; metadata discovery is not an active job.
+    fn has_active_jobs(&self) -> bool {
+        false
+    }
+
     /// Create an independent context using the same backend implementation.
     fn nightly_context(&self) -> Option<Box<dyn Backend>> {
         None

@@ -511,3 +511,20 @@ fn malformed_existing_metadata_is_not_fresh_absence_and_requires_valid_reload() 
     assert!(blocked.record(&row).message.is_none());
     assert!(!blocked.begin(std::slice::from_ref(&row), NOW + EVERY, true, true).is_empty());
 }
+
+#[test]
+fn review_probe_ordinary_release_tags_do_not_poison_nightly_lookup() {
+    let (nightly, url, body) = candidate(&tag(20), true);
+    let ordinary = json!({"draft":false,"prerelease":false,"tag_name":"release/2026","assets":[]});
+    let data = fixtures(vec![ordinary, nightly], vec![(url, body)]);
+    let outcome = ask(&data);
+    assert!(matches!(outcome, Outcome::Verified(_)), "an explicitly ordinary tag must not poison compatible Nightly coverage");
+    for uncertain in
+        [json!({"draft":false,"tag_name":"release/2026","assets":[]}), json!({"draft":false,"prerelease":true,"tag_name":"release/2026","assets":[]})]
+    {
+        assert!(
+            matches!(ask(&fixtures(vec![uncertain], vec![])), Outcome::Indeterminate(_)),
+            "a missing flag or malformed potential pre-release remains indeterminate"
+        );
+    }
+}

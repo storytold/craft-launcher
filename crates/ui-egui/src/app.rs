@@ -361,7 +361,7 @@ impl LauncherUi {
     /// Something is downloading or installing, the launcher's own update included: quitting now
     /// would cut it short.
     pub fn busy(&self) -> bool {
-        self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
+        self.backend.has_active_jobs() || self.nightly.busy() || self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
     }
 
     /// Looks for updates now (the tray's "Check for Updates").

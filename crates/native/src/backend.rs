@@ -358,7 +358,27 @@ impl NativeBackend {
         let platform = self.platform;
         std::thread::spawn(move || {
             let _busy = busy;
-            let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            let initial = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            let refreshed = match platform
+                .and_then(|platform| CraftApp::by_id("photocraft").and_then(|app| crate::nightly_profile::for_app(app, platform).ok()))
+            {
+                Some(adapter) => match crate::nightly_transaction::refresh(&paths, adapter) {
+                    Ok(manifest) => manifest,
+                    Err(error) => {
+                        shared.emit(Event::Notice { app: "photocraft".into(), result: Err(error) });
+                        crate::nightly_transaction::stored_manifest(&paths).unwrap_or_default()
+                    }
+                },
+                None => Manifest::default(),
+            };
+            let manifest = {
+                let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+                let mut current = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+                if *current == initial {
+                    *current = refreshed;
+                }
+                current.clone()
+            };
             let valid = crate::nightly_profile::validate_paths(&paths).is_ok();
             if valid && let Err(error) = crate::nightly_profile::clean_downloads(&paths) {
                 log::warn!("Nightly download-cache housekeeping was left unchanged: {error}");
@@ -372,7 +392,13 @@ impl NativeBackend {
                 let found = valid
                     .then(|| manifest.apps.get(app.id).and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok()))
                     .flatten();
-                publish_detected(app, found, &shared, platform);
+                if !publish_nightly_detection(app, manifest.apps.get(app.id), found, &shared, platform) {
+                    // At most one re-evaluation. Continued churn keeps the worker’s newer result,
+                    // rather than publishing an obsolete None or spinning while mutations run.
+                    let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+                    let found = record.as_ref().and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok());
+                    publish_nightly_detection(app, record.as_ref(), found, &shared, platform);
+                }
                 report_partial(app, &shared, &paths, platform);
             }
         });
@@ -661,22 +687,29 @@ impl NativeBackend {
         if self.shared.channel != artcraft_launcher_core::nightly::InstallChannel::Nightly {
             return false;
         }
-        let admitted = CraftApp::by_id(app_id).ok_or_else(|| "Unknown nightly app.".to_owned()).and_then(|app| match work {
-            Work::Install(None) => nightly_install_plan(app, &self.shared, &self.paths, self.platform).map(|_| ()),
-            Work::Uninstall => self
-                .shared
-                .manifest
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .apps
-                .get(app_id)
-                .cloned()
-                .ok_or_else(|| "No owned nightly copy is recorded.".to_owned())
-                .and_then(|record| {
-                    crate::nightly::owned_installation(app, &record, &self.paths, self.platform.ok_or("This nightly platform is not supported.")?)
-                        .map(|_| ())
-                }),
-            Work::Replace(_) | Work::Install(Some(_)) => Err("Nightly cannot replace a Stable/custom path or join a shared installer batch.".into()),
+        let admitted = CraftApp::by_id(app_id).ok_or_else(|| "Unknown nightly app.".to_owned()).and_then(|app| {
+            let platform = self.platform.ok_or("This nightly platform is not supported.")?;
+            crate::nightly_profile::for_app(app, platform)?;
+            match work {
+                Work::Install(None) => {
+                    if !self.options().nightly_enabled {
+                        return Err("Pre-Release installs and updates are off. Retained copies and data are kept.".into());
+                    }
+                    selected_nightly(app, &self.shared, platform)?;
+                    Ok(())
+                }
+                Work::Uninstall | Work::Launch(_) => {
+                    if !self.shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.contains_key(app.id)
+                        && !self.paths.manifest().is_file()
+                    {
+                        return Err("No owned nightly copy is recorded.".into());
+                    }
+                    Ok(())
+                }
+                Work::Replace(_) | Work::Install(Some(_)) => {
+                    Err("Nightly cannot replace a Stable/custom path or join a shared installer batch.".into())
+                }
+            }
         });
         if let Err(error) = admitted {
             self.shared.emit(Event::JobFinished { app: app_id.into(), result: Err(error) });
@@ -707,6 +740,7 @@ impl NativeBackend {
             return None;
         }
         let uninstall = matches!(work, Work::Uninstall);
+        let launching = matches!(work, Work::Launch(_));
         let app = CraftApp::by_id(app_id)?;
         if self.platform.is_some_and(|p| !app.runs_on(p.os)) {
             return None;
@@ -740,7 +774,7 @@ impl NativeBackend {
         let source = self.source.clone();
         // Taken now, before the job's thread runs, so apps started together (Update all) download
         // in screen order whichever job reaches its download first.
-        let place = (!uninstall).then(|| {
+        let place = (!uninstall && !launching).then(|| {
             #[cfg(test)]
             tests::note_job_preparation("download queue");
             install::DOWNLOADS.join(app.id)
@@ -751,17 +785,11 @@ impl NativeBackend {
                 let job = job;
                 let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
                 let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
-                let result = if uninstall && shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
+                let result = if let Work::Launch(args) = &work {
+                    run_nightly_launch(app, &shared, &paths, platform, &stop, args)
+                } else if uninstall && shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
                     shared.emit(Event::Progress { app: app.id.to_owned(), phase: JobPhase::Removing });
-                    record.as_ref().ok_or_else(|| "No owned nightly copy is recorded.".to_owned()).and_then(|record| {
-                        crate::nightly::remove(app, record, &paths, platform.ok_or("This nightly platform is not supported.")?, &stop)?;
-                        let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                        let mut updated = manifest.clone();
-                        updated.apps.remove(app.id);
-                        updated.save(&paths.manifest())?;
-                        *manifest = updated;
-                        Ok(format!("{} was removed; its nightly profile was kept", app.name))
-                    })
+                    run_nightly_remove(app, &shared, &paths, platform, &stop)
                 } else if uninstall {
                     shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                     let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
@@ -779,7 +807,7 @@ impl NativeBackend {
                     let (approved, batch) = match &work {
                         Work::Replace(path) => (Some(path.as_str()), None),
                         Work::Install(batch) => (None, batch.clone()),
-                        Work::Uninstall => (None, None),
+                        Work::Uninstall | Work::Launch(_) => (None, None),
                     };
                     let r = run_install(
                         app,
@@ -970,6 +998,7 @@ enum Work {
     /// Install over the path the user agreed to overwrite (see [`Command::Replace`]).
     Replace(String),
     Uninstall,
+    Launch(Vec<String>),
 }
 
 fn release_matches_track(release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
@@ -1131,18 +1160,9 @@ fn nightly_install_plan(app: &CraftApp, shared: &Shared, paths: &Paths, platform
         return Err("Pre-Release installs and updates are off. Retained copies and data are kept.".into());
     }
     let platform = platform.ok_or("This nightly target is not supported on this system.")?;
-    if !shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).fresh(&crate::nightly_lookup::key(app, platform), crate::now()) {
-        return Err("The Nightly selection is stale or indeterminate. Complete a fresh verified check before installing.".into());
-    }
+    let verified = selected_nightly(app, shared, platform)?;
     let adapter = crate::nightly_profile::for_app(app, platform)?;
     adapter.validate_profile(paths)?;
-    let verified = shared
-        .nightly_verified
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(app.id)
-        .cloned()
-        .ok_or("No verified separate-profile nightly is available. Check for updates first.")?;
     if verified.adapter() != adapter {
         return Err("The verified nightly belongs to a different profile adapter.".into());
     }
@@ -1169,6 +1189,9 @@ fn nightly_install_plan(app: &CraftApp, shared: &Shared, paths: &Paths, platform
 /// manifest. Consent is checked again at the transactional commit, including after queue waits.
 fn run_nightly_install(app: &CraftApp, shared: &Shared, platform: Option<Platform>, job: &mut install::Job<'_>) -> Result<String, String> {
     let paths = job.paths;
+    let adapter = crate::nightly_profile::for_app(app, platform.ok_or("This nightly platform is not supported.")?)?;
+    let lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
+    store_nightly_manifest(shared, lease.manifest()?);
     let NightlyInstallPlan { verified, existing, previous } = nightly_install_plan(app, shared, paths, platform)?;
     let platform = platform.ok_or("This nightly platform is not supported.")?;
     let mut committed = false;
@@ -1178,16 +1201,17 @@ fn run_nightly_install(app: &CraftApp, shared: &Shared, platform: Option<Platfor
         if !consent.nightly_enabled {
             return Err("Pre-Release was turned off; the pending install was not committed.".into());
         }
-        let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut updated = manifest.clone();
-        updated.apps.insert(app.id.to_owned(), record.clone());
-        updated.save(&paths.manifest())?;
-        *manifest = updated;
+        let updated = lease.publish(previous.as_ref(), Some(record))?;
         committed = true;
         drop(consent);
+        store_nightly_manifest(shared, updated);
         Ok(())
     };
-    let record = install::install_nightly_at(&verified, existing.as_ref(), previous.as_ref(), job, Some(&mut commit_record))?;
+    let result = install::install_nightly_at(&verified, existing.as_ref(), previous.as_ref(), job, Some(&mut commit_record), &lease);
+    // Even an error can follow a real atomic manifest replacement. Never report the old
+    // in-memory record as authoritative after the transaction has classified that boundary.
+    store_nightly_manifest(shared, lease.manifest()?);
+    let record = result?;
     if record.is_none() || !committed {
         return Err("The nightly transaction did not commit its private record.".into());
     }
@@ -2121,6 +2145,10 @@ impl NativeBackend {
 }
 
 impl Backend for NativeBackend {
+    fn has_active_jobs(&self) -> bool {
+        !self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
+    }
+
     fn nightly_context(&self) -> Option<Box<dyn Backend>> {
         if self.shared.channel != artcraft_launcher_core::nightly::InstallChannel::Stable {
             return None;
@@ -2147,27 +2175,7 @@ impl Backend for NativeBackend {
                 | Command::McpRestartClient { .. }
                 | Command::ListVersions { .. } => return,
                 Command::Launch { app, args } => {
-                    let result = CraftApp::by_id(app).ok_or_else(|| "Unknown nightly app.".to_owned()).and_then(|definition| {
-                        let record = self
-                            .shared
-                            .manifest
-                            .lock()
-                            .unwrap_or_else(PoisonError::into_inner)
-                            .apps
-                            .get(app)
-                            .cloned()
-                            .ok_or("No owned nightly copy is recorded.")?;
-                        crate::nightly::launch(
-                            definition,
-                            &record,
-                            &self.paths,
-                            self.platform.ok_or("This nightly platform is not supported.")?,
-                            args,
-                        )
-                    });
-                    if let Err(error) = result {
-                        self.shared.emit(Event::Notice { app: app.clone(), result: Err(error) });
-                    }
+                    self.start_job(app, Work::Launch(args.clone()));
                     return;
                 }
                 Command::Reveal { app } => {
@@ -2432,6 +2440,10 @@ fn detected_apps(shared: &Shared) -> Vec<crate::agents::InstalledApp> {
 #[cfg(test)]
 #[path = "backend_nightly_phase1_tests.rs"]
 mod nightly_phase1_tests;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "backend_nightly_review_tests.rs"]
+mod nightly_review_tests;
 
 #[cfg(test)]
 mod tests {
@@ -4036,4 +4048,120 @@ mod tests {
             }
         }
     }
+}
+
+#[cfg(test)]
+thread_local! { static REVIEW_BEFORE_MANIFEST_SAVE: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = std::cell::RefCell::new(None); }
+#[cfg(test)]
+pub(crate) fn review_before_manifest_save() {
+    REVIEW_BEFORE_MANIFEST_SAVE.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
+}
+
+fn nightly_worker_record(
+    app: &CraftApp,
+    shared: &Shared,
+    paths: &Paths,
+    platform: Option<Platform>,
+) -> Result<(crate::nightly_transaction::Lease, crate::manifest::Record, Platform), String> {
+    let platform = platform.ok_or("This nightly platform is not supported.")?;
+    let adapter = crate::nightly_profile::for_app(app, platform)?;
+    let lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
+    let manifest = lease.manifest()?;
+    let record = manifest.apps.get(app.id).cloned();
+    store_nightly_manifest(shared, manifest);
+    let record = record.ok_or("No owned nightly copy is recorded.")?;
+    Ok((lease, record, platform))
+}
+fn run_nightly_remove(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>, stop: &Stop) -> Result<String, String> {
+    let (lease, record, platform) = nightly_worker_record(app, shared, paths, platform)?;
+    let result = crate::nightly::remove(app, &record, paths, platform, stop, &lease, &mut || {
+        stop.check()?;
+        let manifest = lease.publish(Some(&record), None)?;
+        store_nightly_manifest(shared, manifest);
+        Ok(())
+    });
+    store_nightly_manifest(shared, lease.manifest()?);
+    result?;
+    Ok(format!("{} was removed; its nightly profile was kept", app.name))
+}
+fn run_nightly_launch(
+    app: &CraftApp,
+    shared: &Shared,
+    paths: &Paths,
+    platform: Option<Platform>,
+    stop: &Stop,
+    args: &[String],
+) -> Result<String, String> {
+    let (_lease, record, platform) = nightly_worker_record(app, shared, paths, platform)?;
+    stop.check()?;
+    crate::nightly::launch(app, &record, paths, platform, args, stop)?;
+    Ok(format!("{} was opened", app.name))
+}
+
+fn store_nightly_manifest(shared: &Shared, manifest: Manifest) {
+    let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+    *shared.manifest.lock().unwrap_or_else(PoisonError::into_inner) = manifest;
+}
+fn selected_nightly(app: &CraftApp, shared: &Shared, platform: Platform) -> Result<crate::nightly::VerifiedRelease, String> {
+    let state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+    if !state.fresh(&crate::nightly_lookup::key(app, platform), crate::now()) {
+        return Err("The Nightly selection is stale or indeterminate. Complete a fresh verified check before installing.".into());
+    }
+    shared
+        .nightly_verified
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(app.id)
+        .cloned()
+        .ok_or_else(|| "No verified separate-profile nightly is available. Check for updates first.".into())
+}
+fn publish_nightly_detection(
+    app: &CraftApp,
+    record: Option<&crate::manifest::Record>,
+    found: Option<Installed>,
+    shared: &Shared,
+    platform: Option<Platform>,
+) -> bool {
+    let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+    if shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id) != record {
+        return false;
+    }
+    shared.store_detected(app.id, found.as_ref());
+    let installable = installable_event(app, shared, platform, None);
+    shared.emit_all(installable.into_iter().chain([Event::Detected { app: app.id.to_owned(), installed: found }]));
+    true
+}
+
+#[cfg(test)]
+type ReviewManifestReplaceHook = Box<dyn FnOnce() -> Result<(), String>>;
+#[cfg(test)]
+thread_local! {
+    static REVIEW_AFTER_MANIFEST_REPLACE: std::cell::RefCell<Option<ReviewManifestReplaceHook>> = std::cell::RefCell::new(None);
+    static REVIEW_AFTER_MANIFEST_SCRATCH_CREATED: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = std::cell::RefCell::new(None);
+    static REVIEW_AFTER_STAGE_REMOVED: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = std::cell::RefCell::new(None);
+}
+#[cfg(test)]
+pub(crate) fn review_after_manifest_replace() -> Result<(), String> {
+    REVIEW_AFTER_MANIFEST_REPLACE.with(|hook| hook.borrow_mut().take().map_or(Ok(()), |hook| hook()))
+}
+#[cfg(test)]
+pub(crate) fn review_after_stage_removed() {
+    REVIEW_AFTER_STAGE_REMOVED.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn review_after_manifest_scratch_created() {
+    REVIEW_AFTER_MANIFEST_SCRATCH_CREATED.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
 }

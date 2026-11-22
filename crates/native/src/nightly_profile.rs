@@ -241,7 +241,6 @@ impl Adapter {
         }
     }
 
-    #[cfg(unix)]
     pub(crate) fn executable(self) -> &'static Path {
         Path::new(match self {
             Self::PhotoCraftWindowsV1 => "photocraft.exe",

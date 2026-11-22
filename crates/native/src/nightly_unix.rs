@@ -14,7 +14,7 @@ use crate::paths::Paths;
 
 #[cfg(test)]
 #[path = "nightly_unix_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 const MAX_FILES: usize = 10_000;
 const MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
@@ -53,10 +53,6 @@ fn regular(path: &Path) -> Result<std::fs::Metadata, String> {
         return Err("The nightly file is an alias, hardlink or non-regular file.".into());
     }
     Ok(meta)
-}
-
-fn same_file(path: &Path, identity: &std::fs::Metadata) -> bool {
-    regular(path).is_ok_and(|meta| meta.dev() == identity.dev() && meta.ino() == identity.ino())
 }
 
 fn resolved_missing(path: &Path) -> Result<PathBuf, String> {
@@ -242,18 +238,24 @@ impl Inventory {
     }
 }
 
-fn write_entry(input: &mut impl Read, size: u64, destination: &Path, mode: u32) -> Result<(), String> {
-    std::fs::create_dir_all(destination.parent().ok_or("Missing archive parent.")?).map_err(|e| e.to_string())?;
-    let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(destination).map_err(|e| e.to_string())?;
+fn write_entry(
+    input: &mut impl Read,
+    size: u64,
+    destination: &Path,
+    preparation: &mut crate::nightly_transaction::Preparation<'_>,
+    mode: u32,
+) -> Result<(), String> {
+    let mut output = preparation.create(&Path::new("unpacked").join(destination))?;
     let copied = std::io::copy(&mut input.take(size.saturating_add(1)), &mut output).map_err(|e| e.to_string())?;
     if copied != size {
         return Err("The nightly archive has an unexpected unpacked size.".into());
     }
     output.flush().map_err(|e| e.to_string())?;
-    output.set_permissions(std::fs::Permissions::from_mode(if mode & 0o111 != 0 { 0o755 } else { 0o644 })).map_err(|e| e.to_string())
+    output.set_permissions(std::fs::Permissions::from_mode(if mode & 0o111 != 0 { 0o755 } else { 0o644 })).map_err(|e| e.to_string())?;
+    output.sync_all().map_err(|e| e.to_string())
 }
 
-fn extract_tar(file: &Path, destination: &Path) -> Result<Inventory, String> {
+fn extract_tar(file: &Path, preparation: &mut crate::nightly_transaction::Preparation<'_>) -> Result<Inventory, String> {
     let input = std::fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(input));
     let mut inventory = Inventory::new();
@@ -268,16 +270,16 @@ fn extract_tar(file: &Path, destination: &Path) -> Result<Inventory, String> {
         let mode = entry.header().mode().map_err(|e| e.to_string())?;
         let path = inventory.add(entry.path().map_err(|e| e.to_string())?.into_owned(), size, kind.is_dir())?;
         if kind.is_dir() {
-            std::fs::create_dir_all(destination.join(path)).map_err(|e| e.to_string())?;
+            preparation.directories(&Path::new("unpacked").join(path))?;
         } else {
-            write_entry(&mut entry, size, &destination.join(path), mode)?;
+            write_entry(&mut entry, size, &path, preparation, mode)?;
         }
     }
     Ok(inventory)
 }
 
 #[cfg(target_os = "macos")]
-fn extract_zip(file: &Path, destination: &Path) -> Result<Inventory, String> {
+fn extract_zip(file: &Path, preparation: &mut crate::nightly_transaction::Preparation<'_>) -> Result<Inventory, String> {
     let input = std::fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(input).map_err(|e| e.to_string())?;
     if archive.len() > MAX_FILES {
@@ -297,9 +299,9 @@ fn extract_zip(file: &Path, destination: &Path) -> Result<Inventory, String> {
         let size = entry.size();
         let path = inventory.add(path, size, is_dir)?;
         if is_dir {
-            std::fs::create_dir_all(destination.join(path)).map_err(|e| e.to_string())?;
+            preparation.directories(&Path::new("unpacked").join(path))?;
         } else {
-            write_entry(&mut entry, size, &destination.join(path), mode)?;
+            write_entry(&mut entry, size, &path, preparation, mode)?;
         }
     }
     Ok(inventory)
@@ -313,7 +315,7 @@ fn exact_full_version(found: Option<&str>, expected: &str) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn verify_mac(root: &Path, version: &str) -> Result<(), String> {
+fn verify_mac_metadata(root: &Path, version: &str) -> Result<(), String> {
     let bundle = root.join("PhotoCraft Nightly.app");
     let plist_path = bundle.join("Contents/Info.plist");
     if regular(&plist_path)?.len() > 1024 * 1024 {
@@ -334,6 +336,11 @@ fn verify_mac(root: &Path, version: &str) -> Result<(), String> {
     {
         return Err("The nightly bundle identity, full PhotoCraftVersion or association policy does not match.".into());
     }
+    Ok(())
+}
+#[cfg(target_os = "macos")]
+fn verify_mac(root: &Path, version: &str) -> Result<(), String> {
+    verify_mac_metadata(root, version)?;
     let executable = root.join(Adapter::PhotoCraftMacV1.executable());
     let path = executable.to_str().ok_or("The nightly executable path cannot be checked losslessly.")?;
     let architecture = crate::process::run_with_output("/usr/bin/lipo", &["-archs", path], std::time::Duration::from_secs(60))?;
@@ -356,7 +363,7 @@ fn verify_content(adapter: Adapter, root: &Path, files: &[PathBuf]) -> Result<()
     Ok(())
 }
 
-fn verify_program(adapter: Adapter, root: &Path, version: &str) -> Result<(), String> {
+fn verify_structure(adapter: Adapter, root: &Path, version: &str) -> Result<(), String> {
     let executable = root.join(adapter.executable());
     let meta = regular(&executable)?;
     if meta.permissions().mode() & 0o111 == 0 {
@@ -372,7 +379,7 @@ fn verify_program(adapter: Adapter, root: &Path, version: &str) -> Result<(), St
             Ok(())
         }
         #[cfg(target_os = "macos")]
-        Adapter::PhotoCraftMacV1 => verify_mac(root, version),
+        Adapter::PhotoCraftMacV1 => verify_mac_metadata(root, version),
         _ => {
             let _ = version;
             Err("This nightly adapter is not available on the current platform.".into())
@@ -401,7 +408,27 @@ pub(crate) fn validate_record(adapter: Adapter, paths: &Paths, record: &Record) 
     }
     layout(adapter, &relative, &relative)?;
     verify_content(adapter, &root, &relative)?;
-    verify_program(adapter, &root, &record.version)
+    verify_structure(adapter, &root, &record.version)?;
+    // Ownership does not depend on today's Gatekeeper/trust approval. Intact revoked copies
+    // remain detectable, revealable and removable. Install and every Open approve separately.
+    Ok(())
+}
+
+fn verify_program(adapter: Adapter, root: &Path, version: &str) -> Result<(), String> {
+    verify_structure(adapter, root, version)?;
+    #[cfg(target_os = "macos")]
+    if adapter == Adapter::PhotoCraftMacV1 {
+        verify_mac(root, version)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn approve(adapter: Adapter, paths: &Paths, record: &Record) -> Result<(), String> {
+    verify_program(adapter, &paths.apps().join(adapter.app()), &record.version)
+}
+
+pub(crate) fn validate_layout(adapter: Adapter, files: &[PathBuf]) -> Result<(), String> {
+    layout(adapter, files, files)
 }
 
 fn verify_archive_digest(file: &Path, expected: &str) -> Result<(), String> {
@@ -418,251 +445,89 @@ pub(crate) struct Package<'a> {
     pub previous: Option<&'a Record>,
     pub paths: &'a Paths,
     pub archive_sha256: String,
+    pub lease: Option<&'a crate::nightly_transaction::Lease>,
 }
 
-/// Roll back only files this transaction created. Restore through create_new so an arriving
-/// file is never overwritten. A failed restoration keeps the backup and reports its path.
+pub(crate) use crate::nightly_transaction::Checkpoint;
+
 pub(crate) fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> Result<(), String>) -> Result<Record, String> {
     install_with_checkpoints(package, commit, &mut |_| Ok(()))
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Checkpoint {
-    ArchiveExtracted,
-    RootReserved,
-    BackupsSaved,
-    BeforeCommit,
-}
-
-// The production entry point supplies a no-op observer. Tests inject a rename at an exact
-// filesystem boundary; no sleeps, shared environment, descriptor input or global hook is used.
-fn install_with_checkpoints(
+pub(crate) fn install_with_checkpoints(
     package: Package<'_>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
     checkpoint: &mut dyn FnMut(Checkpoint) -> Result<(), String>,
 ) -> Result<Record, String> {
-    let Package { adapter, file, version, previous, paths, archive_sha256 } = package;
+    let Package { adapter, file, version, previous, paths, archive_sha256, lease } = package;
     verify_archive_digest(file, &archive_sha256)?;
     adapter.validate_profile(paths)?;
     if let Some(previous) = previous {
         adapter.validate_record(paths, previous)?;
     }
+    let own_lease;
+    let lease = match lease {
+        Some(lease) => lease,
+        None => {
+            own_lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
+            &own_lease
+        }
+    };
+    let mut preparation = lease.prepare()?;
     let root = paths.apps().join(adapter.app());
-    directory(&root)?;
-    if previous.is_none() && std::fs::symlink_metadata(&root).is_ok() {
-        return Err("The unowned existing nightly directory was left unchanged.".into());
-    }
-    let staging_parent = paths.cache.join("staging");
-    directory(&staging_parent)?;
-    std::fs::create_dir_all(&staging_parent).map_err(|e| e.to_string())?;
-    let staging = tempfile::Builder::new().prefix("photocraft-nightly-").tempdir_in(staging_parent).map_err(|e| e.to_string())?;
-    let unpacked = staging.path().join("unpacked");
-    std::fs::create_dir(&unpacked).map_err(|e| e.to_string())?;
-    let inventory = match adapter {
-        Adapter::PhotoCraftLinuxV1 if cfg!(target_os = "linux") => extract_tar(file, &unpacked)?,
-        #[cfg(target_os = "macos")]
-        Adapter::PhotoCraftMacV1 => extract_zip(file, &unpacked)?,
-        _ => return Err("The nightly archive format is not supported on this platform.".into()),
-    };
-    layout(adapter, &inventory.files, &inventory.entries)?;
-    verify_content(adapter, &unpacked, &inventory.files)?;
-    verify_program(adapter, &unpacked, version)?;
-    checkpoint(Checkpoint::ArchiveExtracted)?;
-    // Detect any mutation/replacement between authentication and extraction, before touching old files.
-    verify_archive_digest(file, &archive_sha256)?;
-    let old_files: Vec<_> = previous.map(|record| record.files.clone()).unwrap_or_default();
-    for relative in &inventory.files {
-        let target = root.join(relative);
-        directory(target.parent().ok_or("Missing destination parent.")?)?;
-        if std::fs::symlink_metadata(&target).is_ok() && !old_files.contains(&target) {
-            return Err("The nightly update would overwrite an unrecorded file.".into());
-        }
-    }
-    std::fs::create_dir_all(root.parent().ok_or("Missing program parent.")?).map_err(|e| e.to_string())?;
-    let created_root = match std::fs::create_dir(&root) {
-        Ok(()) => true,
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && previous.is_some() => {
-            directory(&root)?;
-            false
-        }
-        Err(error) => return Err(error.to_string()),
-    };
-    let root_identity = std::fs::symlink_metadata(&root).map_err(|e| e.to_string())?;
-    let backup = staging.path().join("backup");
-    let record = Record {
-        version: version.into(),
-        kind: adapter.kind(),
-        path: root.join(adapter.executable()),
-        installed_at: crate::now(),
-        files: inventory.files.iter().map(|p| root.join(p)).collect(),
-        needs_root: false,
-    };
-    let original_directories = original_directories(&root, &old_files)?;
-    let mut saved = Vec::new();
-    let mut created = Vec::new();
-    let mut created_directories = if created_root { vec![(root.clone(), root_identity.clone())] } else { Vec::new() };
-    let transaction = (|| {
-        checkpoint(Checkpoint::RootReserved)?;
-        require_program_root(&root, &root_identity)?;
-        for old in &old_files {
-            require_program_root(&root, &root_identity)?;
-            let identity = regular(old)?;
-            let relative = old.strip_prefix(&root).map_err(|e| e.to_string())?;
-            let copy = backup.join(relative);
-            std::fs::create_dir_all(copy.parent().ok_or("Missing backup parent.")?).map_err(|e| e.to_string())?;
-            std::fs::copy(old, &copy).map_err(|e| e.to_string())?;
-            require_program_root(&root, &root_identity)?;
-            if !same_file(old, &identity) {
-                return Err("A recorded file changed during backup; it was left unchanged.".into());
-            }
-            std::fs::remove_file(old).map_err(|e| e.to_string())?;
-            saved.push(relative.to_path_buf());
-        }
-        checkpoint(Checkpoint::BackupsSaved)?;
-        require_program_root(&root, &root_identity)?;
-        for relative in &inventory.files {
-            require_program_root(&root, &root_identity)?;
-            let target = root.join(relative);
-            directory(target.parent().ok_or("Missing program parent.")?)?;
-            create_program_parents(&root, target.parent().ok_or("Missing program parent.")?, &original_directories, &mut created_directories)?;
-            let mut input = std::fs::File::open(unpacked.join(relative)).map_err(|e| e.to_string())?;
-            require_program_root(&root, &root_identity)?;
-            let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| e.to_string())?;
-            created.push((target.clone(), output.metadata().map_err(|e| e.to_string())?));
-            require_program_root(&root, &root_identity)?;
-            std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
-            output.set_permissions(input.metadata().map_err(|e| e.to_string())?.permissions()).map_err(|e| e.to_string())?;
-            require_program_root(&root, &root_identity)?;
-        }
-        require_program_root(&root, &root_identity)?;
-        adapter.validate_record(paths, &record)?;
-        checkpoint(Checkpoint::BeforeCommit)?;
-        require_program_root(&root, &root_identity)?;
-        commit(&record)
+    let prepared = (|| {
+        preparation.directories(Path::new("unpacked"))?;
+        let inventory = match adapter {
+            Adapter::PhotoCraftLinuxV1 if cfg!(target_os = "linux") => extract_tar(file, &mut preparation)?,
+            #[cfg(target_os = "macos")]
+            Adapter::PhotoCraftMacV1 => extract_zip(file, &mut preparation)?,
+            _ => return Err("The Nightly archive format is unsupported on this platform.".into()),
+        };
+        let unpacked = preparation.path().join("unpacked");
+        layout(adapter, &inventory.files, &inventory.entries)?;
+        verify_content(adapter, &unpacked, &inventory.files)?;
+        verify_program(adapter, &unpacked, version)?;
+        checkpoint(Checkpoint::ArchiveExtracted)?;
+        verify_archive_digest(file, &archive_sha256)?;
+        let record = Record {
+            version: version.into(),
+            kind: adapter.kind(),
+            path: root.join(adapter.executable()),
+            installed_at: crate::now(),
+            files: inventory.files.iter().map(|file| root.join(file)).collect(),
+            needs_root: false,
+        };
+        preparation.seal(previous, Some(&record))?;
+        Ok(record)
     })();
-    if let Err(error) = transaction {
-        let rollback = rollback(&root, &root_identity, &original_directories, &backup, &created, &saved);
-        if let Err(restore) = rollback {
-            let recovery = staging.keep();
-            return Err(format!("{error}; rollback could not finish ({restore}). Recovery files: {}", recovery.display()));
-        }
-        // Only empty directories created by us may disappear. Foreign/arriving files survive.
-        for (directory, identity) in created_directories.iter().rev() {
-            if same_directory(directory, identity) {
-                let _ = std::fs::remove_dir(directory);
-            }
-        }
-        return Err(error);
-    }
+    let record = match prepared {
+        Ok(record) => record,
+        Err(error) => return Err(preparation.abort(error)),
+    };
+    let mut held = None;
+    let mut committed = false;
+    let transaction = (|| {
+        preparation.apply(&mut held, checkpoint)?;
+        adapter.validate_record(paths, &record)?;
+        approve(adapter, paths, &record)?; // staged AND installed approval, not just ownership
+        checkpoint(Checkpoint::BeforeCommit)?;
+        preparation.verify_installed()?;
+        commit(&record)?;
+        committed = true;
+        checkpoint(Checkpoint::AfterCommit)
+    })();
+    preparation.finish(transaction, held, committed)?;
     Ok(record)
 }
 
-/// Point-in-time refusal, not an atomic directory capability: pathname operations still
-/// have a check/use window. Never describe this guard as race-free against concurrent renames.
-fn require_program_root(root: &Path, identity: &std::fs::Metadata) -> Result<(), String> {
-    directory(root)?;
-    if !same_directory(root, identity) {
-        return Err("The reserved nightly program directory changed identity; the replacement was not adopted.".into());
-    }
-    Ok(())
-}
-
-fn same_directory(path: &Path, identity: &std::fs::Metadata) -> bool {
-    std::fs::symlink_metadata(path)
-        .is_ok_and(|meta| meta.is_dir() && !meta.file_type().is_symlink() && meta.dev() == identity.dev() && meta.ino() == identity.ino())
-}
-
-fn create_program_parents(
-    root: &Path,
-    parent: &Path,
-    original: &std::collections::BTreeMap<PathBuf, std::fs::Metadata>,
-    created: &mut Vec<(PathBuf, std::fs::Metadata)>,
+#[cfg(test)]
+pub(crate) fn remove_with_checkpoints(
+    adapter: Adapter,
+    record: &Record,
+    paths: &Paths,
+    checkpoint: &mut dyn FnMut(Checkpoint) -> Result<(), String>,
 ) -> Result<(), String> {
-    // The root is an ownership boundary even when parent == root and the loop is empty.
-    let identity = original
-        .get(root)
-        .or_else(|| created.iter().find(|(path, _)| path == root).map(|(_, identity)| identity))
-        .ok_or("The program root has no transaction ownership identity.")?;
-    require_program_root(root, identity)?;
-    let relative = parent.strip_prefix(root).map_err(|e| e.to_string())?;
-    let mut path = root.to_path_buf();
-    for component in relative.components() {
-        path.push(component);
-        match std::fs::create_dir(&path) {
-            Ok(()) => created.push((path.clone(), std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?)),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                directory(&path)?;
-                let identity = original.get(&path).or_else(|| created.iter().find(|(created, _)| created == &path).map(|(_, identity)| identity));
-                if identity.is_none_or(|identity| !same_directory(&path, identity)) {
-                    return Err("A program parent directory is unowned or changed identity; it was left unchanged.".into());
-                }
-            }
-            Err(error) => return Err(error.to_string()),
-        }
-    }
-    Ok(())
-}
-
-fn original_directories(root: &Path, files: &[PathBuf]) -> Result<std::collections::BTreeMap<PathBuf, std::fs::Metadata>, String> {
-    let mut directories = std::collections::BTreeMap::new();
-    for file in files {
-        for parent in file.ancestors().skip(1).take_while(|parent| parent.starts_with(root)) {
-            directory(parent)?;
-            if !directories.contains_key(parent) {
-                directories.insert(parent.to_path_buf(), std::fs::symlink_metadata(parent).map_err(|e| e.to_string())?);
-            }
-        }
-    }
-    Ok(directories)
-}
-
-fn rollback(
-    root: &Path,
-    root_identity: &std::fs::Metadata,
-    original_directories: &std::collections::BTreeMap<PathBuf, std::fs::Metadata>,
-    backup: &Path,
-    created: &[(PathBuf, std::fs::Metadata)],
-    saved: &[PathBuf],
-) -> Result<(), String> {
-    if !same_directory(root, root_identity) {
-        return Err("The program directory changed identity; the arriving directory was left untouched.".into());
-    }
-    if original_directories.iter().any(|(path, identity)| !same_directory(path, identity) || directory(path).is_err()) {
-        return Err("A program parent directory changed identity; rollback did not write into it.".into());
-    }
-    for (target, identity) in created {
-        if same_file(target, identity) {
-            std::fs::remove_file(target).map_err(|e| e.to_string())?;
-        }
-    }
-    for relative in saved {
-        let source = backup.join(relative);
-        let mut input = std::fs::File::open(&source).map_err(|e| e.to_string())?;
-        let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(root.join(relative)).map_err(|e| e.to_string())?;
-        std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
-        output.set_permissions(input.metadata().map_err(|e| e.to_string())?.permissions()).map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-fn prune_parents(root: &Path, files: &[PathBuf], remove_root: bool) {
-    for file in files {
-        let mut directory = file.parent();
-        while let Some(path) = directory.filter(|path| path.starts_with(root) && (remove_root || *path != root)) {
-            if std::fs::remove_dir(path).is_err() || path == root {
-                break;
-            }
-            directory = path.parent();
-        }
-    }
-}
-
-pub(crate) fn remove(adapter: Adapter, record: &Record, paths: &Paths) -> Result<(), String> {
     adapter.validate_record(paths, record)?;
-    for file in &record.files {
-        regular(file)?;
-        std::fs::remove_file(file).map_err(|e| e.to_string())?;
-    }
-    prune_parents(&paths.apps().join(adapter.app()), &record.files, true);
-    Ok(())
+    let lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
+    crate::nightly_transaction::remove(&lease, record, &mut || Ok(()), checkpoint)
 }

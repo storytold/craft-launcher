@@ -107,6 +107,7 @@ fn signed_archive_test_key_passes_exact_bytes_and_bad_missing_wrong_key_tool_fai
             previous: None,
             paths: &paths,
             archive_sha256: asset.sha256.clone().unwrap(),
+            lease: None,
         },
         &mut |_| {
             commits += 1;
@@ -184,7 +185,8 @@ fn signed_archive_test_key_passes_exact_bytes_and_bad_missing_wrong_key_tool_fai
                 version,
                 previous: Some(&initial),
                 paths: &paths,
-                archive_sha256: asset.sha256.unwrap()
+                archive_sha256: asset.sha256.unwrap(),
+                lease: None
             },
             &mut |_| {
                 commits += 1;

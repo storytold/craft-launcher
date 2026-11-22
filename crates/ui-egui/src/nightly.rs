@@ -160,6 +160,10 @@ impl NightlyState {
         enabled || self.entries.iter().any(|entry| entry.installed.is_some())
     }
 
+    pub fn busy(&self) -> bool {
+        self.backend.as_ref().is_some_and(|backend| backend.has_active_jobs()) || self.entries.iter().any(|entry| entry.job.is_some())
+    }
+
     pub fn configure(&mut self, settings: &Settings) {
         let options = BackendOptions {
             nightly_enabled: settings.nightly_enabled,
@@ -233,7 +237,23 @@ impl NightlyState {
                         entry.installable = Some(settings.nightly_enabled && installable);
                     }
                 }
-                Event::Notice { result: Err(why), .. } | Event::JobFinished { result: Err(why), .. } => {
+                Event::Progress { app, phase } => {
+                    if let Some(entry) = self.entries.iter_mut().find(|entry| entry.app.id == app) {
+                        entry.job = Some(phase);
+                    }
+                }
+                Event::JobFinished { app, result } => {
+                    if let Some(entry) = self.entries.iter_mut().find(|entry| entry.app.id == app) {
+                        entry.job = None;
+                    }
+                    if let Err(why) = result {
+                        self.notices.push(why);
+                        if self.notices.len() > 4 {
+                            self.notices.remove(0);
+                        }
+                    }
+                }
+                Event::Notice { result: Err(why), .. } => {
                     self.notices.push(why);
                     if self.notices.len() > 4 {
                         self.notices.remove(0);
@@ -999,8 +1019,12 @@ mod status_tests {
         events: Rc<RefCell<Vec<Event>>>,
         sent: Rc<RefCell<Vec<Command>>>,
         now: Rc<Cell<i64>>,
+        active_jobs: Rc<Cell<bool>>,
     }
     impl Backend for FakeBackend {
+        fn has_active_jobs(&self) -> bool {
+            self.active_jobs.get()
+        }
         fn send(&mut self, command: Command) {
             self.sent.borrow_mut().push(command);
         }
@@ -1017,6 +1041,39 @@ mod status_tests {
             self.now.get()
         }
     }
+    #[test]
+    fn review_probe_nightly_jobs_block_quit_before_progress_through_off_until_terminal() {
+        let fake = FakeBackend::default();
+        let stable = FakeBackend::default();
+        let ctx = egui::Context::default();
+        let mut ui = LauncherUi::new(&ctx, Box::new(stable), Settings { language: "en".into(), ..Default::default() });
+        ui.nightly = NightlyState::new(Some(Box::new(fake.clone())), None);
+        let mut settings = Settings { nightly_enabled: true, ..Default::default() };
+        assert!(!ui.busy());
+        fake.active_jobs.set(true); // Native admission has happened; no progress event exists yet.
+        assert!(ui.busy());
+        fake.events.borrow_mut().push(Event::Progress { app: "photocraft".into(), phase: artcraft_launcher_core::protocol::JobPhase::Removing });
+        ui.nightly.logic(&settings);
+        assert!(ui.nightly.entries.iter().find(|entry| entry.app.id == "photocraft").unwrap().job.is_some());
+        settings.nightly_enabled = false;
+        ui.nightly.logic(&settings);
+        assert!(ui.busy());
+        fake.active_jobs.set(false);
+        fake.events.borrow_mut().push(Event::JobFinished { app: "photocraft".into(), result: Ok("finished".into()) });
+        ui.nightly.logic(&settings);
+        assert!(!ui.busy());
+        fake.events.borrow_mut().push(Event::CheckStarted);
+        ui.nightly.logic(&settings);
+        assert!(ui.nightly.checking);
+        assert!(!ui.busy());
+        fake.events.borrow_mut().push(Event::Progress { app: "photocraft".into(), phase: artcraft_launcher_core::protocol::JobPhase::Installing });
+        ui.nightly.logic(&settings);
+        assert!(ui.busy());
+        fake.events.borrow_mut().push(Event::JobFinished { app: "photocraft".into(), result: Err("cancelled".into()) });
+        ui.nightly.logic(&settings);
+        assert!(!ui.busy());
+    }
+
     fn status(attempted_at: i64, verified_at: i64, stale: bool, retry_at: Option<i64>) -> Event {
         Event::NightlyStatus {
             app: "photocraft".into(),

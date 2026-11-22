@@ -77,3 +77,9 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 | Manifest | Title | Author | Source and version | License and acquisition |
 |---|---|---|---|---|
 | `crates/native/tests/fixtures/windows-signed-reference.json` | Signed `pwsh.exe` read-only native-verification reference | Microsoft Corporation | Official PowerShell v7.7.0 `PowerShell-7.7.0-win-x64.zip`, exact URL/archive and root-entry hashes in the manifest | MIT, upstream versioned `LICENSE.txt`; provision externally from the original release, hash before extraction, keep upstream notices alongside it. No binary is vendored, executed, bundled or installed by the test. |
+
+## Native filesystem dependency
+
+| Dependency | Author | Source and version | License |
+|---|---|---|---|
+| `rustix` | The rustix project developers | <https://github.com/bytecodealliance/rustix>, 1.1.5 (already locked; now directly used for Nightly held-directory operations) | MIT, selected from upstream's offered license alternatives; permission notice in `NOTICE` |

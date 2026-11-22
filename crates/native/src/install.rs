@@ -143,7 +143,7 @@ pub fn install_at(
     job: &mut Job<'_>,
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
-    install_at_with_profile(InstallRequest { app, release, asset, kind, existing, previous, signature: None }, job, commit, None)
+    install_at_with_profile(InstallRequest { app, release, asset, kind, existing, previous, signature: None }, job, commit, None, None)
 }
 
 pub(crate) fn install_nightly_at(
@@ -152,6 +152,7 @@ pub(crate) fn install_nightly_at(
     previous: Option<&Record>,
     job: &mut Job<'_>,
     commit: RecordCommit<'_>,
+    lease: &crate::nightly_transaction::Lease,
 ) -> Result<Option<Record>, String> {
     let profile = verified.adapter();
     let app = CraftApp::by_id(profile.app()).ok_or("The nightly profile has no known app.")?;
@@ -164,7 +165,7 @@ pub(crate) fn install_nightly_at(
         previous,
         signature: verified.signature(),
     };
-    install_at_with_profile(request, job, commit, Some(profile))
+    install_at_with_profile(request, job, commit, Some(profile), Some(lease))
 }
 
 struct InstallRequest<'a> {
@@ -182,6 +183,7 @@ fn install_at_with_profile(
     job: &mut Job<'_>,
     commit: RecordCommit<'_>,
     profile: Option<crate::nightly_profile::Adapter>,
+    #[allow(unused_variables)] lease: Option<&crate::nightly_transaction::Lease>,
 ) -> Result<Option<Record>, String> {
     let InstallRequest { app, release, asset, kind, existing, previous, signature } = request;
     if let Some(profile) = profile {
@@ -303,6 +305,7 @@ fn install_at_with_profile(
                 previous,
                 paths: job.paths,
                 archive_sha256: sha256.clone(),
+                lease,
             },
             &mut |record| match commit.as_deref_mut() {
                 Some(commit) => commit(record),

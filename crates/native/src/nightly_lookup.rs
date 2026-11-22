@@ -153,6 +153,9 @@ fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<O
                 Some(false) => {}
                 None => return Err(failure("The Nightly page has indeterminate publication state.")),
             }
+            if item["prerelease"].as_bool() == Some(false) {
+                continue; // Ordinary releases need not use the Nightly tag grammar.
+            }
             if item["prerelease"].as_bool().is_none() {
                 return Err(failure("The Nightly page has indeterminate channel state."));
             }

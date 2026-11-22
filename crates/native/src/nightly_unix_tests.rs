@@ -1,13 +1,34 @@
 //! Synthetic fixtures generated here, not copied from an app or an external archive.
 use super::*;
 use artcraft_launcher_core::nightly::InstallChannel;
+fn same_directory(path: &Path, identity: &std::fs::Metadata) -> bool {
+    std::fs::symlink_metadata(path)
+        .is_ok_and(|meta| meta.is_dir() && !meta.file_type().is_symlink() && meta.dev() == identity.dev() && meta.ino() == identity.ino())
+}
+
+// Unlike the old no-op commit fixtures, these callbacks now exercise a real persisted
+// previous/next record. Failing callbacks still return BEFORE any manifest replacement.
+fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> Result<(), String>) -> Result<Record, String> {
+    let paths = package.paths.clone();
+    super::install(package, &mut |record| {
+        commit(record)?;
+        let mut manifest = crate::nightly_transaction::stored_manifest(&paths)?;
+        manifest.apps.insert("photocraft".into(), record.clone());
+        manifest.save(&paths.manifest())
+    })
+}
+fn remove(adapter: Adapter, record: &Record, paths: &Paths) -> Result<(), String> {
+    adapter.validate_record(paths, record)?;
+    let lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
+    crate::nightly_transaction::remove(&lease, record, &mut || lease.publish(Some(record), None).map(|_| ()), &mut |_| Ok(()))
+}
 
 const VERSION: &str = "1.0.0-nightly.20261121.123456.1.gabcdefabcdef";
 
-fn paths(root: &Path) -> Paths {
+pub(crate) fn paths(root: &Path) -> Paths {
     Paths::under(&root.canonicalize().unwrap()).for_channel(InstallChannel::Nightly)
 }
-fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
+pub(crate) fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
     let output = std::fs::File::create(path).unwrap();
     let encoder = flate2::write::GzEncoder::new(output, flate2::Compression::default());
     let mut tar = tar::Builder::new(encoder);
@@ -29,15 +50,32 @@ fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
     }
     tar.into_inner().unwrap().finish().unwrap();
 }
-fn program() -> Vec<u8> {
+pub(crate) fn program() -> Vec<u8> {
     // ELF64 little-endian x86_64 executable header; never executed by a test.
     let mut bytes = vec![0; 64];
     bytes[..7].copy_from_slice(b"\x7fELF\x02\x01\x01");
     bytes[16..20].copy_from_slice(&[2, 0, 62, 0]);
     bytes
 }
-fn package<'a>(file: &'a Path, paths: &'a Paths, previous: Option<&'a Record>) -> Package<'a> {
-    Package { adapter: Adapter::PhotoCraftLinuxV1, file, version: VERSION, previous, paths, archive_sha256: crate::http::sha256_file(file).unwrap() }
+pub(crate) fn package<'a>(file: &'a Path, paths: &'a Paths, previous: Option<&'a Record>) -> Package<'a> {
+    // Low-level callback tests explicitly persist the supplied previous record, just as a
+    // production worker’s strict snapshot does. Never overwrite existing or malformed metadata.
+    if let Some(record) = previous
+        && !paths.manifest().exists()
+    {
+        let mut manifest = crate::manifest::Manifest::default();
+        manifest.apps.insert("photocraft".into(), record.clone());
+        manifest.save(&paths.manifest()).unwrap();
+    }
+    Package {
+        adapter: Adapter::PhotoCraftLinuxV1,
+        file,
+        version: VERSION,
+        previous,
+        paths,
+        archive_sha256: crate::http::sha256_file(file).unwrap(),
+        lease: None,
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -118,8 +156,9 @@ fn replacement_after_backup_keeps_old_bytes_and_never_restores_into_foreign_root
     assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
     assert_eq!(std::fs::read(moved.join("user.txt")).unwrap(), b"existing foreign data");
     let recovery = Path::new(error.split("Recovery files: ").nth(1).unwrap());
-    assert_eq!(std::fs::read(recovery.join("backup/photocraft")).unwrap(), old_program);
-    assert_eq!(std::fs::read(recovery.join("backup/NOTICE")).unwrap(), b"old notice");
+    assert_eq!(std::fs::read(moved.join("photocraft")).unwrap(), old_program);
+    assert_eq!(std::fs::read(moved.join("NOTICE")).unwrap(), b"old notice");
+    // Restore is fd-relative into the held original root, never the arriving directory.
     assert_eq!(std::fs::read(recovery.join("unpacked/NOTICE")).unwrap(), b"new notice");
 }
 
@@ -150,7 +189,10 @@ fn root_replacement_at_final_checkpoint_never_calls_commit() {
     assert!(result.is_err());
     assert!(!committed);
     assert_eq!(std::fs::read_dir(root).unwrap().count(), 0);
-    assert_eq!(std::fs::read(moved.join("photocraft")).unwrap(), program());
+    assert_eq!(std::fs::read_dir(&moved).unwrap().count(), 0);
+    let error = result.unwrap_err();
+    let recovery = Path::new(error.split("Recovery files: ").nth(1).unwrap());
+    assert_eq!(std::fs::read(recovery.join("unpacked/photocraft")).unwrap(), program());
 }
 
 #[test]
@@ -159,14 +201,14 @@ fn parent_equal_to_root_still_requires_the_reserved_identity() {
     let base = temp.path().canonicalize().unwrap();
     let root = base.join("program");
     std::fs::create_dir(&root).unwrap();
-    let original = std::collections::BTreeMap::from([(root.clone(), std::fs::metadata(&root).unwrap())]);
-    std::fs::rename(&root, base.join("moved")).unwrap();
+    let held = crate::nightly_fs::Dir::open(&root).unwrap();
+    let moved = base.join("moved");
+    std::fs::rename(&root, &moved).unwrap();
     std::fs::create_dir(&root).unwrap();
-    let replacement_identity = std::fs::metadata(&root).unwrap();
-    let mut created = Vec::new();
-    assert!(create_program_parents(&root, &root, &original, &mut created).is_err());
-    assert!(created.is_empty());
-    assert!(same_directory(&root, &replacement_identity));
+    assert_ne!(held.id().unwrap(), crate::nightly_fs::Dir::open(&root).unwrap().id().unwrap());
+    // The empty relative parent is still the held ORIGINAL directory, not its replacement.
+    held.file(Path::new("owned"), true).unwrap();
+    assert!(moved.join("owned").is_file());
     assert_eq!(std::fs::read_dir(root).unwrap().count(), 0);
 }
 
@@ -196,16 +238,21 @@ fn update_failure_restores_owned_bytes_modes_and_keeps_foreign_files_and_profile
     let file = temp.path().join("nightly.tar.gz");
     archive(&file, &[("photocraft", &program(), 0o755), ("NOTICE", b"old notice", 0o644)]);
     let record = install(package(&file, &paths, None), &mut |_| Ok(())).unwrap();
+    std::fs::set_permissions(&record.path, std::fs::Permissions::from_mode(0o751)).unwrap();
+    let old_program = std::fs::read(&record.path).unwrap();
     let root = paths.apps().join("photocraft");
     let foreign = root.join("user.txt");
     std::fs::write(&foreign, b"foreign").unwrap();
     let profile = Adapter::PhotoCraftLinuxV1.profile_root(&paths).unwrap();
     std::fs::create_dir_all(&profile).unwrap();
     std::fs::write(profile.join("preferences"), b"user preferences").unwrap();
-    archive(&file, &[("photocraft", &program(), 0o755), ("NOTICE", b"new notice", 0o644)]);
+    let mut changed = program();
+    changed.extend_from_slice(b"different replacement executable");
+    archive(&file, &[("photocraft", &changed, 0o755), ("NOTICE", b"new notice", 0o644)]);
     assert!(install(package(&file, &paths, Some(&record)), &mut |_| Err("commit failed".into())).is_err());
     assert_eq!(std::fs::read(root.join("NOTICE")).unwrap(), b"old notice");
-    assert_ne!(std::fs::metadata(&record.path).unwrap().permissions().mode() & 0o111, 0);
+    assert_eq!(std::fs::read(&record.path).unwrap(), old_program);
+    assert_eq!(std::fs::metadata(&record.path).unwrap().permissions().mode() & 0o777, 0o751);
     assert_eq!(std::fs::read(&foreign).unwrap(), b"foreign");
     remove(Adapter::PhotoCraftLinuxV1, &record, &paths).unwrap();
     assert_eq!(std::fs::read(&foreign).unwrap(), b"foreign");
@@ -250,7 +297,9 @@ fn failed_fresh_commit_never_removes_an_arriving_empty_program_directory() {
     assert!(error.contains("changed identity"), "{error}");
     assert!(same_directory(&program_root, &arriving_identity.unwrap()));
     assert_eq!(std::fs::read_dir(program_root).unwrap().count(), 0);
-    assert_eq!(std::fs::read(moved.join("photocraft")).unwrap(), program());
+    assert_eq!(std::fs::read_dir(&moved).unwrap().count(), 0);
+    let recovery = Path::new(error.split("Recovery files: ").nth(1).unwrap());
+    assert_eq!(std::fs::read(recovery.join("unpacked/photocraft")).unwrap(), program());
 }
 
 #[cfg(target_os = "linux")]
@@ -298,6 +347,16 @@ fn unrecorded_collisions_hardlinks_and_changed_parent_aliases_refuse_before_repl
     assert_eq!(std::fs::read(moved.join("photocraft")).unwrap(), program());
 }
 
+fn extract_rejected(file: &Path, destination: &Path) -> Result<Inventory, String> {
+    let paths = paths(destination.parent().unwrap());
+    let lease = crate::nightly_transaction::Lease::acquire(&paths, Adapter::PhotoCraftLinuxV1)?;
+    let mut preparation = lease.prepare()?;
+    preparation.directories(Path::new("unpacked"))?;
+    let result = extract_tar(file, &mut preparation);
+    preparation.abort("archive fixture cleanup".into());
+    result
+}
+
 #[test]
 fn archive_rejects_traversal_links_special_files_aliases_duplicates_and_size_bombs() {
     let temp = tempfile::tempdir().unwrap();
@@ -314,7 +373,7 @@ fn archive_rejects_traversal_links_special_files_aliases_duplicates_and_size_bom
         header.set_cksum();
         tar.append_data(&mut header, "photocraft", &b""[..]).unwrap();
         tar.into_inner().unwrap().finish().unwrap();
-        assert!(extract_tar(&file, &out).is_err());
+        assert!(extract_rejected(&file, &out).is_err());
     }
     for name in ["../escape", "/absolute", "a/../escape", "a\\escape"] {
         let mut header = tar::Header::new_gnu();
@@ -327,7 +386,7 @@ fn archive_rejects_traversal_links_special_files_aliases_duplicates_and_size_bom
         gzip.write_all(header.as_bytes()).unwrap();
         gzip.write_all(&[0u8; 1024]).unwrap();
         gzip.finish().unwrap();
-        assert!(extract_tar(&file, &out).is_err(), "{name}");
+        assert!(extract_rejected(&file, &out).is_err(), "{name}");
     }
     // An extension header claiming a giant GNU long-name body is refused before reading it.
     let mut header = tar::Header::new_gnu();
@@ -338,7 +397,7 @@ fn archive_rejects_traversal_links_special_files_aliases_duplicates_and_size_bom
     let mut gzip = flate2::write::GzEncoder::new(std::fs::File::create(&file).unwrap(), flate2::Compression::default());
     gzip.write_all(header.as_bytes()).unwrap();
     gzip.finish().unwrap();
-    assert!(extract_tar(&file, &out).is_err());
+    assert!(extract_rejected(&file, &out).is_err());
     for unsafe_path in ["../escape", "/absolute", "a/../escape", "a/./escape", "a//escape", "a\\escape", "C:escape", "name.", "name "] {
         assert!(safe_relative(Path::new(unsafe_path)).is_err(), "{unsafe_path}");
     }
@@ -385,19 +444,20 @@ fn app_specific_stable_roots_refuse_ancestors_descendants_and_aliases_but_allow_
 #[test]
 fn preexisting_empty_nested_program_directories_are_not_implicitly_adopted() {
     let temp = tempfile::tempdir().unwrap();
-    let root = temp.path().canonicalize().unwrap();
-    let foreign = root.join("foreign");
+    let paths = paths(temp.path());
+    let lease = crate::nightly_transaction::Lease::acquire(&paths, Adapter::PhotoCraftLinuxV1).unwrap();
+    let mut preparation = lease.prepare().unwrap();
+    preparation.directories(Path::new("unpacked")).unwrap();
+    let foreign = preparation.path().join("unpacked/foreign");
     std::fs::create_dir(&foreign).unwrap();
     let identity = std::fs::metadata(&foreign).unwrap();
-    let mut created = Vec::new();
-    let original = std::collections::BTreeMap::from([(root.clone(), std::fs::metadata(&root).unwrap())]);
-    assert!(create_program_parents(&root, &foreign, &original, &mut created).is_err());
-    assert!(created.is_empty());
+    assert!(preparation.directories(Path::new("unpacked/foreign")).is_err());
     assert!(same_directory(&foreign, &identity));
-    let owned = root.join("owned");
-    create_program_parents(&root, &owned, &original, &mut created).unwrap();
-    create_program_parents(&root, &owned, &original, &mut created).unwrap();
-    assert_eq!(created.len(), 1);
+    let first = preparation.directories(Path::new("unpacked/owned")).unwrap().id().unwrap();
+    let again = preparation.directories(Path::new("unpacked/owned")).unwrap().id().unwrap();
+    assert_eq!(first, again);
+    assert!(preparation.abort("test abort".into()).contains("preserved"));
+    assert!(same_directory(&foreign, &identity));
 }
 
 #[cfg(target_os = "linux")]
@@ -449,7 +509,10 @@ fn archive_mutation_after_extraction_refuses_before_old_program_or_records_move(
     std::fs::create_dir_all(&profile).unwrap();
     let personal = profile.join("private.txt");
     std::fs::write(&personal, b"do not change").unwrap();
-    std::fs::write(paths.manifest(), b"old ownership record").unwrap();
+    let mut manifest = crate::manifest::Manifest::default();
+    manifest.apps.insert("photocraft".into(), old.clone());
+    manifest.save(&paths.manifest()).unwrap();
+    let manifest_before = std::fs::read(paths.manifest()).unwrap();
     let mut replacement = program();
     replacement.extend_from_slice(b"new executable");
     archive(&file, &[("photocraft", &replacement, 0o755)]);
@@ -471,5 +534,5 @@ fn archive_mutation_after_extraction_refuses_before_old_program_or_records_move(
     assert!(!committed);
     assert_eq!(std::fs::read(old.path).unwrap(), before);
     assert_eq!(std::fs::read(personal).unwrap(), b"do not change");
-    assert_eq!(std::fs::read(paths.manifest()).unwrap(), b"old ownership record");
+    assert_eq!(std::fs::read(paths.manifest()).unwrap(), manifest_before);
 }

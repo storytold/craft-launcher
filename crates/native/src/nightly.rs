@@ -8,6 +8,8 @@ use crate::http::Http;
 use crate::manifest::Record;
 use crate::nightly_profile::{self, Adapter};
 use crate::paths::Paths;
+#[cfg(windows)]
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 pub(crate) struct VerifiedRelease {
@@ -131,42 +133,55 @@ pub(crate) fn owned_installation(app: &CraftApp, record: &Record, paths: &Paths,
 
 /// OFF preserves this operation: only an owned program and the fixed source-owned profile
 /// selector are used. Caller filenames follow the literal option delimiter.
-pub(crate) fn launch(app: &CraftApp, record: &Record, paths: &Paths, platform: Platform, files: &[String]) -> Result<(), String> {
+pub(crate) fn launch(
+    app: &CraftApp,
+    record: &Record,
+    paths: &Paths,
+    platform: Platform,
+    files: &[String],
+    stop: &crate::http::Stop,
+) -> Result<(), String> {
     owned_installation(app, record, paths, platform)?;
     let adapter = nightly_profile::for_app(app, platform)?;
     adapter.validate_profile(paths)?;
-    let profile = adapter.profile_root(paths)?;
+    let _program = crate::nightly_fs::Dir::open(&paths.apps().join(app.id))?;
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&profile).map_err(|error| error.to_string())?;
-    }
-    #[cfg(not(unix))]
-    std::fs::create_dir_all(&profile).map_err(|error| error.to_string())?;
+    crate::nightly_unix::approve(adapter, paths, record)?;
+    #[cfg(windows)]
+    let _authenticated = {
+        let root = paths.apps().join(app.id);
+        let files = record
+            .files
+            .iter()
+            .map(|file| file.strip_prefix(&root).map(Path::to_path_buf).map_err(|e| e.to_string()))
+            .collect::<Result<Vec<_>, _>>()?;
+        // Kept alive through CreateProcess: deny writes, replacement and deletion after approval.
+        crate::nightly_signing::authenticate_windows(&root, &files)?
+    };
+    stop.check()?;
+    let profile = adapter.profile_root(paths)?;
+    let _profile = crate::nightly_fs::Dir::ensure(&profile)?;
     adapter.validate_profile(paths)?;
     crate::process::launch_binary(&record.path, &adapter.launch_arguments(paths, files)?)
 }
 
 /// Removal is program-only. Persistent profiles live outside this directory and are never
 /// included in the recorded portable files; there is no stable/OS uninstall fallback.
-pub(crate) fn remove(app: &CraftApp, record: &Record, paths: &Paths, platform: Platform, stop: &crate::http::Stop) -> Result<(), String> {
+pub(crate) fn remove(
+    app: &CraftApp,
+    record: &Record,
+    paths: &Paths,
+    platform: Platform,
+    stop: &crate::http::Stop,
+    lease: &crate::nightly_transaction::Lease,
+    commit: &mut dyn FnMut() -> Result<(), String>,
+) -> Result<(), String> {
     owned_installation(app, record, paths, platform)?;
     stop.check()?;
     if crate::process::is_running(&record.path) {
         return Err(format!("{} is running. Quit it, then try again.", app.name));
     }
-    #[cfg(windows)]
-    {
-        crate::portable::remove(app, record)
-    }
-    #[cfg(unix)]
-    {
-        crate::nightly_unix::remove(crate::nightly_profile::for_app(app, platform)?, record, paths)
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        Err("This nightly installation is unavailable on this system.".into())
-    }
+    crate::nightly_transaction::remove(lease, record, commit, &mut |_| Ok(()))
 }
 
 #[cfg(test)]
