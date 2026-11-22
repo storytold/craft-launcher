@@ -1026,14 +1026,7 @@ impl NativeBackend {
                 Some(http) => crate::self_update::update(&install, &release, &repo, platform, http, &paths, &stop, &mut phase, &last),
                 None => Err("secure connections aren't available on this system".into()),
             };
-            drop(job);
-            match result {
-                Ok(()) => shared.emit(Event::LauncherRestarting),
-                Err(e) => {
-                    shared.lifecycle.restarting.store(false, Ordering::SeqCst);
-                    shared.emit(Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) });
-                }
-            }
+            finish_launcher_update(&shared, job, result);
         });
     }
 
@@ -1536,6 +1529,23 @@ fn landed_despite(error: &str, before: Option<&Installed>, after: Option<&Instal
 fn landed(before: Option<&Installed>, after: Option<&Installed>, latest: &version::Version) -> bool {
     let has_latest = |copy: Option<&Installed>| copy.and_then(|i| i.version.as_ref()).is_some_and(|v| !version::is_update(latest, v));
     has_latest(after) && !has_latest(before)
+}
+
+fn finish_launcher_update(shared: &Shared, job: JobGuard, result: Result<(), String>) {
+    // A failed update still owns the launcher reservation here. Clear its claim before
+    // retirement can admit a new updater; success deliberately keeps restart held.
+    if result.is_err() {
+        shared.lifecycle.restarting.store(false, Ordering::SeqCst);
+    }
+    drop(job);
+    #[cfg(test)]
+    nightly_lifecycle_review_tests::after_update_retirement();
+    match result {
+        Ok(()) => shared.emit(Event::LauncherRestarting),
+        Err(e) => {
+            shared.emit(Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) });
+        }
+    }
 }
 
 /// For the launcher's own update, before it replaces itself: waits (saying so through `waiting`)

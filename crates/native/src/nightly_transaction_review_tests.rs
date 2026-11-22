@@ -76,7 +76,8 @@ fn isolated(name: &str) -> bool {
     true
 }
 fn paths(root: &Path) -> Paths {
-    Paths::under(root).for_channel(InstallChannel::Nightly)
+    // This root belongs to the fixture. Production must still refuse aliased ancestors.
+    Paths::under(&root.canonicalize().unwrap()).for_channel(InstallChannel::Nightly)
 }
 fn adapter() -> Adapter {
     #[cfg(windows)]
@@ -177,6 +178,7 @@ fn review_returned_plan_error_cannot_publish_clean_with_the_wrong_phase() {
     }
     const ROOT: &str = "ARTCRAFT_JOURNAL_PLAN_ERROR_ROOT";
     const FAULT: &str = "ARTCRAFT_JOURNAL_PLAN_ERROR_KIND";
+    const MISSING: &str = "ARTCRAFT_JOURNAL_REVIEW_MISSING_CLEAN_HOOK";
     if let Some(root) = std::env::var_os(ROOT) {
         let paths = paths(Path::new(&root));
         let lease = Lease::acquire(&paths, adapter()).unwrap();
@@ -186,22 +188,45 @@ fn review_returned_plan_error_cannot_publish_clean_with_the_wrong_phase() {
             .with(|slot| *slot.borrow_mut() = Some(("Plan", if std::env::var(FAULT).unwrap() == "partial" { Fault::Partial } else { Fault::Sync })));
         let error = preparation.seal(Some(&record), None).unwrap_err();
         assert!(error.contains("injected returned"));
-        AFTER_CLEAN.with(|slot| *slot.borrow_mut() = Some(Box::new(|| std::process::exit(47))));
+        if std::env::var_os(MISSING).is_none() {
+            AFTER_CLEAN.with(|slot| *slot.borrow_mut() = Some(Box::new(|| std::process::exit(47))));
+        }
         preparation.abort(error);
-        std::process::exit(47);
+        std::process::exit(48); // Missing AFTER_CLEAN is not the intended interruption witness.
     }
     let mut outcomes = Vec::new();
-    for fault in ["partial", "sync"] {
+    for (fault, missing_hook) in [("partial", false), ("sync", false), ("partial", true), ("sync", true)] {
         let temp = tempfile::tempdir().unwrap();
         let (paths, record) = fixture(temp.path());
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", &format!("nightly_transaction::review_tests::{TEST}"), "--nocapture"])
-            .env(ROOT, temp.path())
-            .env(FAULT, fault)
-            .status()
-            .unwrap();
-        assert_eq!(status.code(), Some(47), "must actually reach the injected returned-I/O/abort boundary");
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+        child.args(["--exact", &format!("nightly_transaction::review_tests::{TEST}"), "--nocapture"]).env(ROOT, temp.path()).env(FAULT, fault);
+        if missing_hook {
+            child.env(MISSING, "1");
+        } else {
+            child.env_remove(MISSING);
+        }
+        let status = child.status().unwrap();
+        eprintln!("returned {fault} Plan error: missing_hook={missing_hook}, actual child status={status}");
+        assert_eq!(
+            status.code(),
+            Some(if missing_hook { 48 } else { 47 }),
+            "missing hook must be distinguishable from actual interruption after Clean"
+        );
         kept(&paths, &record);
+        let journal = paths.data.join(format!(".nightly-{}-journal-v1.jsonl", adapter().app()));
+        if missing_hook {
+            assert!(!journal.exists(), "missing-hook negative control completed cleanup, not interrupted recovery");
+        } else {
+            let bytes = std::fs::read(&journal).unwrap();
+            let entries: Vec<Entry> =
+                bytes.split(|byte| *byte == b'\n').filter(|line| !line.is_empty()).map(|line| serde_json::from_slice(line).unwrap()).collect();
+            assert!(
+                matches!(entries.last(), Some(Entry::Clean { committed: None })),
+                "actual interruption must leave a terminal Clean(None) before reacquisition"
+            );
+            assert!(!entries.iter().any(|entry| matches!(entry, Entry::Plan(_))), "failed Plan append must preserve its prior complete prefix");
+            eprintln!("returned {fault} Plan error: terminal Clean(None) observed before lease reacquisition");
+        }
         let recovered = Lease::acquire(&paths, adapter());
         outcomes.push(format!("{fault}: {:?}", recovered.as_ref().err()));
         if let Ok(lease) = recovered {
@@ -389,4 +414,24 @@ fn review_unreconciled_live_append_cannot_retire_or_rephase_its_journal() {
             }
         }
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn review_test_owned_alias_root_is_resolved_but_production_alias_is_refused() {
+    const TEST: &str = "review_test_owned_alias_root_is_resolved_but_production_alias_is_refused";
+    if isolated(TEST) {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("real-test-owned-root");
+    std::fs::create_dir(&root).unwrap();
+    let alias = temp.path().join("test-owned-root-alias");
+    std::os::unix::fs::symlink(&root, &alias).unwrap();
+    let raw = Paths::under(&alias).for_channel(InstallChannel::Nightly);
+    assert!(Lease::acquire(&raw, adapter()).is_err(), "production must continue rejecting ancestor aliases");
+    let (resolved, record) = fixture(&alias);
+    let lease = Lease::acquire(&resolved, adapter()).unwrap();
+    kept(&resolved, &record);
+    retry(&lease, &record);
 }

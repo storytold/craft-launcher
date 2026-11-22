@@ -155,3 +155,101 @@ fn review_lifecycle_restart_admission_spans_related_channels_and_excludes_discov
         "restart/admission must share channel-qualified active identities across related contexts"
     );
 }
+
+thread_local! {
+    static AFTER_UPDATE_RETIREMENT: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+pub(super) fn after_update_retirement() {
+    AFTER_UPDATE_RETIREMENT.with(|slot| {
+        if let Some(action) = slot.borrow_mut().take() {
+            action();
+        }
+    });
+}
+
+#[test]
+fn review_launcher_failed_before_claim_cannot_clear_the_next_updates_restart() {
+    const TEST: &str = "review_launcher_failed_before_claim_cannot_clear_the_next_updates_restart";
+    if isolated(TEST) {
+        return;
+    }
+    let stable = Arc::new(tests::shared());
+    let mut nightly = tests::shared();
+    nightly.channel = InstallChannel::Nightly;
+    nightly.lifecycle = stable.lifecycle.clone();
+    let nightly = Arc::new(nightly);
+    assert!(stable.reserve_job(LAUNCHER_ID, Arc::new(Stop::default())) == Admission::Reserved);
+    let first = JobGuard { shared: stable.clone(), app_id: LAUNCHER_ID.into() };
+    assert!(!stable.lifecycle.restarting.load(Ordering::SeqCst), "A fails before ever claiming restart");
+    let (retired_tx, retired_rx) = std::sync::mpsc::channel();
+    let (claimed_tx, claimed_rx) = std::sync::mpsc::channel();
+    let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+    let second_shared = stable.clone();
+    let second = std::thread::spawn(move || {
+        retired_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(second_shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default())) == Admission::Reserved);
+        let second = JobGuard { shared: second_shared.clone(), app_id: LAUNCHER_ID.into() };
+        claim_backend_restart(&second_shared, &Stop::default(), Duration::ZERO, &mut || {}).unwrap();
+        claimed_tx.send(()).unwrap();
+        finished_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let claim_survived = second_shared.lifecycle.restarting.load(Ordering::SeqCst);
+        let admission = nightly.reserve_job(APP, Arc::new(Stop::default()));
+        if admission == Admission::Reserved {
+            drop(JobGuard { shared: nightly, app_id: APP.into() });
+        }
+        drop(second);
+        (claim_survived, admission == Admission::Restarting)
+    });
+    AFTER_UPDATE_RETIREMENT.with(|slot| {
+        *slot.borrow_mut() = Some(Box::new(move || {
+            retired_tx.send(()).unwrap();
+            claimed_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        }));
+    });
+    finish_launcher_update(&stable, first, Err("injected failure before restart claim; no download".into()));
+    finished_tx.send(()).unwrap();
+    let observed = second.join().unwrap();
+    eprintln!("after failed A completed, B claim survived={}, Nightly admission refused={}", observed.0, observed.1);
+    assert_eq!(observed, (true, true), "A must not clear B's actual new claim or admit Nightly work after B claimed restart");
+    assert!(stable.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, result: Err(_) } if app == LAUNCHER_ID)));
+}
+
+#[test]
+fn review_launcher_failure_resets_before_retirement_and_success_keeps_restart_claim() {
+    const TEST: &str = "review_launcher_failure_resets_before_retirement_and_success_keeps_restart_claim";
+    if isolated(TEST) {
+        return;
+    }
+    for success in [false, true] {
+        let shared = Arc::new(tests::shared());
+        assert!(shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default())) == Admission::Reserved);
+        let job = JobGuard { shared: shared.clone(), app_id: LAUNCHER_ID.into() };
+        claim_backend_restart(&shared, &Stop::default(), Duration::ZERO, &mut || {}).unwrap();
+        let observed_shared = shared.clone();
+        AFTER_UPDATE_RETIREMENT.with(|slot| {
+            *slot.borrow_mut() = Some(Box::new(move || {
+                assert!(!observed_shared.jobs.lock().unwrap().contains_key(LAUNCHER_ID));
+                assert_eq!(
+                    observed_shared.lifecycle.restarting.load(Ordering::SeqCst),
+                    success,
+                    "failure must reset before retirement; success must retain restart"
+                );
+                assert!(observed_shared.events.lock().unwrap().is_empty(), "terminal event must follow retirement");
+                let admission = observed_shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default()));
+                assert!(admission == if success { Admission::Restarting } else { Admission::Reserved });
+                if admission == Admission::Reserved {
+                    drop(JobGuard { shared: observed_shared, app_id: LAUNCHER_ID.into() });
+                }
+            }));
+        });
+        finish_launcher_update(&shared, job, if success { Ok(()) } else { Err("injected failure after claim; no download".into()) });
+        assert_eq!(shared.lifecycle.restarting.load(Ordering::SeqCst), success);
+        let events = shared.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(if success {
+            matches!(events[0], Event::LauncherRestarting)
+        } else {
+            matches!(&events[0], Event::JobFinished { app, result: Err(_) } if app == LAUNCHER_ID)
+        });
+    }
+}
