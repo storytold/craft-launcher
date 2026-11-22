@@ -20,8 +20,10 @@ impl LauncherUi {
         self.listed().filter(|n| !self.settings.read_notices.contains(&n.id)).count()
     }
 
+    /// Announcements neither dismissed nor past their end date.
     fn listed(&self) -> impl Iterator<Item = &Notice> {
-        self.announcements.iter().filter(|n| !self.settings.dismissed_notices.contains(&n.id))
+        let now = self.backend.now();
+        self.announcements.iter().filter(move |n| n.current(now) && !self.settings.dismissed_notices.contains(&n.id))
     }
 
     /// The bell's header cell, its unread count, and the panel it opens.

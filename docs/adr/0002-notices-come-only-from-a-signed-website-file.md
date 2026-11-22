@@ -9,6 +9,6 @@ Announcements and alerts are text that every launcher puts on the user's screen,
 
 ## Consequences
 
-- Publishing an announcement means a change to the website and its build signing the file. With no signed file there are no notices; there is no unsigned fallback.
+- Publishing an announcement means a change to the website and its build signing the file. There is no unsigned fallback: a launcher that never fetched a valid file shows no notices, and one that did keeps its last verified copy when the file goes missing or its signature fails. Notices are withdrawn by publishing a signed file without them, not by deleting the file.
 - A signature proves content, not freshness: an old signed file could be served again. Each notice can carry a signed `expires`, which bounds how long a replayed one is shown.
 - The file is fetched at launch and at most every six hours after, from the pinned host, with redirects refused and nothing identifying in the request.

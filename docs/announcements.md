@@ -9,7 +9,10 @@ The launcher shows notices only from a file on the website, signed like the host
   (see [hosted-catalog.md](hosted-catalog.md)).
 
 Announcements are listed in the bell in the header; alerts open as a dialog the user must
-acknowledge. With no file, or a signature that does not match, nothing is shown.
+acknowledge. A launcher that has never fetched a valid file shows nothing. One that has keeps its
+verified copy: a missing file or a bad signature leaves the last good notices in place, so deleting
+the file does not withdraw them. To withdraw notices, publish a signed file without them (a file
+with no rows is valid); launchers drop them at their next successful fetch.
 
 ```toml
 [[announcements]]
@@ -33,5 +36,6 @@ the rest still show. At most 20 of each kind, 64 KiB in all, 4000 characters of 
 The launcher fetches the file at launch and at most every six hours after, from the pinned host,
 with redirects refused, and caches the verified copy. A signature proves who wrote the file, not
 when, so give anything time-limited an `expires`: it bounds how long an old copy served again
-could show it. Removing a row removes the notice on the next fetch; the user's read and dismissed
-marks for it are then forgotten.
+could show it. An `expires` takes effect at that moment, also in a launcher that stays open.
+Removing a row from the published, signed file removes the notice at the next successful fetch;
+the user's read and dismissed marks for it are then forgotten.

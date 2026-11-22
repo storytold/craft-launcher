@@ -26,7 +26,9 @@ struct Saved {
 /// cache. `None` when neither has a valid signed file, so nothing is shown.
 pub fn load(http: Option<&Http>, paths: &Paths, now: i64) -> Option<Notices> {
     let cache = cache_path(paths);
-    if let Some(http) = http.filter(|_| due(Instant::now())) {
+    // Unit tests never reach the website: a slow answer would push the backend tests past
+    // their deadlines.
+    if let Some(http) = http.filter(|_| !cfg!(test) && due(Instant::now())) {
         match fetch(http, now) {
             Ok((notices, saved)) => {
                 if let Ok(bytes) = serde_json::to_vec(&saved)

@@ -31,6 +31,16 @@ pub struct Notice {
     /// Only `https://` links survive parsing.
     pub link: Option<String>,
     pub created_at: Option<i64>,
+    /// From then on the notice is hidden, also while the launcher stays open.
+    pub expires: Option<i64>,
+}
+
+impl Notice {
+    /// Not yet past its `expires` at `now`.
+    #[must_use]
+    pub fn current(&self, now: i64) -> bool {
+        self.expires.is_none_or(|e| now < e)
+    }
 }
 
 /// A verified notices file, with what is not yet published or already expired at `now` left out.
@@ -95,6 +105,7 @@ fn rows(values: Vec<toml::Value>, kind: &str, now: i64) -> Vec<Notice> {
                 body: truncate(body, MAX_TEXT),
                 link: r.link.filter(|l| safe_web_link(l)),
                 created_at: published,
+                expires,
             })
         })
         .take(MAX_NOTICES)
@@ -150,6 +161,9 @@ mod tests {
         // Kinds keep separate ids, so dismissing one never hides the other.
         assert_eq!(n.alerts.len(), 1);
         assert_ne!(n.alerts[0].id, n.announcements[0].id);
+        // A notice read before its end date stops being current once the date passes.
+        let alert = &n.alerts[0];
+        assert!(alert.current(NOW) && !alert.current(alert.expires.unwrap()));
     }
 
     #[test]

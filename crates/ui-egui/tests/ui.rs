@@ -2814,6 +2814,7 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
         body: format!("{title} body"),
         link: link.map(str::to_string),
         created_at: None,
+        expires: None,
     };
     let sent = Rc::new(RefCell::new(Vec::new()));
     let mut evs = events();
