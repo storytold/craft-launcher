@@ -74,6 +74,8 @@ pub(crate) struct FontsTab {
     preview: Option<PreviewField>,
     /// Repaints the page when the catalog changes while the window is idle.
     watch: Option<Watch>,
+    /// The sans-serif and system-language filters are set once, when the page first shows.
+    default_filters: bool,
 }
 
 /// The launcher's defaults for the shared store: previews from the default server, and downloads
@@ -90,7 +92,7 @@ impl FontsTab {
             Some(store) => Arc::new(with_launcher_defaults(store)),
             None => Arc::new(NoStore),
         };
-        FontsTab { catalog, installer, panel: None, options: None, consent: None, preview: None, watch: None }
+        FontsTab { catalog, installer, panel: None, options: None, consent: None, preview: None, watch: None, default_filters: false }
     }
 
     /// A page built from `options` (tests: a font folder, a fake store and a small index).
@@ -103,6 +105,7 @@ impl FontsTab {
             consent: None,
             preview: None,
             watch: None,
+            default_filters: false,
         }
     }
 
@@ -276,8 +279,12 @@ impl FontsTab {
     /// Draws the page into `ui`.
     pub(crate) fn ui(&mut self, ui: &mut egui::Ui, settings: &mut FontSettings, language: &str) {
         self.watch_catalog(ui.ctx());
+        let first = !std::mem::replace(&mut self.default_filters, true);
         let panel = self.panel_mut(settings);
         panel.set_language(language);
+        if first {
+            panel.use_default_filters(language);
+        }
         panel.ui(ui);
         let saved = from_panel(panel.settings());
         if saved != *settings {
