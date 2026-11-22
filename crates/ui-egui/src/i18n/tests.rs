@@ -143,6 +143,7 @@ fn complete_catalogs_cover_every_ui_literal() {
         include_str!("../card_parts.rs"),
         include_str!("../model.rs"),
         include_str!("../notes.rs"),
+        include_str!("../nightly.rs"),
         include_str!("../settings.rs"),
         include_str!("../settings_dialog.rs"),
         include_str!("../views.rs"),

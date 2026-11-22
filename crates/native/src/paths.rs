@@ -29,6 +29,15 @@ impl Paths {
         Self { data: root.join("data"), cache: root.join("cache") }
     }
 
+    /// A versioned namespace. Stable storage and records remain byte-for-byte compatible.
+    pub fn for_channel(mut self, channel: artcraft_launcher_core::nightly::InstallChannel) -> Self {
+        if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
+            self.data = self.data.join("pre-release").join("v1");
+            self.cache = self.cache.join("pre-release").join("v1");
+        }
+        self
+    }
+
     pub fn downloads(&self) -> PathBuf {
         self.cache.join("downloads")
     }
@@ -51,6 +60,11 @@ impl Paths {
     /// pictures repository it was fetched from, so a new revision never reads an old picture.
     pub fn screenshot(&self, app: &str, key: &str) -> PathBuf {
         self.cache.join("screenshots").join(artcraft_launcher_core::details::SCREENSHOTS_REV).join(app).join(format!("{key}.jpg"))
+    }
+
+    /// Nightly-only bounded scheduling/result metadata, never release or descriptor bodies.
+    pub(crate) fn nightly_checks(&self) -> PathBuf {
+        self.data.join("nightly-checks-v1.json")
     }
 
     pub fn manifest(&self) -> PathBuf {
@@ -98,6 +112,21 @@ pub fn portable_root() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nightly_paths_do_not_alias_stable_records_downloads_or_apps() {
+        use artcraft_launcher_core::nightly::InstallChannel;
+        let root = tempfile::tempdir().unwrap();
+        let stable = Paths::under(root.path());
+        let nightly = stable.clone().for_channel(InstallChannel::Nightly);
+        assert_ne!(stable.manifest(), nightly.manifest());
+        assert_ne!(stable.downloads(), nightly.downloads());
+        assert_ne!(stable.apps(), nightly.apps());
+        assert!(nightly.data.starts_with(&stable.data));
+        assert!(nightly.cache.starts_with(&stable.cache));
+        assert_eq!(stable.clone().for_channel(InstallChannel::Stable).manifest(), stable.manifest());
+        assert!(!nightly.data.exists(), "choosing a namespace never creates or removes data");
+    }
 
     #[test]
     fn atomic_write_does_not_overwrite_an_unrelated_temporary_file() {

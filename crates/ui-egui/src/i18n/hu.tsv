@@ -496,3 +496,56 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Couldn't change the font previews setting: {e}	Nem sikerült módosítani a betűtípus-előnézetek beállítását: {e}
 	Set by {name} in the environment.	A környezetben a(z) {name} állítja be.
 	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	A nem telepített betűtípusok előnézete erről a kiszolgálóról jön, és a telepítés is először ezt próbálja. Üresen hagyva az alapértelmezett kiszolgáló.
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable pre-release builds	Enable pre-release builds
+	Enable pre-release builds?	Enable pre-release builds?
+	Install pre-release	Install pre-release
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No pre-release build is available yet.	No pre-release build is available yet.
+	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Pre-Release	Pre-Release
+	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
+	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off pre-release builds	Turn off pre-release builds
+	Uninstall pre-release	Uninstall pre-release
+	Uninstall pre-release?	Uninstall pre-release?
+	Uninstall pre-release…	Uninstall pre-release…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Pre-release builds are off.	Pre-release builds are off.
+	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
+	Installed pre-release copy	Installed pre-release copy
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only pre-release destination (English fallback)
+	Could not check for pre-release builds.	Could not check for pre-release builds.
+	No pre-release builds are available yet.	No pre-release builds are available yet.
+	Nightly builds, separate from your stable apps.	Nightly builds, separate from your stable apps.
+
+# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
+	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	Az előzetes verziókkal korábban kipróbálhatod az újdonságokat, de lesznek bennük hibák, és elveszhet a nem mentett munkád.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	A stabil alkalmazásaid mellé települnek, saját beállításokkal és adatokkal, így a stabil környezeted változatlan marad. Mindig készíts biztonsági másolatot a fontos fájlokról, mielőtt megnyitod őket egy előzetes verzióban, mert az újabb verziókkal mentett fájlok nem feltétlenül nyithatók meg a stabil verziókban.
+	You can turn this off at any time without deleting your installed pre-release apps or their data.	Ezt bármikor kikapcsolhatod a telepített előzetes alkalmazásverziók vagy az adataik törlése nélkül.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{year}. {month}. {day}.
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	Éjszakai buildek
+	Discover nightly builds (Pre-Release page)	Éjszakai buildek keresése (Pre-Release oldal)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Külön telepítések, beállítások és adatok. A kikapcsolás megőrzi a telepített példányokat és adataikat.
+	Betas and release candidates can replace your stable installation.	A béták és a kiadásra jelölt verziók lecserélhetik a stabil telepítést.
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min

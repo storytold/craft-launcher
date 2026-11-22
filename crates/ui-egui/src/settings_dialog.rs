@@ -113,21 +113,31 @@ impl LauncherUi {
             wide,
             theme::COLUMN_GAP,
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, _) = &mut *state;
                 this.settings_language(ui);
                 this.settings_updates(ui);
+                if !wide {
+                    this.settings_nightly(ui);
+                }
                 this.settings_appearance(ui);
                 this.settings_agents(ui);
             },
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
                 #[cfg(not(target_arch = "wasm32"))]
                 this.settings_fonts(ui);
                 this.settings_background(ui, &mut **host);
                 this.settings_community(ui);
+                if wide {
+                    this.settings_nightly(ui);
+                }
             },
         );
     }
@@ -220,11 +230,29 @@ impl LauncherUi {
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            note(ui, tl!("Betas and release candidates can replace your stable installation."));
             row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
                 self.version_lock(ui, launcher_id);
             });
             self.launcher_version_notes(ui);
+        });
+    }
+
+    /// Independent nightly discovery; the ordinary beta/RC filter stays in Updates.
+    fn settings_nightly(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Nightly builds"), |ui| {
+            let mut enabled = self.settings.nightly_enabled;
+            let response = ui.checkbox(&mut enabled, tl!("Discover nightly builds (Pre-Release page)"));
+            if response.changed() {
+                if enabled {
+                    self.open_nightly_consent(response.id);
+                    self.dialog = None;
+                } else {
+                    self.act(crate::app::UiAction::NightlyConsent(false));
+                }
+            }
+            note(ui, tl!("Separate installs, settings and data. Turning this off keeps installed copies and their data."));
         });
     }
 
