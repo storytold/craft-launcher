@@ -1043,3 +1043,41 @@ title = "Files"
 [[apps.details.features]]
 text = "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."
 title = "Desktop, web and agents"
+
+[[apps]]
+id = "notecraft"
+name = "NoteCraft"
+tagline = "Local-first notes with canvas pages and OneNote import"
+color = [122, 69, 184]
+ink_dark = [200, 179, 232]
+ink_light = [90, 35, 136]
+kind = "community"
+publisher = "AlienTech Software"
+msi_publisher = "AlienTech Software"
+bundle = "notecraft"
+repo = "AlienTechSoftware/notecraft"
+former_ids = []
+former_names = []
+former_bundles = []
+[apps.details]
+headline = "Your notes as plain files, with canvas pages and OneNote import."
+about = "A local-first note-taking app written in pure Rust: notebooks, sections and pages are plain folders on your disk. Sync them with any tool you already use, with no server, no account and no database. Write on a page in its finished look, with free-form canvas layouts, import your OneNote notebooks, and keep everything yours."
+platforms = "Windows, Linux"
+[[apps.details.features]]
+title = "Your files, your folders"
+text = "Notebooks and pages are plain folders and files on your disk, synced by any tool you choose."
+[[apps.details.features]]
+title = "Two page formats"
+text = "HTML for rich layouts and canvas pages, or CommonMark for simple Markdown text, per page or per notebook."
+[[apps.details.features]]
+title = "OneNote import"
+text = "Read and import .one section files: import from your old notebook into NoteCraft's open format."
+[[apps.details.features]]
+title = "Free-form pages"
+text = "Positioned text boxes, images and tables on a canvas, with move and resize by mouse."
+[[apps.details.features]]
+title = "Write in its look"
+text = "Headings, bold, italic, links, lists, tables, equations, diagrams and tags: see them as you write."
+[[apps.details.features]]
+title = "Drivable by agents"
+text = "A command line and an MCP server let you and your AI read and write notes without the window."
