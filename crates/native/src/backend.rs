@@ -414,9 +414,13 @@ impl NativeBackend {
             crate::hosted_catalog::load_once(Some(&http), &paths);
             shared.emit(Event::CatalogUpdated);
             let (feed, fallback) = check_plan(&http, mirror.as_ref(), pre, &paths, &shared);
-            if let Some(n) = crate::notices::load(Some(&http), &paths, crate::now()) {
-                shared.emit(Event::Notices { announcements: n.announcements, alerts: n.alerts });
-            }
+            // Notices on their own thread: a slow notices file must never hold up release checks.
+            let (notice_shared, notice_http, notice_paths) = (shared.clone(), http.clone(), paths.clone());
+            std::thread::spawn(move || {
+                if let Some(n) = crate::notices::load(Some(&notice_http), &notice_paths, crate::now()) {
+                    notice_shared.emit(Event::Notices { announcements: n.announcements, alerts: n.alerts });
+                }
+            });
             let now = crate::now();
             let queue = Mutex::new(
                 artcraft_launcher_core::hosted_catalog::apps()
