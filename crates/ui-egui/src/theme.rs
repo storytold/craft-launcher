@@ -565,15 +565,35 @@ mod tests {
         }
     }
 
-    /// The keyboard focus ring (`widgets::focus_ring`, `t.accent`) stands out at WCAG's 3:1 for
-    /// non-text marks against every fill a focusable control has: the page, a hovered or sunken
-    /// control, and a selected or primary one in the inverted colours.
+    /// The keyboard focus ring keeps WCAG's 3:1 for non-text marks on every fill a focusable control
+    /// has: the page, a hovered or sunken control, a selected or primary one in the inverted
+    /// colours (faded too, as on hover), and a danger button (faded too). Inside the control the
+    /// blue borders the ring's own separator, outside it the page or a sunken row, so the fill is
+    /// never next to the blue.
     #[test]
     fn the_focus_ring_reads_on_every_control_fill() {
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(120.0, 34.0));
         for t in [Tokens::DARK, Tokens::LIGHT] {
-            for (fill, bg) in [("bg", t.bg), ("sunken", t.sunken), ("invert_bg", t.invert_bg)] {
-                let ratio = contrast(t.accent, bg);
-                assert!(ratio >= 3.0, "focus ring on {fill} (dark: {}) is {ratio:.2}:1", t.dark);
+            let [(_, ring), (_, separator)] = crate::widgets::focus_ring_strokes(rect, &t);
+            let faded = |c: Color32| over(c.gamma_multiply(0.8), t.bg);
+            let fills = [
+                ("bg", t.bg),
+                ("sunken", t.sunken),
+                ("invert_bg", t.invert_bg),
+                ("hovered primary", faded(t.invert_bg)),
+                ("danger", t.bad),
+                ("hovered danger", faded(t.bad)),
+            ];
+            for (fill, colour) in fills {
+                // Inside: the separator, whatever the fill.
+                let inside = if separator.width >= 1.0 { separator.color } else { colour };
+                let ratio = contrast(ring.color, inside);
+                assert!(ratio >= 3.0, "focus ring inside a {fill} control (dark: {}) is {ratio:.2}:1", t.dark);
+            }
+            // Outside: the page, or a sunken row round a control in the table.
+            for (surface, colour) in [("bg", t.bg), ("sunken", t.sunken)] {
+                let ratio = contrast(ring.color, colour);
+                assert!(ratio >= 3.0, "focus ring on {surface} (dark: {}) is {ratio:.2}:1", t.dark);
             }
         }
     }

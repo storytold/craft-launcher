@@ -138,15 +138,28 @@ pub fn rule(ui: &mut Ui, height: f32) {
     ui.painter().vline(rect.center().x, rect.y_range(), t.hairline());
 }
 
-/// The keyboard focus, drawn round `resp`'s rect: a 2 px rule in the brand blue (`accent`, which
-/// keeps 3:1 against the page, sunken and inverted fills alike), inside the control so a neighbour
-/// or a clip never hides it. Only the keyboard (Tab, arrows) gives these
-/// controls focus, so a mouse click never leaves a ring behind.
+/// The keyboard focus, drawn round `resp`'s rect inside the control, so a neighbour or a clip never
+/// hides it. Only the keyboard (Tab, arrows) gives these controls focus, so a mouse click never
+/// leaves a ring behind.
 pub fn focus_ring(ui: &Ui, resp: &Response) {
     if resp.has_focus() {
-        let t = Tokens::get(ui.ctx());
-        ui.painter().rect_stroke(resp.rect, CornerRadius::ZERO, Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
+        paint_focus_ring(ui.painter(), resp.rect, &Tokens::get(ui.ctx()));
     }
+}
+
+/// Paints the focus ring round `rect` ([`focus_ring_strokes`]).
+pub fn paint_focus_ring(painter: &egui::Painter, rect: Rect, t: &Tokens) {
+    for (r, stroke) in focus_ring_strokes(rect, t) {
+        painter.rect_stroke(r, CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
+    }
+}
+
+/// The focus ring as two strokes, outermost first: 2 px of the brand blue at the control's edge,
+/// then 1 px of the page colour just inside it. The blue then borders the page colour on both
+/// sides whatever the control is filled with (inverted, red, faded on hover, an app's colour), so
+/// it keeps WCAG's 3:1 for non-text marks everywhere.
+pub(crate) fn focus_ring_strokes(rect: Rect, t: &Tokens) -> [(Rect, Stroke); 2] {
+    [(rect, Stroke::new(2.0, t.accent)), (rect.shrink(2.0), Stroke::new(1.0, t.bg))]
 }
 
 /// A square header cell with a drawn glyph and a hairline on its left; inverts on hover. While

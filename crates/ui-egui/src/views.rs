@@ -756,7 +756,7 @@ impl LauncherUi {
         // Reached with the keyboard, the whole card (which opens the app's page) shows the focus,
         // drawn last so the card's own fill doesn't cover it.
         if card_focused {
-            painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
+            widgets::paint_focus_ring(&painter, rect, &t);
         }
         Some(needed)
     }
