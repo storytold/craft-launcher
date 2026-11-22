@@ -162,7 +162,11 @@ fn the_page_toggle_switches_between_apps_and_fonts() {
     // The apps' controls give way to the panel's own.
     assert!(h.query_by_label("Show apps as cards").is_none());
     assert!(h.query_by_label("Check for updates").is_none());
-    assert!(results(&h).len() > 1000);
+    // The page starts on sans-serif families in the system language: choosing all categories adds families.
+    let filtered = results(&h).len();
+    assert!(filtered > 100);
+    click(&mut h, "All categories");
+    assert!(results(&h).len() > filtered, "{} vs {filtered}", results(&h).len());
     h.get_by_role_and_label(Role::TextInput, "Search").focus();
     h.step();
     h.get_by_role_and_label(Role::TextInput, "Search").type_text("noto sans jp");
