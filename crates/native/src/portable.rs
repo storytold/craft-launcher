@@ -549,7 +549,7 @@ fn single_top_folder(files: &[PathBuf]) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::Write;
 
@@ -750,7 +750,7 @@ mod tests {
         assert!(!personal.parent().unwrap().join("photocraft.exe").exists());
     }
 
-    fn archive(root: &Path, name: &str, files: &[(&str, &[u8])]) -> PathBuf {
+    pub(crate) fn archive(root: &Path, name: &str, files: &[(&str, &[u8])]) -> PathBuf {
         let path = root.join(name);
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
         for (name, content) in files {

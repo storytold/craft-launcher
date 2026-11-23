@@ -347,16 +347,19 @@ fn unrecorded_collisions_hardlinks_and_changed_parent_aliases_refuse_before_repl
     assert_eq!(std::fs::read(moved.join("photocraft")).unwrap(), program());
 }
 
+// Setup failures (such as platform admission) must fail the test, never count as a rejection.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn extract_rejected(file: &Path, destination: &Path) -> Result<Inventory, String> {
     let paths = paths(destination.parent().unwrap());
-    let lease = crate::nightly_transaction::Lease::acquire(&paths, Adapter::PhotoCraftLinuxV1)?;
-    let mut preparation = lease.prepare()?;
-    preparation.directories(Path::new("unpacked"))?;
+    let lease = crate::nightly_transaction::Lease::acquire(&paths, Adapter::PhotoCraftLinuxV1).expect("Nightly lease setup");
+    let mut preparation = lease.prepare().expect("Nightly preparation setup");
+    preparation.directories(Path::new("unpacked")).expect("Nightly staging setup");
     let result = extract_tar(file, &mut preparation);
     preparation.abort("archive fixture cleanup".into());
     result
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))] // Needs an admitted Nightly profile.
 #[test]
 fn archive_rejects_traversal_links_special_files_aliases_duplicates_and_size_bombs() {
     let temp = tempfile::tempdir().unwrap();
@@ -441,6 +444,7 @@ fn app_specific_stable_roots_refuse_ancestors_descendants_and_aliases_but_allow_
     assert_eq!(std::fs::read(stable.join("sentinel")).unwrap(), b"stable");
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))] // Needs an admitted Nightly profile.
 #[test]
 fn preexisting_empty_nested_program_directories_are_not_implicitly_adopted() {
     let temp = tempfile::tempdir().unwrap();

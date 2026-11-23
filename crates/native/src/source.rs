@@ -160,12 +160,16 @@ impl GitHubSource {
             |release: Option<Release>| Answer { latest: release.map_or(LatestRelease::None, LatestRelease::Found), source: Source::GitHubApi };
         match fetch(&url, saved.as_ref().and_then(|e| e.etag.as_deref()))? {
             Fetched::Body { text, etag } => {
+                let mut multi_page = false;
                 let release = if prereleases {
                     let mut release = release::parse_github_release_list(&text, repo, true)?;
                     // Nightlies of a separately channelled app are not ordinary releases, so a page
                     // full of them proves nothing: look further, and report an incomplete answer
                     // rather than caching "no release" when the bounded search ends early.
                     if release.is_none() && artcraft_launcher_core::catalog::separate_nightly_repository(repo) {
+                        // Page 1's ETag does not cover later pages: a 304 on it could replay an
+                        // answer whose page has since changed, so a multi-page answer keeps none.
+                        multi_page = true;
                         let mut full = page_len(&text)? >= LIST_PAGE;
                         let mut page = 2;
                         while release.is_none() && full {
@@ -197,6 +201,7 @@ impl GitHubSource {
                 if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(repo, release)) {
                     return Err("This Nightly belongs to the separate Pre-Release channel, not the ordinary release cache.".into());
                 }
+                let etag = if multi_page { None } else { etag };
                 self.store(repo, Entry { etag, release: release.clone(), prereleases, fetched_at: crate::now() });
                 Ok(Some(found(release)))
             }
@@ -718,5 +723,26 @@ mod tests {
             .unwrap();
         assert_eq!(list.len(), VERSIONS_PAGE);
         assert_eq!(asked, 2, "one request each, as on main");
+    }
+    #[test]
+    fn a_multi_page_answer_is_revalidated_when_only_a_later_page_changes() {
+        let (_temp, source) = fresh_source();
+        let page2 = std::cell::RefCell::new(r#"[{"tag_name":"v0.9.0-beta.2","prerelease":true}]"#.to_string());
+        let mut ask = |url: &str, etag: Option<&str>| -> Result<Fetched, String> {
+            if url.ends_with("&page=2") {
+                return Ok(Fetched::Body { text: page2.borrow().clone(), etag: Some("page-2".into()) });
+            }
+            // Page 1 itself never changes, so any ETag sent for it would get a 304.
+            Ok(if etag.is_some() {
+                Fetched::NotModified
+            } else {
+                Fetched::Body { text: crowded_page(REPO, LIST_PAGE, 0), etag: Some("page-1".into()) }
+            })
+        };
+        let first = source.ask_api_with(REPO, true, &mut ask).unwrap().unwrap();
+        assert_eq!(tag_of(&first), Some("v0.9.0-beta.2"));
+        *page2.borrow_mut() = r#"[{"tag_name":"v0.9.0-beta.3","prerelease":true}]"#.into();
+        let second = source.ask_api_with(REPO, true, &mut ask).unwrap().unwrap();
+        assert_eq!(tag_of(&second), Some("v0.9.0-beta.3"), "page 1's 304 must not replay an answer read from a changed later page");
     }
 }

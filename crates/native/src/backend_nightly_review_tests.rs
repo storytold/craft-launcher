@@ -47,6 +47,17 @@ fn baseline(root: &Path) -> (Paths, crate::manifest::Record) {
     (paths, record)
 }
 
+/// These probes inject a real write failure with mode 0500. A privileged process (for example
+/// with CAP_DAC_OVERRIDE) is not denied, so fail clearly instead of testing nothing.
+fn assert_writes_denied(directory: &Path) {
+    let probe = directory.join(".write-denial-probe");
+    let created = std::fs::File::create(&probe).is_ok();
+    if created {
+        let _ = std::fs::remove_file(&probe);
+    }
+    assert!(!created, "mode 0500 did not deny writes to {}; run these probes as an unprivileged user", directory.display());
+}
+
 fn fresh_backend(paths: &Paths) -> NativeBackend {
     let mut backend = NativeBackend::with_paths(artcraft_launcher_core::nightly::InstallChannel::Nightly, || {}, paths.clone());
     backend.spawn = Arc::new(|task| task());
@@ -159,6 +170,7 @@ fn review_probe_partial_unlink_can_retry_from_fresh_backend() {
             removals += 1;
             if removals == 2 {
                 std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o500)).unwrap();
+                assert_writes_denied(&root);
             }
         }
         Ok(())
@@ -186,7 +198,8 @@ fn review_probe_manifest_save_failure_can_retry_from_fresh_backend() {
         *hook.borrow_mut() = Some(Box::new(move || {
             assert!(!executable.exists(), "save fault must occur after real removal staging");
             hit.set(true);
-            std::fs::set_permissions(data, std::fs::Permissions::from_mode(0o500)).unwrap();
+            std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o500)).unwrap();
+            assert_writes_denied(&data);
         }))
     });
     worker();

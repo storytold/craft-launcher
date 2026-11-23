@@ -180,24 +180,25 @@ fn signed_archive_test_key_passes_exact_bytes_and_bad_missing_wrong_key_tool_fai
     // The authenticated private copy survives later mutation of the download, but any mutation
     // of that private copy is detected before extraction/replacement by the transaction digest.
     std::fs::write(&verified.file, b"changed after verification").unwrap();
-    assert!(
-        crate::nightly_unix::install(
-            crate::nightly_unix::Package {
-                adapter,
-                file: &verified.file,
-                version,
-                previous: Some(&initial),
-                paths: &paths,
-                archive_sha256: asset.sha256.unwrap(),
-                lease: None
-            },
-            &mut |_| {
-                commits += 1;
-                Ok(())
-            }
-        )
-        .is_err()
-    );
+    let refused = crate::nightly_unix::install(
+        crate::nightly_unix::Package {
+            adapter,
+            file: &verified.file,
+            version,
+            previous: Some(&initial),
+            paths: &paths,
+            archive_sha256: asset.sha256.unwrap(),
+            lease: None,
+        },
+        &mut |_| {
+            commits += 1;
+            Ok(())
+        },
+    )
+    .unwrap_err();
+    // The digest guard itself must refuse, not a later lease or manifest check.
+    assert!(refused.contains("authenticated Nightly archive changed"), "{refused}");
+    assert_eq!(std::fs::read(paths.manifest()).unwrap(), b"preserved old manifest");
     assert_eq!(commits, 1);
     assert_eq!(std::fs::read(&initial.path).unwrap(), before);
     assert_eq!(std::fs::read(&personal).unwrap(), b"preserved personal data");

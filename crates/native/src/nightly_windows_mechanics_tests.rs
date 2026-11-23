@@ -184,24 +184,39 @@ fn common_removal_recovers_native_process_exit_before_and_after_commit() {
 }
 
 #[test]
-fn removal_accepts_the_verbatim_root_the_installer_records_with_ordinary_paths() {
-    let (_temp, paths, _) = fixture();
-    // The portable installer resolves its folder with `canonicalize`, which yields `\\?\C:\…`.
-    let root = std::fs::canonicalize(paths.apps().join(APP)).unwrap();
-    assert!(root.to_string_lossy().starts_with(r"\\?\"), "fixture must reproduce the installer's verbatim spelling: {}", root.display());
-    assert!(!paths.apps().to_string_lossy().starts_with(r"\\?\"), "Paths must keep the ordinary drive-letter spelling");
-    let record = Record {
-        path: root.join("photocraft.exe"),
-        files: vec![root.join("photocraft.exe"), root.join("NOTICE")],
-        version: "synthetic mechanics-only fixture; not a qualified app version".into(),
-        kind: PackageKind::PortableZip,
-        installed_at: 1,
-        needs_root: false,
-    };
-    let mut manifest = Manifest::default();
-    manifest.apps.insert(APP.into(), record.clone());
-    manifest.save(&paths.manifest()).unwrap();
+fn removal_accepts_the_record_the_portable_installer_produces_with_ordinary_paths() {
+    let temp = tempfile::tempdir().unwrap();
+    // Ordinary drive-letter Paths, as the launcher builds them; the installer canonicalizes.
+    let paths = Paths::under(temp.path()).for_channel(InstallChannel::Nightly);
+    assert!(!paths.apps().to_string_lossy().starts_with(r"\\?\"));
+    let app = artcraft_launcher_core::CraftApp::by_id(APP).unwrap();
+    let file = crate::portable::tests::archive(
+        temp.path(),
+        "synthetic-nightly.zip",
+        &[("photocraft.exe", b"synthetic nonexecutable mechanics fixture"), ("NOTICE", b"synthetic owned notice")],
+    );
+    let record = crate::portable::install_checked(
+        crate::portable::Package {
+            app,
+            file: &file,
+            version: "1.0.0-nightly.20261123.1.1.gabcdefabcdef",
+            previous: None,
+            paths: &paths,
+            directory: None,
+            replace: false,
+        },
+        &|files, entries| ADAPTER.validate_layout(files, entries),
+        &mut |record| {
+            let mut manifest = Manifest::default();
+            manifest.apps.insert(APP.into(), record.clone());
+            manifest.save(&paths.manifest())
+        },
+    )
+    .unwrap();
+    assert!(record.path.to_string_lossy().starts_with(r"\\?\"), "the installer must produce its verbatim spelling: {}", record.path.display());
     let lease = Lease::acquire(&paths, ADAPTER).unwrap();
     commit_removal(&lease, &record).unwrap();
-    removed(&paths);
+    assert!(!Manifest::load(&paths.manifest()).apps.contains_key(APP));
+    assert!(!paths.apps().join(APP).join("photocraft.exe").exists());
+    assert!(!paths.apps().join(APP).join("NOTICE").exists());
 }
