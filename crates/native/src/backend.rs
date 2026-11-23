@@ -357,6 +357,12 @@ impl RefusedNightlyBackend {
     }
 }
 impl Backend for RefusedNightlyBackend {
+    /// Unusable storage doesn't make a platform without signing trust look available: Settings
+    /// shows the same calm "not available yet" as a usable context would.
+    fn nightly_available(&self) -> bool {
+        self.platform.is_some_and(crate::nightly_profile::new_installs_available)
+    }
+
     fn send(&mut self, command: Command) {
         match command {
             Command::Configure(_) | Command::DownloadOrder(_) => {}

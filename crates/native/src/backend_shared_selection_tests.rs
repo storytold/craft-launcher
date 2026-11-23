@@ -176,3 +176,21 @@ fn shared_selection_nightly_context_reports_configured_signing_trust() {
         assert_eq!(nightly.nightly_available(), configured, "{name}");
     }
 }
+
+/// Unusable storage refuses everything, but whether Pre-Release is offered at all still follows
+/// the platform's signing trust, as for a usable context.
+#[cfg(unix)]
+#[test]
+fn shared_selection_refused_context_reports_availability_from_signing_trust_not_storage() {
+    let root = tempfile::tempdir().unwrap();
+    let real = root.path().join("real");
+    std::fs::create_dir_all(&real).unwrap();
+    let alias = root.path().join("aliased-root");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    for platform in [Platform { os: Os::Linux, arch: Arch::X64 }, Platform { os: Os::Windows, arch: Arch::X64 }, Platform { os: Os::MacOs, arch: Arch::Arm64 }] {
+        let paths = Paths::under(&alias).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        let stable = tests::backend(&root.path().join(format!("{platform:?}")), platform, None);
+        let context = stable.nightly_context_with_paths(Ok(paths)).unwrap();
+        assert_eq!(context.nightly_available(), crate::nightly_profile::new_installs_available(platform), "{platform:?}");
+    }
+}
