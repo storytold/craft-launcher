@@ -1,5 +1,6 @@
-// Authored synthetic archives and disposable generated test keys only. Not release signing,
-// not a reviewed production key, and never reachable through a runtime trust override.
+// Authored synthetic archives and disposable generated test keys, plus one real signed stable
+// release file checked against the configured production signer. No test key is reachable
+// through a runtime trust override.
 use artcraft_launcher_core::nightly::InstallChannel;
 use sha2::{Digest, Sha256};
 
@@ -241,6 +242,10 @@ fn machine_status_never_accepts_error_multiple_signer_or_expiry_even_with_valids
     }
     assert!(status(&crate::process::RunOutput::success(format!("{valid}{valid}")), &pin, crate::now()).is_err());
     assert!(status(&crate::process::RunOutput::exit(1, &valid, "failure"), &pin, crate::now()).is_err());
+    // A signature by a key other than the pinned one (the only key imported) says so plainly.
+    let unknown = "[GNUPG:] NEWSIG\n[GNUPG:] ERRSIG 0123456789ABCDEF 22 8 00 1795280000 9 -\n[GNUPG:] NO_PUBKEY 0123456789ABCDEF\n";
+    assert_eq!(status(&crate::process::RunOutput::exit(2, unknown, ""), &pin, crate::now()).unwrap_err(), NOT_SIGNED_BY_ARTCRAFT);
+    assert_ne!(status(&crate::process::RunOutput::exit(2, "[GNUPG:] NEWSIG\n[GNUPG:] BADSIG 0123456789ABCDEF test\n", ""), &pin, crate::now()).unwrap_err(), NOT_SIGNED_BY_ARTCRAFT);
     assert!(status(&crate::process::RunOutput::success(&valid), &"B".repeat(40), crate::now()).is_err());
 }
 

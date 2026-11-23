@@ -12,6 +12,7 @@ mod linux {
     use artcraft_launcher_core::nightly::{Download, MAX_SIGNATURE_BYTES};
 
     const GPG: &str = "/usr/bin/gpg";
+    const NOT_SIGNED_BY_ARTCRAFT: &str = "This Nightly download isn't signed by ArtCraft's release key, so it wasn't installed.";
     const MAX_PUBLIC_KEY: usize = 128 * 1024;
     const MAX_ARCHIVE: u64 = 4 * 1024 * 1024 * 1024;
 
@@ -41,8 +42,14 @@ mod linux {
     // GnuPG checks crypto/key validity; we independently require one exact primary identity,
     // a binary detached signature, a strong digest, and no revocation/expiry/error status.
     fn status(output: &crate::process::RunOutput, expected: &str, now: i64) -> Result<(), String> {
-        if !output.success || output.stdout.len() > 64 * 1024 {
-            return Err("The Nightly OpenPGP verifier failed or returned excessive status output.".into());
+        if output.stdout.len() > 64 * 1024 {
+            return Err("The Nightly OpenPGP verifier returned excessive status output.".into());
+        }
+        if !output.success {
+            // Only the pinned key is imported, so a signature by any other key can't be checked:
+            // say so plainly rather than as a verifier failure.
+            let unknown_key = output.stdout.lines().any(|line| line.starts_with("[GNUPG:] NO_PUBKEY ") || line.starts_with("[GNUPG:] ERRSIG "));
+            return Err(if unknown_key { NOT_SIGNED_BY_ARTCRAFT } else { "The Nightly OpenPGP verifier failed." }.into());
         }
         let mut valid = 0;
         let mut good = 0;
@@ -191,6 +198,8 @@ struct WindowsEvidence {
     chained: bool,
     /// That chain's root Subject.
     root: String,
+    /// The SHA-256 of that root certificate.
+    root_sha256: String,
     /// The signer certificate's enhanced key usages.
     ekus: Vec<String>,
 }
@@ -200,7 +209,18 @@ use crate::nightly_trust::WindowsPublisher;
 
 #[cfg(any(windows, test))]
 fn configured<'a>(publisher: Option<&'a WindowsPublisher<'a>>) -> Option<&'a WindowsPublisher<'a>> {
-    publisher.filter(|p| !p.subject.is_empty() && !p.root.is_empty() && !p.ekus.is_empty() && p.ekus.iter().all(|eku| !eku.is_empty()))
+    publisher.filter(|p| {
+        !p.subject.is_empty()
+            && !p.root.is_empty()
+            && sha256_hex(p.root_sha256)
+            && !p.ekus.is_empty()
+            && p.ekus.iter().all(|eku| !eku.is_empty())
+    })
+}
+
+#[cfg(any(windows, test))]
+fn sha256_hex(text: &str) -> bool {
+    text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[cfg(any(windows, test))]
@@ -212,9 +232,9 @@ fn match_windows(evidence: &WindowsEvidence, publisher: Option<&WindowsPublisher
         && evidence.subject == publisher.subject
         && evidence.chained
         && evidence.root == publisher.root
+        && evidence.root_sha256.eq_ignore_ascii_case(publisher.root_sha256)
         && publisher.ekus.iter().all(|eku| evidence.ekus.iter().any(|seen| seen == eku))
-        && native_thumbprint.len() == 64
-        && native_thumbprint.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && sha256_hex(native_thumbprint)
         && evidence.thumbprint.eq_ignore_ascii_case(native_thumbprint)
     {
         Ok(())
@@ -267,7 +287,14 @@ try {
   $chain.ChainPolicy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::IgnoreNotTimeValid
   $chained = $chain.Build($s.SignerCertificate)
   $count = $chain.ChainElements.Count
-  $root = if ($count -gt 1) { $chain.ChainElements[$count - 1].Certificate.Subject } else { '' }
+  $root = ''; $rootsha = ''
+  if ($count -gt 1) {
+    $rootcert = $chain.ChainElements[$count - 1].Certificate
+    $root = $rootcert.Subject
+    $hash = [System.Security.Cryptography.SHA256]::Create()
+    try { $rootsha = [BitConverter]::ToString($hash.ComputeHash($rootcert.RawData)).Replace('-', '').ToLowerInvariant() }
+    finally { $hash.Dispose() }
+  }
 } finally { $chain.Reset() }
 $ekus = @()
 foreach ($extension in $s.SignerCertificate.Extensions) {
@@ -277,7 +304,7 @@ foreach ($extension in $s.SignerCertificate.Extensions) {
 }
 @{ subject = $s.SignerCertificate.Subject; valid = ($s.Status.ToString() -ceq 'Valid');
    timestamp = ($null -ne $s.TimeStamperCertificate); embedded = ($s.SignatureType.ToString() -ceq 'Authenticode');
-   thumbprint = $thumb; chained = $chained; root = $root; ekus = [object[]]$ekus } | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress
+   thumbprint = $thumb; chained = $chained; root = $root; root_sha256 = $rootsha; ekus = [object[]]$ekus } | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress
 "#;
 
 #[cfg(any(windows, test))]
@@ -350,21 +377,26 @@ fn authenticate_windows_as(root: &std::path::Path, files: &[std::path::PathBuf],
     Ok(held)
 }
 
-/// A cold Windows PowerShell start plus hashing a large signed executable took 81 seconds on a
-/// busy Windows 11 machine, so a genuinely signed build must not be refused for being slow.
+/// The slowest run seen: a cold Windows PowerShell start plus hashing a large signed executable
+/// on a busy Windows 11 machine. A genuinely signed build must not be refused for being slow.
+#[cfg(any(windows, test))]
+const SLOWEST_METADATA_QUERY: std::time::Duration = std::time::Duration::from_secs(81);
+
+/// The same bound serves installs and Open, which checks the installed copy again: the query
+/// costs the same either way, and a shorter wait would refuse a good build on a slow machine.
 #[cfg(any(windows, test))]
 const WINDOWS_METADATA_DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
 
-/// A query that ran out of time says so, distinctly from a signature refusal.
+/// A query that ran out of time says so, distinctly from a signature refusal. The wording fits
+/// both an install and an Open, and changes nothing either way.
 #[cfg(any(windows, test))]
-fn metadata_query_error(error: String) -> String {
-    if error.contains("didn't finish within") {
-        format!(
-            "The Nightly signature check timed out after {} seconds; nothing was replaced. This is not a signature refusal, so try again.",
+fn metadata_query_error(error: crate::process::RunError) -> String {
+    match error {
+        crate::process::RunError::TimedOut(_) => format!(
+            "The Nightly signature check took longer than {} seconds and was stopped. This is not a signature refusal; try again.",
             WINDOWS_METADATA_DEADLINE.as_secs()
-        )
-    } else {
-        error
+        ),
+        crate::process::RunError::Failed(error) => error,
     }
 }
 
@@ -372,7 +404,7 @@ fn metadata_query_error(error: String) -> String {
 fn read_windows_metadata(path: &std::path::Path) -> Result<String, String> {
     let command = windows_command(path, || winsafe::GetSystemDirectory().map(std::path::PathBuf::from).map_err(|error| error.to_string()))?;
     let output =
-        crate::process::run_command_with_output(command, "Nightly Authenticode metadata", WINDOWS_METADATA_DEADLINE).map_err(metadata_query_error)?;
+        crate::process::run_command_bounded(command, "Nightly Authenticode metadata", WINDOWS_METADATA_DEADLINE).map_err(metadata_query_error)?;
     if !output.success || !output.stderr.trim().is_empty() {
         return Err("The native Nightly Authenticode metadata query failed.".into());
     }
@@ -390,10 +422,16 @@ mod tests {
         let expected = "CN=Test Publisher, O=Disposable Test, L=Test City, C=US";
         let root = "CN=Test Root, O=Disposable Test, C=US";
         let identity = "1.3.6.1.4.1.311.97.1.2.3";
-        let publisher = WindowsPublisher { subject: expected, root, ekus: &[crate::nightly_trust::CODE_SIGNING_EKU, "1.3.6.1.4.1.311.97.1.2.3"] };
+        let root_sha256 = "d".repeat(64);
+        let publisher = WindowsPublisher {
+            subject: expected,
+            root,
+            root_sha256: &root_sha256,
+            ekus: &[crate::nightly_trust::CODE_SIGNING_EKU, "1.3.6.1.4.1.311.97.1.2.3"],
+        };
         let native = "a".repeat(64);
         let evidence = json!({"subject":expected,"valid":true,"timestamp":true,"embedded":true,"thumbprint":native,
-            "chained":true,"root":root,"ekus":["1.3.6.1.5.5.7.3.3","1.3.6.1.4.1.311.97.1.0",identity]});
+            "chained":true,"root":root,"root_sha256":root_sha256,"ekus":["1.3.6.1.5.5.7.3.3","1.3.6.1.4.1.311.97.1.0",identity]});
         let path = Path::new("owned-photocraft.exe");
         let check = |value: &serde_json::Value, pin: Option<&str>| {
             let pinned = pin.map(|subject| WindowsPublisher { subject, ..publisher });
@@ -430,54 +468,71 @@ mod tests {
     }
 
     #[test]
-    fn a_slow_signature_query_gets_three_minutes_and_says_it_timed_out() {
-        assert_eq!(WINDOWS_METADATA_DEADLINE, std::time::Duration::from_secs(180));
-        let timed_out = metadata_query_error("Nightly Authenticode metadata didn't finish within 180 seconds".into());
-        assert!(timed_out.contains("timed out after 180 seconds") && timed_out.contains("not a signature refusal"), "{timed_out}");
-        assert_eq!(
-            metadata_query_error("couldn't start Nightly Authenticode metadata (denied)".into()),
-            "couldn't start Nightly Authenticode metadata (denied)"
-        );
+    fn a_slow_signature_query_outlasts_the_slowest_seen_and_says_it_timed_out() {
+        assert!(WINDOWS_METADATA_DEADLINE > SLOWEST_METADATA_QUERY * 2, "room beyond the slowest cold run seen");
+        let timed_out = metadata_query_error(crate::process::RunError::TimedOut("helper didn't finish".into()));
+        assert!(timed_out.contains("was stopped") && timed_out.contains("not a signature refusal"), "{timed_out}");
+        assert!(!timed_out.contains("replaced"), "the same text serves an Open, which replaces nothing");
+        let failed = "couldn't start Nightly Authenticode metadata (denied)";
+        assert_eq!(metadata_query_error(crate::process::RunError::Failed(failed.into())), failed);
     }
 
-    /// Azure Trusted Signing renews the leaf and its issuing CA, so neither is pinned: what must
-    /// hold is the publisher's subject, its identity EKU and the chain's root.
+    /// The production pin, checked on every platform's CI. Azure Trusted Signing renews the leaf
+    /// and its issuing CA, so neither is pinned: what must hold is the publisher's subject, its
+    /// identity EKU and the chain's root, by name and certificate hash.
     #[test]
-    fn windows_requires_the_pinned_root_and_identity_key_usage_not_a_leaf_or_issuer() {
-        let subject = "CN=Learning Machines Inc, O=Learning Machines Inc, L=Atlanta, S=Georgia, C=US";
-        let root = "CN=Microsoft Identity Verification Root Certificate Authority 2020, O=Microsoft Corporation, C=US";
+    fn the_production_windows_pin_requires_its_root_and_identity_key_usage_not_a_leaf_or_issuer() {
+        let publisher = crate::nightly_trust::WINDOWS_PUBLISHER.as_ref().expect("the reviewed publisher is pinned");
+        let (subject, root, root_sha256) = (publisher.subject, publisher.root, publisher.root_sha256);
         let identity = "1.3.6.1.4.1.311.97.627281783.214399755.66947568.492752054";
-        let publisher = WindowsPublisher { subject, root, ekus: &[crate::nightly_trust::CODE_SIGNING_EKU, identity] };
+        assert!(publisher.ekus.contains(&identity) && publisher.ekus.contains(&crate::nightly_trust::CODE_SIGNING_EKU));
         let path = Path::new("owned-photocraft.exe");
-        let evidence = |thumbprint: &str, subject: &str, chained: bool, root: &str, ekus: &[&str]| {
+        let evidence = |thumbprint: &str, subject: &str, chained: bool, root: &str, root_sha256: &str, ekus: &[&str]| {
             json!({"subject":subject,"valid":true,"timestamp":true,"embedded":true,"thumbprint":thumbprint,
-                "chained":chained,"root":root,"ekus":ekus})
+                "chained":chained,"root":root,"root_sha256":root_sha256,"ekus":ekus})
         };
-        let check = |value: serde_json::Value, native: &str| windows_metadata_with(path, Some(&publisher), native, |_| Ok(value.to_string()));
-        let all = ["1.3.6.1.5.5.7.3.3", "1.3.6.1.4.1.311.97.1.0", identity];
+        let check = |value: serde_json::Value, native: &str| windows_metadata_with(path, Some(publisher), native, |_| Ok(value.to_string()));
+        // PhotoCraft v0.23.1's photocraft.exe as a Windows 11 guest read it.
+        let all = ["1.3.6.1.4.1.311.97.1.0", "1.3.6.1.5.5.7.3.3", identity];
         // Each signing run has a new leaf: any thumbprint is accepted while it is WinVerifyTrust's own.
         for leaf in ["a", "b"] {
             let native = leaf.repeat(64);
-            assert!(check(evidence(&native, subject, true, root, &all), &native).is_ok());
+            assert!(check(evidence(&native, subject, true, root, root_sha256, &all), &native).is_ok());
+            assert!(check(evidence(&native, subject, true, root, &root_sha256.to_uppercase(), &all), &native).is_ok());
         }
         let native = "c".repeat(64);
-        // The same subject under another root, a broken chain, or the root's name in another case.
+        // The same subject under another root, a broken chain, the root's name in another case,
+        // or a root with the right name but another certificate.
         for (chained, other_root) in [(true, "CN=Attacker Root, O=Learning Machines Inc, C=US"), (false, root), (true, "")] {
-            assert!(check(evidence(&native, subject, chained, other_root, &all), &native).is_err());
+            assert!(check(evidence(&native, subject, chained, other_root, root_sha256, &all), &native).is_err());
         }
-        assert!(check(evidence(&native, subject, true, &root.to_lowercase(), &all), &native).is_err());
+        assert!(check(evidence(&native, subject, true, &root.to_lowercase(), root_sha256, &all), &native).is_err());
+        assert!(check(evidence(&native, subject, true, root, &"e".repeat(64), &all), &native).is_err());
         // The identity EKU or code signing missing, even with every other usage present.
-        assert!(check(evidence(&native, subject, true, root, &["1.3.6.1.5.5.7.3.3", "1.3.6.1.4.1.311.97.1.0"]), &native).is_err());
-        assert!(check(evidence(&native, subject, true, root, &[identity]), &native).is_err());
-        assert!(check(evidence(&native, subject, true, root, &[]), &native).is_err());
+        assert!(check(evidence(&native, subject, true, root, root_sha256, &["1.3.6.1.5.5.7.3.3", "1.3.6.1.4.1.311.97.1.0"]), &native).is_err());
+        assert!(check(evidence(&native, subject, true, root, root_sha256, &[identity]), &native).is_err());
+        assert!(check(evidence(&native, subject, true, root, root_sha256, &[]), &native).is_err());
         // Another subject, even with this identity's EKU and root.
         for other in ["CN=Learning Machines Inc", "CN=Learning Machines Inc, O=Learning Machines Inc, L=Atlanta, ST=Georgia, C=US"] {
-            assert!(check(evidence(&native, other, true, root, &all), &native).is_err());
+            assert!(check(evidence(&native, other, true, root, root_sha256, &all), &native).is_err());
         }
+        // A validly signed Microsoft executable (the CI reference pwsh.exe) is refused by the pin.
+        let fixture: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/windows-signed-reference.json")).unwrap();
+        let pwsh = &fixture["artifact"];
+        let ekus: Vec<&str> = pwsh["ekus"].as_array().unwrap().iter().map(|eku| eku.as_str().unwrap()).collect();
+        let foreign =
+            evidence(&native, pwsh["subject"].as_str().unwrap(), true, pwsh["root"].as_str().unwrap(), pwsh["root_sha256"].as_str().unwrap(), &ekus);
+        assert_eq!(
+            check(foreign, &native).unwrap_err(),
+            "The Nightly executable requires a valid timestamped signature from the exact pinned publisher, chain root and key usage."
+        );
         // A publisher missing any part is not configured, so nothing is queried.
-        for incomplete in
-            [WindowsPublisher { root: "", ..publisher }, WindowsPublisher { ekus: &[], ..publisher }, WindowsPublisher { ekus: &[""], ..publisher }]
-        {
+        for incomplete in [
+            WindowsPublisher { root: "", ..*publisher },
+            WindowsPublisher { root_sha256: "not-a-hash", ..*publisher },
+            WindowsPublisher { ekus: &[], ..*publisher },
+            WindowsPublisher { ekus: &[""], ..*publisher },
+        ] {
             assert!(windows_metadata_with(path, Some(&incomplete), &native, |_| panic!("queried without a configured publisher")).is_err());
         }
     }
@@ -632,7 +687,12 @@ mod tests {
         let fixture: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/windows-signed-reference.json")).unwrap();
         let artifact = &fixture["artifact"];
         let ekus: Vec<&str> = artifact["ekus"].as_array().unwrap().iter().map(|eku| eku.as_str().unwrap()).collect();
-        let publisher = WindowsPublisher { subject: artifact["subject"].as_str().unwrap(), root: artifact["root"].as_str().unwrap(), ekus: &ekus };
+        let publisher = WindowsPublisher {
+            subject: artifact["subject"].as_str().unwrap(),
+            root: artifact["root"].as_str().unwrap(),
+            root_sha256: artifact["root_sha256"].as_str().unwrap(),
+            ekus: &ekus,
+        };
         let _held_reference =
             std::fs::OpenOptions::new().read(true).share_mode(1).open(&reference).expect("configured fixture must be readable and stable");
         assert_eq!(
