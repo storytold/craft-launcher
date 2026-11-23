@@ -1183,12 +1183,16 @@ pub(crate) mod tests {
 
     #[test]
     fn nightly_request_timeout_includes_redirect_elapsed_time() {
-        let delay = Duration::from_millis(80);
+        // Each hop alone fits the budget and the two together exceed it. The fixture's sleeps and
+        // accept polling run late on a loaded Mac (a 5 ms poll took up to 25 ms, an 80 ms sleep up
+        // to 153 ms), so the first hop gets 400 ms of room. Sleeps never return early, so the two
+        // hops always exceed the budget by at least 200 ms.
+        let delay = Duration::from_millis(600);
         let (base, seen, worker) = nightly_fixture(vec![
             (delay, nightly_response("302 Found", "Location: /slow\r\nContent-Length: 0\r\n", b"")),
             (delay, nightly_response("200 OK", "Content-Length: 2\r\n", b"ok")),
         ]);
-        let error = Http::new().unwrap().nightly_get(&base, 8, Duration::from_millis(130), 0).unwrap_err();
+        let error = Http::new().unwrap().nightly_get(&base, 8, Duration::from_millis(1000), 0).unwrap_err();
         assert!(error.retry_at.is_none());
         seen.recv_timeout(Duration::from_secs(2)).unwrap();
         seen.recv_timeout(Duration::from_secs(2)).unwrap();
