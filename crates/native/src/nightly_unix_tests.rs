@@ -8,6 +8,7 @@ fn same_directory(path: &Path, identity: &std::fs::Metadata) -> bool {
 
 // Unlike the old no-op commit fixtures, these callbacks now exercise a real persisted
 // previous/next record. Failing callbacks still return BEFORE any manifest replacement.
+#[cfg(target_os = "linux")]
 fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> Result<(), String>) -> Result<Record, String> {
     let paths = package.paths.clone();
     super::install(package, &mut |record| {
@@ -17,6 +18,7 @@ fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> Result<(), S
         manifest.save(&paths.manifest())
     })
 }
+#[cfg(target_os = "linux")]
 fn remove(adapter: Adapter, record: &Record, paths: &Paths) -> Result<(), String> {
     adapter.validate_record(paths, record)?;
     let lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
@@ -28,6 +30,7 @@ const VERSION: &str = "1.0.0-nightly.20261121.123456.1.gabcdefabcdef";
 pub(crate) fn paths(root: &Path) -> Paths {
     Paths::under(&root.canonicalize().unwrap()).for_channel(InstallChannel::Nightly)
 }
+#[cfg(target_os = "linux")]
 pub(crate) fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
     let output = std::fs::File::create(path).unwrap();
     let encoder = flate2::write::GzEncoder::new(output, flate2::Compression::default());
@@ -50,6 +53,7 @@ pub(crate) fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
     }
     tar.into_inner().unwrap().finish().unwrap();
 }
+#[cfg(target_os = "linux")]
 pub(crate) fn program() -> Vec<u8> {
     // ELF64 little-endian x86_64 executable header; never executed by a test.
     let mut bytes = vec![0; 64];
@@ -57,6 +61,7 @@ pub(crate) fn program() -> Vec<u8> {
     bytes[16..20].copy_from_slice(&[2, 0, 62, 0]);
     bytes
 }
+#[cfg(target_os = "linux")]
 pub(crate) fn package<'a>(file: &'a Path, paths: &'a Paths, previous: Option<&'a Record>) -> Package<'a> {
     // Low-level callback tests explicitly persist the supplied previous record, just as a
     // production worker’s strict snapshot does. Never overwrite existing or malformed metadata.

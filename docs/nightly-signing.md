@@ -21,6 +21,10 @@ release key, unsigned Launcher, environment variable or debug/local setting. Pub
 provisioning must include current revocation/expiry state; there is no release-selected
 key retrieval or automatic trust-root refresh.
 
+Linux is provisioned with the ArtCraft Linux Release Signing Key, the same key that signs
+stable Linux releases, pinned by its primary fingerprint; its signing subkey makes the
+signatures. A test checks a real signed stable release file against the configured signer.
+
 Linux uses installed `/usr/bin/gpg`, no user options/keyrings or automatic retrieval.
 A private temporary home imports only the pinned public material. Bounded subprocess
 verification requires one valid binary SHA-2 signature from the full pinned primary

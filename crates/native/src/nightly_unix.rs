@@ -528,7 +528,7 @@ pub(crate) fn install_with_checkpoints(
     Ok(record)
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 pub(crate) fn remove_with_checkpoints(
     adapter: Adapter,
     record: &Record,
