@@ -12,7 +12,7 @@ use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
     Source, VersionTrack,
 };
-use artcraft_launcher_core::release::{Asset, Release};
+use artcraft_launcher_core::release::{Asset, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
@@ -319,6 +319,8 @@ struct RefusedNightlyBackend {
     apps: Vec<String>,
     events: Vec<Event>,
     waker: Waker,
+    /// The storage notice is said once; later reports only refresh each app's status.
+    noticed: bool,
 }
 impl RefusedNightlyBackend {
     fn new(reason: String, platform: Option<Platform>, waker: Waker) -> Self {
@@ -330,13 +332,16 @@ impl RefusedNightlyBackend {
             .filter(|app| app.has_separate_nightly_channel() && platform.is_none_or(|p| app.runs_on(p.os)))
             .map(|app| app.id.to_string())
             .collect();
-        let mut backend = Self { reason, platform, apps, events: Vec::new(), waker };
+        let mut backend = Self { reason, platform, apps, events: Vec::new(), waker, noticed: false };
         backend.report(None);
         backend
     }
     fn report(&mut self, attempted_at: Option<i64>) {
+        let notice = !std::mem::replace(&mut self.noticed, true);
         for app in &self.apps {
-            self.events.push(Event::Notice { app: app.clone(), result: Err(self.reason.clone()) });
+            if notice {
+                self.events.push(Event::Notice { app: app.clone(), result: Err(self.reason.clone()) });
+            }
             self.events.push(Event::Installable { app: app.clone(), installable: false });
             self.events.push(Event::NightlyStatus {
                 app: app.clone(),
@@ -550,7 +555,7 @@ impl NativeBackend {
             let answer = match feed.as_ref().map(|f| f.answer(app, now)) {
                 Some(FeedAnswer::Fresh(Some(r))) => Some((LatestRelease::Found(r), Origin::ArtCraftApi)),
                 Some(FeedAnswer::Fresh(None)) => Some((LatestRelease::None, Origin::ArtCraftApi)),
-                _ => self.source.as_ref().and_then(|s| s.cached(&feed_repo(feed.as_ref(), app), pre)).map(|l| (l, Origin::GitHub)),
+                _ => self.source.as_ref().and_then(|s| s.cached(&release_query(feed.as_ref(), app), pre)).map(|l| (l, Origin::GitHub)),
             };
             if let Some((latest, from)) = answer {
                 publish_latest(app, latest, from, &self.shared, self.platform);
@@ -1152,7 +1157,7 @@ enum Work {
 fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
     match track {
         VersionTrack::Stable => {
-            (!app.has_separate_nightly_channel() || !artcraft_launcher_core::release::is_nightly(release))
+            artcraft_launcher_core::release::ordinary_release_allowed(app.has_separate_nightly_channel(), release)
                 && (prereleases || (!release.prerelease && release.version.as_ref().is_some_and(version::is_stable)))
         }
         VersionTrack::Nightly => artcraft_launcher_core::release::is_nightly(release),
@@ -1391,7 +1396,7 @@ fn install_plan(
     let release = latest.ok_or("the selected release hasn't been found yet. Check for updates first.")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
     if app.has_separate_nightly_channel()
-        && (artcraft_launcher_core::release::is_nightly(&release) || artcraft_launcher_core::release::is_nightly_track(track))
+        && (artcraft_launcher_core::release::separate_channel_nightly(&release) || artcraft_launcher_core::release::is_nightly_track(track))
     {
         return Err("Nightly builds use the separate Pre-Release channel; the stable copy was left unchanged.".into());
     }
@@ -1515,7 +1520,7 @@ fn run_install(
         downgrade_previous(app, track, &release, existing, || {
             source
                 .ok_or_else(|| "secure connections aren't available on this system".to_string())?
-                .versions(&feed_repo(load_feed(paths).as_ref(), app))
+                .versions(&release_query(load_feed(paths).as_ref(), app))
         })?
     };
     let previous_asset = match &previous {
@@ -1918,7 +1923,7 @@ fn sweep(
                     let (latest, from, used) = match mirror {
                         Some(_) => mirror_chosen(app, feed, now, track),
                         None if *track != VersionTrack::Stable => {
-                            let answer = source.chosen(&feed_repo(feed, app), track);
+                            let answer = source.chosen(&release_query(feed, app), track);
                             (Some(answer.latest), Origin::GitHub, Some(answer.source))
                         }
                         None => latest_for(app, feed, fallback, source.as_ref(), shared, options.prereleases, force, now),
@@ -2093,10 +2098,10 @@ fn latest_for(
         due
     };
     if due {
-        let answer = source.latest(&repo, pre);
+        let answer = source.latest(&ReleaseQuery::for_app(app, repo), pre);
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
     } else {
-        (source.cached(&repo, pre), Origin::GitHub, None)
+        (source.cached(&ReleaseQuery::for_app(app, repo), pre), Origin::GitHub, None)
     }
 }
 
@@ -2122,6 +2127,12 @@ fn limit_notice(source_used: Source, limited_until: Option<i64>) -> Option<i64> 
 /// The repo to ask GitHub about, following the feed's repo renames.
 fn feed_repo(feed: Option<&Feed>, app: &CraftApp) -> String {
     feed.map_or_else(|| app.repo.to_string(), |f| f.repo_for(app))
+}
+
+/// What to ask GitHub about `app`: the feed may rename its repo, but the separate-channel policy
+/// always follows the app itself.
+fn release_query(feed: Option<&Feed>, app: &CraftApp) -> ReleaseQuery {
+    ReleaseQuery::for_app(app, feed_repo(feed, app))
 }
 
 /// What came of asking the feed during one check.
@@ -2383,9 +2394,9 @@ impl Backend for NativeBackend {
                 };
                 let source = self.source.clone();
                 let shared = self.shared.clone();
-                let repo = feed_repo(load_feed(&self.paths).as_ref(), def);
+                let query = release_query(load_feed(&self.paths).as_ref(), def);
                 std::thread::spawn(move || {
-                    let result = source.ok_or("secure connections aren't available on this system".to_string()).and_then(|s| s.versions(&repo));
+                    let result = source.ok_or("secure connections aren't available on this system".to_string()).and_then(|s| s.versions(&query));
                     shared.emit(Event::Versions { app, result });
                 });
             }
@@ -2780,15 +2791,15 @@ mod tests {
     fn a_pinned_app_is_never_offered_a_newer_release() {
         struct Published;
         impl ReleaseSource for Published {
-            fn latest(&self, repo: &str, _prereleases: bool) -> crate::source::Answer {
-                let found = CraftApp::by_id(APP).is_some_and(|a| a.repo == repo);
+            fn latest(&self, query: &ReleaseQuery, _prereleases: bool) -> crate::source::Answer {
+                let found = CraftApp::by_id(APP).is_some_and(|a| a.repo == query.repo);
                 let latest = if found { LatestRelease::Found(tagged("0.6.0")) } else { LatestRelease::None };
                 crate::source::Answer { latest, source: Source::GitHubApi }
             }
-            fn versions(&self, _repo: &str) -> Result<Vec<Release>, String> {
+            fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
                 Ok(vec![tagged("0.6.0"), tagged("0.5.0")])
             }
-            fn cached(&self, _repo: &str, _prereleases: bool) -> Option<LatestRelease> {
+            fn cached(&self, _query: &ReleaseQuery, _prereleases: bool) -> Option<LatestRelease> {
                 None
             }
             fn rate_limited_until(&self) -> Option<i64> {
@@ -2851,11 +2862,11 @@ mod tests {
     struct CountingGitHub(AtomicUsize);
 
     impl ReleaseSource for CountingGitHub {
-        fn latest(&self, _repo: &str, _pre: bool) -> Answer {
+        fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
             self.0.fetch_add(1, Ordering::SeqCst);
             Answer { latest: LatestRelease::None, source: Source::GitHubApi }
         }
-        fn cached(&self, _repo: &str, _pre: bool) -> Option<LatestRelease> {
+        fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
             None
         }
         fn rate_limited_until(&self) -> Option<i64> {
@@ -3073,12 +3084,12 @@ mod tests {
             asked: AtomicUsize,
         }
         impl ReleaseSource for Ahead {
-            fn latest(&self, _repo: &str, _pre: bool) -> Answer {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
                 self.asked.fetch_add(1, Ordering::SeqCst);
                 let found = Release { tag: "v0.7.0".into(), version: version::parse("0.7.0"), ..Release::default() };
                 Answer { latest: LatestRelease::Found(found), source: Source::GitHubApi }
             }
-            fn cached(&self, _repo: &str, _pre: bool) -> Option<LatestRelease> {
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
                 None
             }
             fn rate_limited_until(&self) -> Option<i64> {
@@ -3956,15 +3967,15 @@ mod tests {
             finish: Mutex<mpsc::Receiver<()>>,
         }
         impl ReleaseSource for Unchanged {
-            fn latest(&self, repo: &str, _prereleases: bool) -> Answer {
-                let latest = if CraftApp::by_id(APP).is_some_and(|app| app.repo == repo) {
+            fn latest(&self, query: &ReleaseQuery, _prereleases: bool) -> Answer {
+                let latest = if CraftApp::by_id(APP).is_some_and(|app| app.repo == query.repo) {
                     LatestRelease::Found(release("0.5.0"))
                 } else {
                     LatestRelease::None
                 };
                 Answer { latest, source: Source::GitHubApi }
             }
-            fn cached(&self, _repo: &str, _prereleases: bool) -> Option<LatestRelease> {
+            fn cached(&self, _query: &ReleaseQuery, _prereleases: bool) -> Option<LatestRelease> {
                 None
             }
             fn rate_limited_until(&self) -> Option<i64> {
@@ -4056,12 +4067,12 @@ mod tests {
     fn a_check_that_finds_a_newer_release_ends_the_retry_offer() {
         struct Newer;
         impl ReleaseSource for Newer {
-            fn latest(&self, repo: &str, _prereleases: bool) -> crate::source::Answer {
-                let found = CraftApp::by_id(APP).is_some_and(|a| a.repo == repo);
+            fn latest(&self, query: &ReleaseQuery, _prereleases: bool) -> crate::source::Answer {
+                let found = CraftApp::by_id(APP).is_some_and(|a| a.repo == query.repo);
                 let latest = if found { LatestRelease::Found(release("0.6.0")) } else { LatestRelease::None };
                 crate::source::Answer { latest, source: Source::GitHubApi }
             }
-            fn cached(&self, _repo: &str, _prereleases: bool) -> Option<LatestRelease> {
+            fn cached(&self, _query: &ReleaseQuery, _prereleases: bool) -> Option<LatestRelease> {
                 None
             }
             fn rate_limited_until(&self) -> Option<i64> {

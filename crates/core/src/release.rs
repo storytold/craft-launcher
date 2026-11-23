@@ -259,12 +259,37 @@ pub fn ranked_nightly_candidates<'a>(releases: impl IntoIterator<Item = &'a Rele
     ordered.into_iter()
 }
 
+/// What to ask GitHub about one app's releases. `repo` may follow the feed's repo renames, so
+/// whether the app's nightlies have their own channel is decided by the app, never by `repo`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReleaseQuery {
+    pub repo: String,
+    pub separate_nightly: bool,
+}
+
+impl ReleaseQuery {
+    pub fn for_app(app: &crate::CraftApp, repo: impl Into<String>) -> Self {
+        Self { repo: repo.into(), separate_nightly: app.has_separate_nightly_channel() }
+    }
+}
+
+/// A version whose prerelease names a Nightly build, whatever the release's prerelease flag says.
+fn nightly_version(version: &Version) -> bool {
+    version.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly"))
+}
+
+/// A Nightly of an app with its own channel: by its flag or by its tag alone, so a build published
+/// without the prerelease flag still stays out of the ordinary channel.
+pub fn separate_channel_nightly(release: &Release) -> bool {
+    is_nightly(release) || release.version.as_ref().is_some_and(nightly_version)
+}
+
 /// A Nightly-follow choice or a parsed exact Nightly pin, including main-supported legacy tags.
 pub fn is_nightly_track(track: &crate::protocol::VersionTrack) -> bool {
     use crate::protocol::VersionTrack;
     match track {
         VersionTrack::Nightly => true,
-        VersionTrack::Pinned(tag) => version::parse(tag).is_some_and(|v| v.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly"))),
+        VersionTrack::Pinned(tag) => version::parse(tag).is_some_and(|v| nightly_version(&v)),
         VersionTrack::Stable => false,
     }
 }
@@ -274,14 +299,14 @@ pub fn ordinary_track_allowed(app: &crate::CraftApp, track: &crate::protocol::Ve
     !app.has_separate_nightly_channel() || !is_nightly_track(track)
 }
 
-/// Release/cache APIs only exclude Nightly sources explicitly assigned a separate channel.
-pub fn ordinary_release_allowed(repo: &str, release: &Release) -> bool {
-    !crate::catalog::separate_nightly_repository(repo) || !is_nightly(release)
+/// Ordinary release and cache paths exclude only the nightlies of an app with its own channel.
+pub fn ordinary_release_allowed(separate_nightly: bool, release: &Release) -> bool {
+    !separate_nightly || !separate_channel_nightly(release)
 }
 
-/// Ordinary source callers preserve main's Nightly selection when their repository has no channel.
-pub fn choose_version_for_repo(releases: &[Release], track: &crate::protocol::VersionTrack, repo: &str) -> Option<Release> {
-    let policy = if crate::catalog::separate_nightly_repository(repo) { NightlySelection::Canonical } else { NightlySelection::Published };
+/// Ordinary source callers keep main's Nightly selection for apps without their own channel.
+pub fn choose_version_for(releases: &[Release], track: &crate::protocol::VersionTrack, separate_nightly: bool) -> Option<Release> {
+    let policy = if separate_nightly { NightlySelection::Canonical } else { NightlySelection::Published };
     choose_version_with_policy(releases, track, policy)
 }
 
@@ -299,12 +324,13 @@ fn choose_version_with_policy(releases: &[Release], track: &crate::protocol::Ver
 }
 
 /// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
-/// `allow_prerelease`) published release. Only explicitly channelled repositories exclude nightlies.
+/// `allow_prerelease`) published release. Only apps with their own Nightly channel
+/// (`separate_nightly`) exclude nightlies.
 ///
 /// # Errors
 ///
 /// Returns an error if the JSON is malformed or its top level is not an array.
-pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool) -> Result<Option<Release>, String> {
+pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool, separate_nightly: bool) -> Result<Option<Release>, String> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
     let list = v.as_array().ok_or("unexpected answer from GitHub")?;
     let mut best: Option<Release> = None;
@@ -318,7 +344,7 @@ pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool)
         let Some(ver) = r.version.as_ref() else {
             continue;
         };
-        if !ordinary_release_allowed(repo, &r) || (!allow_prerelease && (r.prerelease || !version::is_stable(ver))) {
+        if !ordinary_release_allowed(separate_nightly, &r) || (!allow_prerelease && (r.prerelease || !version::is_stable(ver))) {
             continue;
         }
         let newer = best.as_ref().and_then(|b| b.version.as_ref()).is_none_or(|b| version::is_newer(ver, b));
@@ -452,7 +478,7 @@ mod tests {
             {"tag_name":"v1.0.0-beta.1","prerelease":true},
             {"tag_name":"v0.9.0","prerelease":false}
         ]"#;
-        let release = parse_github_release_list(json, "storytold/photocraft", true).unwrap().unwrap();
+        let release = parse_github_release_list(json, "storytold/photocraft", true, true).unwrap().unwrap();
         assert!(!is_nightly(&release));
         assert_eq!(release.version, crate::version::parse("v1.0.0-beta.1"));
     }
@@ -712,8 +738,8 @@ mod tests {
         assert_eq!(choose_version(&list, &VersionTrack::Pinned("v0.1.99".into())).unwrap().tag, "v0.1.99");
         assert!(choose_version(&list, &VersionTrack::Pinned("v0.1.100".into())).is_none());
         assert!(choose_version(&list, &VersionTrack::Pinned("0.1.99".into())).is_none());
-        assert_eq!(parse_github_release_list(&json, REPO, false).unwrap().unwrap().tag, "v0.1.104");
-        assert_eq!(parse_github_release_list(&json, REPO, true).unwrap().unwrap().tag, "v9.0.0-beta.1");
+        assert_eq!(parse_github_release_list(&json, REPO, false, true).unwrap().unwrap().tag, "v0.1.104");
+        assert_eq!(parse_github_release_list(&json, REPO, true, true).unwrap().unwrap().tag, "v9.0.0-beta.1");
     }
 
     #[test]
@@ -756,9 +782,9 @@ mod tests {
             {"tag_name":"v0.7.0","draft":true,"assets":[]},
             {"tag_name":"v0.5.0","prerelease":false,"draft":false,"assets":[]},
             {"tag_name":"v0.4.0","prerelease":false,"draft":false,"assets":[]}]"#;
-        assert_eq!(parse_github_release_list(json, REPO, false).unwrap().unwrap().tag, "v0.5.0");
-        assert_eq!(parse_github_release_list(json, REPO, true).unwrap().unwrap().tag, "v0.6.0-rc.1");
-        assert_eq!(parse_github_release_list("[]", REPO, false).unwrap(), None);
+        assert_eq!(parse_github_release_list(json, REPO, false, true).unwrap().unwrap().tag, "v0.5.0");
+        assert_eq!(parse_github_release_list(json, REPO, true, true).unwrap().unwrap().tag, "v0.6.0-rc.1");
+        assert_eq!(parse_github_release_list("[]", REPO, false, true).unwrap(), None);
     }
 
     #[test]
@@ -834,12 +860,27 @@ mod tests {
         for id in ["solidcraft", "filmcraft"] {
             let repo = crate::CraftApp::by_id(id).unwrap().repo;
             assert_eq!(
-                parse_github_release_list(json, repo, true).unwrap().unwrap().tag,
+                parse_github_release_list(json, repo, true, false).unwrap().unwrap().tag,
                 "v2.0.0-dev.nightly.1",
                 "{id}: main prerelease lookup must retain nightlies without a separate channel"
             );
-            assert_eq!(parse_github_release_list(json, repo, false).unwrap().unwrap().tag, "v0.9.0");
+            assert_eq!(parse_github_release_list(json, repo, false, false).unwrap().unwrap().tag, "v0.9.0");
         }
-        assert_eq!(parse_github_release_list(json, "storytold/photocraft", true).unwrap().unwrap().tag, "v1.0.0-beta.1");
+        assert_eq!(parse_github_release_list(json, "storytold/photocraft", true, true).unwrap().unwrap().tag, "v1.0.0-beta.1");
+    }
+    #[test]
+    fn a_feed_repo_rename_or_a_missing_prerelease_flag_cannot_bring_photocraft_nightlies_back() {
+        let app = crate::CraftApp::by_id("photocraft").unwrap();
+        let feed =
+            crate::feed::Feed::parse(r#"{"repo_renames":[{"old_name":"storytold/photocraft","new_name":"storytold/photocraft-studio"}]}"#).unwrap();
+        let query = ReleaseQuery::for_app(app, feed.repo_for(app));
+        assert_eq!(query.repo, "storytold/photocraft-studio");
+        let flagged =
+            r#"[{"tag_name":"v2.0.0-nightly.20261123.1.1.gabcdefabcdef","prerelease":true},{"tag_name":"v1.0.0-beta.1","prerelease":true}]"#;
+        assert_eq!(parse_github_release_list(flagged, &query.repo, true, query.separate_nightly).unwrap().unwrap().tag, "v1.0.0-beta.1");
+        let unflagged = r#"[{"tag_name":"v2.0.0-nightly.20261123.1.1.gabcdefabcdef","prerelease":false},{"tag_name":"v1.0.0","prerelease":false}]"#;
+        assert_eq!(parse_github_release_list(unflagged, app.repo, true, true).unwrap().unwrap().tag, "v1.0.0");
+        // Apps without their own channel keep main's behaviour for both shapes.
+        assert!(parse_github_release_list(flagged, "storytold/photocraft-studio", true, false).unwrap().unwrap().tag.contains("nightly"));
     }
 }

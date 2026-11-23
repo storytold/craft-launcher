@@ -57,11 +57,6 @@ pub struct CraftApp {
 /// This is a product roster, independent of host adapter availability or signing configuration.
 const SEPARATE_NIGHTLY_CHANNELS: &[(&str, &str)] = &[("photocraft", "storytold/photocraft")];
 
-/// Repository-only release/cache APIs use the same exact pinned source roster.
-pub fn separate_nightly_repository(repo: &str) -> bool {
-    SEPARATE_NIGHTLY_CHANNELS.iter().any(|(_, repository)| *repository == repo)
-}
-
 impl CraftApp {
     /// This app has a separate Nightly destination on every host, even where installation refuses.
     pub fn has_separate_nightly_channel(&self) -> bool {

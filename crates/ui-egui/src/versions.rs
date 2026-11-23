@@ -241,7 +241,9 @@ impl LauncherUi {
                             ui.label(tl!("No release published yet"));
                         }
                         for r in releases {
-                            if (app.has_separate_nightly_channel() && is_nightly(r)) || !self.has_version_download(app, r) {
+                            if (app.has_separate_nightly_channel() && artcraft_launcher_core::release::separate_channel_nightly(r))
+                                || !self.has_version_download(app, r)
+                            {
                                 continue;
                             }
                             let pin = VersionTrack::Pinned(r.tag.clone());

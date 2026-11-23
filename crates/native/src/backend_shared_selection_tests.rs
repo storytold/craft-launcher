@@ -21,13 +21,13 @@ fn representative(app: &CraftApp, tag: &str, at: i64) -> Release {
 }
 struct Published(Vec<Release>);
 impl ReleaseSource for Published {
-    fn latest(&self, _repo: &str, _pre: bool) -> Answer {
+    fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
         Answer { latest: LatestRelease::None, source: Source::GitHubApi }
     }
-    fn versions(&self, _repo: &str) -> Result<Vec<Release>, String> {
+    fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
         Ok(self.0.clone())
     }
-    fn cached(&self, _repo: &str, _pre: bool) -> Option<LatestRelease> {
+    fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
         None
     }
     fn rate_limited_until(&self) -> Option<i64> {
@@ -49,16 +49,16 @@ fn shared_selection_legacy_native_follow_and_pin_keep_main_tag_checksums_and_pub
             assert!(artcraft_launcher_core::release::has_published_checksum(&older));
             for releases in [vec![newer.clone(), older.clone()], vec![older.clone(), newer.clone()]] {
                 let published = Published(releases);
-                let answer = published.chosen(app.repo, &VersionTrack::Nightly);
+                let answer = published.chosen(&ReleaseQuery::for_app(app, app.repo), &VersionTrack::Nightly);
                 let LatestRelease::Found(chosen) = answer.latest else { panic!("main-supported Nightly must remain selectable for {id}") };
                 assert_eq!(chosen, older, "legacy follows publication time, not first-party canonical order");
-                let pin = published.chosen(app.repo, &VersionTrack::Pinned(newer.tag.clone()));
+                let pin = published.chosen(&ReleaseQuery::for_app(app, app.repo), &VersionTrack::Pinned(newer.tag.clone()));
                 assert!(matches!(pin.latest, LatestRelease::Found(ref selected) if selected==&newer));
                 let mut equal = newer.clone();
                 equal.published_at = older.published_at;
                 for tied in [vec![older.clone(), equal.clone()], vec![equal, older.clone()]] {
                     let expected = tied.last().unwrap().clone();
-                    let selected = Published(tied).chosen(app.repo, &VersionTrack::Nightly);
+                    let selected = Published(tied).chosen(&ReleaseQuery::for_app(app, app.repo), &VersionTrack::Nightly);
                     assert_eq!(selected.latest, LatestRelease::Found(expected), "main keeps the last input on equal publication timestamps");
                 }
             }
@@ -143,8 +143,21 @@ fn shared_selection_unsafe_root_remains_visible_but_never_adopts_or_mutates_alia
     ] {
         context.send(command);
     }
+    context.send(Command::CheckForUpdates { force: true });
+    let repeated = context.poll();
+    assert!(!repeated.iter().any(|event| matches!(event, Event::Notice { .. })), "the storage notice is said once: {repeated:?}");
+    assert!(repeated.iter().any(|event| matches!(event, Event::NightlyStatus { app, status } if app == "photocraft" && status.message.is_some())));
     assert!(!context.has_active_jobs());
     assert_eq!(std::fs::read(&sentinel).unwrap(), b"keep me");
     assert_eq!(std::fs::read_dir(&real).unwrap().count(), 1, "no adopted cache, manifest, staging, profile, or installed files");
     assert!(std::fs::symlink_metadata(&alias).unwrap().file_type().is_symlink());
+}
+
+#[test]
+fn shared_selection_a_feed_repo_rename_keeps_the_apps_separate_channel_policy() {
+    let feed = Feed::parse(r#"{"repo_renames":[{"old_name":"storytold/photocraft","new_name":"storytold/photocraft-studio"}]}"#).unwrap();
+    let photo = release_query(Some(&feed), CraftApp::by_id("photocraft").unwrap());
+    assert_eq!(photo.repo, "storytold/photocraft-studio");
+    assert!(photo.separate_nightly, "the policy follows the app, not the renamed repo string");
+    assert!(!release_query(Some(&feed), CraftApp::by_id("solidcraft").unwrap()).separate_nightly);
 }
