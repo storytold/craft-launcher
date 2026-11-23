@@ -78,6 +78,7 @@
 	Add desktop shortcut	Додати ярлик на робочий стіл
 	Uninstall…	Видалити…
 	Launch options…	Параметри запуску…
+	Set as default for its file types	Зробити застосунком за замовчуванням для його типів файлів
 	{name} launch options	Параметри запуску {name}
 	Flags added each time the app is opened	Прапорці, які додаються щоразу під час відкриття застосунку
 	Separate flags with spaces. Quote a value that has spaces in it.	Розділяйте прапорці пробілами. Значення з пробілами беріть у лапки.
