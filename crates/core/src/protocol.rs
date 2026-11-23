@@ -251,8 +251,8 @@ pub enum Event {
     LauncherRestarting,
     /// News and alerts from ArtCraft's release feed (replaces any earlier set).
     Notices {
-        announcements: Vec<crate::feed::Notice>,
-        alerts: Vec<crate::feed::Notice>,
+        announcements: Vec<crate::notices::Notice>,
+        alerts: Vec<crate::notices::Notice>,
     },
     Detected {
         app: String,

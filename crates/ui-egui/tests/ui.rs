@@ -2804,16 +2804,17 @@ fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
 }
 
 #[test]
-/// A feed alert is acknowledged only by OK (persisted), while an inline announcement stays until
-/// its own Dismiss is clicked.
+/// A feed alert is acknowledged only by OK (persisted). An announcement waits in the header's bell,
+/// counted as unread until the bell is opened, and stays listed until its own Dismiss is clicked.
 fn feed_announcements_and_alerts_show_until_dismissed() {
-    use artcraft_launcher_core::feed::Notice;
+    use artcraft_launcher_core::notices::Notice;
     let notice = |id: &str, title: &str, link: Option<&str>| Notice {
         id: id.into(),
         title: title.into(),
         body: format!("{title} body"),
         link: link.map(str::to_string),
         created_at: None,
+        expires: None,
     };
     let sent = Rc::new(RefCell::new(Vec::new()));
     let mut evs = events();
@@ -2852,13 +2853,24 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
     h.run_steps(4);
     assert!(h.query_by_label("Security update").is_none());
     assert!(h.state().as_ref().unwrap().settings.dismissed_notices.contains("x1"));
-    // The announcement stays inline until dismissed.
+    // The announcement is not drawn over the apps: only the bell says it is there.
+    assert!(h.query_by_label("CADCraft 1.0 is out").is_none());
+    h.get_by_label("Announcements, 1 unread").click();
+    h.run_steps(4);
     h.get_by_label("CADCraft 1.0 is out");
     h.get_by_label("Learn more");
+    // Opening the bell read it: the count is gone, and stays gone after closing.
+    assert!(h.query_by_label("Announcements, 1 unread").is_none());
+    assert!(h.state().as_ref().unwrap().settings.read_notices.contains("a1"));
     h.get_all_by_label("Dismiss").next().unwrap().click();
     h.run_steps(4);
     assert!(h.query_by_label("CADCraft 1.0 is out").is_none());
     assert!(h.state().as_ref().unwrap().settings.dismissed_notices.contains("a1"));
+    h.get_by_label("No announcements");
+    h.key_press(egui::Key::Escape);
+    h.run_steps(4);
+    assert!(h.query_by_label("No announcements").is_none());
+    assert!(h.query_by_label("Announcements, 1 unread").is_none());
 }
 
 #[test]

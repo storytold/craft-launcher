@@ -468,3 +468,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Adicionado
 	Remove	Remover
 	Add	Adicionar
+	Announcements	Avisos
+	No announcements	Nenhum aviso
+@plural	Announcements, {n} unread|Announcements, {n} unread	Avisos, {n} não lido|Avisos, {n} não lidos

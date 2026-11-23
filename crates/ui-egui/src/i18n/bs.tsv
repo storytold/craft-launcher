@@ -454,3 +454,6 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Pin {name} to top	Prikači {name} na vrh
 	Unpin {name}	Otkači {name}
 	Hide ArtCraft Launcher from the Dock while in the background	Sakrij ArtCraft Launcher iz Docka dok radi u pozadini
+	Announcements	Obavještenja
+	No announcements	Nema obavještenja
+@plural	Announcements, {n} unread|Announcements, {n} unread	Obavještenja, {n} nepročitano|Obavještenja, {n} nepročitana|Obavještenja, {n} nepročitanih
