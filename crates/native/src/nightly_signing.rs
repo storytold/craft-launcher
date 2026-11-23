@@ -371,8 +371,8 @@ fn metadata_query_error(error: String) -> String {
 #[cfg(windows)]
 fn read_windows_metadata(path: &std::path::Path) -> Result<String, String> {
     let command = windows_command(path, || winsafe::GetSystemDirectory().map(std::path::PathBuf::from).map_err(|error| error.to_string()))?;
-    let output = crate::process::run_command_with_output(command, "Nightly Authenticode metadata", WINDOWS_METADATA_DEADLINE)
-        .map_err(metadata_query_error)?;
+    let output =
+        crate::process::run_command_with_output(command, "Nightly Authenticode metadata", WINDOWS_METADATA_DEADLINE).map_err(metadata_query_error)?;
     if !output.success || !output.stderr.trim().is_empty() {
         return Err("The native Nightly Authenticode metadata query failed.".into());
     }
@@ -434,7 +434,10 @@ mod tests {
         assert_eq!(WINDOWS_METADATA_DEADLINE, std::time::Duration::from_secs(180));
         let timed_out = metadata_query_error("Nightly Authenticode metadata didn't finish within 180 seconds".into());
         assert!(timed_out.contains("timed out after 180 seconds") && timed_out.contains("not a signature refusal"), "{timed_out}");
-        assert_eq!(metadata_query_error("couldn't start Nightly Authenticode metadata (denied)".into()), "couldn't start Nightly Authenticode metadata (denied)");
+        assert_eq!(
+            metadata_query_error("couldn't start Nightly Authenticode metadata (denied)".into()),
+            "couldn't start Nightly Authenticode metadata (denied)"
+        );
     }
 
     /// Azure Trusted Signing renews the leaf and its issuing CA, so neither is pinned: what must
