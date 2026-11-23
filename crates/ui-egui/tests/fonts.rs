@@ -367,17 +367,20 @@ fn screenshots() {
         click(h, "ABeeZee");
         h.run_steps(10);
     });
-    shot("fonts-japanese", "ja", &|h, store| {
-        allow(h, store);
-        h.get_by_role_and_label(Role::ComboBox, "言語").click();
-        settle(h);
-        h.get_by_role_and_label(Role::TextInput, "言語を検索").focus();
-        h.step();
-        h.get_by_role_and_label(Role::TextInput, "言語を検索").type_text("日本");
-        settle(h);
-        click(h, "Japanese · 日本語 (日本)");
-        h.run_steps(40);
-    });
+    // Without a Japanese face the launcher stays in English and the Japanese labels don't exist.
+    if artcraft_launcher_ui_egui::theme::cjk_font_available(artcraft_launcher_ui_egui::i18n::Lang::JA) {
+        shot("fonts-japanese", "ja", &|h, store| {
+            allow(h, store);
+            h.get_by_role_and_label(Role::ComboBox, "言語").click();
+            settle(h);
+            h.get_by_role_and_label(Role::TextInput, "言語を検索").focus();
+            h.step();
+            h.get_by_role_and_label(Role::TextInput, "言語を検索").type_text("日本");
+            settle(h);
+            click(h, "Japanese · 日本語 (日本)");
+            h.run_steps(40);
+        });
+    }
     shot("fonts-settings", "en", &|h, store| {
         allow(h, store);
         click(h, "Settings");
