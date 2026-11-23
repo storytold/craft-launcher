@@ -855,11 +855,12 @@ impl LauncherUi {
     fn zoom_input(&mut self, ctx: &egui::Context) {
         use egui::gui_zoom::kb_shortcuts;
         let notes_open = matches!(self.dialog, Some(Dialog::Notes(_)));
+        let handle_kb = notes_open || cfg!(not(target_arch = "wasm32"));
         let (delta, zoom_in, zoom_out, reset) = ctx.input_mut(|i| {
             let delta = i.zoom_delta();
-            let reset = notes_open && i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
-            let zoom_in = notes_open && (i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY));
-            let zoom_out = notes_open && i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);
+            let reset = handle_kb && i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
+            let zoom_in = handle_kb && (i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY));
+            let zoom_out = handle_kb && i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);
             (delta, zoom_in, zoom_out, reset)
         });
         let delta = if delta.is_finite() && delta > 0.0 { delta } else { 1.0 };
@@ -870,8 +871,19 @@ impl LauncherUi {
                 _ => 0.0,
             };
             self.notes_zoom = if reset { 1.0 } else { ((self.notes_zoom + step) * delta).clamp(0.5, 3.0) };
-        } else if delta != 1.0 {
-            ctx.set_zoom_factor((ctx.zoom_factor() * delta).clamp(0.2, 5.0));
+        } else {
+            let factor = if zoom_in {
+                1.1
+            } else if zoom_out {
+                1.0 / 1.1
+            } else {
+                delta
+            };
+            if reset {
+                ctx.set_zoom_factor(1.0);
+            } else if factor != 1.0 {
+                ctx.set_zoom_factor((ctx.zoom_factor() * factor).clamp(0.2, 5.0));
+            }
         }
     }
 
@@ -1573,5 +1585,55 @@ mod tests {
         assert!(update_check_due(Some(NOW + 60), NOW, EVERY));
         assert!(update_check_due(Some(i64::MAX), NOW, EVERY));
         assert!(update_check_due(Some(i64::MIN), NOW, EVERY));
+    }
+
+    #[test]
+    fn zoom_input_scales_and_resets_main_ui_and_notes_dialog() {
+        use egui::gui_zoom::kb_shortcuts;
+        let (mut launcher, _sent, ctx) = launcher();
+        ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        frame(&mut launcher, &ctx, 0.0);
+        assert_eq!(ctx.zoom_factor(), 1.0);
+
+        let send_shortcut = |launcher: &mut LauncherUi, sc: egui::KeyboardShortcut, time: f64| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1180.0, 900.0))),
+                time: Some(time),
+                events: vec![egui::Event::Key { key: sc.logical_key, physical_key: None, pressed: true, repeat: false, modifiers: sc.modifiers }],
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| launcher.ui(ui, &mut NoHost));
+            output.textures_delta.clear();
+            // egui applies queued zoom_factor updates at the start of the next frame.
+            frame(launcher, &ctx, time + 0.1);
+        };
+
+        send_shortcut(&mut launcher, kb_shortcuts::ZOOM_IN, 1.0);
+        assert!(ctx.zoom_factor() > 1.05, "expected zoom_in > 1.05, got {}", ctx.zoom_factor());
+        send_shortcut(&mut launcher, kb_shortcuts::ZOOM_RESET, 2.0);
+        assert!((ctx.zoom_factor() - 1.0).abs() < f32::EPSILON, "expected reset to 1.0, got {}", ctx.zoom_factor());
+        send_shortcut(&mut launcher, kb_shortcuts::ZOOM_OUT, 3.0);
+        assert!(ctx.zoom_factor() < 0.95, "expected zoom_out < 0.95, got {}", ctx.zoom_factor());
+        send_shortcut(&mut launcher, kb_shortcuts::ZOOM_RESET, 4.0);
+        assert!((ctx.zoom_factor() - 1.0).abs() < f32::EPSILON);
+
+        // When release notes are open, keyboard zoom adjusts notes_zoom without altering ctx zoom.
+        let app_id = launcher.entries[0].app.id.to_string();
+        launcher.entries[0].latest = Some(artcraft_launcher_core::protocol::LatestRelease::Found(artcraft_launcher_core::release::Release {
+            tag: "v1.0.0".into(),
+            version: None,
+            name: "v1.0.0".into(),
+            published_at: None,
+            html_url: String::new(),
+            notes: "# Notes".into(),
+            prerelease: false,
+            assets: Vec::new(),
+        }));
+        launcher.dialog = Some(Dialog::Notes(app_id));
+        send_shortcut(&mut launcher, kb_shortcuts::ZOOM_IN, 5.0);
+        assert!(launcher.notes_zoom > 1.05, "expected notes_zoom > 1.05, got {}", launcher.notes_zoom);
+        assert!((ctx.zoom_factor() - 1.0).abs() < f32::EPSILON);
+        send_shortcut(&mut launcher, kb_shortcuts::ZOOM_RESET, 6.0);
+        assert!((launcher.notes_zoom - 1.0).abs() < f32::EPSILON, "expected notes_zoom reset to 1.0, got {}", launcher.notes_zoom);
     }
 }
