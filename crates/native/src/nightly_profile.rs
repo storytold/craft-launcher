@@ -397,8 +397,9 @@ mod tests {
             let expected = crate::nightly_trust::configured_for(platform.os) && admit_new(photo, platform).is_ok();
             assert_eq!(new_installs_available(platform), expected, "{platform:?}");
         }
-        // The reviewed Windows publisher pin is configured, on Windows.
+        // The reviewed Windows publisher and Linux signer pins are configured, each on its own OS.
         assert_eq!(new_installs_available(Platform { os: Os::Windows, arch: Arch::X64 }), cfg!(windows));
+        assert_eq!(new_installs_available(Platform { os: Os::Linux, arch: Arch::X64 }), cfg!(target_os = "linux"));
     }
 
     fn fixture() -> (&'static CraftApp, Release, Artifact, Platform) {
