@@ -244,8 +244,9 @@ impl LauncherUi {
             // Where builds can't be verified yet, nothing is offered to download; a choice
             // already on can still be turned off.
             let available = self.nightly.available();
+            let interactive = available || enabled;
             let checkbox = egui::Checkbox::new(&mut enabled, tl!("Discover nightly builds (Pre-Release page)"));
-            let response = ui.add_enabled(available || enabled, checkbox);
+            let response = ui.add_enabled(interactive, checkbox);
             if !available {
                 note(ui, tl!("Pre-release builds aren't available on this platform yet."));
             }

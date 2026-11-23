@@ -308,7 +308,7 @@ impl NightlyState {
         // A future request permits one replacement, which resets this baseline to now.
         let request_allowed = self.requested_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60);
         let retry_allowed = self.statuses.values().all(|status| status.retry_at.is_none_or(|at| now >= at));
-        if self.discovering(settings.nightly_enabled) && !self.checking && due && request_allowed && retry_allowed {
+        if self.available && settings.nightly_enabled && !self.checking && due && request_allowed && retry_allowed {
             // A request is not a successful verification, including when Native coalesces it.
             self.requested_at = Some(now);
             backend.send(Command::CheckForUpdates { force: false });
@@ -375,7 +375,8 @@ impl LauncherUi {
             labels.iter().map(|label| ui.painter().layout_no_wrap((*label).into(), button_font.clone(), color).size().x + button_margin).sum::<f32>()
                 + ui.spacing().item_spacing.x;
         let heading_width = ui.painter().layout_no_wrap(heading.into(), egui::TextStyle::Heading.resolve(ui.style()), color).size().x;
-        let inline = self.nightly.discovering(self.settings.nightly_enabled) && heading_width + actions_width + ui.spacing().item_spacing.x <= ui.available_width();
+        let inline = self.nightly.discovering(self.settings.nightly_enabled)
+            && heading_width + actions_width + ui.spacing().item_spacing.x <= ui.available_width();
         if inline {
             ui.horizontal(|ui| {
                 ui.heading(heading);
@@ -1599,7 +1600,8 @@ mod trust_gate_tests {
     }
 
     fn discovery(sent: &[Command]) -> bool {
-        sent.iter().any(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. } | Command::Replace { .. } | Command::CheckForUpdates { .. }))
+        sent.iter()
+            .any(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. } | Command::Replace { .. } | Command::CheckForUpdates { .. }))
     }
 
     /// With consent but no configured trust nothing is looked for or offered, so nobody
@@ -1621,7 +1623,11 @@ mod trust_gate_tests {
         state.send(Command::CheckForUpdates { force: true }, true);
         assert!(!discovery(&sent.borrow()));
         events.borrow_mut().extend([
-            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(artcraft_launcher_core::Release::default()), from: artcraft_launcher_core::protocol::Origin::GitHub },
+            Event::Latest {
+                app: "photocraft".into(),
+                latest: LatestRelease::Found(artcraft_launcher_core::Release::default()),
+                from: artcraft_launcher_core::protocol::Origin::GitHub,
+            },
             Event::Installable { app: "photocraft".into(), installable: true },
         ]);
         state.logic(&settings);

@@ -115,9 +115,7 @@ fn configured_for_new_install(adapter: Adapter) -> Result<Adapter, String> {
 /// are managed either way.
 pub(crate) fn new_installs_available(platform: Platform) -> bool {
     crate::nightly_trust::configured_for(platform.os)
-        && artcraft_launcher_core::hosted_catalog::apps()
-            .iter()
-            .any(|app| app.has_separate_nightly_channel() && admit_new(app, platform).is_ok())
+        && artcraft_launcher_core::hosted_catalog::apps().iter().any(|app| app.has_separate_nightly_channel() && admit_new(app, platform).is_ok())
 }
 
 /// Retained management is tied to the same source-owned row, not a descriptor supplied command.
