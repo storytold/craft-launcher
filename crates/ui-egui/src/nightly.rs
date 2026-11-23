@@ -155,7 +155,9 @@ impl NightlyState {
     // Initial discovery lives only in Settings. Retained installations keep a management
     // destination after switching off; hiding it would strand Open/Reveal/Uninstall.
     fn destination_visible(&self, enabled: bool) -> bool {
-        enabled || self.entries.iter().any(|entry| entry.installed.is_some()) || !self.notices.is_empty()
+        // Errors, including unusable Pre-Release storage, never stand in for consent; once
+        // consent is given the page shows them as scoped errors.
+        enabled || self.entries.iter().any(|entry| entry.installed.is_some())
     }
 
     pub fn busy(&self) -> bool {
@@ -1199,6 +1201,18 @@ mod status_tests {
         fake.now.set(retry);
         state.logic(&settings);
         assert_eq!(checks(&fake), 1);
+    }
+
+    #[test]
+    fn unusable_storage_errors_never_open_the_destination_without_consent() {
+        let fake = FakeBackend::default();
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        let refusal = "Pre-Release storage is unavailable: the nightly folder contains an alias.";
+        fake.events.borrow_mut().push(Event::Notice { app: "photocraft".into(), result: Err(refusal.into()) });
+        state.logic(&Settings::default());
+        assert!(!state.destination_visible(false), "an error is not consent");
+        assert!(state.destination_visible(true));
+        assert!(state.notices.iter().any(|notice| notice == refusal), "after consent the page can show the scoped refusal");
     }
 
     #[test]

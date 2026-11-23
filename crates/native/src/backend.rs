@@ -327,7 +327,7 @@ impl RefusedNightlyBackend {
         );
         let apps = artcraft_launcher_core::hosted_catalog::apps()
             .iter()
-            .filter(|app| app.has_separate_nightly_channel())
+            .filter(|app| app.has_separate_nightly_channel() && platform.is_none_or(|p| app.runs_on(p.os)))
             .map(|app| app.id.to_string())
             .collect();
         let mut backend = Self { reason, platform, apps, events: Vec::new(), waker };
