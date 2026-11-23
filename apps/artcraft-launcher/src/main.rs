@@ -665,15 +665,15 @@ fn claim_notification_identity() -> &'static Result<(), String> {
     })
 }
 
-/// A default-folder question (format and architecture) with the host's answer.
-type DefaultFolderAnswer = ((artcraft_launcher_core::PackageKind, Option<artcraft_launcher_core::Arch>), Option<String>);
+/// A default-folder question (app id, format and architecture) with the host's answer.
+type DefaultFolderAnswer = ((&'static str, artcraft_launcher_core::PackageKind, Option<artcraft_launcher_core::Arch>), Option<String>);
 
 struct DesktopHost {
     tray: bool,
     quit: bool,
     /// Default-folder answers by question: the fields redraw often while a dialog is open,
     /// Settings asks once per app's package, and the macOS answer probes the disk. There are
-    /// only a handful of distinct questions (format and architecture).
+    /// one question per app (app, format and architecture).
     default_folders: Vec<DefaultFolderAnswer>,
 }
 
@@ -724,14 +724,19 @@ impl Host for DesktopHost {
         dialog.pick_folder().and_then(|p| p.to_str().map(str::to_string))
     }
 
-    fn default_install_folder(&mut self, kind: artcraft_launcher_core::PackageKind, arch: Option<artcraft_launcher_core::Arch>) -> Option<String> {
-        if let Some((_, answer)) = self.default_folders.iter().find(|(question, _)| *question == (kind, arch)) {
+    fn default_install_folder(
+        &mut self,
+        app: &artcraft_launcher_core::CraftApp,
+        kind: artcraft_launcher_core::PackageKind,
+        arch: Option<artcraft_launcher_core::Arch>,
+    ) -> Option<String> {
+        if let Some((_, answer)) = self.default_folders.iter().find(|(question, _)| *question == (app.id, kind, arch)) {
             return answer.clone();
         }
         let answer = artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| {
-            artcraft_launcher_native::install::default_folder(kind, arch, &paths).and_then(|folder| folder.to_str().map(str::to_string))
+            artcraft_launcher_native::install::app_default_folder(app, kind, arch, &paths).and_then(|folder| folder.to_str().map(str::to_string))
         });
-        self.default_folders.push(((kind, arch), answer.clone()));
+        self.default_folders.push(((app.id, kind, arch), answer.clone()));
         answer
     }
 

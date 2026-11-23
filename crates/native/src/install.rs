@@ -182,14 +182,24 @@ pub fn install_at(
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
     #[cfg(windows)]
     let msi_scope = if kind == PackageKind::Msi {
+        let product_code = existing.and_then(|inst| inst.package.as_deref());
         let updated = crate::msi_context::update_scope(
             existing.is_some_and(|inst| inst.source == InstallSource::Msi),
-            existing.and_then(|inst| inst.package.as_deref()),
+            product_code,
             crate::msi_context::probe,
             |code| crate::detect::windows::record_scope(app, code),
         )?;
-        // A fresh install is machine-wide (Program Files); an update keeps the context of the copy it replaces.
-        crate::msi_context::install_scope(updated, existing.is_none())
+        if let (Some(scope), Some(code)) = (updated, product_code) {
+            let others = crate::detect::windows::other_registrations(app, code);
+            crate::msi_context::others_agree(scope, others.iter().map(String::as_str), crate::msi_context::probe, |code| {
+                crate::detect::windows::record_scope(app, code)
+            })?;
+        }
+        let stems: Vec<&str> = app.stems().collect();
+        let wow32 = artcraft_launcher_core::platform::parse_asset_name(&asset.name, &stems).and_then(|name| name.arch()) == Some(Arch::X86);
+        // An update keeps the context of the copy it replaces; otherwise the copy the app's installer
+        // will find decides, and a fresh install with none is machine-wide (Program Files).
+        crate::msi_context::install_scope(updated, existing.is_none(), &crate::detect::windows::installer_traces(app, wow32), app.name)?
     } else {
         None
     };
@@ -234,8 +244,9 @@ pub fn install_at(
         #[cfg(windows)]
         PackageKind::Msi => {
             // An update lands in the same Windows Installer context as the copy being replaced:
-            // per-machine needs elevation, per-user must not duplicate itself per-machine. A
-            // fresh install passes no context and takes the package's own default.
+            // per-machine needs elevation, per-user must not duplicate itself per-machine. Without
+            // one, `msi_scope` is the context of the copy the app's installer will find, and a fresh
+            // install with none is per-machine.
             match &rollback {
                 Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
@@ -467,6 +478,22 @@ pub fn default_folder(kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> O
     }
 }
 
+/// [`default_folder`] for a fresh install of `app`. A Windows MSI that will not install for everyone,
+/// because its installer will find a copy recorded for this account, answers `None`: the package
+/// then installs where that copy was recorded.
+pub fn app_default_folder(app: &CraftApp, kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> Option<PathBuf> {
+    #[cfg(windows)]
+    if kind == PackageKind::Msi {
+        let traces = crate::detect::windows::installer_traces(app, arch == Some(Arch::X86));
+        if crate::msi_context::install_scope(None, true, &traces, app.name) != Ok(Some(MsiScope::PerMachine)) {
+            return None;
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+    default_folder(kind, arch, paths)
+}
+
 fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
     let path = if folder == "~" {
         dirs::home_dir().ok_or("no home folder")?
@@ -526,7 +553,8 @@ fn msi_folder_argument(path: &Path) -> Result<String, String> {
 
 /// The Windows Installer context an update must keep. A per-machine install elevates and writes
 /// HKLM registrations; a per-user one must not silently become a second, per-machine copy (or
-/// the other way round). A fresh install is always `PerMachine`.
+/// the other way round). A fresh install is `PerMachine` unless the app's installer will find a
+/// copy recorded for this account.
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MsiScope {
@@ -538,11 +566,10 @@ pub enum MsiScope {
 /// explicitly on every update also keeps a per-machine update working when the package's own
 /// default has since changed.
 ///
-/// `ALLUSERS=1` is what the current per-machine-only packages already set themselves, so it
-/// changes nothing for them; `ALLUSERS=2` with `MSIINSTALLPERUSER=1` is the documented
-/// single-package way to request a per-user install of a dual-scope package. A per-user
-/// registered copy can only come from a dual-scope package, so its updates can safely ask for
-/// one.
+/// `ALLUSERS=1` asks for a per-machine install, which a per-machine-only package also sets
+/// itself; `ALLUSERS=2` with `MSIINSTALLPERUSER=1` is the documented single-package way to
+/// request a per-user install of a dual-scope package. A per-user registered copy can only come
+/// from a dual-scope package, so its updates can safely ask for one.
 #[cfg(any(windows, test))]
 fn msi_scope_arguments(scope: Option<MsiScope>) -> Vec<&'static str> {
     match scope {

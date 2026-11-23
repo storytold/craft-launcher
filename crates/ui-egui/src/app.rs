@@ -61,11 +61,11 @@ pub trait Host {
     fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
         None
     }
-    /// The folder a new install of this format goes inside when the person hasn't chosen one, so
-    /// the install-folder field can show that folder instead of only saying "System default".
-    /// `arch` is the package's architecture when the release names one. `None` when this host
-    /// has no single answer (the web build; formats the system manages).
-    fn default_install_folder(&mut self, _kind: PackageKind, _arch: Option<Arch>) -> Option<String> {
+    /// The folder a new install of `app` in this format goes inside when the person hasn't chosen
+    /// one, so the install-folder field can show that folder instead of only saying "System
+    /// default". `arch` is the package's architecture when the release names one. `None` when this
+    /// host has no single answer (the web build; formats the system manages).
+    fn default_install_folder(&mut self, _app: &artcraft_launcher_core::CraftApp, _kind: PackageKind, _arch: Option<Arch>) -> Option<String> {
         None
     }
     /// The URL to open when Discord is clicked. Defaults to the web link.

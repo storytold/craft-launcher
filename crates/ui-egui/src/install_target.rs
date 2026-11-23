@@ -98,8 +98,9 @@ impl LauncherUi {
 
     /// The folder a fresh install of `id` goes inside when no folder is chosen.
     pub(crate) fn default_folder_for(&self, id: &str, host: &mut dyn Host) -> Option<String> {
-        let (kind, arch) = self.fresh_package(self.entry(id)?)?;
-        host.default_install_folder(kind, arch)
+        let entry = self.entry(id)?;
+        let (kind, arch) = self.fresh_package(entry)?;
+        host.default_install_folder(entry.app, kind, arch)
     }
 
     /// The default for Settings, which covers every app: the folder when every app that can be
@@ -110,7 +111,7 @@ impl LauncherUi {
         let mut shared: Option<String> = None;
         for entry in self.entries.iter().filter(|entry| matches!(entry.latest, Some(LatestRelease::Found(_)))) {
             let Some((kind, arch)) = self.fresh_package(entry) else { continue };
-            let folder = host.default_install_folder(kind, arch)?;
+            let folder = host.default_install_folder(entry.app, kind, arch)?;
             match &shared {
                 Some(seen) if *seen != folder => return None,
                 Some(_) => {}

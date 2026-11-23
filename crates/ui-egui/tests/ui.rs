@@ -968,7 +968,12 @@ fn the_install_folder_fields_default_to_the_hosts_answer() {
             *self.initial.borrow_mut() = Some(initial.map(str::to_string));
             self.picked.borrow_mut().take()
         }
-        fn default_install_folder(&mut self, _kind: artcraft_launcher_core::PackageKind, _arch: Option<Arch>) -> Option<String> {
+        fn default_install_folder(
+            &mut self,
+            _app: &artcraft_launcher_core::CraftApp,
+            _kind: artcraft_launcher_core::PackageKind,
+            _arch: Option<Arch>,
+        ) -> Option<String> {
             Some("/Applications".into())
         }
     }
@@ -1044,7 +1049,12 @@ impl Host for PackageHost {
         *self.initial.borrow_mut() = Some(initial.map(str::to_string));
         None
     }
-    fn default_install_folder(&mut self, kind: artcraft_launcher_core::PackageKind, arch: Option<Arch>) -> Option<String> {
+    fn default_install_folder(
+        &mut self,
+        _app: &artcraft_launcher_core::CraftApp,
+        kind: artcraft_launcher_core::PackageKind,
+        arch: Option<Arch>,
+    ) -> Option<String> {
         Some(format!("{kind:?} {:?}", arch?))
     }
 }
