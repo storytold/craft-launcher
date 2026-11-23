@@ -883,7 +883,17 @@ impl NativeBackend {
         if self.platform.is_some_and(|p| !app.runs_on(p.os)) {
             return None;
         }
-        log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
+        log::info!(
+            "{}: starting {} job",
+            app.name,
+            if uninstall {
+                "uninstall"
+            } else if launching {
+                "open"
+            } else {
+                "install/update"
+            }
+        );
         #[cfg(test)]
         tests::note_job_preparation("job reservation");
         let stop = Arc::new(Stop::default());

@@ -1,7 +1,7 @@
 //! Pre-release discovery and consent. The same backend contract owns all side effects.
 
 use artcraft_launcher_core::Platform;
-use artcraft_launcher_core::protocol::{Backend, BackendOptions, Command, Event, LatestRelease, NightlyStatus};
+use artcraft_launcher_core::protocol::{Backend, BackendOptions, Command, Event, JobPhase, LatestRelease, NightlyStatus};
 use egui::{RichText, Ui};
 use std::collections::BTreeMap;
 
@@ -58,6 +58,25 @@ fn nightly_card_version(entry: &AppEntry, enabled: bool) -> Option<String> {
 }
 
 // Reuse the UI's relative-time vocabulary; build identity still uses the UTC tag day.
+/// The card's caption and progress for a running Nightly job, in the same words as other jobs.
+fn nightly_job_progress(phase: JobPhase) -> (Option<f32>, String) {
+    match phase {
+        JobPhase::Downloading { done, total } if total > 0 => (
+            Some(done as f32 / total as f32),
+            crate::fmt(
+                tl!("Downloading {done} of {total}"),
+                &[("done", &crate::widgets::human_bytes(done)), ("total", &crate::widgets::human_bytes(total))],
+            ),
+        ),
+        JobPhase::Downloading { .. } | JobPhase::Reconnecting { .. } => (None, tl!("Downloading…").to_string()),
+        JobPhase::Verifying => (None, tl!("Verifying…").to_string()),
+        JobPhase::Queued => (None, tl!("Waiting for another download…").to_string()),
+        JobPhase::Waiting => (None, tl!("Waiting for other installs…").to_string()),
+        JobPhase::Installing => (None, tl!("Installing…").to_string()),
+        JobPhase::Removing => (None, tl!("Removing…").to_string()),
+    }
+}
+
 fn nightly_ago(at: i64, now: i64) -> String {
     use crate::i18n::tn;
     use artcraft_launcher_core::time::{TimeAgo, ago_kind};
@@ -517,8 +536,11 @@ impl LauncherUi {
                         self.nightly_uninstall_prompt(entry.app.id, uninstall.id);
                     }
                 }
-                // OFF is management-only, not a disabled storefront.
-                if enabled
+                // A running job replaces the install action with its progress, as on stable cards.
+                if let Some(phase) = entry.job {
+                    let (fraction, caption) = nightly_job_progress(phase);
+                    crate::widgets::progress(ui, fraction, &caption, tokens.accent, ui.available_width());
+                } else if enabled
                     && !nightly_install_is_redundant(entry)
                     && ui
                         .add_enabled(
@@ -1466,5 +1488,33 @@ mod polish_tests {
             let state = NightlyState::new(None, Some(Platform { os, arch: artcraft_launcher_core::Arch::X64 }));
             assert_eq!(state.entries.iter().map(|entry| entry.app.id).collect::<Vec<_>>(), vec!["photocraft"]);
         }
+    }
+    #[test]
+    fn a_running_install_shows_its_progress_instead_of_the_install_action() {
+        let sent: Commands = Rc::default();
+        let card = Card { installed: None, installable: Some(true), ..current() };
+        let mut harness = page(1180.0, ThemeChoice::Light, card, sent);
+        assert!(harness.query_by_label("Install pre-release").is_some(), "precondition: an installable build offers the install action");
+        let set_job = |harness: &mut Harness<'static, Option<LauncherUi>>, job: Option<JobPhase>| {
+            let launcher = harness.state_mut().as_mut().unwrap();
+            launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap().job = job;
+        };
+        for (phase, caption) in [
+            (JobPhase::Downloading { done: 0, total: 0 }, "Downloading…"),
+            (JobPhase::Verifying, "Verifying…"),
+            (JobPhase::Installing, "Installing…"),
+        ] {
+            set_job(&mut harness, Some(phase));
+            harness.run_steps(3);
+            assert!(
+                harness.query_by_label("Install pre-release").is_none(),
+                "{caption}: the install action must not stay clickable while installing"
+            );
+            let progress = harness.get_by_label(caption);
+            assert_eq!(progress.accesskit_node().role(), egui::accesskit::Role::ProgressIndicator, "{caption}");
+        }
+        set_job(&mut harness, None);
+        harness.run_steps(3);
+        assert!(harness.query_by_label("Install pre-release").is_some(), "the action returns when the job ends");
     }
 }
