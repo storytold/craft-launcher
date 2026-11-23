@@ -73,6 +73,34 @@ struct ProcessLifecycle {
     // snapshots even when rollback restores an identical manifest record.
     revisions: Mutex<HashMap<String, u64>>,
 }
+/// Where installed copies are looked for besides the launcher's own records: the system. Tests
+/// look only at the records and a stub, so a copy installed on the machine running them (a
+/// Flatpak, a distro package, an AppImage) can't change what they see.
+#[derive(Clone)]
+enum HostDetection {
+    System,
+    #[cfg(test)]
+    Stub(Arc<dyn Fn(&CraftApp) -> Option<Installed> + Send + Sync>),
+}
+
+impl HostDetection {
+    fn snapshot(&self) -> crate::detect::Snapshot {
+        match self {
+            Self::System => crate::detect::Snapshot::take(),
+            #[cfg(test)]
+            Self::Stub(_) => crate::detect::Snapshot::default(),
+        }
+    }
+
+    fn detect(&self, app: &CraftApp, manifest: &Manifest, snapshot: &crate::detect::Snapshot) -> Option<Installed> {
+        match self {
+            Self::System => crate::detect::detect(app, manifest, snapshot),
+            #[cfg(test)]
+            Self::Stub(host) => crate::detect::from_manifest(app, manifest).or_else(|| host(app)),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq)]
 enum Admission {
     Reserved,
@@ -83,6 +111,7 @@ enum Admission {
 struct Shared {
     /// Immutable: Configure cannot turn the stable backend into a nightly installer.
     channel: artcraft_launcher_core::nightly::InstallChannel,
+    host: HostDetection,
     events: Mutex<Vec<Event>>,
     /// Held while an app's latest release or installed copy changes and its [`Event::Installable`]
     /// is worked out and queued, so no answer from older state lands after a newer one. Always
@@ -424,6 +453,7 @@ impl NativeBackend {
 
         let shared = Arc::new(Shared {
             channel,
+            host: HostDetection::System,
             #[cfg(test)]
             nightly_detection_observer: Mutex::new(None),
             events: Mutex::new(Vec::new()),
@@ -601,10 +631,10 @@ impl NativeBackend {
             // Leftovers from interrupted installs or older versions of the launcher. A paused
             // download stays a month; a finished one kept after a failed install, a week.
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
-            let snapshot = crate::detect::Snapshot::take();
+            let snapshot = shared.host.snapshot();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
-                let found = crate::detect::detect(app, &manifest, &snapshot);
+                let found = shared.host.detect(app, &manifest, &snapshot);
                 publish_detected(app, found, &shared, platform);
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
@@ -990,7 +1020,7 @@ impl NativeBackend {
                 let found = if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
                     manifest.apps.get(app.id).and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok())
                 } else {
-                    crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take())
+                    shared.host.detect(app, &manifest, &shared.host.snapshot())
                 };
                 // One installer call can cover several apps, and fail after some of them went in.
                 let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
@@ -2885,6 +2915,7 @@ mod tests {
     pub(super) fn shared() -> Shared {
         Shared {
             channel: artcraft_launcher_core::nightly::InstallChannel::Stable,
+            host: HostDetection::Stub(Arc::new(|_| None)),
             nightly_detection_observer: Mutex::new(None),
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
@@ -3734,34 +3765,60 @@ mod tests {
         assert!(!ids.iter().any(|id| backend.shared.jobs.lock().unwrap().contains_key(*id)), "and the jobs are free again");
     }
 
+    /// Wherever the tests run: with or without a PhotoCraft installed on the machine (here a
+    /// stubbed host Flatpak, newer than any release the backend knows), JobFinished observers see
+    /// the job's final busy state and download plan.
     #[test]
     fn job_finished_follows_busy_cleanup_and_download_plan_publication() {
         let Some(platform) = native_platform() else {
             return;
         };
-        let dir = tempfile::tempdir().unwrap();
-        let mut backend = backend(dir.path(), platform, None);
-        let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
-        let shared_for_waker = shared.clone();
-        let (sent, received) = mpsc::channel();
-        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
-            let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
-                return;
-            };
-            let finished = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
-            if finished {
-                let busy = shared.jobs.lock().unwrap().contains_key(APP);
-                let plan = shared.download_sizes.lock().unwrap().get(APP).and_then(|cached| cached.plan);
-                let _ = sent.send((busy, plan));
+        let host_flatpak = || Installed {
+            version: version::parse("99.0.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft".into(),
+            package: Some("ai.storyteller.photocraft".into()),
+            externally_managed: false,
+            origin: None,
+            installation: Some("system".into()),
+        };
+        for host_copy in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut backend = backend(dir.path(), platform, None);
+            if host_copy {
+                Arc::get_mut(&mut backend.shared).unwrap().host =
+                    HostDetection::Stub(Arc::new(move |app: &CraftApp| (app.id == APP).then(host_flatpak)));
             }
-        });
-        *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
+            let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
+            let shared_for_waker = shared.clone();
+            let paths = backend.paths.clone();
+            let (sent, received) = mpsc::channel();
+            Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+                let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
+                    return;
+                };
+                let finished = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
+                if finished {
+                    let busy = shared.jobs.lock().unwrap().contains_key(APP);
+                    let plan = shared.download_sizes.lock().unwrap().get(APP).and_then(|cached| cached.plan);
+                    let options = shared.options.lock().unwrap().clone();
+                    let current = planned_download(CraftApp::by_id(APP).unwrap(), &shared, &paths, Some(platform), &options)
+                        .map(|(_, kind, size)| (kind, size));
+                    let _ = sent.send((busy, plan, current));
+                }
+            });
+            *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
 
-        backend.start_job(APP, Work::Uninstall);
-        let (busy, plan) = received.recv_timeout(Duration::from_secs(2)).unwrap();
-        assert!(!busy);
-        assert!(matches!(plan, Some((_, 3))), "JobFinished observers need the final download plan: {plan:?}");
-        assert_eq!(backend.download_size(APP), plan);
+            backend.start_job(APP, Work::Uninstall);
+            // Generous for a loaded machine; the job itself takes a few milliseconds.
+            let (busy, plan, current) = received.recv_timeout(Duration::from_secs(10)).unwrap();
+            assert!(!busy, "host copy: {host_copy}");
+            assert_eq!(plan, current, "JobFinished observers need the final download plan (host copy: {host_copy})");
+            if !host_copy {
+                assert!(matches!(plan, Some((_, 3))), "{plan:?}");
+            }
+            assert_eq!(backend.download_size(APP), plan);
+        }
     }
 
     /// Puts the planned download on disk, as a failed install leaves it.
