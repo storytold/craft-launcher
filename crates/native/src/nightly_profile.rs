@@ -91,7 +91,23 @@ pub(crate) fn adapter(app: &CraftApp, release: &Release, artifact: &Artifact, pl
             && artifact.isolation.associations == "none"
             && artifact.asset.name == format!("photocraft-{version}-{}", row.suffix)
     });
-    row.map(|row| row.adapter).ok_or_else(|| "This app, target or profile has no separate nightly adapter.".into())
+    row.map(|row| row.adapter)
+        .ok_or_else(|| "This app, target or profile has no separate nightly adapter.".into())
+        .and_then(configured_for_new_install)
+}
+
+/// Admission for new discovery/install, separate from retained-copy management.
+pub(crate) fn admit_new(app: &CraftApp, platform: Platform) -> Result<Adapter, String> {
+    for_app(app, platform).and_then(configured_for_new_install)
+}
+
+fn configured_for_new_install(adapter: Adapter) -> Result<Adapter, String> {
+    match adapter {
+        // Ordinary mac_team metadata is not Nightly configuration or package qualification.
+        // Keep the known row for strict retained-copy validation; do not admit a new payload.
+        Adapter::PhotoCraftMacV1 => Err("PhotoCraft Nightly on macOS is not configured; existing copies and data were left unchanged.".into()),
+        _ => Ok(adapter),
+    }
 }
 
 /// Retained management is tied to the same source-owned row, not a descriptor supplied command.
@@ -234,6 +250,10 @@ pub(crate) fn validate_paths(paths: &Paths) -> Result<(), String> {
 }
 
 impl Adapter {
+    pub(crate) fn admit_new(self) -> Result<Self, String> {
+        configured_for_new_install(self)
+    }
+
     pub(crate) fn kind(self) -> PackageKind {
         match self {
             Self::PhotoCraftLinuxV1 => PackageKind::TarGz,
@@ -439,7 +459,12 @@ mod tests {
         ] {
             artifact.target = Target { os: os.into(), arch: arch.into(), format: format.into() };
             artifact.asset.name = format!("photocraft-{}-{suffix}", release.version.as_ref().unwrap());
-            assert_eq!(adapter(app, &release, &artifact, platform), Ok(expected));
+            if expected == Adapter::PhotoCraftMacV1 {
+                assert!(adapter(app, &release, &artifact, platform).is_err(), "new Mac payloads are refused until configured");
+                assert_eq!(for_app(app, platform), Ok(expected), "retain strict management of known old copies");
+            } else {
+                assert_eq!(adapter(app, &release, &artifact, platform), Ok(expected));
+            }
             let community = CraftApp { kind: artcraft_launcher_core::catalog::AppKind::Community, ..*app };
             assert!(adapter(&community, &release, &artifact, platform).is_err());
             let asset = artcraft_launcher_core::Asset {

@@ -155,10 +155,17 @@ impl Settings {
         cfg!(target_os = "linux") || self.batch_updates
     }
 
-    /// Clear saved catalog filters whose controls were removed from the toolbar.
+    /// Reconcile removed controls and ordinary tracks now owned by a separate channel.
+    /// This changes no consent, installed copies, profiles, data, or legacy app/Launcher choices.
     pub fn migrate(&mut self) {
         if !matches!(self.filter, Filter::All | Filter::Hidden) {
             self.filter = Filter::All;
+        }
+        self.versions.retain(|id, track| {
+            artcraft_launcher_core::CraftApp::by_id(id).is_none_or(|app| artcraft_launcher_core::release::ordinary_track_allowed(app, track))
+        });
+        if !artcraft_launcher_core::release::ordinary_track_allowed(&artcraft_launcher_core::catalog::LAUNCHER, &self.launcher_version) {
+            self.launcher_version = artcraft_launcher_core::protocol::VersionTrack::Stable;
         }
     }
 
@@ -363,5 +370,31 @@ mod tests {
         let live = |id: &str| id != "gone";
         assert_eq!(s.pinned_neighbor("a", 1, live), Some(2));
         assert_eq!(s.pinned_neighbor("b", -1, live), Some(0));
+    }
+    #[test]
+    fn shared_selection_saved_tracks_migrate_only_separate_channel_apps() {
+        use artcraft_launcher_core::protocol::VersionTrack;
+        for photo in [VersionTrack::Nightly, VersionTrack::Pinned("v1.0.0-dev.nightly.1".into())] {
+            for legacy in [VersionTrack::Nightly, VersionTrack::Pinned("v1.0.0-dev.nightly.1".into())] {
+                let mut original = Settings { nightly_enabled: false, prereleases: true, launcher_version: legacy.clone(), ..Default::default() };
+                original.versions.insert("photocraft".into(), photo.clone());
+                original.versions.insert("solidcraft".into(), legacy.clone());
+                original.versions.insert("filmcraft".into(), legacy.clone());
+                original.versions.insert("pdfcraft".into(), VersionTrack::Pinned("v0.7.0".into()));
+                original.launch_flags.insert("photocraft".into(), "--user-owned-flags".into());
+                let saved = serde_json::to_vec(&original).unwrap();
+                let mut loaded: Settings = serde_json::from_slice(&saved).unwrap();
+                loaded.migrate();
+                let mut expected = original.clone();
+                expected.versions.remove("photocraft");
+                assert_eq!(
+                    loaded, expected,
+                    "only invalid ordinary PhotoCraft tracks migrate; consent, Launcher, third parties, stable pins and unrelated settings survive"
+                );
+                let once = loaded.clone();
+                loaded.migrate();
+                assert_eq!(loaded, once);
+            }
+        }
     }
 }

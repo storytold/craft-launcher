@@ -528,3 +528,69 @@ fn review_probe_ordinary_release_tags_do_not_poison_nightly_lookup() {
         );
     }
 }
+
+#[test]
+fn shared_selection_core_and_native_rank_one_mixed_canonical_list_identically() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let high = tag(20);
+    let bare = high.strip_prefix('v').unwrap();
+    let expected = format!("{bare}+aaa");
+    let tags = [tag(10), format!("{high}+zzz"), format!("{high}+aaa"), format!("{bare}+zzz"), expected.clone()];
+    let mut items = Vec::new();
+    let mut winner_body = None;
+    for (index, tag) in tags.iter().enumerate() {
+        let (mut item, url, body) = candidate(tag, true);
+        item["published_at"] = json!(if index == 0 { "2026-11-21T16:00:00Z" } else { "2026-11-20T16:00:00Z" });
+        if tag == &expected {
+            winner_body = Some((url, body));
+        }
+        items.push(item);
+    }
+    items.push(ordinary(0));
+    items.push(json!({"draft":false,"prerelease":true,"tag_name":"v9.0.0-beta.1","assets":[]}));
+    for rotation in 0..3 {
+        let mut permutation = items.clone();
+        permutation.rotate_left(rotation);
+        if rotation == 1 {
+            permutation.reverse();
+        }
+        let core = artcraft_launcher_core::release::parse_github_versions(&serde_json::to_string(&permutation).unwrap(), app().repo).unwrap();
+        let selected = artcraft_launcher_core::release::choose_version(&core, &VersionTrack::Nightly).unwrap();
+        assert_eq!(selected.tag, expected);
+        // Only the winner's body exists: dominated descriptor bodies are not newly fetched.
+        let data = fixtures(permutation, vec![winner_body.clone().unwrap()]);
+        let Outcome::Verified(native) = ask(&data) else { panic!("canonical mixed-list lookup must verify the shared core winner") };
+        assert_eq!(native.release().tag, selected.tag);
+    }
+}
+#[test]
+fn shared_selection_native_missing_winning_evidence_is_not_an_ordinary_checksum_filter() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (low, url, body) = candidate(&tag(10), true);
+    let (mut high, _, _) = candidate(&tag(20), true);
+    high["assets"] = json!([]);
+    let items = vec![low, high];
+    let core = artcraft_launcher_core::release::parse_github_versions(&serde_json::to_string(&items).unwrap(), app().repo).unwrap();
+    assert_eq!(artcraft_launcher_core::release::choose_version(&core, &VersionTrack::Nightly).unwrap().tag, tag(10));
+    assert!(
+        matches!(ask(&fixtures(items, vec![(url, body)])), Outcome::Indeterminate(_)),
+        "the native channel must not silently turn missing winning evidence into a lower verified selection"
+    );
+}
+#[test]
+fn shared_selection_unconfigured_mac_lookup_refuses_before_any_network_body() {
+    let mut requests = 0;
+    let result = lookup(
+        app(),
+        Platform { os: Os::MacOs, arch: Arch::Arm64 },
+        NOW,
+        &mut |_, _, _, _| {
+            requests += 1;
+            Ok(None)
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    );
+    assert!(matches!(result, Outcome::Indeterminate(_)));
+    assert_eq!(requests, 0);
+}

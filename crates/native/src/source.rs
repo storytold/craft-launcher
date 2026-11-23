@@ -43,7 +43,7 @@ pub trait ReleaseSource: Send + Sync {
             return self.latest(repo, false);
         }
         let latest = match self.versions(repo) {
-            Ok(list) => release::choose_version(&list, track).map_or(LatestRelease::None, LatestRelease::Found),
+            Ok(list) => release::choose_version_for_repo(&list, track, repo).map_or(LatestRelease::None, LatestRelease::Found),
             Err(why) => LatestRelease::Failed(why),
         };
         Answer { latest, source: Source::GitHubApi }
@@ -109,7 +109,13 @@ impl GitHubSource {
 
     fn entry(&self, repo: &str, prereleases: bool) -> Option<Entry> {
         let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
-        cache.entries.get(repo).filter(|e| e.prereleases == prereleases).cloned()
+        cache
+            .entries
+            .get(repo)
+            .filter(|entry| {
+                entry.prereleases == prereleases && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(repo, release))
+            })
+            .cloned()
     }
 
     fn store(&self, repo: &str, entry: Entry) {
@@ -122,6 +128,15 @@ impl GitHubSource {
     }
 
     fn ask_api(&self, repo: &str, prereleases: bool) -> Result<Option<Answer>, String> {
+        self.ask_api_with(repo, prereleases, |url, etag| self.http.get_api(url, etag))
+    }
+
+    fn ask_api_with(
+        &self,
+        repo: &str,
+        prereleases: bool,
+        fetch: impl FnOnce(&str, Option<&str>) -> Result<Fetched, String>,
+    ) -> Result<Option<Answer>, String> {
         let url = if prereleases {
             format!("https://api.github.com/repos/{repo}/releases?per_page=30")
         } else {
@@ -130,13 +145,16 @@ impl GitHubSource {
         let saved = self.entry(repo, prereleases);
         let found =
             |release: Option<Release>| Answer { latest: release.map_or(LatestRelease::None, LatestRelease::Found), source: Source::GitHubApi };
-        match self.http.get_api(&url, saved.as_ref().and_then(|e| e.etag.as_deref()))? {
+        match fetch(&url, saved.as_ref().and_then(|e| e.etag.as_deref()))? {
             Fetched::Body { text, etag } => {
                 let release = if prereleases {
                     release::parse_github_release_list(&text, repo, true)?
                 } else {
                     Some(release::parse_github_release(&text, repo)?)
                 };
+                if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(repo, release)) {
+                    return Err("This Nightly belongs to the separate Pre-Release channel, not the ordinary release cache.".into());
+                }
                 self.store(repo, Entry { etag, release: release.clone(), prereleases, fetched_at: crate::now() });
                 Ok(Some(found(release)))
             }
@@ -474,5 +492,79 @@ mod tests {
     fn a_reset_past_the_quota_window_cannot_stop_the_api_for_good() {
         assert_eq!(retry_at(Some(i64::MAX), 1_000), 1_000 + 60 * 60);
         assert_eq!(retry_at(Some(99_999_999_999), 1_000), 1_000 + 60 * 60);
+    }
+    fn shared_selection_saved_source(repo: &str, tag: &str) -> (tempfile::TempDir, GitHubSource, Release) {
+        let temp = tempfile::tempdir().unwrap();
+        let release = release::parse_github_release(&serde_json::json!({"tag_name":tag,"prerelease":true,"assets":[]}).to_string(), repo).unwrap();
+        let cache = CacheFile {
+            entries: [(repo.into(), Entry { etag: Some("old-etag".into()), release: Some(release.clone()), prereleases: true, fetched_at: 7 })]
+                .into(),
+        };
+        let path = temp.path().join("releases.json");
+        std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), path);
+        (temp, source, release)
+    }
+    #[test]
+    fn shared_selection_saved_first_party_nightly_never_replays_offline_or_rate_limited() {
+        let (_temp, source, _) = shared_selection_saved_source(REPO, "v1.0.0-dev.nightly.1");
+        assert!(source.cached(REPO, true).is_none(), "invalid cache is unavailable, not proof of no ordinary releases");
+        for limited in [false, true] {
+            let result = resolve(
+                REPO,
+                true,
+                limited,
+                || Err(NO_API.into()),
+                || panic!("prerelease lookups never use latest release pages"),
+                || source.cached(REPO, true),
+            );
+            assert!(matches!(result.latest, LatestRelease::Failed(_)));
+        }
+    }
+    #[test]
+    fn shared_selection_stale_nightly_etag_cannot_keep_shadowing_a_beta() {
+        let (temp, source, _) = shared_selection_saved_source(REPO, "v1.0.0-dev.nightly.1");
+        let original = std::fs::read(temp.path().join("releases.json")).unwrap();
+        let mut sent_etag = Some("not called".to_string());
+        let replay = source.ask_api_with(REPO, true, |_, etag| {
+            sent_etag = etag.map(str::to_owned);
+            Ok(Fetched::NotModified)
+        });
+        assert!(replay.is_err(), "an invalid cached Nightly cannot become a successful unchanged ordinary answer");
+        assert_eq!(sent_etag, None, "force a real body instead of perpetually accepting the stale ETag");
+        assert_eq!(std::fs::read(temp.path().join("releases.json")).unwrap(), original, "admission must not delete or rewrite the old on-disk cache");
+        let body = r#"[{"tag_name":"v1.0.0-dev.nightly.1","prerelease":true},{"tag_name":"v0.9.0-beta.1","prerelease":true}]"#;
+        let answer = source
+            .ask_api_with(REPO, true, |_, etag| {
+                assert!(etag.is_none());
+                Ok(Fetched::Body { text: body.into(), etag: Some("current-etag".into()) })
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(tag_of(&answer), Some("v0.9.0-beta.1"));
+        let unchanged = source
+            .ask_api_with(REPO, true, |_, etag| {
+                assert_eq!(etag, Some("current-etag"));
+                Ok(Fetched::NotModified)
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(tag_of(&unchanged), Some("v0.9.0-beta.1"));
+    }
+    #[test]
+    fn shared_selection_legacy_nightly_cache_and_etag_replay_remain_main_compatible() {
+        for id in ["solidcraft", "filmcraft"] {
+            let repo = artcraft_launcher_core::CraftApp::by_id(id).unwrap().repo;
+            let (_temp, source, release) = shared_selection_saved_source(repo, "v1.0.0-dev.nightly.1");
+            assert_eq!(source.cached(repo, true), Some(LatestRelease::Found(release.clone())));
+            let answer = source
+                .ask_api_with(repo, true, |_, etag| {
+                    assert_eq!(etag, Some("old-etag"));
+                    Ok(Fetched::NotModified)
+                })
+                .unwrap()
+                .unwrap();
+            assert_eq!(answer.latest, LatestRelease::Found(release));
+        }
     }
 }

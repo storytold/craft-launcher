@@ -425,7 +425,9 @@ impl LauncherUi {
                 UiAction::NightlyConsent(enabled) => {
                     self.settings.nightly_enabled = *enabled;
                     self.nightly.consent_open = false;
-                    self.nightly.active = true;
+                    if *enabled {
+                        self.nightly.active = true;
+                    }
                     self.nightly.configure(&self.settings);
                 }
                 UiAction::Launch(id) => {
@@ -1586,5 +1588,21 @@ mod tests {
         assert!(update_check_due(Some(NOW + 60), NOW, EVERY));
         assert!(update_check_due(Some(i64::MAX), NOW, EVERY));
         assert!(update_check_due(Some(i64::MIN), NOW, EVERY));
+    }
+    #[test]
+    fn shared_selection_declined_consent_never_activates_a_new_destination() {
+        let (mut refused, _, _) = launcher();
+        refused.pending.push(UiAction::NightlyConsent(false));
+        refused.flush_actions();
+        assert!(!refused.settings.nightly_enabled && !refused.nightly.active);
+        let (mut accepted, _, _) = launcher();
+        accepted.pending.push(UiAction::NightlyConsent(true));
+        accepted.flush_actions();
+        assert!(accepted.settings.nightly_enabled && accepted.nightly.active);
+        let (mut retained, _, _) = launcher();
+        retained.nightly.active = true;
+        retained.pending.push(UiAction::NightlyConsent(false));
+        retained.flush_actions();
+        assert!(!retained.settings.nightly_enabled && retained.nightly.active, "OFF must not force an already open management destination away");
     }
 }

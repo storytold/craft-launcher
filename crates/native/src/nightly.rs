@@ -1,7 +1,6 @@
 //! Verified nightly discovery and the sole source-owned per-target admission token.
 //! A raw release or descriptor cannot construct this token or redirect the stable installer.
 
-use artcraft_launcher_core::protocol::VersionTrack;
 use artcraft_launcher_core::{Asset, CraftApp, InstallSource, Installed, Platform, Release};
 
 use crate::http::Http;
@@ -34,21 +33,11 @@ impl VerifiedRelease {
     }
 }
 
-pub fn nightly_track(track: &VersionTrack) -> bool {
-    match track {
-        VersionTrack::Nightly => true,
-        VersionTrack::Pinned(tag) => {
-            artcraft_launcher_core::version::parse(tag).is_some_and(|v| v.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly")))
-        }
-        VersionTrack::Stable => false,
-    }
-}
-
 /// Only this function can create an installable release. Both independently published
 /// checksums, the exact logical GitHub release and the typed profile row must agree.
 pub(crate) fn verify(app: &CraftApp, mut release: Release, http: &Http, platform: Platform) -> Result<VerifiedRelease, String> {
     use artcraft_launcher_core::nightly::{MANIFEST_NAME, MAX_MANIFEST_BYTES};
-    nightly_profile::for_app(app, platform)?;
+    nightly_profile::admit_new(app, platform)?;
     if let Some(sums) = release.sums_asset() {
         let expected = format!("https://github.com/{}/releases/download/{}/{}", app.repo, release.tag, sums.name);
         if sums.url != expected || !artcraft_launcher_core::release::valid_file_name(&sums.name) {
@@ -186,13 +175,20 @@ pub(crate) fn remove(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use artcraft_launcher_core::CraftApp;
+    use artcraft_launcher_core::protocol::VersionTrack;
+    use artcraft_launcher_core::release::ordinary_track_allowed;
 
     #[test]
-    fn old_nightly_and_pinned_nightly_settings_cannot_redirect_stable_updaters() {
-        assert!(nightly_track(&VersionTrack::Nightly));
-        assert!(nightly_track(&VersionTrack::Pinned("v1.0.0-nightly.20261120.1.1.gabcdefabcdef".into())));
-        assert!(!nightly_track(&VersionTrack::Stable));
-        assert!(!nightly_track(&VersionTrack::Pinned("v1.0.0-beta.1".into())));
+    fn old_nightly_and_pinned_nightly_settings_cannot_redirect_separately_channelled_stable_updaters() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let legacy = CraftApp::by_id("solidcraft").unwrap();
+        for track in [VersionTrack::Nightly, VersionTrack::Pinned("v1.0.0-nightly.20261120.1.1.gabcdefabcdef".into())] {
+            assert!(!ordinary_track_allowed(photo, &track));
+            assert!(ordinary_track_allowed(legacy, &track), "apps without a separate channel keep main's Nightly choices");
+        }
+        for track in [VersionTrack::Stable, VersionTrack::Pinned("v1.0.0-beta.1".into())] {
+            assert!(ordinary_track_allowed(photo, &track));
+        }
     }
 }

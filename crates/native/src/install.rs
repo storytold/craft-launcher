@@ -226,7 +226,9 @@ fn install_at_with_profile(
         return Err(managed_elsewhere(app, installed, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
     }
     match profile {
-        Some(profile) => profile.bind_release(release, asset)?,
+        Some(profile) => {
+            profile.admit_new()?.bind_release(release, asset)?;
+        }
         None => bind_artifact_version(app, release, asset)?,
     }
     // A feed can't send an app back to an older build; only a version the person chose by name
@@ -289,7 +291,9 @@ fn install_at_with_profile(
     #[cfg(not(target_os = "linux"))]
     let _ = signature;
     #[cfg(target_os = "linux")]
-    let file = authenticated.as_ref().map_or(file.as_path(), |archive| archive.file.as_path()).to_path_buf();
+    let authenticated_file = authenticated.as_ref().map(|archive| archive.file.as_path());
+    #[cfg(all(unix, not(target_os = "linux")))]
+    let authenticated_file = None;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
     (job.phase)(JobPhase::Installing);
@@ -297,23 +301,23 @@ fn install_at_with_profile(
     let version = release.version_label();
     #[cfg(unix)]
     if let Some(profile) = profile {
-        let installed = crate::nightly_unix::install(
-            crate::nightly_unix::Package {
-                adapter: profile,
-                file: &file,
-                version: &version,
-                previous,
-                paths: job.paths,
-                archive_sha256: sha256.clone(),
-                lease,
-            },
-            &mut |record| match commit.as_deref_mut() {
-                Some(commit) => commit(record),
-                None => Ok(()),
-            },
-        )?;
-        let _ = std::fs::remove_file(&file);
-        return Ok(Some(installed));
+        return complete_nightly_install(&file, authenticated_file, |file| {
+            crate::nightly_unix::install(
+                crate::nightly_unix::Package {
+                    adapter: profile,
+                    file,
+                    version: &version,
+                    previous,
+                    paths: job.paths,
+                    archive_sha256: sha256.clone(),
+                    lease,
+                },
+                &mut |record| match commit.as_deref_mut() {
+                    Some(commit) => commit(record),
+                    None => Ok(()),
+                },
+            )
+        });
     }
     let result = match kind {
         // No team to check the signature against: refuse rather than install it unchecked.
@@ -4341,5 +4345,59 @@ mod tests {
             let app = std::env::var("CRAFT_APP").expect("set CRAFT_APP to a Craft App bundle");
             assert!(signed_by(Path::new(&app), TEAM_ID), "{app} isn't signed by {TEAM_ID}");
         }
+    }
+}
+
+#[cfg(unix)]
+fn complete_nightly_install(
+    downloaded: &Path,
+    authenticated: Option<&Path>,
+    install: impl FnOnce(&Path) -> Result<Record, String>,
+) -> Result<Option<Record>, String> {
+    let file = authenticated.unwrap_or(downloaded);
+    let record = install(file)?;
+    let _ = std::fs::remove_file(downloaded);
+    Ok(Some(record))
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod shared_selection_cleanup_tests {
+    use super::*;
+    #[test]
+    fn shared_selection_success_retires_the_download_not_the_private_verified_snapshot() {
+        let temp = tempfile::tempdir().unwrap();
+        let download = temp.path().join("owned-download.tar.gz");
+        let snapshot = temp.path().join("verified-snapshot.tar.gz");
+        let unrelated = temp.path().join("unrelated");
+        for (path, bytes) in
+            [(&download, b"mutable downloaded bytes".as_slice()), (&snapshot, b"verified snapshot bytes"), (&unrelated, b"unrelated user bytes")]
+        {
+            std::fs::write(path, bytes).unwrap();
+        }
+        let record = Record {
+            version: "1.0.0-nightly.1".into(),
+            kind: PackageKind::TarGz,
+            path: temp.path().join("installed"),
+            installed_at: 1,
+            files: Vec::new(),
+            needs_root: false,
+        };
+        let result = complete_nightly_install(&download, Some(&snapshot), |selected| {
+            assert_eq!(selected, snapshot);
+            assert_eq!(std::fs::read(selected).unwrap(), b"verified snapshot bytes");
+            Ok(record.clone())
+        })
+        .unwrap();
+        assert_eq!(result, Some(record));
+        assert!(!download.exists(), "successful completion must remove the owned mutable download");
+        assert_eq!(
+            std::fs::read(&snapshot).unwrap(),
+            b"verified snapshot bytes",
+            "the private snapshot stays owned by its authenticated-archive guard"
+        );
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"unrelated user bytes");
+        std::fs::write(&download, b"keep failed download").unwrap();
+        assert!(complete_nightly_install(&download, Some(&snapshot), |_| Err("cancelled or failed".into())).is_err());
+        assert_eq!(std::fs::read(&download).unwrap(), b"keep failed download");
     }
 }

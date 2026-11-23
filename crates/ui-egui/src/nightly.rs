@@ -1,7 +1,6 @@
 //! Pre-release discovery and consent. The same backend contract owns all side effects.
 
 use artcraft_launcher_core::Platform;
-use artcraft_launcher_core::catalog::{AppKind, LAUNCHER};
 use artcraft_launcher_core::protocol::{Backend, BackendOptions, Command, Event, LatestRelease, NightlyStatus};
 use egui::{RichText, Ui};
 use std::collections::BTreeMap;
@@ -138,8 +137,7 @@ impl NightlyState {
             focus_tab: false,
             entries: artcraft_launcher_core::hosted_catalog::apps()
                 .iter()
-                .filter(|a| a.kind == AppKind::Official && platform.is_none_or(|p| a.runs_on(p.os)))
-                .chain(std::iter::once(&LAUNCHER))
+                .filter(|app| app.has_separate_nightly_channel() && platform.is_none_or(|p| app.runs_on(p.os)))
                 .map(AppEntry::new)
                 .collect(),
             options: None,
@@ -157,7 +155,7 @@ impl NightlyState {
     // Initial discovery lives only in Settings. Retained installations keep a management
     // destination after switching off; hiding it would strand Open/Reveal/Uninstall.
     fn destination_visible(&self, enabled: bool) -> bool {
-        enabled || self.entries.iter().any(|entry| entry.installed.is_some())
+        enabled || self.entries.iter().any(|entry| entry.installed.is_some()) || !self.notices.is_empty()
     }
 
     pub fn busy(&self) -> bool {
@@ -1446,6 +1444,13 @@ mod polish_tests {
                     assert_eq!(harness.state().as_ref().unwrap().settings.nightly_enabled, enabled);
                 }
             }
+        }
+    }
+    #[test]
+    fn shared_selection_pre_release_destination_lists_only_explicit_channel_apps_on_every_host() {
+        for os in [artcraft_launcher_core::Os::Windows, artcraft_launcher_core::Os::Linux, artcraft_launcher_core::Os::MacOs] {
+            let state = NightlyState::new(None, Some(Platform { os, arch: artcraft_launcher_core::Arch::X64 }));
+            assert_eq!(state.entries.iter().map(|entry| entry.app.id).collect::<Vec<_>>(), vec!["photocraft"]);
         }
     }
 }

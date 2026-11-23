@@ -311,6 +311,77 @@ pub struct NativeBackend {
 /// Runs a job's worker (see [`NativeBackend::spawn`]).
 type Spawn = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
+/// A rejected namespace is never passed into normal initialization. This context owns no paths,
+/// manifest, HTTP client, workers or filesystem handles; it only explains the refusal in the UI.
+struct RefusedNightlyBackend {
+    reason: String,
+    platform: Option<Platform>,
+    apps: Vec<String>,
+    events: Vec<Event>,
+    waker: Waker,
+}
+impl RefusedNightlyBackend {
+    fn new(reason: String, platform: Option<Platform>, waker: Waker) -> Self {
+        let reason = format!(
+            "Pre-Release storage is unavailable: {reason} Existing copies and data were not opened or changed. Fix the folders and restart the launcher to try again."
+        );
+        let apps = artcraft_launcher_core::hosted_catalog::apps()
+            .iter()
+            .filter(|app| app.has_separate_nightly_channel())
+            .map(|app| app.id.to_string())
+            .collect();
+        let mut backend = Self { reason, platform, apps, events: Vec::new(), waker };
+        backend.report(None);
+        backend
+    }
+    fn report(&mut self, attempted_at: Option<i64>) {
+        for app in &self.apps {
+            self.events.push(Event::Notice { app: app.clone(), result: Err(self.reason.clone()) });
+            self.events.push(Event::Installable { app: app.clone(), installable: false });
+            self.events.push(Event::NightlyStatus {
+                app: app.clone(),
+                status: artcraft_launcher_core::protocol::NightlyStatus {
+                    attempted_at,
+                    stale: true,
+                    message: Some(self.reason.clone()),
+                    ..Default::default()
+                },
+            });
+        }
+        (self.waker)();
+    }
+}
+impl Backend for RefusedNightlyBackend {
+    fn send(&mut self, command: Command) {
+        match command {
+            Command::Configure(_) | Command::DownloadOrder(_) => {}
+            Command::CheckForUpdates { .. } => {
+                let now = crate::now();
+                self.report(Some(now));
+                for app in &self.apps {
+                    self.events.push(Event::Latest { app: app.clone(), latest: LatestRelease::Failed(self.reason.clone()), from: Origin::GitHub });
+                }
+                // Nothing was asked of any release source; the refusal came from local storage checks.
+                self.events.push(Event::CheckFinished { at: now, source: Source::Cache, rate_limited_until: None });
+            }
+            _ => self.report(None),
+        }
+        (self.waker)();
+    }
+    fn poll(&mut self) -> Vec<Event> {
+        std::mem::take(&mut self.events)
+    }
+    fn capabilities(&self) -> Capabilities {
+        Capabilities { manage_apps: false, reveal_label: "Show", self_update: false, desktop_shortcuts: false }
+    }
+    fn platform(&self) -> Option<Platform> {
+        self.platform
+    }
+    fn now(&self) -> i64 {
+        crate::now()
+    }
+}
+
 impl NativeBackend {
     /// `waker` is called (from any thread) whenever events are waiting; it should repaint the UI.
     pub fn new(waker: impl Fn() + Send + Sync + 'static) -> Self {
@@ -440,27 +511,24 @@ impl NativeBackend {
             }
             for app in artcraft_launcher_core::hosted_catalog::apps()
                 .iter()
-                .filter(|a| a.kind == artcraft_launcher_core::catalog::AppKind::Official)
-                .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
                 .chain(std::iter::once(&LAUNCHER))
+                .filter(|app| app.has_separate_nightly_channel() && platform.is_none_or(|p| app.runs_on(p.os)))
             {
                 let snapshot = nightly_detection_snapshot(&shared, app);
-                let found = valid
-                    .then(|| snapshot.record.as_ref().and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok()))
-                    .flatten();
+                let found = nightly_detection_result(app, &snapshot, &paths, platform);
                 #[cfg(test)]
                 if app.id == "photocraft" {
                     let hook = shared.nightly_detection_observer.lock().unwrap_or_else(PoisonError::into_inner).take();
                     if let Some(hook) = hook {
-                        hook(found.is_none());
+                        hook(found.as_ref().ok().and_then(Option::as_ref).is_none());
                     }
                 }
-                if !publish_nightly_detection(app, &snapshot, found, &shared, platform) {
+                if !publish_nightly_detection_result(app, &snapshot, found, &shared, platform) {
                     // At most one re-evaluation. Continued churn keeps the worker’s newer result,
                     // rather than publishing an obsolete None or spinning while mutations run.
                     let snapshot = nightly_detection_snapshot(&shared, app);
-                    let found = snapshot.record.as_ref().and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok());
-                    publish_nightly_detection(app, &snapshot, found, &shared, platform);
+                    let found = nightly_detection_result(app, &snapshot, &paths, platform);
+                    publish_nightly_detection_result(app, &snapshot, found, &shared, platform);
                 }
                 report_partial(app, &shared, &paths, platform);
             }
@@ -549,7 +617,11 @@ impl NativeBackend {
     /// day old, or no answer at all), at most once an hour per app unless `force`.
     fn nightly_apps(&self) -> Vec<CraftApp> {
         let Some(platform) = self.platform else { return Vec::new() };
-        artcraft_launcher_core::hosted_catalog::apps().iter().filter(|app| crate::nightly_profile::for_app(app, platform).is_ok()).copied().collect()
+        artcraft_launcher_core::hosted_catalog::apps()
+            .iter()
+            .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
+            .copied()
+            .collect()
     }
 
     fn replay_nightly_status(&self) {
@@ -1030,6 +1102,19 @@ impl NativeBackend {
         });
     }
 
+    fn nightly_context_with_paths(&self, paths: Result<Paths, String>) -> Option<Box<dyn Backend>> {
+        if self.shared.channel != artcraft_launcher_core::nightly::InstallChannel::Stable {
+            return None;
+        }
+        match paths.and_then(|paths| {
+            crate::nightly_profile::validate_paths(&paths)?;
+            Ok(paths)
+        }) {
+            Ok(paths) => Some(Box::new(self.nightly_with_paths(paths))),
+            Err(reason) => Some(Box::new(RefusedNightlyBackend::new(reason, self.platform, self.shared.waker.clone()))),
+        }
+    }
+
     fn nightly_with_paths(&self, paths: Paths) -> Self {
         let waker = self.shared.waker.clone();
         Self::with_lifecycle(artcraft_launcher_core::nightly::InstallChannel::Nightly, move || waker(), paths, self.shared.lifecycle.clone())
@@ -1051,10 +1136,10 @@ enum Work {
     Launch(Vec<String>),
 }
 
-fn release_matches_track(release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
+fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
     match track {
         VersionTrack::Stable => {
-            !artcraft_launcher_core::release::is_nightly(release)
+            (!app.has_separate_nightly_channel() || !artcraft_launcher_core::release::is_nightly(release))
                 && (prereleases || (!release.prerelease && release.version.as_ref().is_some_and(version::is_stable)))
         }
         VersionTrack::Nightly => artcraft_launcher_core::release::is_nightly(release),
@@ -1292,10 +1377,12 @@ fn install_plan(
     let platform = platform.ok_or("this system isn't supported")?;
     let release = latest.ok_or("the selected release hasn't been found yet. Check for updates first.")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
-    if artcraft_launcher_core::release::is_nightly(&release) || *track == VersionTrack::Nightly {
+    if app.has_separate_nightly_channel()
+        && (artcraft_launcher_core::release::is_nightly(&release) || artcraft_launcher_core::release::is_nightly_track(track))
+    {
         return Err("Nightly builds use the separate Pre-Release channel; the stable copy was left unchanged.".into());
     }
-    if !release_matches_track(&release, track, options.prereleases) {
+    if !release_matches_track(app, &release, track, options.prereleases) {
         return Err("the selected version isn't available yet. Check for updates before installing.".into());
     }
     let system = match asking {
@@ -2225,15 +2312,10 @@ impl Backend for NativeBackend {
     }
 
     fn nightly_context(&self) -> Option<Box<dyn Backend>> {
-        if self.shared.channel != artcraft_launcher_core::nightly::InstallChannel::Stable {
-            return None;
-        }
         // An unavailable home or aliased namespace is not an ephemeral Nightly profile and
         // must never silently select the stable context or temporary storage.
         let channel = artcraft_launcher_core::nightly::InstallChannel::Nightly;
-        let paths = Paths::new().ok()?.for_channel(channel);
-        crate::nightly_profile::validate_paths(&paths).ok()?;
-        Some(Box::new(self.nightly_with_paths(paths)))
+        self.nightly_context_with_paths(Paths::new().map(|paths| paths.for_channel(channel)))
     }
 
     /// Carries out a command from the UI. Long work (checks, installs, removals) runs on its own
@@ -2378,8 +2460,10 @@ impl Backend for NativeBackend {
             Command::Configure(mut options) => {
                 if self.shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable {
                     // Old settings must not make an app's own updater move its stable copy to nightly.
-                    options.versions.retain(|_, track| !crate::nightly::nightly_track(track));
-                    if crate::nightly::nightly_track(&options.launcher_version) {
+                    options.versions.retain(|id, track| {
+                        CraftApp::by_id(id).is_none_or(|app| artcraft_launcher_core::release::ordinary_track_allowed(app, track))
+                    });
+                    if !artcraft_launcher_core::release::ordinary_track_allowed(&LAUNCHER, &options.launcher_version) {
                         options.launcher_version = VersionTrack::Stable;
                     }
                 } else {
@@ -2728,14 +2812,14 @@ mod tests {
     #[test]
     fn an_install_cannot_use_a_stale_release_from_a_different_track() {
         let mut release = Release { tag: "v0.8.0".into(), version: version::parse("v0.8.0"), ..Default::default() };
-        assert!(!release_matches_track(&release, &VersionTrack::Nightly, false));
-        assert!(!release_matches_track(&release, &VersionTrack::Pinned("v0.7.0".into()), false));
-        assert!(release_matches_track(&release, &VersionTrack::Stable, false));
+        assert!(!release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Nightly, false));
+        assert!(!release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Pinned("v0.7.0".into()), false));
+        assert!(release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Stable, false));
         release.tag = "v0.9.0-nightly.20261028".into();
         release.version = version::parse(&release.tag);
         release.prerelease = true;
-        assert!(release_matches_track(&release, &VersionTrack::Nightly, false));
-        assert!(!release_matches_track(&release, &VersionTrack::Stable, false));
+        assert!(release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Nightly, false));
+        assert!(!release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Stable, false));
     }
 
     #[test]
@@ -3226,7 +3310,7 @@ mod tests {
     }
 
     /// A backend that knows `release("0.5.0")` and keeps its files under `root`.
-    fn backend(root: &std::path::Path, platform: Platform, source: Option<Arc<dyn ReleaseSource>>) -> NativeBackend {
+    pub(super) fn backend(root: &std::path::Path, platform: Platform, source: Option<Arc<dyn ReleaseSource>>) -> NativeBackend {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
@@ -4216,6 +4300,39 @@ fn nightly_detection_snapshot(shared: &Shared, app: &CraftApp) -> NightlyDetecti
         active: process.contains_key(&key),
     }
 }
+fn nightly_detection_result(
+    app: &CraftApp,
+    snapshot: &NightlyDetectionSnapshot,
+    paths: &Paths,
+    platform: Option<Platform>,
+) -> Result<Option<Installed>, String> {
+    crate::nightly_profile::validate_paths(paths)?;
+    snapshot
+        .record
+        .as_ref()
+        .map(|record| crate::nightly::owned_installation(app, record, paths, platform.ok_or("The retained Nightly platform is unavailable.")?))
+        .transpose()
+}
+
+fn publish_nightly_detection_result(
+    app: &CraftApp,
+    snapshot: &NightlyDetectionSnapshot,
+    found: Result<Option<Installed>, String>,
+    shared: &Shared,
+    platform: Option<Platform>,
+) -> bool {
+    let (found, error) = match found {
+        Ok(found) => (found, None),
+        Err(error) => (None, Some(error)),
+    };
+    let published = publish_nightly_detection(app, snapshot, found, shared, platform);
+    // Do not report a staged-away executable or an obsolete manifest as a broken retained copy.
+    if published && let Some(error) = error {
+        shared.emit(Event::Notice { app: app.id.into(), result: Err(error) });
+    }
+    published
+}
+
 fn publish_nightly_detection(
     app: &CraftApp,
     snapshot: &NightlyDetectionSnapshot,
@@ -4272,3 +4389,7 @@ pub(crate) fn review_after_manifest_scratch_created() {
         }
     });
 }
+
+#[cfg(test)]
+#[path = "backend_shared_selection_tests.rs"]
+mod shared_selection_tests;

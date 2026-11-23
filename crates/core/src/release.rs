@@ -226,6 +226,66 @@ pub fn has_published_checksum(r: &Release) -> bool {
 /// a pin never falls back. Nightlies use SemVer precedence, ignoring build metadata. Equal
 /// precedence prefers the lexically smallest tag, never publication time or a separate run ordinal.
 pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrack) -> Option<Release> {
+    choose_version_with_policy(releases, track, NightlySelection::Canonical)
+}
+
+/// The separate channel has canonical build ordering; ordinary legacy Nightly tracks retain
+/// main's publication-time ordering. Eligibility such as checksums/targets remains caller-owned.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NightlySelection {
+    Canonical,
+    Published,
+}
+
+/// Best candidates first, without cloning release bodies or fetching evidence.
+/// Stable sorting then reversing also preserves the old last-input winner on exact ties.
+/// Native discovery must reject malformed candidate identities before calling this helper and
+/// must not silently prefilter missing checksum evidence; ordinary selection requires checksums.
+pub fn ranked_nightly_candidates<'a>(releases: impl IntoIterator<Item = &'a Release>, policy: NightlySelection) -> std::vec::IntoIter<&'a Release> {
+    let mut ordered = match policy {
+        NightlySelection::Canonical => {
+            let mut candidates: Vec<_> =
+                releases.into_iter().filter_map(|release| canonical_nightly_version(release).map(|version| (version, release))).collect();
+            candidates.sort_by(|(av, a), (bv, b)| version::compare(av, bv).then_with(|| b.tag.cmp(&a.tag)));
+            candidates.into_iter().map(|(_, release)| release).collect::<Vec<_>>()
+        }
+        NightlySelection::Published => {
+            let mut candidates: Vec<_> = releases.into_iter().filter(|release| is_nightly(release)).collect();
+            candidates.sort_by_key(|release| release.published_at);
+            candidates
+        }
+    };
+    ordered.reverse();
+    ordered.into_iter()
+}
+
+/// A Nightly-follow choice or a parsed exact Nightly pin, including main-supported legacy tags.
+pub fn is_nightly_track(track: &crate::protocol::VersionTrack) -> bool {
+    use crate::protocol::VersionTrack;
+    match track {
+        VersionTrack::Nightly => true,
+        VersionTrack::Pinned(tag) => version::parse(tag).is_some_and(|v| v.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly"))),
+        VersionTrack::Stable => false,
+    }
+}
+
+/// Ordinary settings for separately channelled apps cannot redirect their stable updater.
+pub fn ordinary_track_allowed(app: &crate::CraftApp, track: &crate::protocol::VersionTrack) -> bool {
+    !app.has_separate_nightly_channel() || !is_nightly_track(track)
+}
+
+/// Release/cache APIs only exclude Nightly sources explicitly assigned a separate channel.
+pub fn ordinary_release_allowed(repo: &str, release: &Release) -> bool {
+    !crate::catalog::separate_nightly_repository(repo) || !is_nightly(release)
+}
+
+/// Ordinary source callers preserve main's Nightly selection when their repository has no channel.
+pub fn choose_version_for_repo(releases: &[Release], track: &crate::protocol::VersionTrack, repo: &str) -> Option<Release> {
+    let policy = if crate::catalog::separate_nightly_repository(repo) { NightlySelection::Canonical } else { NightlySelection::Published };
+    choose_version_with_policy(releases, track, policy)
+}
+
+fn choose_version_with_policy(releases: &[Release], track: &crate::protocol::VersionTrack, policy: NightlySelection) -> Option<Release> {
     use crate::protocol::VersionTrack;
     match track {
         VersionTrack::Stable => releases
@@ -233,18 +293,13 @@ pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrac
             .filter(|r| !r.prerelease && r.version.as_ref().is_some_and(version::is_stable))
             .max_by(|a, b| a.version.cmp(&b.version))
             .cloned(),
-        VersionTrack::Nightly => releases
-            .iter()
-            .filter(|r| has_published_checksum(r))
-            .filter_map(|r| canonical_nightly_version(r).map(|v| (r, v)))
-            .max_by(|(a, av), (b, bv)| version::compare(av, bv).then_with(|| b.tag.cmp(&a.tag)))
-            .map(|(r, _)| r.clone()),
+        VersionTrack::Nightly => ranked_nightly_candidates(releases.iter().filter(|release| has_published_checksum(release)), policy).next().cloned(),
         VersionTrack::Pinned(tag) => releases.iter().find(|r| r.tag == *tag).cloned(),
     }
 }
 
 /// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
-/// `allow_prerelease`) published release. Explicit nightly builds use the separate channel.
+/// `allow_prerelease`) published release. Only explicitly channelled repositories exclude nightlies.
 ///
 /// # Errors
 ///
@@ -263,7 +318,7 @@ pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool)
         let Some(ver) = r.version.as_ref() else {
             continue;
         };
-        if is_nightly(&r) || (!allow_prerelease && (r.prerelease || !version::is_stable(ver))) {
+        if !ordinary_release_allowed(repo, &r) || (!allow_prerelease && (r.prerelease || !version::is_stable(ver))) {
             continue;
         }
         let newer = best.as_ref().and_then(|b| b.version.as_ref()).is_none_or(|b| version::is_newer(ver, b));
@@ -771,5 +826,20 @@ mod tests {
         assert!(!download_url_under(&format!("{prefix}v1\u{202e}/a.dmg"), &prefix), "an odd tag in a download link");
         assert!(!download_url_under(&format!("{prefix}v1/a\u{202e}.dmg"), &prefix), "an odd name in a download link");
         assert_eq!(tag_from_redirect(&format!("https://github.com/{REPO}/releases/tag/v1\u{202e}"), REPO), None);
+    }
+    #[test]
+    fn shared_selection_ordinary_community_lookup_preserves_main_prerelease_visibility() {
+        // Authored representative main-supported metadata; not a claim about live SolidCraft releases.
+        let json = r#"[{"tag_name":"v2.0.0-dev.nightly.1","prerelease":true},{"tag_name":"v1.0.0-beta.1","prerelease":true},{"tag_name":"v0.9.0","prerelease":false}]"#;
+        for id in ["solidcraft", "filmcraft"] {
+            let repo = crate::CraftApp::by_id(id).unwrap().repo;
+            assert_eq!(
+                parse_github_release_list(json, repo, true).unwrap().unwrap().tag,
+                "v2.0.0-dev.nightly.1",
+                "{id}: main prerelease lookup must retain nightlies without a separate channel"
+            );
+            assert_eq!(parse_github_release_list(json, repo, false).unwrap().unwrap().tag, "v0.9.0");
+        }
+        assert_eq!(parse_github_release_list(json, "storytold/photocraft", true).unwrap().unwrap().tag, "v1.0.0-beta.1");
     }
 }

@@ -134,7 +134,7 @@ pub(crate) fn lookup<'a>(
 }
 
 fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
-    crate::nightly_profile::for_app(app, platform).map_err(failure)?;
+    crate::nightly_profile::admit_new(app, platform).map_err(failure)?;
     let mut candidates = Vec::new();
     let mut seen = BTreeSet::new();
     let mut covered = false;
@@ -164,12 +164,12 @@ fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<O
             if !declared_nightly && !artcraft_launcher_core::release::is_nightly(&release) {
                 continue;
             }
-            let canonical = artcraft_launcher_core::release::canonical_nightly_version(&release)
+            artcraft_launcher_core::release::canonical_nightly_version(&release)
                 .ok_or_else(|| failure("A Nightly candidate has a noncanonical or mismatched SemVer identity."))?;
             if !seen.insert(release.tag.clone()) {
                 return Err(failure("The Nightly pages repeated a release; coverage is indeterminate."));
             }
-            candidates.push((canonical, release));
+            candidates.push(release);
         }
         if entries.len() < PER_PAGE {
             budget.coverage_complete()?;
@@ -180,9 +180,12 @@ fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<O
     if !covered {
         return Err(failure("The Nightly page budget ended before complete supported-target coverage, even if a candidate was seen."));
     }
-    candidates.sort_by(|(av, a), (bv, b)| version::compare(bv, av).then_with(|| a.tag.cmp(&b.tag)));
-    for (_, release) in candidates {
-        if let Some(verified) = budget.verify(app, release, platform)? {
+    // Candidate identity errors above stay indeterminate; unlike ordinary selection, missing
+    // checksum/descriptor evidence must reach verification instead of silently disappearing.
+    for release in
+        artcraft_launcher_core::release::ranked_nightly_candidates(&candidates, artcraft_launcher_core::release::NightlySelection::Canonical)
+    {
+        if let Some(verified) = budget.verify(app, release.clone(), platform)? {
             budget.coverage_complete()?;
             return Ok(Some(verified));
         }
