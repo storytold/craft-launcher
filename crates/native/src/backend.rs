@@ -80,8 +80,12 @@ struct ProcessLifecycle {
 enum HostDetection {
     System,
     #[cfg(test)]
-    Stub(Arc<dyn Fn(&CraftApp) -> Option<Installed> + Send + Sync>),
+    Stub(HostStub),
 }
+
+/// What a test says is installed on the machine, besides the launcher's records.
+#[cfg(test)]
+type HostStub = Arc<dyn Fn(&CraftApp) -> Option<Installed> + Send + Sync>;
 
 impl HostDetection {
     fn snapshot(&self) -> crate::detect::Snapshot {

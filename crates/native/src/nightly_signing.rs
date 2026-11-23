@@ -210,11 +210,7 @@ use crate::nightly_trust::WindowsPublisher;
 #[cfg(any(windows, test))]
 fn configured<'a>(publisher: Option<&'a WindowsPublisher<'a>>) -> Option<&'a WindowsPublisher<'a>> {
     publisher.filter(|p| {
-        !p.subject.is_empty()
-            && !p.root.is_empty()
-            && sha256_hex(p.root_sha256)
-            && !p.ekus.is_empty()
-            && p.ekus.iter().all(|eku| !eku.is_empty())
+        !p.subject.is_empty() && !p.root.is_empty() && sha256_hex(p.root_sha256) && !p.ekus.is_empty() && p.ekus.iter().all(|eku| !eku.is_empty())
     })
 }
 
@@ -379,7 +375,7 @@ fn authenticate_windows_as(root: &std::path::Path, files: &[std::path::PathBuf],
 
 /// The slowest run seen: a cold Windows PowerShell start plus hashing a large signed executable
 /// on a busy Windows 11 machine. A genuinely signed build must not be refused for being slow.
-#[cfg(any(windows, test))]
+#[cfg(test)]
 const SLOWEST_METADATA_QUERY: std::time::Duration = std::time::Duration::from_secs(81);
 
 /// The same bound serves installs and Open, which checks the installed copy again: the query
