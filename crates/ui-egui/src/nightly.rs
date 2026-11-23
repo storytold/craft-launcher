@@ -1727,7 +1727,10 @@ mod trust_gate_tests {
         let mut harness = settings_open(false, false);
         assert!(harness.get_by_label(CHECKBOX).accesskit_node().is_disabled(), "consent can't be given");
         harness.get_by_label(NOT_YET);
-        harness.get_by_label(CHECKBOX).click();
+        // By keyboard, as a user reaches it: the Settings sheet scrolls, so a pointer click
+        // depends on where the panel happens to be.
+        harness.get_by_label(CHECKBOX).focus();
+        harness.key_press(egui::Key::Space);
         harness.run_steps(3);
         let state = harness.state().as_ref().unwrap();
         assert!(!state.settings.nightly_enabled && !state.nightly.consent_open);
@@ -1747,7 +1750,8 @@ mod trust_gate_tests {
         let mut harness = settings_open(false, true);
         assert!(!harness.get_by_label(CHECKBOX).accesskit_node().is_disabled());
         harness.get_by_label(NOT_YET);
-        harness.get_by_label(CHECKBOX).click();
+        harness.get_by_label(CHECKBOX).focus();
+        harness.key_press(egui::Key::Space);
         harness.run_steps(3);
         assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
     }
