@@ -125,6 +125,9 @@ fn nightly_install_is_redundant(entry: &AppEntry) -> bool {
 
 pub(crate) struct NightlyState {
     backend: Option<Box<dyn Backend>>,
+    /// New builds can be discovered and installed here: the platform's signing trust is
+    /// configured. Copies already installed are managed either way.
+    available: bool,
     pub active: bool,
     pub consent_open: bool,
     consent_focus: bool,
@@ -146,8 +149,11 @@ pub(crate) struct NightlyState {
 
 impl NightlyState {
     pub fn new(backend: Option<Box<dyn Backend>>, platform: Option<Platform>) -> Self {
+        // Without a nightly context the page already says installation is unavailable.
+        let available = backend.as_ref().is_none_or(|backend| backend.nightly_available());
         Self {
             backend,
+            available,
             active: false,
             consent_open: false,
             consent_focus: false,
@@ -176,7 +182,16 @@ impl NightlyState {
     fn destination_visible(&self, enabled: bool) -> bool {
         // Errors, including unusable Pre-Release storage, never stand in for consent; once
         // consent is given the page shows them as scoped errors.
-        enabled || self.entries.iter().any(|entry| entry.installed.is_some())
+        self.discovering(enabled) || self.entries.iter().any(|entry| entry.installed.is_some())
+    }
+
+    /// Whether new builds are looked for and offered: consent, on a platform that can verify them.
+    fn discovering(&self, enabled: bool) -> bool {
+        enabled && self.available
+    }
+
+    pub(crate) fn available(&self) -> bool {
+        self.available
     }
 
     pub fn busy(&self) -> bool {
@@ -185,7 +200,7 @@ impl NightlyState {
 
     pub fn configure(&mut self, settings: &Settings) {
         let options = BackendOptions {
-            nightly_enabled: settings.nightly_enabled,
+            nightly_enabled: self.discovering(settings.nightly_enabled),
             simultaneous_downloads: settings.simultaneous_downloads,
             ..Default::default()
         };
@@ -198,7 +213,7 @@ impl NightlyState {
     }
 
     pub fn send(&mut self, command: Command, enabled: bool) {
-        if !enabled
+        if !self.discovering(enabled)
             && matches!(&command, Command::Install { .. } | Command::InstallAll { .. } | Command::Replace { .. } | Command::CheckForUpdates { .. })
         {
             return; // Consent is not inferred from installed copies or from an old pending click.
@@ -229,7 +244,8 @@ impl NightlyState {
                 Event::Latest { app, mut latest, from } => {
                     // An in-flight check can finish after consent is withdrawn. It must not
                     // create discoveries or replace the retained local-management presentation.
-                    if settings.nightly_enabled
+                    if self.available
+                        && settings.nightly_enabled
                         && let Some(entry) = self.entries.iter_mut().find(|e| e.app.id == app)
                     {
                         if let LatestRelease::Failed(why) = &mut latest {
@@ -253,7 +269,7 @@ impl NightlyState {
                 }
                 Event::Installable { app, installable } => {
                     if let Some(entry) = self.entries.iter_mut().find(|e| e.app.id == app) {
-                        entry.installable = Some(settings.nightly_enabled && installable);
+                        entry.installable = Some(self.available && settings.nightly_enabled && installable);
                     }
                 }
                 Event::Progress { app, phase } => {
@@ -292,7 +308,7 @@ impl NightlyState {
         // A future request permits one replacement, which resets this baseline to now.
         let request_allowed = self.requested_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60);
         let retry_allowed = self.statuses.values().all(|status| status.retry_at.is_none_or(|at| now >= at));
-        if settings.nightly_enabled && !self.checking && due && request_allowed && retry_allowed {
+        if self.available && settings.nightly_enabled && !self.checking && due && request_allowed && retry_allowed {
             // A request is not a successful verification, including when Native coalesces it.
             self.requested_at = Some(now);
             backend.send(Command::CheckForUpdates { force: false });
@@ -359,7 +375,8 @@ impl LauncherUi {
             labels.iter().map(|label| ui.painter().layout_no_wrap((*label).into(), button_font.clone(), color).size().x + button_margin).sum::<f32>()
                 + ui.spacing().item_spacing.x;
         let heading_width = ui.painter().layout_no_wrap(heading.into(), egui::TextStyle::Heading.resolve(ui.style()), color).size().x;
-        let inline = self.settings.nightly_enabled && heading_width + actions_width + ui.spacing().item_spacing.x <= ui.available_width();
+        let inline = self.nightly.discovering(self.settings.nightly_enabled)
+            && heading_width + actions_width + ui.spacing().item_spacing.x <= ui.available_width();
         if inline {
             ui.horizontal(|ui| {
                 ui.heading(heading);
@@ -390,7 +407,16 @@ impl LauncherUi {
         let inline_actions = self.nightly_page_heading(ui);
         ui.label(tl!("Nightly builds, separate from your stable apps."));
         ui.add_space(8.0);
-        if !self.settings.nightly_enabled {
+        if self.settings.nightly_enabled && !self.nightly.available() {
+            egui::Frame::new().fill(tokens.sunken).inner_margin(12).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.add(egui::Label::new(RichText::new(tl!("Pre-release builds aren't available on this platform yet.")).strong()).wrap());
+                ui.add(egui::Label::new(tl!("Separate installs, settings and data. Turning this off keeps installed copies and their data.")).wrap());
+                if ui.button(tl!("Turn off pre-release builds")).clicked() {
+                    self.act(UiAction::NightlyConsent(false));
+                }
+            });
+        } else if !self.settings.nightly_enabled {
             egui::Frame::new().fill(tokens.sunken).inner_margin(12).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.label(RichText::new(tl!("Pre-release builds are off.")).strong());
@@ -414,7 +440,7 @@ impl LauncherUi {
         }
         ui.add_space(12.0);
         let entries = self.nightly.entries.clone();
-        let enabled = self.settings.nightly_enabled;
+        let enabled = self.nightly.discovering(self.settings.nightly_enabled);
         let visible: Vec<_> =
             entries.iter().filter(|e| e.installed.is_some() || (enabled && matches!(&e.latest, Some(LatestRelease::Found(_))))).collect();
         if visible.is_empty() {
@@ -1516,5 +1542,213 @@ mod polish_tests {
         set_job(&mut harness, None);
         harness.run_steps(3);
         assert!(harness.query_by_label("Install pre-release").is_some(), "the action returns when the job ends");
+    }
+}
+
+#[cfg(test)]
+mod trust_gate_tests {
+    use super::*;
+    use artcraft_launcher_core::protocol::Capabilities;
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::{NodeT, Queryable};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// A nightly context whose platform trust is (or isn't) configured, as Native reports it.
+    struct Context {
+        available: bool,
+        sent: Rc<RefCell<Vec<Command>>>,
+        events: Rc<RefCell<Vec<Event>>>,
+    }
+    impl Backend for Context {
+        fn nightly_available(&self) -> bool {
+            self.available
+        }
+        fn send(&mut self, command: Command) {
+            self.sent.borrow_mut().push(command);
+        }
+        fn poll(&mut self) -> Vec<Event> {
+            std::mem::take(&mut *self.events.borrow_mut())
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities { manage_apps: true, reveal_label: "Show", self_update: false, desktop_shortcuts: false }
+        }
+        fn platform(&self) -> Option<Platform> {
+            None
+        }
+        fn now(&self) -> i64 {
+            1000
+        }
+    }
+
+    type Sent = Rc<RefCell<Vec<Command>>>;
+    type Pending = Rc<RefCell<Vec<Event>>>;
+
+    fn context(available: bool) -> (NightlyState, Sent, Pending) {
+        let (sent, events) = (Rc::default(), Rc::default());
+        let backend = Context { available, sent: Rc::clone(&sent), events: Rc::clone(&events) };
+        (NightlyState::new(Some(Box::new(backend)), None), sent, events)
+    }
+
+    fn installed_copy() -> artcraft_launcher_core::Installed {
+        artcraft_launcher_core::Installed {
+            version: None,
+            source: artcraft_launcher_core::InstallSource::Launcher,
+            location: "/nightly/photo".into(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
+    }
+
+    fn discovery(sent: &[Command]) -> bool {
+        sent.iter()
+            .any(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. } | Command::Replace { .. } | Command::CheckForUpdates { .. }))
+    }
+
+    /// With consent but no configured trust nothing is looked for or offered, so nobody
+    /// downloads a build only to have the signature check refuse it. Copies already installed
+    /// stay manageable.
+    #[test]
+    fn unconfigured_trust_offers_no_discovery_or_install_but_keeps_management() {
+        let (mut state, sent, events) = context(false);
+        let settings = Settings { nightly_enabled: true, ..Default::default() };
+        assert!(!state.available());
+        state.logic(&settings);
+        assert!(!discovery(&sent.borrow()), "{:?}", sent.borrow());
+        assert!(
+            sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if !options.nightly_enabled)),
+            "the context is configured without discovery: {:?}",
+            sent.borrow()
+        );
+        state.send(Command::Install { app: "photocraft".into() }, true);
+        state.send(Command::CheckForUpdates { force: true }, true);
+        assert!(!discovery(&sent.borrow()));
+        events.borrow_mut().extend([
+            Event::Latest {
+                app: "photocraft".into(),
+                latest: LatestRelease::Found(artcraft_launcher_core::Release::default()),
+                from: artcraft_launcher_core::protocol::Origin::GitHub,
+            },
+            Event::Installable { app: "photocraft".into(), installable: true },
+        ]);
+        state.logic(&settings);
+        assert!(state.entries[0].latest.is_none(), "no discovery is shown");
+        assert_eq!(state.entries[0].installable, Some(false));
+        assert!(!state.destination_visible(true), "no Pre-Release page without a copy to manage");
+        state.entries[0].installed = Some(installed_copy());
+        assert!(state.destination_visible(true) && state.destination_visible(false), "a retained copy keeps its page");
+        sent.borrow_mut().clear();
+        for command in [
+            Command::Launch { app: "photocraft".into(), args: Vec::new() },
+            Command::Reveal { app: "photocraft".into() },
+            Command::Uninstall { app: "photocraft".into() },
+        ] {
+            state.send(command, true);
+        }
+        assert_eq!(sent.borrow().len(), 3, "Open, Show and Uninstall still reach the backend: {:?}", sent.borrow());
+    }
+
+    #[test]
+    fn configured_trust_discovers_and_installs_with_consent() {
+        let (mut state, sent, events) = context(true);
+        let settings = Settings { nightly_enabled: true, ..Default::default() };
+        assert!(state.available());
+        state.logic(&settings);
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { .. })), "{:?}", sent.borrow());
+        assert!(state.destination_visible(true));
+        events.borrow_mut().push(Event::Installable { app: "photocraft".into(), installable: true });
+        state.logic(&settings);
+        assert_eq!(state.entries[0].installable, Some(true));
+        state.send(Command::Install { app: "photocraft".into() }, true);
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })));
+        // Consent is still needed where trust is configured.
+        let (mut off, sent, _) = context(true);
+        off.logic(&Settings::default());
+        off.send(Command::Install { app: "photocraft".into() }, false);
+        assert!(!discovery(&sent.borrow()));
+    }
+
+    /// The stable backend, handing out a nightly context with or without configured trust.
+    struct Stable(bool);
+    impl Backend for Stable {
+        fn nightly_context(&self) -> Option<Box<dyn Backend>> {
+            Some(Box::new(Context { available: self.0, sent: Rc::default(), events: Rc::default() }))
+        }
+        fn send(&mut self, _: Command) {}
+        fn poll(&mut self) -> Vec<Event> {
+            Vec::new()
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities { manage_apps: true, reveal_label: "Show", self_update: false, desktop_shortcuts: false }
+        }
+        fn platform(&self) -> Option<Platform> {
+            None
+        }
+        fn now(&self) -> i64 {
+            1000
+        }
+    }
+
+    struct Host;
+    impl crate::Host for Host {}
+
+    fn settings_open(available: bool, nightly_enabled: bool) -> Harness<'static, Option<LauncherUi>> {
+        let mut backend = Some(Stable(available));
+        let mut harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none()
+                    && let Some(backend) = backend.take()
+                {
+                    let settings = Settings { language: "en".into(), notify: false, nightly_enabled, ..Default::default() };
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings));
+                }
+                if let Some(launcher) = state {
+                    launcher.logic(&ui.ctx().clone(), &mut Host);
+                    launcher.ui(ui, &mut Host);
+                }
+            },
+            None,
+        );
+        harness.run_steps(5);
+        harness.get_by_label("Settings").focus();
+        harness.key_press(egui::Key::Enter);
+        harness.run_steps(3);
+        assert!(matches!(harness.state().as_ref().unwrap().dialog, Some(crate::app::Dialog::Settings)));
+        harness
+    }
+
+    const CHECKBOX: &str = "Discover nightly builds (Pre-Release page)";
+    const NOT_YET: &str = "Pre-release builds aren't available on this platform yet.";
+
+    #[test]
+    fn settings_says_pre_release_is_not_available_yet_without_configured_trust() {
+        let mut harness = settings_open(false, false);
+        assert!(harness.get_by_label(CHECKBOX).accesskit_node().is_disabled(), "consent can't be given");
+        harness.get_by_label(NOT_YET);
+        harness.get_by_label(CHECKBOX).click();
+        harness.run_steps(3);
+        let state = harness.state().as_ref().unwrap();
+        assert!(!state.settings.nightly_enabled && !state.nightly.consent_open);
+        assert!(harness.query_by_label("Pre-Release").is_none(), "no Pre-Release destination");
+    }
+
+    #[test]
+    fn settings_offers_pre_release_with_configured_trust() {
+        let harness = settings_open(true, false);
+        assert!(!harness.get_by_label(CHECKBOX).accesskit_node().is_disabled());
+        assert!(harness.query_by_label(NOT_YET).is_none());
+    }
+
+    /// Consent given before the build lost (or never had) trust can still be withdrawn.
+    #[test]
+    fn an_earlier_choice_can_still_be_turned_off_without_configured_trust() {
+        let mut harness = settings_open(false, true);
+        assert!(!harness.get_by_label(CHECKBOX).accesskit_node().is_disabled());
+        harness.get_by_label(NOT_YET);
+        harness.get_by_label(CHECKBOX).click();
+        harness.run_steps(3);
+        assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
     }
 }

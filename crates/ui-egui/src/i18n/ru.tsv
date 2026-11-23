@@ -537,6 +537,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Nightly builds	Ночные сборки
 	Discover nightly builds (Pre-Release page)	Искать ночные сборки (страница Pre-Release)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Отдельные установки, настройки и данные. При отключении установленные копии и их данные сохраняются.
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	Бета-версии и кандидаты в релиз могут заменить стабильную установку.
 
 # Nightly status (English fallback; localization is maintained upstream).

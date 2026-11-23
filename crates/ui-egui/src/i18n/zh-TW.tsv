@@ -501,6 +501,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Nightly builds	每夜組建
 	Discover nightly builds (Pre-Release page)	探索每夜組建（Pre-Release 頁面）
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	安裝、設定和資料皆獨立。關閉後仍會保留已安裝的副本及其資料。
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	測試版與候選發行版可能會取代您的穩定版安裝。
 
 # Nightly status (English fallback; localization is maintained upstream).

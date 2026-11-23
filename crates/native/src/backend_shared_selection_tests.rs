@@ -160,3 +160,39 @@ fn shared_selection_a_feed_repo_rename_keeps_the_apps_separate_channel_policy() 
     assert!(photo.separate_nightly, "the policy follows the app, not the renamed repo string");
     assert!(!release_query(Some(&feed), CraftApp::by_id("solidcraft").unwrap()).separate_nightly);
 }
+
+#[test]
+fn shared_selection_nightly_context_reports_configured_signing_trust() {
+    let root = tempfile::tempdir().unwrap();
+    let windows = Platform { os: Os::Windows, arch: Arch::X64 };
+    let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+    for (name, platform) in [("windows", windows), ("linux", linux)] {
+        let configured = crate::nightly_profile::new_installs_available(platform);
+        let stable = tests::backend(&root.path().join(name).join("stable"), platform, None);
+        assert!(!stable.nightly_available(), "the stable context never offers nightly builds");
+        let paths = Paths::under(&root.path().join(name).join("home")).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        let mut nightly = stable.nightly_with_paths(paths);
+        nightly.platform = Some(platform);
+        assert_eq!(nightly.nightly_available(), configured, "{name}");
+    }
+}
+
+/// Unusable storage refuses everything, but whether Pre-Release is offered at all still follows
+/// the platform's signing trust, as for a usable context.
+#[cfg(unix)]
+#[test]
+fn shared_selection_refused_context_reports_availability_from_signing_trust_not_storage() {
+    let root = tempfile::tempdir().unwrap();
+    let real = root.path().join("real");
+    std::fs::create_dir_all(&real).unwrap();
+    let alias = root.path().join("aliased-root");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    for platform in
+        [Platform { os: Os::Linux, arch: Arch::X64 }, Platform { os: Os::Windows, arch: Arch::X64 }, Platform { os: Os::MacOs, arch: Arch::Arm64 }]
+    {
+        let paths = Paths::under(&alias).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        let stable = tests::backend(&root.path().join(format!("{platform:?}")), platform, None);
+        let context = stable.nightly_context_with_paths(Ok(paths)).unwrap();
+        assert_eq!(context.nightly_available(), crate::nightly_profile::new_installs_available(platform), "{platform:?}");
+    }
+}
