@@ -1581,7 +1581,10 @@ mod trust_gate_tests {
         }
     }
 
-    fn context(available: bool) -> (NightlyState, Rc<RefCell<Vec<Command>>>, Rc<RefCell<Vec<Event>>>) {
+    type Sent = Rc<RefCell<Vec<Command>>>;
+    type Pending = Rc<RefCell<Vec<Event>>>;
+
+    fn context(available: bool) -> (NightlyState, Sent, Pending) {
         let (sent, events) = (Rc::default(), Rc::default());
         let backend = Context { available, sent: Rc::clone(&sent), events: Rc::clone(&events) };
         (NightlyState::new(Some(Box::new(backend)), None), sent, events)
