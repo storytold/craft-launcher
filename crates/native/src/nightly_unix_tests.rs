@@ -8,6 +8,7 @@ fn same_directory(path: &Path, identity: &std::fs::Metadata) -> bool {
 
 // Unlike the old no-op commit fixtures, these callbacks now exercise a real persisted
 // previous/next record. Failing callbacks still return BEFORE any manifest replacement.
+#[cfg(target_os = "linux")]
 fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> Result<(), String>) -> Result<Record, String> {
     let paths = package.paths.clone();
     super::install(package, &mut |record| {
@@ -17,6 +18,7 @@ fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> Result<(), S
         manifest.save(&paths.manifest())
     })
 }
+#[cfg(target_os = "linux")]
 fn remove(adapter: Adapter, record: &Record, paths: &Paths) -> Result<(), String> {
     adapter.validate_record(paths, record)?;
     let lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
@@ -28,6 +30,7 @@ const VERSION: &str = "1.0.0-nightly.20261121.123456.1.gabcdefabcdef";
 pub(crate) fn paths(root: &Path) -> Paths {
     Paths::under(&root.canonicalize().unwrap()).for_channel(InstallChannel::Nightly)
 }
+#[cfg(target_os = "linux")]
 pub(crate) fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
     let output = std::fs::File::create(path).unwrap();
     let encoder = flate2::write::GzEncoder::new(output, flate2::Compression::default());
@@ -50,6 +53,7 @@ pub(crate) fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
     }
     tar.into_inner().unwrap().finish().unwrap();
 }
+#[cfg(target_os = "linux")]
 pub(crate) fn program() -> Vec<u8> {
     // ELF64 little-endian x86_64 executable header; never executed by a test.
     let mut bytes = vec![0; 64];
@@ -57,6 +61,7 @@ pub(crate) fn program() -> Vec<u8> {
     bytes[16..20].copy_from_slice(&[2, 0, 62, 0]);
     bytes
 }
+#[cfg(target_os = "linux")]
 pub(crate) fn package<'a>(file: &'a Path, paths: &'a Paths, previous: Option<&'a Record>) -> Package<'a> {
     // Low-level callback tests explicitly persist the supplied previous record, just as a
     // production worker’s strict snapshot does. Never overwrite existing or malformed metadata.
@@ -539,6 +544,55 @@ fn archive_mutation_after_extraction_refuses_before_old_program_or_records_move(
     assert_eq!(std::fs::read(old.path).unwrap(), before);
     assert_eq!(std::fs::read(personal).unwrap(), b"do not change");
     assert_eq!(std::fs::read(paths.manifest()).unwrap(), manifest_before);
+}
+
+#[test]
+fn mac_layout_accepts_a_stapled_notarization_ticket_but_no_other_bundle_additions() {
+    let contents = Path::new("PhotoCraft Nightly.app/Contents");
+    let mut files: Vec<PathBuf> =
+        ["MacOS/PhotoCraft", "Info.plist", "Resources/photocraft-nightly.icns", "_CodeSignature/CodeResources", "CodeResources"]
+            .iter()
+            .map(|file| contents.join(file))
+            .collect();
+    assert!(layout(Adapter::PhotoCraftMacV1, &files, &files).is_ok());
+    for extra in ["CodeResources.bak", "Frameworks/Helper.framework", "Resources/CodeResources/x", "MacOS/CodeResources"] {
+        files.push(contents.join(extra));
+        assert!(layout(Adapter::PhotoCraftMacV1, &files, &files).is_err(), "{extra}");
+        files.pop();
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn mac_nightly_requires_the_pinned_team_its_own_identifier_and_notarization() {
+    let bundle = Path::new("/private/owned/PhotoCraft Nightly.app");
+    let accepted = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict>\
+        <key>assessment:authority</key><dict><key>assessment:authority:source</key><string>Notarized Developer ID</string></dict>\
+        <key>assessment:verdict</key><true/></dict></plist>";
+    let mut calls = Vec::new();
+    verify_mac_signature(bundle, |program, args, _| {
+        calls.push(args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
+        Ok(crate::process::RunOutput::success(match args {
+            ["--status"] => "assessments enabled",
+            _ if program == "/usr/sbin/spctl" => accepted,
+            _ => "",
+        }))
+    })
+    .unwrap();
+    let identity = calls.iter().flatten().find(|arg| arg.contains("subject.OU")).unwrap();
+    assert!(identity.contains(crate::nightly_trust::MAC_TEAM.unwrap()));
+    assert!(identity.contains("identifier \"ai.storyteller.photocraft.nightly\""));
+    assert!(!identity.contains("identifier \"ai.storyteller.photocraft\""), "the stable identifier cannot stand in for the Nightly");
+    assert!(calls.iter().any(|args| args.iter().any(|arg| arg == "--check-notarization")));
+    assert!(calls.iter().any(|args| args.iter().any(|arg| arg == "--assess")));
+    let refused = verify_mac_signature(bundle, |_, args, _| {
+        Ok(if args.contains(&"--check-notarization") {
+            crate::process::RunOutput::exit(3, "", "not notarized")
+        } else {
+            crate::process::RunOutput::success("")
+        })
+    });
+    assert!(refused.unwrap_err().contains("not notarized"));
 }
 
 #[test]

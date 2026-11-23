@@ -15,9 +15,13 @@
     "entry": "pwsh.exe",
     "size": 212760,
     "sha256": "f2833e07a5a7d59153ffc63db83bd6b62f6c63ffd8b5b5099a2feadf6b605336",
-    "subject": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+    "subject": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "root": "CN=Microsoft Root Certificate Authority 2011, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+    "ekus": [
+      "1.3.6.1.5.5.7.3.3"
+    ]
   },
-  "provenance": "Independent read-only binding of official original archive size/hash, streamed root entry hash, and native Valid embedded Authenticode/timestamp/full subject observation. The reference is copied as test data, never executed or installed.",
+  "provenance": "Independent read-only binding of official original archive size/hash, streamed root entry hash, and native Valid embedded Authenticode/timestamp/full subject observation. The reference is copied as test data, never executed or installed. Its embedded chain (read with osslsigncode and openssl from the same pwsh.exe, sha256 above): leaf issued by Microsoft Code Signing PCA 2024, which chains to Microsoft Root Certificate Authority 2011; the leaf's key usages include Code Signing.",
   "notices": [
     "LICENSE.txt",
     "ThirdPartyNotices.txt"

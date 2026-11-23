@@ -480,6 +480,21 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Hinzugefügt
 	Remove	Entfernen
 	Add	Hinzufügen
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Schriften
+	Allow font downloads	Schriftdownloads erlauben
+	Couldn't change the font download setting: {e}	Die Einstellung für Schriftdownloads konnte nicht geändert werden: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Schriften werden nur beim Installieren aus ihren Quellen geladen. Schriftvorschauen haben unten eine eigene Einstellung. Alle Craft-Apps teilen diese Einstellung.
+	Sources	Quellen
+	Apps	Apps
+	Fonts for every Craft app	Schriften für alle Craft-Apps
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Schriftvorschauen anzeigen
+	Font preview server	Server für Schriftvorschauen
+	Couldn't use this server: {e}	Dieser Server kann nicht verwendet werden: {e}
+	Couldn't change the font previews setting: {e}	Die Einstellung für Schriftvorschauen konnte nicht geändert werden: {e}
+	Set by {name} in the environment.	Durch {name} in der Umgebung festgelegt.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Nicht installierte Schriften zeigen ihre Vorschau von diesem Server, und Installationen versuchen es zuerst dort. Leer: der Standardserver.
 
 	Cloud	Cloud
 	Sign in	Anmelden
@@ -551,6 +566,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Nightly builds	Nightly-Builds
 	Discover nightly builds (Pre-Release page)	Nightly-Builds entdecken (Seite „Pre-Release“)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Getrennte Installationen, Einstellungen und Daten. Beim Ausschalten bleiben installierte Kopien und ihre Daten erhalten.
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	Betas und Release Candidates können Ihre stabile Installation ersetzen.
 
 # Nightly status (English fallback; localization is maintained upstream).

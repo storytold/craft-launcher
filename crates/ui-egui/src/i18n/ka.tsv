@@ -479,6 +479,22 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	დამატებულია
 	Remove	წაშლა
 	Add	დამატება
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	შრიფტები
+	Allow font downloads	შრიფტების ჩამოტვირთვის დაშვება
+	Couldn't change the font download setting: {e}	შრიფტების ჩამოტვირთვის პარამეტრის შეცვლა ვერ მოხერხდა: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	შრიფტები მათი წყაროებიდან მხოლოდ მაშინ ჩამოიტვირთება, როცა შრიფტს აინსტალირებთ. შრიფტების გადახედვას ქვემოთ საკუთარი პარამეტრი აქვს. ამ პარამეტრს ყველა Craft აპლიკაცია იზიარებს.
+	Sources	წყაროები
+	Apps	აპლიკაციები
+	Fonts for every Craft app	შრიფტები ყველა Craft აპლიკაციისთვის
+# The font preview settings in Settings' Fonts box.
+	Show font previews	შრიფტების გადახედვის ჩვენება
+	Advanced	დამატებითი
+	Font preview server	შრიფტების გადახედვის სერვერი
+	Couldn't use this server: {e}	ამ სერვერის გამოყენება ვერ მოხერხდა: {e}
+	Couldn't change the font previews setting: {e}	შრიფტების გადახედვის პარამეტრის შეცვლა ვერ მოხერხდა: {e}
+	Set by {name} in the environment.	დაყენებულია გარემოში {name}-ით.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	დაუინსტალირებელი შრიფტების გადახედვა ამ სერვერიდან ჩანს და ინსტალაციაც ჯერ მას ცდის. ცარიელი ნიშნავს ნაგულისხმევ სერვერს.
 
 	Cloud	ღრუბელი
 	Sign in	შესვლა
@@ -550,6 +566,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Nightly builds	ღამის აწყობები
 	Discover nightly builds (Pre-Release page)	ღამის აწყობების მოძიება (Pre-Release გვერდი)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	ცალკე ინსტალაციები, პარამეტრები და მონაცემები. გამორთვა ინარჩუნებს დაინსტალირებულ ასლებსა და მათ მონაცემებს.
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	ბეტა და გამოშვების კანდიდატმა ვერსიებმა შეიძლება ჩაანაცვლოს თქვენი სტაბილური ინსტალაცია.
 
 # Nightly status (English fallback; localization is maintained upstream).
