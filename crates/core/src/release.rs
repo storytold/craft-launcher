@@ -201,9 +201,12 @@ pub fn choose_version(releases: &[Release], track: &crate::protocol::VersionTrac
     match track {
         VersionTrack::Stable => releases
             .iter()
-            .filter(|r| !r.prerelease && r.version.as_ref().is_some_and(version::is_stable))
-            .max_by(|a, b| a.version.cmp(&b.version))
-            .cloned(),
+            .filter_map(|r| {
+                let version = r.version.as_ref()?;
+                (!r.prerelease && version::is_stable(version)).then_some((r, version))
+            })
+            .reduce(|best, candidate| if version::is_newer(candidate.1, best.1) { candidate } else { best })
+            .map(|(r, _)| r.clone()),
         VersionTrack::Nightly => releases.iter().filter(|r| is_nightly(r) && has_published_checksum(r)).max_by_key(|r| r.published_at).cloned(),
         VersionTrack::Pinned(tag) => releases.iter().find(|r| r.tag == *tag).cloned(),
     }
@@ -520,6 +523,17 @@ mod tests {
         assert_eq!(choose_version(&list, &VersionTrack::Pinned("v0.6.0".into())).unwrap().tag, "v0.6.0");
         assert!(choose_version(&list, &VersionTrack::Pinned("v9.0.0".into())).is_none());
         assert!(choose_version(&list[3..], &VersionTrack::Nightly).is_none());
+    }
+
+    #[test]
+    fn stable_ignores_build_metadata_and_keeps_the_first_equal_precedence_release() {
+        use crate::protocol::VersionTrack;
+        let release = |tag: &str| Release { tag: tag.into(), version: version::parse(tag), ..Default::default() };
+        let first = release("v1.2.3+aaa");
+        let second = release("v1.2.3+zzz");
+        for releases in [[first.clone(), second.clone()], [second, first]] {
+            assert_eq!(choose_version(&releases, &VersionTrack::Stable).unwrap().tag, releases[0].tag);
+        }
     }
 
     #[test]
