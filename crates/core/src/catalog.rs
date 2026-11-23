@@ -53,7 +53,16 @@ pub struct CraftApp {
     pub mac_team: Option<&'static str>,
 }
 
+/// Whether an app's ordinary version selection must leave Nightly copies to their own channel.
+/// This is a product roster, independent of host adapter availability or signing configuration.
+const SEPARATE_NIGHTLY_CHANNELS: &[(&str, &str)] = &[("photocraft", "storytold/photocraft")];
+
 impl CraftApp {
+    /// This app has a separate Nightly destination on every host, even where installation refuses.
+    pub fn has_separate_nightly_channel(&self) -> bool {
+        self.kind == AppKind::Official && SEPARATE_NIGHTLY_CHANNELS.iter().any(|(app, repository)| self.id == *app && self.repo == *repository)
+    }
+
     /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id.
     pub fn bundle_id(&self) -> String {
         self.bundle.map_or_else(|| format!("ai.storyteller.{}", self.id), str::to_string)

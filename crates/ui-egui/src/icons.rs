@@ -92,6 +92,40 @@ pub fn artcraft_mark() -> ImageSource<'static> {
     egui::include_image!("../../../docs/brand/artcraft-mark.svg")
 }
 
+/// Deep-background nightly artwork for every bundled official catalog app.
+/// Community or future unknown brands retain their supplied artwork, never a runtime tint.
+fn nightly_app(id: &str) -> Option<ImageSource<'static>> {
+    Some(match id {
+        "photocraft" => egui::include_image!("../../../assets/nightly-icons/photocraft.png"),
+        "vectorcraft" => egui::include_image!("../../../assets/nightly-icons/vectorcraft.png"),
+        "filmcraft" => egui::include_image!("../../../assets/nightly-icons/filmcraft.png"),
+        "lightcraft" => egui::include_image!("../../../assets/nightly-icons/lightcraft.png"),
+        "pdfcraft" => egui::include_image!("../../../assets/nightly-icons/pdfcraft.png"),
+        "effectcraft" => egui::include_image!("../../../assets/nightly-icons/effectcraft.png"),
+        "anicraft" => egui::include_image!("../../../assets/nightly-icons/anicraft.png"),
+        "designcraft" => egui::include_image!("../../../assets/nightly-icons/designcraft.png"),
+        "figcraft" => egui::include_image!("../../../assets/nightly-icons/figcraft.png"),
+        "soundcraft" => egui::include_image!("../../../assets/nightly-icons/soundcraft.png"),
+        "wordcraft" => egui::include_image!("../../../assets/nightly-icons/wordcraft.png"),
+        "deckcraft" => egui::include_image!("../../../assets/nightly-icons/deckcraft.png"),
+        "cadcraft" => egui::include_image!("../../../assets/nightly-icons/cadcraft.png"),
+        "gridcraft" => egui::include_image!("../../../assets/nightly-icons/gridcraft.png"),
+        "texturecraft" => egui::include_image!("../../../assets/nightly-icons/texturecraft.png"),
+        "materialcraft" => egui::include_image!("../../../assets/nightly-icons/materialcraft.png"),
+        "craft-anything" => egui::include_image!("../../../assets/nightly-icons/craft-anything.png"),
+        artcraft_launcher_core::catalog::LAUNCHER_ID => egui::include_image!("../../../assets/nightly-icons/artcraft-launcher.png"),
+        _ => return app(id),
+    })
+}
+
+/// Nightly-only artwork; the explicit translated Pre-Release tag stays beside the title.
+/// Stable cards and the ordinary Launcher's Settings hero never use these sources.
+pub(crate) fn nightly_icon(ui: &mut egui::Ui, id: &str, name: &str, size: f32) {
+    let Some(source) = nightly_app(id) else { return };
+    let name = format!("{name} · {}", tl!("Pre-Release"));
+    ui.add(egui::Image::new(source).fit_to_exact_size(egui::Vec2::splat(size)).alt_text(crate::i18n::fmt(tl!("{name} icon"), &[("name", &name)])));
+}
+
 #[cfg(test)]
 mod tests {
     use super::desaturate;

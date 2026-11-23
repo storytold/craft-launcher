@@ -134,6 +134,8 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Consent for the separate nightly context; never switches the stable install channel.
+    pub nightly_enabled: bool,
     /// Downloads that may run at once (1 to 4; 0 for no limit).
     pub simultaneous_downloads: u8,
 }
@@ -146,6 +148,17 @@ pub enum LatestRelease {
     None,
     /// Couldn't find out (offline, rate-limited, unreadable answer).
     Failed(String),
+}
+
+/// Nightly-only scheduling metadata. A previous success is not advanced by an offline,
+/// budget-limited or server-limited attempt. This contains no install capability or body cache.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NightlyStatus {
+    pub attempted_at: Option<i64>,
+    pub verified_at: Option<i64>,
+    pub retry_at: Option<i64>,
+    pub stale: bool,
+    pub message: Option<String>,
 }
 
 /// What a running job is doing.
@@ -312,6 +325,10 @@ pub enum Event {
         key: String,
         result: Result<Vec<u8>, String>,
     },
+    NightlyStatus {
+        app: String,
+        status: NightlyStatus,
+    },
     CheckStarted,
     CheckFinished {
         /// Unix seconds.
@@ -387,6 +404,16 @@ pub struct Capabilities {
 
 /// The UI's view of a backend.
 pub trait Backend {
+    /// Admitted mutation/Open jobs, including the gap before their first progress event.
+    /// Must be a cheap in-memory query; metadata discovery is not an active job.
+    fn has_active_jobs(&self) -> bool {
+        false
+    }
+
+    /// Create an independent context using the same backend implementation.
+    fn nightly_context(&self) -> Option<Box<dyn Backend>> {
+        None
+    }
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;

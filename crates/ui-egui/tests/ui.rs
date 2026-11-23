@@ -4766,3 +4766,57 @@ fn ai_agents_stay_hidden_until_their_flag_is_on() {
     assert!(h.query_by_label("Experimental features").is_none(), "flags have no switches in Settings");
     assert!(h.query_by_label("AI agents (MCP)").is_none());
 }
+
+#[test]
+/// The header holds the Settings gear, the announcements bell and the Stable/Pre-Release switch
+/// side by side at a wide width, a narrow one and one that needs the compact logo, in both
+/// themes, without overlap or clipping.
+fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
+    use artcraft_launcher_core::notices::Notice;
+    use egui_kittest::kittest::Queryable;
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        // 440 is narrow enough that the wordmark gives way to the compact ArtCraft mark.
+        for width in [1180.0_f32, 560.0, 440.0] {
+            let mut evs = events();
+            evs.push(Event::Notices {
+                announcements: vec![Notice {
+                    id: "a1".into(),
+                    title: "CADCraft 1.0 is out".into(),
+                    body: "CADCraft 1.0 is out body".into(),
+                    link: None,
+                    created_at: None,
+                    expires: None,
+                }],
+                alerts: vec![],
+            });
+            let (mut h, _) = harness_with(evs, ViewMode::Grid, theme, true, 1.0);
+            h.set_size(egui::vec2(width, 800.0));
+            h.run_steps(2);
+            h.state_mut().as_mut().unwrap().settings.nightly_enabled = true;
+            h.run_steps(6);
+            let top = |h: &Harness<'static, Option<LauncherUi>>, label: &str| {
+                h.query_all_by_label(label)
+                    .map(|node| node.rect())
+                    .min_by(|a, b| a.top().total_cmp(&b.top()))
+                    .unwrap_or_else(|| panic!("{label} missing at {width}"))
+            };
+            let controls = [
+                ("Settings", top(&h, "Settings")),
+                ("bell", top(&h, "Announcements, 1 unread")),
+                ("Stable", top(&h, "Stable")),
+                ("Pre-Release", top(&h, "Pre-Release")),
+            ];
+            for (name, rect) in &controls {
+                assert!(rect.left() >= 0.0 && rect.right() <= width + 0.5, "{name} is clipped at {width}: {rect:?}");
+                assert!(rect.width() > 1.0, "{name} has no room at {width}: {rect:?}");
+            }
+            for (i, (a, ra)) in controls.iter().enumerate() {
+                for (b, rb) in &controls[i + 1..] {
+                    assert!(!ra.shrink(0.5).intersects(rb.shrink(0.5)), "{a} overlaps {b} at {width}: {ra:?} {rb:?}");
+                }
+            }
+            let name = format!("header-{}-{}", if theme == egui::Theme::Dark { "dark" } else { "light" }, width as u32);
+            snapshot(&mut h, &name);
+        }
+    }
+}
