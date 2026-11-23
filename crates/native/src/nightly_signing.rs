@@ -445,11 +445,9 @@ mod tests {
             assert!(check(evidence(&native, other, true, root, &all), &native).is_err());
         }
         // A publisher missing any part is not configured, so nothing is queried.
-        for incomplete in [
-            WindowsPublisher { root: "", ..publisher },
-            WindowsPublisher { ekus: &[], ..publisher },
-            WindowsPublisher { ekus: &[""], ..publisher },
-        ] {
+        for incomplete in
+            [WindowsPublisher { root: "", ..publisher }, WindowsPublisher { ekus: &[], ..publisher }, WindowsPublisher { ekus: &[""], ..publisher }]
+        {
             assert!(windows_metadata_with(path, Some(&incomplete), &native, |_| panic!("queried without a configured publisher")).is_err());
         }
     }
@@ -543,6 +541,36 @@ mod tests {
         // actual file/crypto checks will fail; required=false does not forgive bad fixtures.
         assert_eq!(signed_fixture_resource(Some(root.clone().into_os_string()), None).unwrap(), SignedFixtureResource::Supplied(root));
         assert!(signed_fixture_resource(Some("relative-fixture.exe".into()), None).is_err());
+    }
+
+    /// The production publisher check on executables supplied by a Windows guest run:
+    /// CRAFT_NIGHTLY_PRODUCTION_EXE (a released PhotoCraft photocraft.exe) must pass, and
+    /// CRAFT_NIGHTLY_FOREIGN_EXE (another publisher's validly signed exe) must be refused. Each is
+    /// checked through `authenticate_windows` itself, as a payload's photocraft.exe. Without them
+    /// this lists a skip, which is not coverage.
+    #[cfg(windows)]
+    #[test]
+    fn production_publisher_check_on_supplied_executables() {
+        use std::io::Write;
+        let check = |supplied: std::ffi::OsString| {
+            let directory = tempfile::tempdir().unwrap();
+            std::fs::copy(supplied, directory.path().join("photocraft.exe")).expect("supplied executable must be readable");
+            authenticate_windows(directory.path(), &[std::path::PathBuf::from("photocraft.exe")]).map(drop)
+        };
+        let production = std::env::var_os("CRAFT_NIGHTLY_PRODUCTION_EXE");
+        let foreign = std::env::var_os("CRAFT_NIGHTLY_FOREIGN_EXE");
+        if production.is_none() && foreign.is_none() {
+            writeln!(std::io::stdout().lock(), "SKIP production_publisher_check_on_supplied_executables: no supplied executables").unwrap();
+            return;
+        }
+        if let Some(path) = production {
+            check(path).expect("the released PhotoCraft executable must pass the production publisher check");
+            writeln!(std::io::stdout().lock(), "PASS production executable accepted").unwrap();
+        }
+        if let Some(path) = foreign {
+            let refused = check(path).expect_err("another publisher's executable must be refused");
+            writeln!(std::io::stdout().lock(), "PASS foreign executable refused: {refused}").unwrap();
+        }
     }
 
     /// Released MIT fixture only, never a PhotoCraft production identity. This native integration
