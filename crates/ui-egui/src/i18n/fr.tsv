@@ -482,7 +482,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts	Polices
 	Allow font downloads	Autoriser le téléchargement de polices
 	Couldn't change the font download setting: {e}	Impossible de modifier le réglage de téléchargement des polices : {e}
-	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	Les polices sont téléchargées depuis leurs sources uniquement quand vous en installez ou en prévisualisez une. Ce réglage est commun à toutes les apps Craft.
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Les polices sont téléchargées depuis leurs sources uniquement quand vous en installez une. Les aperçus de polices ont leur propre réglage ci-dessous. Ce réglage est commun à toutes les apps Craft.
 	Sources	Sources
 	Apps	Applications
 	Fonts for every Craft app	Polices pour toutes les applications Craft

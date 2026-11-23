@@ -469,7 +469,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts	Шрифти
 	Allow font downloads	Дозволити завантаження шрифтів
 	Couldn't change the font download setting: {e}	Не вдалося змінити налаштування завантаження шрифтів: {e}
-	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	Шрифти завантажуються з їхніх джерел лише тоді, коли ви встановлюєте шрифт або переглядаєте його. Це налаштування спільне для всіх застосунків Craft.
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Шрифти завантажуються з їхніх джерел лише тоді, коли ви встановлюєте шрифт. Попередній перегляд шрифтів має власне налаштування нижче. Це налаштування спільне для всіх застосунків Craft.
 	Sources	Джерела
 	Apps	Застосунки
 	Fonts for every Craft app	Шрифти для всіх застосунків Craft

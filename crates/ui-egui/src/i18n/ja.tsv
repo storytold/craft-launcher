@@ -487,7 +487,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts	フォント
 	Allow font downloads	フォントのダウンロードを許可
 	Couldn't change the font download setting: {e}	フォントのダウンロード設定を変更できませんでした: {e}
-	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	フォントは、インストールまたはプレビューするときにだけ、そのソースからダウンロードされます。この設定はすべての Craft アプリで共通です。
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	フォントは、インストールするときにだけ、そのソースからダウンロードされます。フォントのプレビューには、下に専用の設定があります。この設定はすべての Craft アプリで共通です。
 	Sources	ソース
 	Apps	アプリ
 	Fonts for every Craft app	すべての Craft アプリで使えるフォント

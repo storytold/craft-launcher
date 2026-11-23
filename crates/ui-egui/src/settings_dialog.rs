@@ -369,7 +369,12 @@ impl LauncherUi {
             {
                 self.toast_from_ui(fmt(tl!("Couldn't change the font download setting: {e}"), &[("e", &e)]), true);
             }
-            note(ui, tl!("Fonts download from their sources only when you install or preview one. Every Craft app shares this setting."));
+            note(
+                ui,
+                tl!(
+                    "Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting."
+                ),
+            );
             ui.add_space(10.0);
             self.fonts.preview_settings_ui(ui);
             ui.add_space(10.0);

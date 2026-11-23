@@ -458,7 +458,7 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Fonts	Fontovi
 	Allow font downloads	Dozvoli preuzimanje fontova
 	Couldn't change the font download setting: {e}	Nije moguće promijeniti postavku preuzimanja fontova: {e}
-	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	Fontovi se preuzimaju iz svojih izvora samo kada instalirate font ili otvorite njegov pregled. Ovu postavku dijele sve Craft aplikacije.
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Fontovi se preuzimaju iz svojih izvora samo kada instalirate font. Pregledi fontova imaju vlastitu postavku u nastavku. Ovu postavku dijele sve Craft aplikacije.
 	Sources	Izvori
 	Apps	Aplikacije
 	Fonts for every Craft app	Fontovi za sve Craft aplikacije
