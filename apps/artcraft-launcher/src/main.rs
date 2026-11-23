@@ -95,7 +95,11 @@ fn main() -> ExitCode {
     let starts = match single_instance::claim(wake.clone()) {
         Instance::Secondary => {
             // No log file yet (a second start must not rotate the running one's), so say it on stderr.
-            eprintln!("ArtCraft Launcher: another launcher already holds this account's instance port and was asked to show its window; exiting.");
+            use std::io::Write;
+            let _ = writeln!(
+                std::io::stderr(),
+                "ArtCraft Launcher: another launcher already holds this account's instance port and was asked to show its window; exiting."
+            );
             return ExitCode::SUCCESS;
         }
         Instance::Primary(rx) => rx,
