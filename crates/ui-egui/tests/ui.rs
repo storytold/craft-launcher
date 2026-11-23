@@ -4773,7 +4773,7 @@ fn ai_agents_stay_hidden_until_their_flag_is_on() {
 /// themes, without overlap or clipping.
 fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
     use artcraft_launcher_core::notices::Notice;
-    use egui_kittest::kittest::{NodeT, Queryable};
+    use egui_kittest::kittest::Queryable;
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         // 440 is narrow enough that the wordmark gives way to the compact ArtCraft mark.
         for width in [1180.0_f32, 560.0, 440.0] {
