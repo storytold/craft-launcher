@@ -1043,3 +1043,45 @@ title = "Files"
 [[apps.details.features]]
 text = "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."
 title = "Desktop, web and agents"
+
+[[apps]]
+bundle = "io.github.opopina.fashioncraft"
+color = [221, 44, 206]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "fashioncraft"
+binary = "fashioncraft"
+mac_bundle_id = "io.github.opopina.fashioncraft"
+mac_bundle_name = "FashionCraft"
+website = "https://github.com/opopina/fashioncraft"
+windows_msi_publisher = "Ricardo Rivadeneira"
+desktop_categories = ["Graphics", "3DGraphics"]
+startup_wm_class = "io.github.opopina.fashioncraft"
+icon_url = "https://getartcraft.com/launcher-app-icons/fashioncraft-1f133494962ee5fbeaefca1f905fd66877e6aa3724b642b84dc481339667800b.png"
+icon_sha256 = "1f133494962ee5fbeaefca1f905fd66877e6aa3724b642b84dc481339667800b"
+ink_dark = [240, 140, 230]
+ink_light = [160, 18, 143]
+kind = "community"
+msi_publisher = "Ricardo Rivadeneira"
+name = "FashionCraft"
+publisher = "Ricardo Rivadeneira"
+repo = "opopina/fashioncraft"
+site = "https://github.com/opopina/fashioncraft"
+tagline = "3D clothing design"
+[apps.details]
+headline = "Draw sewing patterns, sew them and drape the garment on a body in 3D."
+about = "An open-source garment design app written in Rust: a 2D pattern board and a 3D view side by side, cloth simulated on the GPU, and an avatar library with a body generator. It grew from ClothCraft and is made by Ricardo Rivadeneira with Claude Opus 5.5. In early alpha."
+platforms = "macOS, Windows, Linux"
+[[apps.details.features]]
+text = "Polygons, curves, internal lines, darts and mirrored pieces; T-shirts, skirts and trousers drafted from measurements; DXF and SVG import and a 1:1 PDF print."
+title = "Patterns"
+[[apps.details.features]]
+text = "Segment, free and M:N sewing, arrangement points on the body, pins, pleats and buttons, and cloth simulated on the GPU."
+title = "Sewing and draping"
+[[apps.details.features]]
+text = "Twelve ready-made bodies with skin, eyes and hair, a body generator from measurements, poses and BVH motion."
+title = "Avatars"
+[[apps.details.features]]
+text = "OBJ, glTF, FBX, USD and Alembic avatars in; OBJ, glTF, FBX, Alembic, USD and point caches out."
+title = "Files"
