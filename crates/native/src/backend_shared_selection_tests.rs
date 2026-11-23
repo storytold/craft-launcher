@@ -108,13 +108,12 @@ fn shared_selection_backend_configuration_keeps_legacy_tracks_but_reconciles_pho
     }
 }
 #[test]
-fn shared_selection_mac_admission_does_not_inherit_the_ordinary_signing_team() {
+fn shared_selection_mac_admission_follows_the_pinned_nightly_signing_team() {
     let app = CraftApp::by_id("photocraft").unwrap();
-    assert!(app.mac_team.is_some());
     let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
     assert!(crate::nightly_profile::for_app(app, platform).is_ok(), "known retained copies still have a source-owned validation/management profile");
     let result = crate::nightly_profile::admit_new(app, platform);
-    assert!(result.is_err(), "ordinary signing metadata does not configure the Nightly Mac adapter");
+    assert_eq!(result, Ok(crate::nightly_profile::Adapter::PhotoCraftMacV1), "the source-owned Nightly team admits new Mac installs");
 }
 
 #[cfg(unix)]
