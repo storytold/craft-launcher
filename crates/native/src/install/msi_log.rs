@@ -1,11 +1,12 @@
 //! What a Windows Installer log (`/l*v`) says stopped an install that ended with error 1603,
 //! which by itself only says that the installation failed.
 
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
-/// How much of a log is read. A launch condition and the removal of the version being replaced
-/// both run before any file is copied, so their lines are near the start of the log.
+/// How much of a log is read from its start, and again from its end. A launch condition runs
+/// before any file is copied, so its lines are near the start of the log; a package that
+/// schedules the removal of the version being replaced late logs that removal near the end.
 const MAX_LOG_BYTES: u64 = 32 << 20;
 
 /// The longest launch-condition message kept, in characters.
@@ -22,23 +23,43 @@ pub(super) enum Cause {
     CachedPackageMissing,
 }
 
-/// The cause the log at `log` names, reading at most [`MAX_LOG_BYTES`] of it. `None` when the
-/// log can't be read or names no cause this module knows.
+/// The cause the log at `log` names, reading at most [`MAX_LOG_BYTES`] from its start and as
+/// much again from its end. `None` when the log can't be read or names no cause this module
+/// knows.
 pub(super) fn cause(log: &Path) -> Option<Cause> {
-    let file = std::fs::File::open(log).ok()?;
-    if !file.metadata().ok()?.is_file() {
+    let mut file = std::fs::File::open(log).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() {
         return None;
     }
-    let mut bytes = Vec::new();
-    file.take(MAX_LOG_BYTES).read_to_end(&mut bytes).ok()?;
-    find(&text(&bytes))
+    let mut head = Vec::new();
+    (&mut file).take(MAX_LOG_BYTES).read_to_end(&mut head).ok()?;
+    let utf16 = is_utf16(&head);
+    let mut read = text(&head, utf16);
+    if meta.len() > MAX_LOG_BYTES {
+        // The end, never overlapping the start. A UTF-16 log is read from an even offset so its
+        // characters stay aligned, which takes one byte more.
+        let start = (meta.len() - MAX_LOG_BYTES).max(MAX_LOG_BYTES);
+        let start = if utf16 { start & !1 } else { start };
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut tail = Vec::new();
+        file.take(MAX_LOG_BYTES + 1).read_to_end(&mut tail).ok()?;
+        read.push('\n');
+        read.push_str(&text(&tail, utf16));
+    }
+    find(&read)
+}
+
+/// Whether a log that starts with `bytes` is UTF-16: a byte order mark, or an ASCII first
+/// character followed by a zero byte.
+fn is_utf16(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xFF, 0xFE]) || matches!(bytes, [first, 0, ..] if *first != 0)
 }
 
 /// The log's text. Windows Installer writes it as UTF-16 (little-endian, usually with a byte
 /// order mark) or in the system's code page; text in a code page reads correctly here only
 /// where it is ASCII, which covers the lines [`find`] looks for.
-fn text(bytes: &[u8]) -> String {
-    let utf16 = bytes.starts_with(&[0xFF, 0xFE]) || matches!(bytes, [first, 0, ..] if *first != 0);
+fn text(bytes: &[u8], utf16: bool) -> String {
     if !utf16 {
         return String::from_utf8_lossy(bytes).into_owned();
     }
@@ -229,15 +250,31 @@ mod tests {
     }
 
     #[test]
-    fn only_the_start_of_a_large_log_is_read() {
+    fn only_the_start_and_the_end_of_a_large_log_are_read() {
         let mut bytes = failed_launch_condition().into_bytes();
         bytes.resize(MAX_LOG_BYTES as usize, b' ');
         bytes.extend_from_slice(missing_cached_package().as_bytes());
         let (_dir, log) = written(&bytes);
         assert_eq!(cause(&log), Some(Cause::LaunchCondition(Some(MESSAGE.into()))));
+        // A removal logged near the end of a large log is found there, in either encoding.
         let mut late = vec![b' '; MAX_LOG_BYTES as usize];
         late.extend_from_slice(missing_cached_package().as_bytes());
         let (_dir, log) = written(&late);
-        assert_eq!(cause(&log), None, "past the part that is read");
+        assert_eq!(cause(&log), Some(Cause::CachedPackageMissing), "in the end of the log");
+        // A log of odd length whose last line ends at its last byte, past both parts' length.
+        let mut odd = vec![b' '; 2 * MAX_LOG_BYTES as usize + 1];
+        odd.extend_from_slice(b"Error 1714. The older version of ExampleCraft cannot be removed. System Error 1612");
+        let (_dir, log) = written(&odd);
+        assert_eq!(cause(&log), Some(Cause::CachedPackageMissing), "the last byte is read");
+        let mut late = utf16(&" ".repeat(MAX_LOG_BYTES as usize / 2 + 1));
+        late.extend(missing_cached_package().encode_utf16().flat_map(u16::to_le_bytes));
+        let (_dir, log) = written(&late);
+        assert_eq!(cause(&log), Some(Cause::CachedPackageMissing), "in the end of a UTF-16 log");
+        // Between the start and the end of a log larger than both, nothing is read.
+        let mut middle = vec![b' '; MAX_LOG_BYTES as usize];
+        middle.extend_from_slice(missing_cached_package().as_bytes());
+        middle.resize(middle.len() + MAX_LOG_BYTES as usize, b' ');
+        let (_dir, log) = written(&middle);
+        assert_eq!(cause(&log), None, "past the parts that are read");
     }
 }
