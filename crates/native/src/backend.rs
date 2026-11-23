@@ -490,14 +490,17 @@ impl NativeBackend {
                 .and_then(|platform| CraftApp::by_id("photocraft").and_then(|app| crate::nightly_profile::for_app(app, platform).ok()))
             {
                 Some(adapter) => match crate::nightly_transaction::refresh(&paths, adapter) {
-                    Ok(manifest) => manifest,
+                    Ok(manifest) => Some(manifest),
                     Err(error) => {
                         shared.emit(Event::Notice { app: "photocraft".into(), result: Err(error) });
-                        crate::nightly_transaction::stored_manifest(&paths).unwrap_or_default()
+                        crate::nightly_transaction::stored_manifest(&paths).ok()
                     }
                 },
-                None => Manifest::default(),
+                None => Some(Manifest::default()),
             };
+            // An unreadable manifest is not evidence that no copy is owned: keep the last known
+            // record and publish nothing until a successful read can say what exists.
+            let Some(refreshed) = refreshed else { return };
             {
                 let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
                 let mut current = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);

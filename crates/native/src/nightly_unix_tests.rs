@@ -536,3 +536,12 @@ fn archive_mutation_after_extraction_refuses_before_old_program_or_records_move(
     assert_eq!(std::fs::read(personal).unwrap(), b"do not change");
     assert_eq!(std::fs::read(paths.manifest()).unwrap(), manifest_before);
 }
+
+#[test]
+fn xdg_roots_use_the_home_default_for_unset_empty_and_relative_values() {
+    let home = Path::new("/home/someone");
+    for value in [None, Some(""), Some("relative/state")] {
+        assert_eq!(xdg_root(value.map(Into::into), home, ".local/state"), home.join(".local/state"), "{value:?}");
+    }
+    assert_eq!(xdg_root(Some("/srv/state".into()), home, ".local/state"), PathBuf::from("/srv/state"));
+}

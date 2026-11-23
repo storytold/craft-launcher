@@ -282,9 +282,12 @@ impl Dir {
             return Err("A Nightly source identity changed before moving; it was left unchanged.".into());
         }
         self.rename_exclusive(child, target, destination)?;
+        #[cfg(test)]
+        review_after_exclusive_move();
         if target.info(destination)?.as_ref().map(|(id, _)| id) != Some(expected) {
-            let _ = target.rename_exclusive(destination, self, child);
-            return Err("A Nightly file changed while moving; recovery was retained without overwriting an arriving file.".into());
+            // A rename by name cannot prove which object it moves, so whatever now has the
+            // destination name stays there; recovery keeps the failure for inspection.
+            return Err("A Nightly file changed while moving; the entry now at its destination was left in place and recovery was retained.".into());
         }
         Ok(())
     }
@@ -454,5 +457,44 @@ impl Dir {
         {
             Err("No Nightly filesystem adapter is available.".into())
         }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static REVIEW_AFTER_EXCLUSIVE_MOVE: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = std::cell::RefCell::new(None);
+}
+#[cfg(test)]
+fn review_after_exclusive_move() {
+    REVIEW_AFTER_EXCLUSIVE_MOVE.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
+}
+
+#[cfg(all(test, unix))]
+mod move_identity_tests {
+    use super::*;
+
+    #[test]
+    fn a_destination_replaced_after_the_move_is_never_moved_back_by_name() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        std::fs::write(root.join("owned"), b"owned bytes").unwrap();
+        let dir = Dir::open(&root).unwrap();
+        let expected = dir.info(Path::new("owned")).unwrap().unwrap().0;
+        let swap = root.clone();
+        REVIEW_AFTER_EXCLUSIVE_MOVE.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move || {
+                // Another writer takes the destination name after the exclusive move.
+                std::fs::rename(swap.join("destination"), swap.join("moved aside")).unwrap();
+                std::fs::write(swap.join("destination"), b"foreign arriving bytes").unwrap();
+            }))
+        });
+        assert!(dir.move_to(Path::new("owned"), &dir, Path::new("destination"), &expected).is_err());
+        assert!(!root.join("owned").exists(), "the foreign entry must not be renamed into the owned name");
+        assert_eq!(std::fs::read(root.join("destination")).unwrap(), b"foreign arriving bytes");
+        assert_eq!(std::fs::read(root.join("moved aside")).unwrap(), b"owned bytes");
     }
 }

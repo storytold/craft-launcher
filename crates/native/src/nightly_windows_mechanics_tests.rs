@@ -182,3 +182,26 @@ fn common_removal_recovers_native_process_exit_before_and_after_commit() {
         removed(&paths);
     }
 }
+
+#[test]
+fn removal_accepts_the_verbatim_root_the_installer_records_with_ordinary_paths() {
+    let (_temp, paths, _) = fixture();
+    // The portable installer resolves its folder with `canonicalize`, which yields `\\?\C:\…`.
+    let root = std::fs::canonicalize(paths.apps().join(APP)).unwrap();
+    assert!(root.to_string_lossy().starts_with(r"\\?\"), "fixture must reproduce the installer's verbatim spelling: {}", root.display());
+    assert!(!paths.apps().to_string_lossy().starts_with(r"\\?\"), "Paths must keep the ordinary drive-letter spelling");
+    let record = Record {
+        path: root.join("photocraft.exe"),
+        files: vec![root.join("photocraft.exe"), root.join("NOTICE")],
+        version: "synthetic mechanics-only fixture; not a qualified app version".into(),
+        kind: PackageKind::PortableZip,
+        installed_at: 1,
+        needs_root: false,
+    };
+    let mut manifest = Manifest::default();
+    manifest.apps.insert(APP.into(), record.clone());
+    manifest.save(&paths.manifest()).unwrap();
+    let lease = Lease::acquire(&paths, ADAPTER).unwrap();
+    commit_removal(&lease, &record).unwrap();
+    removed(&paths);
+}

@@ -55,7 +55,7 @@ fn validate_owned_directory(root: &Path, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
+pub(crate) fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
     for ancestor in path.ancestors() {
         match std::fs::canonicalize(ancestor) {
             Ok(resolved) => {
@@ -75,7 +75,7 @@ fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
 
 /// Whether two paths name the same Windows folder or file: case, trailing separators and the
 /// verbatim `\\?\` form that `canonicalize` returns don't count.
-fn same_windows_path(left: &Path, right: &Path) -> bool {
+pub(crate) fn same_windows_path(left: &Path, right: &Path) -> bool {
     /// `canonicalize` writes `\\?\C:\…` and, for a network share, `\\?\UNC\server\share\…`;
     /// Windows reads either prefix in any case.
     fn normalized(path: &Path) -> String {

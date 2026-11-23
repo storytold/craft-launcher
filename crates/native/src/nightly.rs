@@ -138,7 +138,7 @@ pub(crate) fn launch(
     crate::nightly_unix::approve(adapter, paths, record)?;
     #[cfg(windows)]
     let _authenticated = {
-        let root = paths.apps().join(app.id);
+        let root = crate::nightly_transaction::record_root(record, &paths.apps().join(app.id), adapter.executable())?.to_path_buf();
         let files = record
             .files
             .iter()

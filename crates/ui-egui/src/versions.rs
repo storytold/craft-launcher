@@ -90,7 +90,13 @@ impl LauncherUi {
         self.version_combo(ui, id, app, 440.0, label.id);
         ui.add_space(10.0);
         ui.label(RichText::new(tl!("Your files may not open in older versions.")).color(t.muted));
-        ui.label(RichText::new(tl!("Enable automatic installs in Settings to follow new nightly builds.")).color(t.muted));
+        let nightly_note = if app.has_separate_nightly_channel() {
+            // Its nightlies are not in this picker: they install separately on the Pre-Release page.
+            tl!("Nightly builds use a separate install and settings. Stable updates stay unchanged.")
+        } else {
+            tl!("Enable automatic installs in Settings to follow new nightly builds.")
+        };
+        ui.label(RichText::new(nightly_note).color(t.muted));
         ui.add_space(12.0);
         let (mut close, mut install) = (false, false);
         ui.horizontal(|ui| {

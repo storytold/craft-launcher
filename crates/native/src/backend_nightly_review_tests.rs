@@ -766,3 +766,30 @@ fn review_lifecycle_real_detector_cannot_hide_same_record_restored_by_failed_rem
     assert!(backend.shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, result: Err(error) } if app == APP && error.contains("controlled returned removal publication failure"))));
     assert!(!backend.has_active_jobs());
 }
+
+#[test]
+fn review_unreadable_manifest_keeps_the_last_known_copy_instead_of_publishing_none() {
+    const TEST: &str = "review_unreadable_manifest_keeps_the_last_known_copy_instead_of_publishing_none";
+    if isolated_probe(TEST) {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let (paths, record) = baseline(temp.path());
+    let backend = fresh_backend(&paths);
+    let app = CraftApp::by_id(APP).unwrap();
+    let installed = crate::nightly::owned_installation(app, &record, &paths, backend.platform.unwrap()).unwrap();
+    assert_eq!(backend.installed(APP), Some(installed.clone()));
+    std::fs::write(paths.manifest(), b"{ unreadable").unwrap();
+    backend.shared.events.lock().unwrap().clear();
+    backend.detect_nightly_records();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while backend.shared.detecting.load(Ordering::SeqCst) {
+        assert!(Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    assert_eq!(backend.shared.manifest.lock().unwrap().apps.get(APP), Some(&record), "a read error is not an empty manifest");
+    assert_eq!(backend.installed(APP), Some(installed));
+    let events = backend.shared.events.lock().unwrap();
+    assert!(events.iter().any(|event| matches!(event, Event::Notice { app, result: Err(_) } if app == APP)), "{events:?}");
+    assert!(!events.iter().any(|event| matches!(event, Event::Detected { app, installed: None } if app == APP)), "{events:?}");
+}

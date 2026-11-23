@@ -279,6 +279,30 @@ impl Lease {
         })
     }
 
+    /// `prepare` creates the journal, then the stage, then writes the header. A crash before
+    /// the header leaves an empty journal and at most an empty stage: no plan was written and no
+    /// program file moved. Only that exact state is cleared; any content is preserved.
+    fn recover_headerless_slot(&self) -> Result<(), String> {
+        let Some((journal, false)) = self.data.info(&self.journal_name())? else {
+            return Err("The empty Nightly journal is not a regular file; it was preserved.".into());
+        };
+        match self.apps.info(&self.stage_name())? {
+            None => {}
+            Some((stage, true)) => {
+                if !self.apps.prune(&self.stage_name(), &stage)? {
+                    return Err(
+                        "An unsealed Nightly preparation slot with content was preserved. Its ownership cannot be reconstructed safely.".into()
+                    );
+                }
+            }
+            Some(_) => return Err("An unsealed Nightly preparation slot was preserved. Its ownership cannot be reconstructed safely.".into()),
+        }
+        self.apps.sync()?;
+        self.data.remove(&self.journal_name(), &journal, false)?;
+        self.data.sync()?;
+        self.metadata_clear()
+    }
+
     pub(crate) fn recover(&self) -> Result<(), String> {
         let Some(bytes) = read(&self.data, &self.journal_name())? else {
             if self.apps.info(&self.stage_name())?.is_some() {
@@ -287,6 +311,9 @@ impl Lease {
             self.metadata_clear()?;
             return Ok(());
         };
+        if bytes.is_empty() {
+            return self.recover_headerless_slot();
+        }
         let mut lines = bytes.split(|byte| *byte == b'\n');
         let header = match serde_json::from_slice(lines.next().ok_or("The Nightly journal is empty.")?).map_err(|e| e.to_string())? {
             Entry::Header(header) => header,
@@ -547,8 +574,9 @@ impl Preparation<'_> {
         let mut files = Vec::new();
         let mut directories = BTreeMap::new();
         directories.insert(PathBuf::new(), Node { path: PathBuf::new(), id: root.id()?, directory: true });
+        let owned = record_root(record, &self.lease.paths.apps().join(self.lease.adapter.app()), self.lease.adapter.executable())?;
         for path in &record.files {
-            let path = path.strip_prefix(self.lease.paths.apps().join(self.lease.adapter.app())).map_err(|e| e.to_string())?;
+            let path = path.strip_prefix(owned).map_err(|e| e.to_string())?;
             relative(path)?;
             let mut parent = path.parent();
             while let Some(path) = parent {
@@ -592,8 +620,9 @@ impl Preparation<'_> {
         let mut directory_moves = BTreeSet::new();
         if let Some(next) = next {
             let original: BTreeMap<_, _> = directories.iter().map(|node| (node.path.clone(), node)).collect();
+            let next_root = record_root(next, &self.lease.paths.apps().join(self.lease.adapter.app()), self.lease.adapter.executable())?;
             for absolute in &next.files {
-                let path = absolute.strip_prefix(self.lease.paths.apps().join(self.lease.adapter.app())).map_err(|e| e.to_string())?;
+                let path = absolute.strip_prefix(next_root).map_err(|e| e.to_string())?;
                 let staged = self.entries.get(&Path::new("unpacked").join(path)).ok_or("A prepared payload has no owned file identity.")?;
                 new.push(Node { path: path.into(), id: staged.id.clone(), directory: false });
                 let mut relative_parent = PathBuf::new();
@@ -666,7 +695,7 @@ impl Preparation<'_> {
         }
         for (record, nodes) in [(plan.previous.as_ref(), &plan.old), (plan.next.as_ref(), &plan.new)] {
             if let Some(record) = record {
-                let root = self.lease.paths.apps().join(self.lease.adapter.app());
+                let root = record_root(record, &self.lease.paths.apps().join(self.lease.adapter.app()), self.lease.adapter.executable())?;
                 if record.kind != self.lease.adapter.kind()
                     || record.needs_root
                     || record.path != root.join(self.lease.adapter.executable())
@@ -893,8 +922,10 @@ impl Preparation<'_> {
         let mut nodes: Vec<_> = nodes.iter().filter(|node| !node.path.as_os_str().is_empty()).collect();
         nodes.sort_by_key(|node| std::cmp::Reverse(node.path.components().count()));
         for node in nodes {
+            // A retained record whose root cannot be proven keeps every directory (nothing pruned).
             if retained.is_some_and(|record| {
-                record.files.iter().any(|file| file.starts_with(self.lease.paths.apps().join(self.lease.adapter.app()).join(&node.path)))
+                record_root(record, &self.lease.paths.apps().join(self.lease.adapter.app()), self.lease.adapter.executable())
+                    .map_or(true, |root| record.files.iter().any(|file| file.starts_with(root.join(&node.path))))
             }) {
                 continue;
             }
@@ -1049,6 +1080,37 @@ pub(crate) fn remove(
         checkpoint(Checkpoint::AfterCommit)
     })();
     preparation.finish(transaction, held, committed)
+}
+
+/// The program folder exactly as `record` spells it, after proving it is `owned`. Windows
+/// installers record the canonical `\\?\C:\…` form while `Paths` uses the ordinary one, so
+/// relative paths must be taken from the record's own root, never by stripping `owned`.
+pub(crate) fn record_root<'r>(record: &'r Record, owned: &Path, executable: &Path) -> Result<&'r Path, String> {
+    record_root_with(record, owned, executable, same_program_folder)
+}
+
+fn record_root_with<'r>(
+    record: &'r Record,
+    owned: &Path,
+    executable: &Path,
+    same: impl Fn(&Path, &Path) -> Result<bool, String>,
+) -> Result<&'r Path, String> {
+    // The executable can be nested (a macOS bundle), so the root is what remains after removing it.
+    let root = record.path.ancestors().nth(executable.components().count()).ok_or("The Nightly record has no program folder.")?;
+    if root.join(executable) != record.path || !same(root, owned)? {
+        return Err("The Nightly record does not own this program folder.".into());
+    }
+    Ok(root)
+}
+
+#[cfg(windows)]
+fn same_program_folder(root: &Path, owned: &Path) -> Result<bool, String> {
+    Ok(crate::portable::same_windows_path(root, owned) || crate::portable::same_windows_path(root, &crate::portable::resolve_missing(owned)?))
+}
+
+#[cfg(not(windows))]
+fn same_program_folder(root: &Path, owned: &Path) -> Result<bool, String> {
+    Ok(root == owned)
 }
 
 pub(crate) fn stored_manifest(paths: &Paths) -> Result<Manifest, String> {

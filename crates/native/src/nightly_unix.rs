@@ -84,6 +84,13 @@ fn disjoint(paths: &[PathBuf], protected: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
+/// The XDG base directory spec: an unset, empty or relative value means the default under
+/// `$HOME`. The effective absolute directory is still checked for overlap by the caller.
+#[cfg(any(target_os = "linux", test))]
+fn xdg_root(value: Option<std::ffi::OsString>, home: &Path, fallback: &str) -> PathBuf {
+    value.map(PathBuf::from).filter(|path| path.is_absolute()).unwrap_or_else(|| home.join(fallback))
+}
+
 pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
     let home = dirs::home_dir().ok_or("No home directory is available for the nightly isolation check.")?;
     let mut protected = Vec::new();
@@ -91,7 +98,7 @@ pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
     for (variable, fallback) in
         [("XDG_CONFIG_HOME", ".config"), ("XDG_DATA_HOME", ".local/share"), ("XDG_CACHE_HOME", ".cache"), ("XDG_STATE_HOME", ".local/state")]
     {
-        let base = std::env::var_os(variable).map(PathBuf::from).unwrap_or_else(|| home.join(fallback));
+        let base = xdg_root(std::env::var_os(variable), &home, fallback);
         if !base.is_absolute() {
             return Err("A stable XDG root is relative; nightly isolation cannot be established.".into());
         }

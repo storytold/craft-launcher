@@ -84,6 +84,19 @@ struct CacheFile {
 /// [`ReleaseSource::newest_tag`], which answers a different question and has its own quick timeout.)
 const PAGES_RETRY_AFTER: i64 = 60;
 
+/// Releases per page of the ordinary pre-release lookup.
+const LIST_PAGE: usize = 30;
+/// Releases per page of the version list.
+const VERSIONS_PAGE: usize = 100;
+/// The most pages read past a page full of a separately channelled app's nightlies.
+const ORDINARY_PAGES: usize = 5;
+
+/// The number of entries GitHub returned on one list page, drafts included.
+fn page_len(text: &str) -> Result<usize, String> {
+    let value: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
+    value.as_array().map(Vec::len).ok_or_else(|| "unexpected answer from GitHub".into())
+}
+
 pub struct GitHubSource {
     http: Http,
     cache: Mutex<CacheFile>,
@@ -135,10 +148,10 @@ impl GitHubSource {
         &self,
         repo: &str,
         prereleases: bool,
-        fetch: impl FnOnce(&str, Option<&str>) -> Result<Fetched, String>,
+        mut fetch: impl FnMut(&str, Option<&str>) -> Result<Fetched, String>,
     ) -> Result<Option<Answer>, String> {
         let url = if prereleases {
-            format!("https://api.github.com/repos/{repo}/releases?per_page=30")
+            format!("https://api.github.com/repos/{repo}/releases?per_page={LIST_PAGE}")
         } else {
             format!("https://api.github.com/repos/{repo}/releases/latest")
         };
@@ -148,7 +161,36 @@ impl GitHubSource {
         match fetch(&url, saved.as_ref().and_then(|e| e.etag.as_deref()))? {
             Fetched::Body { text, etag } => {
                 let release = if prereleases {
-                    release::parse_github_release_list(&text, repo, true)?
+                    let mut release = release::parse_github_release_list(&text, repo, true)?;
+                    // Nightlies of a separately channelled app are not ordinary releases, so a page
+                    // full of them proves nothing: look further, and report an incomplete answer
+                    // rather than caching "no release" when the bounded search ends early.
+                    if release.is_none() && artcraft_launcher_core::catalog::separate_nightly_repository(repo) {
+                        let mut full = page_len(&text)? >= LIST_PAGE;
+                        let mut page = 2;
+                        while release.is_none() && full {
+                            if page > ORDINARY_PAGES {
+                                return Err(format!(
+                                    "Nightly builds fill the first {ORDINARY_PAGES} release pages; the newest ordinary release is unknown and nothing was cached."
+                                ));
+                            }
+                            match fetch(&format!("{url}&page={page}"), None)? {
+                                Fetched::Body { text, .. } => {
+                                    release = release::parse_github_release_list(&text, repo, true)?;
+                                    full = page_len(&text)? >= LIST_PAGE;
+                                }
+                                Fetched::RateLimited { reset } => {
+                                    *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
+                                    return Ok(None);
+                                }
+                                Fetched::NotModified | Fetched::NotFound => {
+                                    return Err("GitHub's release list changed while it was read; the newest ordinary release is unknown.".into());
+                                }
+                            }
+                            page += 1;
+                        }
+                    }
+                    release
                 } else {
                     Some(release::parse_github_release(&text, repo)?)
                 };
@@ -173,6 +215,38 @@ impl GitHubSource {
                 *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                 Ok(None)
             }
+        }
+    }
+
+    /// The version list. For an app whose nightlies have their own channel, pages full of them are
+    /// read past (bounded) so the ordinary versions the picker offers cannot be crowded out.
+    fn versions_with(&self, repo: &str, mut fetch: impl FnMut(&str, Option<&str>) -> Result<Fetched, String>) -> Result<Vec<Release>, String> {
+        let base = format!("https://api.github.com/repos/{repo}/releases?per_page={VERSIONS_PAGE}");
+        let mut list = Vec::new();
+        let mut page = 1;
+        loop {
+            let url = if page == 1 { base.clone() } else { format!("{base}&page={page}") };
+            let full = match fetch(&url, None)? {
+                Fetched::Body { text, .. } => {
+                    list.extend(release::parse_github_versions(&text, repo)?);
+                    page_len(&text)? >= VERSIONS_PAGE
+                }
+                Fetched::NotFound if page == 1 => false,
+                Fetched::RateLimited { reset } => {
+                    *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
+                    return Err("GitHub's request limit was reached. Try again later.".into());
+                }
+                Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
+            };
+            let crowded = artcraft_launcher_core::catalog::separate_nightly_repository(repo)
+                && !list.iter().any(|r| release::ordinary_release_allowed(repo, r));
+            if !full || !crowded {
+                return Ok(list);
+            }
+            if page >= ORDINARY_PAGES {
+                return Err(format!("Nightly builds fill the first {ORDINARY_PAGES} release pages; ordinary versions could not be listed."));
+            }
+            page += 1;
         }
     }
 
@@ -293,16 +367,7 @@ impl ReleaseSource for GitHubSource {
         if self.limited() {
             return Err("GitHub's request limit was reached. Try again later.".into());
         }
-        let url = format!("https://api.github.com/repos/{repo}/releases?per_page=100");
-        let list = match self.http.get_api(&url, None)? {
-            Fetched::Body { text, .. } => release::parse_github_versions(&text, repo)?,
-            Fetched::NotFound => Vec::new(),
-            Fetched::RateLimited { reset } => {
-                *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
-                return Err("GitHub's request limit was reached. Try again later.".into());
-            }
-            Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
-        };
+        let list = self.versions_with(repo, |url, etag| self.http.get_api(url, etag))?;
         self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).insert(repo.to_string(), (crate::now(), list.clone()));
         Ok(list)
     }
@@ -566,5 +631,92 @@ mod tests {
                 .unwrap();
             assert_eq!(answer.latest, LatestRelease::Found(release));
         }
+    }
+    fn crowded_page(repo: &str, count: usize, offset: usize) -> String {
+        let items: Vec<_> = (0..count)
+            .map(|i| serde_json::json!({"tag_name": format!("v1.0.0-nightly.20261120.{}.1.gabcdefabcdef", 1000 - offset - i), "prerelease": true, "assets": []}))
+            .collect();
+        let _ = repo;
+        serde_json::to_string(&items).unwrap()
+    }
+    fn fresh_source() -> (tempfile::TempDir, GitHubSource) {
+        let temp = tempfile::tempdir().unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), temp.path().join("releases.json"));
+        (temp, source)
+    }
+    #[test]
+    fn a_first_page_of_separate_channel_nightlies_does_not_hide_the_newest_beta() {
+        let (_temp, source) = fresh_source();
+        let mut asked = Vec::new();
+        let answer = source
+            .ask_api_with(REPO, true, |url, _| {
+                asked.push(url.to_owned());
+                Ok(Fetched::Body {
+                    text: if url.ends_with("&page=2") {
+                        r#"[{"tag_name":"v0.9.0-beta.2","prerelease":true}]"#.into()
+                    } else {
+                        crowded_page(REPO, LIST_PAGE, 0)
+                    },
+                    etag: None,
+                })
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(tag_of(&answer), Some("v0.9.0-beta.2"));
+        assert_eq!(asked.len(), 2);
+    }
+    #[test]
+    fn an_exhausted_bounded_search_is_incomplete_and_never_cached_as_no_release() {
+        let (_temp, source) = fresh_source();
+        let mut asked = 0;
+        let result = source.ask_api_with(REPO, true, |_, _| {
+            asked += 1;
+            Ok(Fetched::Body { text: crowded_page(REPO, LIST_PAGE, asked * LIST_PAGE), etag: Some("etag".into()) })
+        });
+        assert!(result.is_err());
+        assert_eq!(asked, ORDINARY_PAGES);
+        assert!(source.cached(REPO, true).is_none(), "absence was not established, so nothing is cached");
+    }
+    #[test]
+    fn crowded_separate_channel_version_lists_still_reach_ordinary_versions() {
+        let (_temp, source) = fresh_source();
+        let mut asked = 0;
+        let list = source
+            .versions_with(REPO, |url, _| {
+                asked += 1;
+                Ok(Fetched::Body {
+                    text: if url.ends_with("&page=2") {
+                        r#"[{"tag_name":"v0.9.0","prerelease":false}]"#.into()
+                    } else {
+                        crowded_page(REPO, VERSIONS_PAGE, 0)
+                    },
+                    etag: None,
+                })
+            })
+            .unwrap();
+        assert!(list.iter().any(|r| r.tag == "v0.9.0"));
+        assert_eq!(asked, 2);
+    }
+    #[test]
+    fn third_party_lookups_keep_mains_single_page_with_its_nightlies() {
+        let repo = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap().repo;
+        let (_temp, source) = fresh_source();
+        let mut asked = 0;
+        let answer = source
+            .ask_api_with(repo, true, |_, _| {
+                asked += 1;
+                Ok(Fetched::Body { text: crowded_page(repo, LIST_PAGE, 0), etag: None })
+            })
+            .unwrap()
+            .unwrap();
+        assert!(tag_of(&answer).is_some_and(|tag| tag.contains("nightly")));
+        let list = source
+            .versions_with(repo, |_, _| {
+                asked += 1;
+                Ok(Fetched::Body { text: crowded_page(repo, VERSIONS_PAGE, 0), etag: None })
+            })
+            .unwrap();
+        assert_eq!(list.len(), VERSIONS_PAGE);
+        assert_eq!(asked, 2, "one request each, as on main");
     }
 }

@@ -1,6 +1,7 @@
 //! Source-owned nonexecuted mechanics fixtures and injected returned-I/O errors, not ENOSPC or power loss.
 #![allow(clippy::unwrap_used)] // Test fixture setup/assertions only; production policy is unchanged.
 use super::*;
+use artcraft_launcher_core::PackageKind;
 use artcraft_launcher_core::nightly::InstallChannel;
 use std::cell::{Cell, RefCell};
 
@@ -673,4 +674,56 @@ fn review_lock_guard_retirement_releases_mutation_and_manifest_with_retained_des
         observed.iter().all(|(_, released)| *released),
         "an operation's retired lock must not depend on another description's later close: {observed:?}"
     );
+}
+
+#[test]
+fn an_empty_journal_left_before_its_header_does_not_lock_out_later_leases() {
+    let temp = tempfile::tempdir().unwrap();
+    let (paths, record) = fixture(temp.path());
+    let journal = paths.data.join(".nightly-photocraft-journal-v1.jsonl");
+    let stage = paths.apps().join(".nightly-photocraft-preparation-v1");
+    // Crash after creating the journal, before the stage.
+    std::fs::write(&journal, b"").unwrap();
+    drop(Lease::acquire(&paths, adapter()).unwrap());
+    assert!(!journal.exists());
+    // Crash after creating the empty stage, before the header.
+    std::fs::write(&journal, b"").unwrap();
+    std::fs::create_dir(&stage).unwrap();
+    drop(Lease::acquire(&paths, adapter()).unwrap());
+    assert!(!journal.exists() && !stage.exists());
+    // Anything inside an unsealed stage is never adopted or deleted.
+    std::fs::write(&journal, b"").unwrap();
+    std::fs::create_dir(&stage).unwrap();
+    std::fs::write(stage.join("unknown"), b"preserved").unwrap();
+    assert!(Lease::acquire(&paths, adapter()).is_err());
+    assert!(journal.exists());
+    assert_eq!(std::fs::read(stage.join("unknown")).unwrap(), b"preserved");
+    // A journal with bytes that are not a header is still refused, not cleared.
+    std::fs::remove_file(stage.join("unknown")).unwrap();
+    std::fs::write(&journal, b"{").unwrap();
+    assert!(Lease::acquire(&paths, adapter()).is_err());
+    assert_eq!(std::fs::read(&journal).unwrap(), b"{");
+    kept(&paths, &record);
+}
+
+#[test]
+fn record_paths_are_made_relative_to_the_records_own_proven_root() {
+    // Windows records the installer's `\\?\C:\…` spelling while Paths keeps `C:\…`; this models
+    // that with a case difference the injected comparator treats as the same folder.
+    let owned = Path::new("/data/apps/photocraft");
+    let record = Record {
+        path: "/DATA/APPS/photocraft/photocraft".into(),
+        files: vec!["/DATA/APPS/photocraft/photocraft".into(), "/DATA/APPS/photocraft/docs/NOTICE".into()],
+        version: "synthetic".into(),
+        kind: PackageKind::TarGz,
+        installed_at: 1,
+        needs_root: false,
+    };
+    let same = |left: &Path, right: &Path| Ok(left.to_string_lossy().to_lowercase() == right.to_string_lossy().to_lowercase());
+    assert!(record.files[0].strip_prefix(owned).is_err(), "the fixture reproduces the reported spelling mismatch");
+    let root = record_root_with(&record, owned, Path::new("photocraft"), same).unwrap();
+    let relative: Vec<_> = record.files.iter().map(|file| file.strip_prefix(root).unwrap().to_path_buf()).collect();
+    assert_eq!(relative, [PathBuf::from("photocraft"), PathBuf::from("docs/NOTICE")]);
+    let elsewhere = Record { path: "/data/apps/other/photocraft".into(), ..record.clone() };
+    assert!(record_root_with(&elsewhere, owned, Path::new("photocraft"), same).is_err(), "a record outside the owned folder is still refused");
 }
