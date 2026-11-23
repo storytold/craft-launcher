@@ -142,27 +142,6 @@ pub struct Settings {
     /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
     /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
     pub launch_flags: BTreeMap<String, String>,
-    /// The Fonts page's sample text and size.
-    pub fonts: FontSettings,
-}
-
-/// What the Fonts page keeps between runs.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct FontSettings {
-    /// The sample text; empty for the preset.
-    pub sample: String,
-    /// `sentence`, `alphabet` or `numerals`.
-    pub preset: String,
-    pub size: u16,
-    /// The note that font downloads are off was closed.
-    pub hide_download_note: bool,
-}
-
-impl Default for FontSettings {
-    fn default() -> Self {
-        FontSettings { sample: String::new(), preset: "sentence".into(), size: 36, hide_download_note: false }
-    }
 }
 
 impl Settings {
@@ -319,7 +298,6 @@ impl Default for Settings {
             launches: BTreeMap::new(),
             pinned: Vec::new(),
             launch_flags: BTreeMap::new(),
-            fonts: FontSettings::default(),
         }
     }
 }

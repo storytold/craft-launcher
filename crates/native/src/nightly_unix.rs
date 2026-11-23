@@ -302,7 +302,7 @@ fn extract_zip(file: &Path, preparation: &mut crate::nightly_transaction::Prepar
             return Err("The nightly ZIP contains a link or special file.".into());
         }
         let name = entry.name().map_err(|e| e.to_string())?;
-        let path = PathBuf::from(if is_dir { name.trim_end_matches('/') } else { &*name });
+        let path = PathBuf::from(if is_dir { name.trim_end_matches('/') } else { name });
         let size = entry.size();
         let path = inventory.add(path, size, is_dir)?;
         if is_dir {

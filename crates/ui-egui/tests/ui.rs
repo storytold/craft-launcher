@@ -3778,26 +3778,11 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
 }
 
 #[test]
-/// From 880 px refresh, search, sort and view share one unclipped toolbar row without overlaps;
-/// narrower, beside the page toggle, the sort picker moves to a second row under them.
+/// At 720–1180 px refresh, search, sort and view share one unclipped toolbar row without
+/// overlaps.
 fn toolbar_keeps_navigation_refresh_search_and_view_on_one_unclipped_row() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    for width in [720.0, 800.0] {
-        h.set_size(egui::vec2(width, 900.0));
-        h.run_steps(6);
-        let refresh = h.get_by_label("Check for updates").rect();
-        let search = h.query_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().rect();
-        let view = h.get_by_label("Show apps as cards").rect();
-        let sort = h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Sort").rect();
-        assert!(refresh.top() > 48.0, "{width}: refresh belongs in the toolbar, not the header: {refresh:?}");
-        assert!((refresh.center().y - search.center().y).abs() < 2.0, "{width}: refresh and search must share a row");
-        assert!(refresh.right() <= search.left() + 1.0, "{width}: refresh overlaps search: {refresh:?}, {search:?}");
-        assert!(search.right() <= view.left() + 1.0 && view.right() <= width, "{width}: search overlaps view or view is clipped");
-        assert!(sort.top() >= search.bottom(), "{width}: sort belongs on the second row: {sort:?}, {search:?}");
-        assert!(sort.left() >= 0.0 && sort.right() <= width, "{width}: sort is outside the window: {sort:?}");
-        h.check_accessibility();
-    }
-    for width in [880.0, 1180.0] {
+    for width in [720.0, 800.0, 1180.0] {
         h.set_size(egui::vec2(width, 900.0));
         h.run_steps(6);
         let refresh = h.get_by_label("Check for updates").rect();
@@ -4649,13 +4634,12 @@ fn ai_agents_switch_and_client_buttons_send_their_commands() {
     // Other clients: the configuration in each format, copied with a note saying so.
     for label in ["Copy JSON", "Copy for VS Code", "Copy for Codex (TOML)"] {
         h.get_by_label(label).scroll_to_me();
-        h.run_steps(8);
+        h.run_steps(2);
         h.get_by_label(label).click();
         h.run_steps(3);
         assert!(h.query_all_by_label("Configuration copied.").next().is_some(), "{label}");
     }
-    // The font sources' "Add" button comes last in the tree: it sits in the other column.
-    h.get_all_by_label("Add").next().expect("client Add button").click();
+    h.get_by_label("Add").click();
     h.run_steps(3);
     h.get_by_label("Remove").click();
     h.run_steps(3);
@@ -4694,7 +4678,6 @@ fn ai_agents_offer_to_restart_a_client_right_after_adding_it() {
     h.get_by_label("Quick install").scroll_to_me();
     h.run_steps(4);
     assert!(h.query_by_label("Restart Claude Desktop").is_none(), "nothing to restart before adding");
-    // The font sources' "Add" button comes last in the tree: it sits in the other column.
     let adds: Vec<_> = h.get_all_by_label("Add").collect();
     adds[0].click();
     adds[1].click();
@@ -4746,8 +4729,7 @@ fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
     h.run_steps(4);
     h.get_by_label("Apps agents can reach: 2").scroll_to_me();
     h.run_steps(6);
-    // Only the font sources' "Add" remains.
-    assert_eq!(h.query_all_by_label("Add").count(), 1, "nothing to add without the gateway");
+    assert!(h.query_by_label("Add").is_none(), "nothing to add without the gateway");
     h.get_by_label("Remove").click();
     h.run_steps(3);
     h.get_by_label("Let AI agents use Craft apps").click();

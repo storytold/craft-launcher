@@ -483,21 +483,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	追加済み
 	Remove	削除
 	Add	追加
-# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
-	Fonts	フォント
-	Allow font downloads	フォントのダウンロードを許可
-	Couldn't change the font download setting: {e}	フォントのダウンロード設定を変更できませんでした: {e}
-	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	フォントは、インストールまたはプレビューするときにだけ、そのソースからダウンロードされます。この設定はすべての Craft アプリで共通です。
-	Sources	ソース
-	Apps	アプリ
-	Fonts for every Craft app	すべての Craft アプリで使えるフォント
-# The font preview settings in Settings' Fonts box.
-	Show font previews	フォントのプレビューを表示
-	Font preview server	フォントプレビューサーバー
-	Couldn't use this server: {e}	このサーバーは使用できません: {e}
-	Couldn't change the font previews setting: {e}	フォントのプレビュー設定を変更できませんでした: {e}
-	Set by {name} in the environment.	環境変数 {name} で設定されています。
-	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	インストールしていないフォントは、このサーバーからプレビューを表示します。インストール時もまずこのサーバーを試します。空欄の場合は既定のサーバーを使います。
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
 	Enable pre-release builds	Enable pre-release builds

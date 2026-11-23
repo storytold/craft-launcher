@@ -482,21 +482,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Dodano
 	Remove	Usuń
 	Add	Dodaj
-# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
-	Fonts	Czcionki
-	Allow font downloads	Zezwalaj na pobieranie czcionek
-	Couldn't change the font download setting: {e}	Nie udało się zmienić ustawienia pobierania czcionek: {e}
-	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	Czcionki są pobierane z ich źródeł tylko wtedy, gdy instalujesz czcionkę lub otwierasz jej podgląd. To ustawienie jest wspólne dla wszystkich aplikacji Craft.
-	Sources	Źródła
-	Apps	Aplikacje
-	Fonts for every Craft app	Czcionki dla wszystkich aplikacji Craft
-# The font preview settings in Settings' Fonts box.
-	Show font previews	Pokazuj podglądy czcionek
-	Font preview server	Serwer podglądów czcionek
-	Couldn't use this server: {e}	Nie można użyć tego serwera: {e}
-	Couldn't change the font previews setting: {e}	Nie udało się zmienić ustawienia podglądów czcionek: {e}
-	Set by {name} in the environment.	Ustawione przez {name} w środowisku.
-	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Niezainstalowane czcionki pokazują podglądy z tego serwera, a instalacja próbuje go najpierw. Puste pole oznacza serwer domyślny.
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
 	Enable pre-release builds	Enable pre-release builds

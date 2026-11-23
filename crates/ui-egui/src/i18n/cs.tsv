@@ -448,21 +448,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Přidáno
 	Remove	Odebrat
 	Add	Přidat
-# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
-	Fonts	Písma
-	Allow font downloads	Povolit stahování písem
-	Couldn't change the font download setting: {e}	Nastavení stahování písem nelze změnit: {e}
-	Fonts download from their sources only when you install or preview one. Every Craft app shares this setting.	Písma se stahují ze svých zdrojů jen při instalaci nebo náhledu. Toto nastavení sdílejí všechny aplikace Craft.
-	Sources	Zdroje
-	Apps	Aplikace
-	Fonts for every Craft app	Písma pro všechny aplikace Craft
-# The font preview settings in Settings' Fonts box.
-	Show font previews	Zobrazovat náhledy písem
-	Font preview server	Server náhledů písem
-	Couldn't use this server: {e}	Tento server nelze použít: {e}
-	Couldn't change the font previews setting: {e}	Nastavení náhledů písem nelze změnit: {e}
-	Set by {name} in the environment.	Nastaveno proměnnou {name} v prostředí.
-	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Nenainstalovaná písma zobrazují náhledy z tohoto serveru a instalace jej zkoušejí jako první. Prázdné pole použije výchozí server.
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
 	Enable pre-release builds	Enable pre-release builds
