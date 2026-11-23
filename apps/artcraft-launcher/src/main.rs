@@ -665,16 +665,39 @@ fn claim_notification_identity() -> &'static Result<(), String> {
     })
 }
 
-/// A default-folder question (app id, format and architecture) with the host's answer.
-type DefaultFolderAnswer = ((&'static str, artcraft_launcher_core::PackageKind, Option<artcraft_launcher_core::Arch>), Option<String>);
+/// A default-folder question (app id, format and architecture) with the host's answer and when it
+/// was given.
+type DefaultFolderAnswer =
+    ((&'static str, artcraft_launcher_core::PackageKind, Option<artcraft_launcher_core::Arch>), Option<String>, std::time::Instant);
+
+/// How long a default-folder answer is reused. On Windows the answer depends on the copies an
+/// app's installer will find, which can be installed or removed while the launcher is open.
+const DEFAULT_FOLDER_REUSE: std::time::Duration = std::time::Duration::from_secs(2);
 
 struct DesktopHost {
     tray: bool,
     quit: bool,
-    /// Default-folder answers by question: the fields redraw often while a dialog is open,
-    /// Settings asks once per app's package, and the macOS answer probes the disk. There are
-    /// one question per app (app, format and architecture).
+    /// Default-folder answers by question, each reused for `DEFAULT_FOLDER_REUSE`: the fields
+    /// redraw often while a dialog is open, Settings asks once per app's package, and the macOS
+    /// answer probes the disk. There is one question per app (app, format and architecture).
     default_folders: Vec<DefaultFolderAnswer>,
+}
+
+/// The answer to `question` given less than `DEFAULT_FOLDER_REUSE` before `now`, else `ask`'s
+/// answer, kept for later questions. Older answers are dropped.
+fn reuse_or_ask(
+    answers: &mut Vec<DefaultFolderAnswer>,
+    question: (&'static str, artcraft_launcher_core::PackageKind, Option<artcraft_launcher_core::Arch>),
+    now: std::time::Instant,
+    ask: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    answers.retain(|(_, _, asked)| now.saturating_duration_since(*asked) < DEFAULT_FOLDER_REUSE);
+    if let Some((_, answer, _)) = answers.iter().find(|(asked, ..)| *asked == question) {
+        return answer.clone();
+    }
+    let answer = ask();
+    answers.push((question, answer.clone(), now));
+    answer
 }
 
 impl Host for DesktopHost {
@@ -730,14 +753,11 @@ impl Host for DesktopHost {
         kind: artcraft_launcher_core::PackageKind,
         arch: Option<artcraft_launcher_core::Arch>,
     ) -> Option<String> {
-        if let Some((_, answer)) = self.default_folders.iter().find(|(question, _)| *question == (app.id, kind, arch)) {
-            return answer.clone();
-        }
-        let answer = artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| {
-            artcraft_launcher_native::install::app_default_folder(app, kind, arch, &paths).and_then(|folder| folder.to_str().map(str::to_string))
-        });
-        self.default_folders.push(((app.id, kind, arch), answer.clone()));
-        answer
+        reuse_or_ask(&mut self.default_folders, (app.id, kind, arch), std::time::Instant::now(), || {
+            artcraft_launcher_native::paths::Paths::new().ok().and_then(|paths| {
+                artcraft_launcher_native::install::app_default_folder(app, kind, arch, &paths).and_then(|folder| folder.to_str().map(str::to_string))
+            })
+        })
     }
 
     fn reduce_motion(&self) -> bool {
@@ -1176,6 +1196,30 @@ mod tests {
     use super::*;
 
     const NOW: i64 = 1_791_500_000;
+
+    /// A default-folder answer is reused briefly and then asked again, so a copy installed or
+    /// removed while the launcher is open changes the hint.
+    #[test]
+    fn default_folder_answers_are_asked_again_after_a_while() {
+        use artcraft_launcher_core::PackageKind;
+        let start = Instant::now();
+        let mut answers = Vec::new();
+        let asked = std::cell::Cell::new(0);
+        let ask = |answer: &str| {
+            asked.set(asked.get() + 1);
+            Some(answer.to_owned())
+        };
+        let question = ("photocraft", PackageKind::Msi, None);
+        assert_eq!(reuse_or_ask(&mut answers, question, start, || ask("first")).as_deref(), Some("first"));
+        let soon = start + DEFAULT_FOLDER_REUSE / 2;
+        assert_eq!(reuse_or_ask(&mut answers, question, soon, || ask("second")).as_deref(), Some("first"));
+        assert_eq!(asked.get(), 1);
+        let other = ("vectorcraft", PackageKind::Msi, None);
+        assert_eq!(reuse_or_ask(&mut answers, other, soon, || ask("other")).as_deref(), Some("other"));
+        let later = start + DEFAULT_FOLDER_REUSE;
+        assert_eq!(reuse_or_ask(&mut answers, question, later, || ask("third")).as_deref(), Some("third"));
+        assert_eq!(asked.get(), 3);
+    }
 
     /// The bundle id is set once: asking again gives the first outcome, not the library's "already set" error.
     /// (Setting it fails where the launcher is not installed, so the outcome itself is not asserted.)
