@@ -103,7 +103,7 @@ fn output_result(program: &str, output: RunOutput) -> Result<String, String> {
     Err(if reason.is_empty() { format!("{program} failed ({})", output.status) } else { reason.to_string() })
 }
 
-fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -> Result<RunOutput, String> {
+pub(crate) fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -> Result<RunOutput, String> {
     let mut child =
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't start {program} ({e})"))?;
     // Read both pipes while it runs, so a chatty helper can't block on a full one.
