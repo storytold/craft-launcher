@@ -195,8 +195,26 @@ impl LauncherUi {
             {
                 self.trigger_auto_updates();
             }
-            if self.caps.manage_apps {
+            // Linux always batches (`Settings::updates_batched`), so there is nothing to choose.
+            if self.caps.manage_apps && !cfg!(target_os = "linux") {
                 ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
+                let mut at_once = self.settings.simultaneous_downloads.min(4);
+                let no_limit = tl!("No limit").to_string();
+                row(ui, tl!("Simultaneous downloads"), 150.0, &mut |ui, label| {
+                    craft_ui::ComboBox::from_id_salt("at_once")
+                        .selected_text(if at_once == 0 { no_limit.clone() } else { at_once.to_string() })
+                        .width(150.0)
+                        .show_ui(ui, |ui| {
+                            for n in 1..=4 {
+                                ui.selectable_value(&mut at_once, n, n.to_string());
+                            }
+                            ui.selectable_value(&mut at_once, 0, no_limit.clone());
+                        })
+                        .response
+                        .labelled_by(label);
+                });
+                self.settings.simultaneous_downloads = at_once;
+                note(ui, tl!("Downloads running together share your connection, so each one is slower."));
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
@@ -325,6 +343,9 @@ impl LauncherUi {
                 ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop")).on_hover_text(tl!(
                     "When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."
                 ));
+                ui.add_enabled_ui(host.has_tray() && self.settings.close_to_tray, |ui| {
+                    ui.checkbox(&mut self.settings.hide_from_dock_when_hidden, tl!("Hide ArtCraft Launcher from the Dock while in the background"));
+                });
             }
             if let Some(mut on) = host.login_item()
                 && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()

@@ -101,12 +101,14 @@ pub struct Settings {
     /// macOS: showing the window brings it to the current desktop (Space) instead of switching to
     /// the desktop it was on.
     pub show_on_current_desktop: bool,
+    /// macOS: hide the Dock icon while the launcher is running without a visible window.
+    pub hide_from_dock_when_hidden: bool,
     pub check_every: CheckEvery,
     /// Automatically download and install updates when found.
     #[serde(default)]
     pub auto_update: bool,
-    /// Update all apps together behind one permission prompt where the platform asks for one
-    /// (Linux and Windows); off, each app's update asks on its own.
+    /// Windows: update all apps together behind one permission prompt; off, each app's update
+    /// asks on its own. Linux always batches (see `updates_batched`) and ignores this.
     #[serde(default)]
     pub batch_updates: bool,
     /// Show a system notification when an installed app has an update.
@@ -115,10 +117,14 @@ pub struct Settings {
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
+    /// Downloads that may run at once (1 to 4; 0 for no limit).
+    pub simultaneous_downloads: u8,
     /// Linux: the package format to prefer for new installs (empty: the system's own).
     pub preferred_kinds: Vec<PackageKind>,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
     pub dismissed_notices: std::collections::BTreeSet<String>,
+    /// Announcements the user has seen in the bell (by notice id); the rest count as unread.
+    pub read_notices: std::collections::BTreeSet<String>,
     /// Updates already announced, so each version is announced once: app id → version.
     pub notified: BTreeMap<String, String>,
     /// Unix seconds of the last finished check.
@@ -141,6 +147,24 @@ pub struct Settings {
 impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &str = "auto";
+
+    /// Forgets read and dismissed notice ids the feed no longer sends, so neither set grows
+    /// forever. A feed with no notices at all forgets nothing: an empty answer (a glitch, or
+    /// nothing to say today) must not bring every old notice back as unread.
+    pub fn forget_notices_not_in(&mut self, current: &std::collections::BTreeSet<&str>) {
+        if current.is_empty() {
+            return;
+        }
+        self.read_notices.retain(|id| current.contains(id.as_str()));
+        self.dismissed_notices.retain(|id| current.contains(id.as_str()));
+    }
+
+    /// Whether "Update all" and auto-update install together behind one permission prompt.
+    /// Always on Linux, where the batch is one `pkexec` call; elsewhere the opt-in setting,
+    /// since Windows' shared UAC session still owes its behavioural-antivirus check (#1235).
+    pub fn updates_batched(&self) -> bool {
+        cfg!(target_os = "linux") || self.batch_updates
+    }
 
     /// Clear saved catalog filters whose controls were removed from the toolbar.
     pub fn migrate(&mut self) {
@@ -244,6 +268,7 @@ pub fn default_preferred_kinds() -> Vec<PackageKind> {
 }
 
 impl Default for Settings {
+    /// The settings a new install starts with.
     fn default() -> Self {
         Self {
             install_locations: Default::default(),
@@ -255,6 +280,7 @@ impl Default for Settings {
             language: "auto".to_string(),
             close_to_tray: true,
             show_on_current_desktop: true,
+            hide_from_dock_when_hidden: false,
             check_every: CheckEvery::Hour,
             auto_update: false,
             batch_updates: false,
@@ -262,8 +288,10 @@ impl Default for Settings {
             prereleases: false,
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
+            simultaneous_downloads: 1,
             preferred_kinds: default_preferred_kinds(),
             dismissed_notices: std::collections::BTreeSet::new(),
+            read_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,
             hide_community_apps: false,
@@ -279,6 +307,25 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notices_the_feed_dropped_are_forgotten_but_an_empty_feed_forgets_nothing() {
+        let ids = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<std::collections::BTreeSet<_>>();
+        let mut s = Settings { read_notices: ids(&["a", "old"]), dismissed_notices: ids(&["b", "gone"]), ..Settings::default() };
+        s.forget_notices_not_in(&std::collections::BTreeSet::new());
+        assert_eq!(s.read_notices.len(), 2);
+        assert_eq!(s.dismissed_notices.len(), 2);
+        s.forget_notices_not_in(&["a", "b", "new"].into_iter().collect());
+        assert_eq!(s.read_notices, ids(&["a"]));
+        assert_eq!(s.dismissed_notices, ids(&["b"]));
+    }
+
+    #[test]
+    fn linux_batches_updates_even_with_the_setting_off() {
+        let s = Settings { batch_updates: false, ..Settings::default() };
+        assert_eq!(s.updates_batched(), cfg!(target_os = "linux"));
+        assert!(Settings { batch_updates: true, ..Settings::default() }.updates_batched());
+    }
 
     #[test]
     fn pin_appends_once_and_unpin_removes() {

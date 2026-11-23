@@ -63,6 +63,7 @@
 	Show in Explorer	Zobrazit v Průzkumníku
 	Show in Files	Zobrazit v Souborech
 	Reinstall	Znovu nainstalovat
+	Add desktop shortcut	Přidat zástupce na plochu
 	Uninstall…	Odinstalovat…
 	Launch options…	Možnosti spuštění…
 	{name} launch options	Možnosti spuštění aplikace {name}
@@ -96,6 +97,7 @@
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
+	Hide ArtCraft Launcher from the Dock while in the background	Skrýt ArtCraft Launcher v Docku při běhu na pozadí
 	ArtCraft Launcher is still running	ArtCraft Launcher stále běží
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Je v oznamovací oblasti: otevřete ho nebo ukončete přes ikonu v ní, nebo to vypněte v nastavení.
 	Show the window on the current desktop	Zobrazit okno na aktuální ploše
@@ -124,6 +126,8 @@
 	Pin to top	Připnout nahoru
 	Unpin	Odepnout
 	Pinned	Připnuté
+	Pin {name} to top	Připnout {name} nahoru
+	Unpin {name}	Odepnout {name}
 	Reorder {name}	Změnit pořadí: {name}
 	Move up	Posunout nahoru
 	Move down	Posunout dolů
@@ -156,6 +160,10 @@
 	Retry update to {version}	Zkusit aktualizaci na {version} znovu
 	The download is still here. It's checked again, then installed.	Stažený soubor je stále k dispozici. Znovu se ověří a poté nainstaluje.
 	Waiting for another app…	Čekání na jinou aplikaci…
+	Waiting for another download…	Čekání na jiné stahování…
+	Simultaneous downloads	Souběžná stahování
+	No limit	Bez omezení
+	Downloads running together share your connection, so each one is slower.	Souběžná stahování sdílejí vaše připojení, takže každé je pomalejší.
 	Waiting for other installs…	Čekání na dokončení ostatních instalací…
 	Installer (.msi)	Instalační program (.msi)
 	Portable (.zip)	Přenosná verze (.zip)
@@ -363,6 +371,9 @@ filter	Installed	Nainstalováno
 @msg	custom install folders aren't supported on this system	vlastní instalační složky nejsou v tomto systému podporovány
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} již existuje a nebylo nainstalováno aplikací ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} nelze přesunout do koše ({reason}). Odstraňte položku ve Finderu.
+@msg	Desktop shortcut created for {name}	Zástupce na ploše pro {name} byl vytvořen
+@msg	Couldn't create the desktop shortcut: {e}	Nepodařilo se vytvořit zástupce na ploše: {e}
+@msg	A desktop shortcut named {name} already exists	Zástupce na ploše s názvem {name} již existuje
 	Apps are placed inside this folder.	Aplikace se umístí do této složky.
 	Replace what's there?	Nahradit, co tam je?
 	{path} already exists. Installing {name} will overwrite it.	{path} už existuje. Instalace aplikace {name} ho přepíše.
@@ -463,3 +474,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Cancelled	Zrušeno
 	Failed	Selhalo
 	Interrupted	Přerušeno
+	Announcements	Oznámení
+	No announcements	Žádná oznámení
+@plural	Announcements, {n} unread|Announcements, {n} unread	Oznámení, {n} nepřečtené|Oznámení, {n} nepřečtená|Oznámení, {n} nepřečtených

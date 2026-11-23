@@ -64,6 +64,7 @@
 	Show in Explorer	Mostrar no Explorer
 	Show in Files	Mostrar no gerenciador de arquivos
 	Reinstall	Reinstalar
+	Add desktop shortcut	Adicionar atalho na área de trabalho
 	Uninstall…	Desinstalar…
 	Launch options…	Opções de inicialização…
 	{name} launch options	Opções de inicialização do {name}
@@ -97,6 +98,7 @@
 	Updates always use the format an app was installed with.	As atualizações sempre usam o formato com o qual o aplicativo foi instalado.
 	Running in the background	Execução em segundo plano
 	Keep running in the tray when the window is closed	Continuar na bandeja do sistema ao fechar a janela
+	Hide ArtCraft Launcher from the Dock while in the background	Ocultar o ArtCraft Launcher do Dock em segundo plano
 	ArtCraft Launcher is still running	O ArtCraft Launcher continua aberto
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Ele está na bandeja do sistema: abra-o ou encerre-o pelo ícone, ou desative isso nas configurações.
 	Show the window on the current desktop	Mostrar a janela na área de trabalho atual
@@ -126,6 +128,8 @@
 	Pin to top	Fixar no topo
 	Unpin	Desafixar
 	Pinned	Fixados
+	Pin {name} to top	Fixar {name} no topo
+	Unpin {name}	Desafixar {name}
 	Reorder {name}	Reordenar {name}
 	Move up	Mover para cima
 	Move down	Mover para baixo
@@ -158,6 +162,10 @@
 	Retry update to {version}	Tentar atualizar novamente para {version}
 	The download is still here. It's checked again, then installed.	O arquivo baixado ainda está aqui. Ele será verificado novamente e instalado.
 	Waiting for another app…	Aguardando outro aplicativo…
+	Waiting for another download…	Aguardando outro download…
+	Simultaneous downloads	Downloads simultâneos
+	No limit	Sem limite
+	Downloads running together share your connection, so each one is slower.	Downloads simultâneos compartilham sua conexão, então cada um fica mais lento.
 	Waiting for other installs…	Aguardando outras instalações…
 
 # Package formats offered for download (PackageKind::label)
@@ -383,6 +391,9 @@ filter	Installed	Instalados
 @msg	custom install folders aren't supported on this system	pastas de instalação personalizadas não são compatíveis com este sistema
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} já existe e não foi instalado pelo ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	não foi possível mover {path} para o Lixo ({reason}). Remova-o pelo Finder.
+@msg	Desktop shortcut created for {name}	Atalho na área de trabalho criado para {name}
+@msg	Couldn't create the desktop shortcut: {e}	Não foi possível criar o atalho na área de trabalho: {e}
+@msg	A desktop shortcut named {name} already exists	Já existe um atalho na área de trabalho chamado {name}
 	Apps are placed inside this folder.	Os aplicativos são colocados dentro desta pasta.
 	Replace what's there?	Substituir o que já existe?
 	{path} already exists. Installing {name} will overwrite it.	{path} já existe. Instalar o {name} vai substituí-lo.
@@ -483,3 +494,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Cancelled	Cancelado
 	Failed	Falhou
 	Interrupted	Interrompido
+	Announcements	Avisos
+	No announcements	Nenhum aviso
+@plural	Announcements, {n} unread|Announcements, {n} unread	Avisos, {n} não lido|Avisos, {n} não lidos

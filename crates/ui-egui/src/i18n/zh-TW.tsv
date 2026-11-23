@@ -59,6 +59,7 @@
 	Discard download	捨棄下載
 	Release notes	更新說明
 	Reinstall	重新安裝
+	Add desktop shortcut	新增桌面捷徑
 	Uninstall…	解除安裝…
 	All releases	所有版本
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 已推出。
@@ -85,6 +86,7 @@
 	Updates always use the format an app was installed with.	更新一律沿用應用程式安裝時的格式。
 	Running in the background	在背景執行
 	Keep running in the tray when the window is closed	關閉視窗後仍在系統匣中執行
+	Hide ArtCraft Launcher from the Dock while in the background	在背景執行時從 Dock 隱藏 ArtCraft Launcher
 	ArtCraft Launcher is still running	ArtCraft Launcher 仍在執行
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它位於系統匣中：請從系統匣圖示開啟或結束，或在設定中關閉此功能。
 	Show the window on the current desktop	在目前的桌面顯示視窗
@@ -288,6 +290,8 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Pin to top	置頂
 	Unpin	取消置頂
 	Pinned	已置頂
+	Pin {name} to top	將 {name} 置頂
+	Unpin {name}	取消置頂 {name}
 	Reorder {name}	重新排序 {name}
 	Move up	上移
 	Move down	下移
@@ -307,6 +311,10 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Retry update to {version}	重試更新至 {version}
 	The download is still here. It's checked again, then installed.	下載的檔案仍在。會再次檢查，然後安裝。
 	Waiting for another app…	正在等待另一個應用程式…
+	Waiting for another download…	正在等待其他下載…
+	Simultaneous downloads	同時下載數
+	No limit	不限制
+	Downloads running together share your connection, so each one is slower.	同時進行的下載會共用網路連線，因此每個下載都會變慢。
 	Waiting for other installs…	正在等待其他安裝…
 	Installer (.msi)	安裝程式（.msi）
 	Portable (.zip)	免安裝版（.zip）
@@ -357,6 +365,9 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 @msg	custom install folders aren't supported on this system	此系統不支援自訂安裝資料夾
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且不是由 ArtCraft Launcher 安裝的
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	無法將 {path} 移至垃圾桶（{reason}）。請改在 Finder 中將其移除。
+@msg	Desktop shortcut created for {name}	已為 {name} 建立桌面捷徑
+@msg	Couldn't create the desktop shortcut: {e}	無法建立桌面捷徑：{e}
+@msg	A desktop shortcut named {name} already exists	名為 {name} 的桌面捷徑已存在
 	Apps are placed inside this folder.	應用程式會放在此資料夾內。
 	Replace what's there?	要取代現有內容嗎？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安裝 {name} 將會覆寫它。
@@ -454,3 +465,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Cancelled	已取消
 	Failed	失敗
 	Interrupted	已中斷
+	Announcements	公告
+	No announcements	目前沒有公告
+@plural	Announcements, {n} unread|Announcements, {n} unread	公告，{n} 則未讀

@@ -11,6 +11,7 @@ pub mod agents;
 pub mod backend;
 pub mod desktop_entry;
 pub mod detect;
+pub mod downloads;
 pub mod feed_throttle;
 pub mod hosted_catalog;
 pub mod http;
@@ -19,6 +20,7 @@ pub mod login;
 pub mod manifest;
 #[cfg(any(windows, test))]
 mod msi_context;
+pub mod notices;
 pub mod packages;
 pub mod paths;
 pub mod pins;
