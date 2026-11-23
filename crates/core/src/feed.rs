@@ -38,8 +38,6 @@ pub struct Feed {
     pub app_renames: Vec<AppRename>,
     /// Repositories that moved, both under [`GITHUB_OWNER`]: a rename anywhere else is dropped.
     pub repo_renames: Vec<RepoRename>,
-    pub announcements: Vec<Notice>,
-    pub alerts: Vec<Notice>,
     /// A local mirror's address (ending in `/`): downloads under it are accepted alongside GitHub's.
     /// Never read from the feed itself; the caller sets it with [`Feed::with_mirror`].
     pub mirror: Option<String>,
@@ -83,18 +81,6 @@ pub struct RepoRename {
     pub renamed_at: Option<i64>,
 }
 
-/// An announcement (shown inline, dismissible) or an alert (a popup the user acknowledges).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Notice {
-    /// Stable, so a dismissal sticks across launches and refreshes.
-    pub id: String,
-    pub title: String,
-    pub body: String,
-    /// Only `https://` links survive parsing.
-    pub link: Option<String>,
-    pub created_at: Option<i64>,
-}
-
 /// What the feed says about one app, once checked.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FeedAnswer {
@@ -104,34 +90,20 @@ pub enum FeedAnswer {
     AskGitHub,
 }
 
-const MAX_NOTICES: usize = 20;
+/// The most text kept from one rename's description.
 const MAX_TEXT: usize = 4000;
 
 impl Feed {
     /// Reads the feed. `None` only when the answer isn't JSON (or isn't an object) at all.
     pub fn parse(json: &str) -> Option<Self> {
         let raw: RawResponse = serde_json::from_str(json).ok()?;
-        let mut feed = Feed {
+        let feed = Feed {
             apps: raw.release_info.apps.into_iter().map(|(k, v)| (k.to_lowercase(), v.into_app())).collect(),
             last_fetched: raw.release_info.last_fetched.as_deref().and_then(parse_rfc3339),
             app_renames: raw.app_renames.into_iter().filter_map(RawAppRename::into_rename).collect(),
             repo_renames: raw.repo_renames.into_iter().filter_map(RawRepoRename::into_rename).collect(),
-            announcements: raw.important_notices.announcements.into_iter().filter_map(|n| n.into_notice("announcement")).take(MAX_NOTICES).collect(),
-            alerts: raw.important_notices.alerts.into_iter().filter_map(|n| n.into_notice("alert")).take(MAX_NOTICES).collect(),
             mirror: None,
         };
-        // App renames are news too: show them with the announcements, inside the cap.
-        feed.announcements.truncate(MAX_NOTICES.saturating_sub(feed.app_renames.len()));
-        for r in &feed.app_renames {
-            feed.announcements.push(Notice {
-                id: format!("rename:{}:{}", r.old_name_lower, r.new_name_lower),
-                title: format!("{} is now {}", r.old_name, r.new_name),
-                body: r.description.clone(),
-                link: None,
-                created_at: r.renamed_at,
-            });
-        }
-        feed.announcements.truncate(MAX_NOTICES);
         Some(feed)
     }
 
@@ -234,9 +206,8 @@ fn lenient<'de, D: Deserializer<'de>, T: DeserializeOwned + Default>(d: D) -> Re
 /// A list where entries of the wrong shape are dropped rather than spoiling the rest.
 fn lenient_vec<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<Vec<T>, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
-    let items = match value {
-        serde_json::Value::Array(items) => items,
-        _ => return Ok(Vec::new()),
+    let serde_json::Value::Array(items) = value else {
+        return Ok(Vec::new());
     };
     Ok(items.into_iter().filter_map(|v| T::deserialize(v).ok()).collect())
 }
@@ -244,9 +215,8 @@ fn lenient_vec<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<V
 /// A map where entries of the wrong shape are dropped.
 fn lenient_map<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<BTreeMap<String, T>, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
-    let entries = match value {
-        serde_json::Value::Object(entries) => entries,
-        _ => return Ok(BTreeMap::new()),
+    let serde_json::Value::Object(entries) = value else {
+        return Ok(BTreeMap::new());
     };
     Ok(entries.into_iter().filter_map(|(k, v)| T::deserialize(v).ok().map(|t| (k, t))).collect())
 }
@@ -259,8 +229,6 @@ struct RawResponse {
     app_renames: Vec<RawAppRename>,
     #[serde(default, deserialize_with = "lenient_vec")]
     repo_renames: Vec<RawRepoRename>,
-    #[serde(default, deserialize_with = "lenient")]
-    important_notices: RawNotices,
 }
 
 #[derive(Deserialize, Default)]
@@ -392,42 +360,6 @@ impl RawRepoRename {
     }
 }
 
-#[derive(Deserialize, Default)]
-struct RawNotices {
-    #[serde(default, deserialize_with = "lenient_vec")]
-    announcements: Vec<RawNotice>,
-    #[serde(default, deserialize_with = "lenient_vec")]
-    alerts: Vec<RawNotice>,
-}
-
-#[derive(Deserialize, Default)]
-struct RawNotice {
-    #[serde(default, deserialize_with = "lenient")]
-    title: String,
-    #[serde(default, deserialize_with = "lenient")]
-    body: String,
-    #[serde(default, deserialize_with = "lenient")]
-    maybe_web_link: Option<String>,
-    #[serde(default, deserialize_with = "lenient")]
-    created_at: Option<String>,
-}
-
-impl RawNotice {
-    fn into_notice(self, kind: &str) -> Option<Notice> {
-        if self.title.trim().is_empty() && self.body.trim().is_empty() {
-            return None;
-        }
-        let link = self.maybe_web_link.filter(|l| release::safe_web_link(l));
-        Some(Notice {
-            id: format!("{kind}:{}:{}", self.created_at.as_deref().unwrap_or(""), self.title.trim()),
-            title: truncate(self.title.trim(), 200),
-            body: truncate(self.body.trim(), MAX_TEXT),
-            link,
-            created_at: self.created_at.as_deref().and_then(parse_rfc3339),
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -515,7 +447,7 @@ mod tests {
         "important_notices": {"announcements": [null, {"title": 3}], "alerts": "x"}}"#;
         let feed = Feed::parse(weird).unwrap();
         assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
-        assert!(feed.repo_renames.is_empty() && feed.announcements.is_empty() && feed.alerts.is_empty());
+        assert!(feed.repo_renames.is_empty());
         // An empty object is a feed that knows nothing.
         assert_eq!(Feed::parse("{}").unwrap(), Feed::default());
     }
@@ -614,62 +546,6 @@ mod tests {
             assert!(r.version.is_some(), "{}", app.id);
             assert!(!r.assets.is_empty() && r.assets.iter().all(|a| a.sha256.is_some()), "{}", app.id);
             assert!(r.assets.iter().all(|a| a.url.starts_with(&format!("https://github.com/{}/releases/download/", app.repo))));
-        }
-    }
-
-    #[test]
-    fn reads_notices_and_renames() {
-        let with_notices = sample()
-            .replace(
-                "\"announcements\": []",
-                r#""announcements": [{"title": "New: CADCraft 1.0", "body": "It's here.", "created_at": "2026-10-09T09:00:00Z"}]"#,
-            )
-            .replace(
-                "\"alerts\": []",
-                r#""alerts": [
-            {"title": "Security update", "body": "Update PdfCraft now.", "maybe_web_link": "https://getartcraft.com/security", "created_at": null},
-            {"title": "Bad link", "body": "x", "maybe_web_link": "javascript:alert(1)"},
-            {"title": "Shell link", "body": "x", "maybe_web_link": "https://getartcraft.com/a|calc.exe"},
-            {"title": "Plain http", "body": "x", "maybe_web_link": "http://getartcraft.com/security"},
-            {"title": "User-info", "body": "x", "maybe_web_link": "https://getartcraft.com@evil.example/"},
-            {"title": "File link", "body": "x", "maybe_web_link": "file:///etc/passwd"}]"#,
-            )
-            .replace(
-                "\"app_renames\": []",
-                r#""app_renames": [{"old_name": "PdfCraft", "old_name_lower": "pdfcraft", "new_name": "DocuCraft",
-            "new_name_lower": "docucraft", "description": "Same app, new name.", "renamed_at": "2026-10-09T08:00:00Z"}]"#,
-            );
-        let feed = Feed::parse(&with_notices).unwrap();
-        assert_eq!(feed.alerts.len(), 6);
-        assert_eq!(feed.alerts[0].link.as_deref(), Some("https://getartcraft.com/security"));
-        assert_eq!(feed.alerts[1].link, None, "only web links are kept");
-        assert_eq!(feed.alerts[2].link, None, "a link with shell metacharacters is dropped");
-        assert_eq!(feed.alerts[3].link, None, "plain http is dropped");
-        assert_eq!(feed.alerts[4].link, None, "a link with user-info is dropped");
-        assert_eq!(feed.alerts[5].link, None, "a file link is dropped");
-        let titles: Vec<&str> = feed.announcements.iter().map(|n| n.title.as_str()).collect();
-        assert_eq!(titles, ["New: CADCraft 1.0", "PdfCraft is now DocuCraft"]);
-        // Ids are stable across parses, so dismissals stick.
-        assert_eq!(Feed::parse(&with_notices).unwrap().alerts[0].id, feed.alerts[0].id);
-    }
-
-    #[test]
-    fn rename_notices_count_toward_the_cap() {
-        let rename = |i: usize| {
-            format!(
-                r#"{{"old_name": "PdfCraft{i}", "old_name_lower": "pdfcraft{i}", "new_name": "DocuCraft{i}", "new_name_lower": "docucraft{i}",
-            "description": "Same app, new name.", "renamed_at": "2026-10-09T08:00:00Z"}}"#
-            )
-        };
-        for (news, renames) in [(MAX_NOTICES, 1), (1000, 1), (0, 30)] {
-            let many: Vec<String> = (0..news).map(|i| format!(r#"{{"title": "News {i}", "body": "x"}}"#)).collect();
-            let moved: Vec<String> = (0..renames).map(rename).collect();
-            let full = sample()
-                .replace("\"announcements\": []", &format!("\"announcements\": [{}]", many.join(",")))
-                .replace("\"app_renames\": []", &format!("\"app_renames\": [{}]", moved.join(",")));
-            let notices = Feed::parse(&full).unwrap().announcements;
-            assert_eq!(notices.len(), MAX_NOTICES, "{news} announcements, {renames} renames");
-            assert!(notices.iter().any(|n| n.title == "PdfCraft0 is now DocuCraft0"), "{news} announcements: the rename was cut");
         }
     }
 

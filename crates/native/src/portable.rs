@@ -55,7 +55,7 @@ fn validate_owned_directory(root: &Path, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
+pub(crate) fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
     for ancestor in path.ancestors() {
         match std::fs::canonicalize(ancestor) {
             Ok(resolved) => {
@@ -75,7 +75,7 @@ fn resolve_missing(path: &Path) -> Result<PathBuf, String> {
 
 /// Whether two paths name the same Windows folder or file: case, trailing separators and the
 /// verbatim `\\?\` form that `canonicalize` returns don't count.
-fn same_windows_path(left: &Path, right: &Path) -> bool {
+pub(crate) fn same_windows_path(left: &Path, right: &Path) -> bool {
     /// `canonicalize` writes `\\?\C:\…` and, for a network share, `\\?\UNC\server\share\…`;
     /// Windows reads either prefix in any case.
     fn normalized(path: &Path) -> String {
@@ -205,6 +205,49 @@ pub fn install(
     replace: bool,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
+    install_checked(Package { app, file, version, previous, paths, directory, replace }, &|_, _| Ok(()), commit)
+}
+
+pub(crate) struct Package<'a> {
+    pub app: &'a CraftApp,
+    pub file: &'a Path,
+    pub version: &'a str,
+    pub previous: Option<&'a Record>,
+    pub paths: &'a Paths,
+    pub directory: Option<&'a Path>,
+    pub replace: bool,
+}
+
+type CheckLayout<'a> = dyn Fn(&[PathBuf], &[PathBuf]) -> Result<(), String> + 'a;
+
+/// Extra flavor policy is checked on the actually extracted archive, before old files move.
+pub(crate) fn install_checked(
+    package: Package<'_>,
+    check_layout: &CheckLayout<'_>,
+    commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+) -> Result<Record, String> {
+    install_with_authentication(package, check_layout, None, commit)
+}
+
+/// The signed Nightly entry point always authenticates its permitted staged executable.
+/// Stable's transaction entry point and policy are unchanged.
+pub(crate) fn install_signed(
+    package: Package<'_>,
+    check_layout: &CheckLayout<'_>,
+    commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+) -> Result<Record, String> {
+    install_with_authentication(package, check_layout, Some(&crate::nightly_signing::authenticate_windows), commit)
+}
+
+type Authenticate = dyn Fn(&Path, &[PathBuf]) -> Result<std::fs::File, String>;
+
+fn install_with_authentication(
+    package: Package<'_>,
+    check_layout: &CheckLayout<'_>,
+    authenticate: Option<&Authenticate>,
+    commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+) -> Result<Record, String> {
+    let Package { app, file, version, previous, paths, directory, replace } = package;
     let (destination, mut old_files) = match previous {
         Some(record) => {
             let (root, files) = recorded_files(app, record)?;
@@ -227,6 +270,8 @@ pub fn install(
     let unpacked = staging.0.join("unpacked");
     std::fs::create_dir(&unpacked).map_err(|e| e.to_string())?;
     let (files, entries) = extract(file, &unpacked)?;
+    check_layout(&files, &entries)?;
+    let _held_verified_executable = authenticate.map(|verify| verify(&unpacked, &files)).transpose()?;
     // Accept both a flat layout (files at the ZIP root) and a single wrapper-folder layout,
     // but never arbitrary nesting.
     let (unpacked, files) = flatten_zip_layout(app, &unpacked, files, &entries)?;
@@ -249,7 +294,17 @@ pub fn install(
             }
         }
     }
-    std::fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(destination.parent().ok_or("no destination parent")?).map_err(|e| e.to_string())?;
+    // Only create_dir success grants this transaction ownership of the directory itself.
+    // An existing empty folder still belongs to its owner, not to rollback housekeeping.
+    let created_destination = match std::fs::create_dir(&destination) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            validate_owned_directory(&destination, &destination)?;
+            false
+        }
+        Err(error) => return Err(error.to_string()),
+    };
     let backup = staging.0.join("backup");
     let record = Record {
         version: version.to_string(),
@@ -296,6 +351,13 @@ pub fn install(
                 return Err(format!("{error}; could not restore the previous version ({restore}). Recovery files: {}", backup_path.display()));
             }
         }
+        if created_destination
+            && let Err(cleanup) = std::fs::remove_dir(&destination)
+            && cleanup.kind() != std::io::ErrorKind::NotFound
+        {
+            // Never recurse: a new unrecorded file or failed file removal must be retained.
+            return Err(format!("{error}; the installation folder was retained ({cleanup})"));
+        }
         return Err(error);
     }
     Ok(record)
@@ -328,6 +390,20 @@ fn flatten_zip_layout(app: &CraftApp, unpacked: &Path, files: Vec<PathBuf>, entr
     let files: Vec<PathBuf> =
         files.into_iter().map(|path| path.strip_prefix(&prefix).map(Path::to_path_buf).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
     Ok((unpacked, files))
+}
+
+/// Do not inspect a saved directory before proving that its spelling is the owned app folder.
+pub(crate) fn validate_record_at(app: &CraftApp, record: &Record, expected: &Path) -> Result<(), String> {
+    let expected = resolve_missing(expected)?;
+    let parent = record.path.parent().ok_or("The nightly executable has no program folder.")?;
+    if !same_windows_path(parent, &expected)
+        || record.path.file_name() != Some(std::ffi::OsStr::new(&format!("{}.exe", app.id)))
+        || !record.files.iter().any(|file| same_windows_path(file, &record.path))
+    {
+        return Err("The saved nightly copy is outside its owned program folder.".into());
+    }
+    recorded_files(app, record)?;
+    Ok(())
 }
 
 /// Removes only recorded program files. Personal settings and documents remain.
@@ -473,7 +549,7 @@ fn single_top_folder(files: &[PathBuf]) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::Write;
 
@@ -532,7 +608,149 @@ mod tests {
         assert!(!staging.exists());
     }
 
-    fn archive(root: &Path, name: &str, files: &[(&str, &[u8])]) -> PathBuf {
+    #[test]
+    fn refused_nightly_authentication_never_moves_old_files_or_commits_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(&dir.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let adapter = crate::nightly_profile::Adapter::PhotoCraftWindowsV1;
+        let file = archive(dir.path(), "signed-successor.zip", &[("photocraft.exe", b"old program"), ("LICENSE-MIT", b"notice")]);
+        let old = install_checked(
+            Package {
+                app,
+                file: &file,
+                version: "1.0.0-nightly.20261121.2.1.gabcdefabcdef",
+                previous: None,
+                paths: &paths,
+                directory: None,
+                replace: false,
+            },
+            &|files, entries| adapter.validate_layout(files, entries),
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+        let profile = adapter.profile_root(&paths).unwrap();
+        std::fs::create_dir_all(&profile).unwrap();
+        let personal = profile.join("preferences.json");
+        std::fs::write(&personal, b"personal state").unwrap();
+        std::fs::write(paths.manifest(), b"old ownership record").unwrap();
+        let new = archive(dir.path(), "new-signed-successor.zip", &[("photocraft.exe", b"new program"), ("NOTICE", b"new notice")]);
+        let before = std::fs::metadata(&old.path).unwrap().modified().unwrap();
+        let mut committed = false;
+        let result = install_with_authentication(
+            Package {
+                app,
+                file: &new,
+                version: "1.0.0-nightly.20261121.3.1.gabcdefabcdef",
+                previous: Some(&old),
+                paths: &paths,
+                directory: None,
+                replace: false,
+            },
+            &|files, entries| adapter.validate_layout(files, entries),
+            Some(&|root, files| {
+                assert!(root.join("photocraft.exe").is_file());
+                assert!(files.contains(&PathBuf::from("photocraft.exe")));
+                Err("wrong publisher or invalid timestamp".into())
+            }),
+            &mut |_| {
+                committed = true;
+                Ok(())
+            },
+        );
+        assert!(result.unwrap_err().contains("wrong publisher"));
+        assert!(!committed);
+        assert_eq!(std::fs::read(&old.path).unwrap(), b"old program");
+        assert_eq!(std::fs::metadata(&old.path).unwrap().modified().unwrap(), before);
+        assert!(!old.path.parent().unwrap().join("NOTICE").exists());
+        assert_eq!(std::fs::read(personal).unwrap(), b"personal state");
+        assert_eq!(std::fs::read(paths.manifest()).unwrap(), b"old ownership record");
+    }
+
+    #[test]
+    fn failed_fresh_nightly_commit_removes_its_empty_program_folder_and_allows_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let stable = Paths::under(&dir.path().canonicalize().unwrap());
+        let paths = stable.clone().for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let adapter = crate::nightly_profile::Adapter::PhotoCraftWindowsV1;
+        let profile = adapter.profile_root(&paths).unwrap();
+        std::fs::create_dir_all(&profile).unwrap();
+        let personal = profile.join("preferences.json");
+        std::fs::write(&personal, b"nightly preferences").unwrap();
+        let sentinel = stable.data.join("stable-sentinel");
+        std::fs::write(&sentinel, b"stable bytes").unwrap();
+        let modified = std::fs::metadata(&sentinel).unwrap().modified().unwrap();
+        let zip = archive(dir.path(), "nightly.zip", &[("photocraft.exe", b"new program"), ("LICENSE-MIT", b"notice")]);
+        let package = || Package {
+            app,
+            file: &zip,
+            version: "1.0.0-nightly.20261120.1.1.gabcdefabcdef",
+            previous: None,
+            paths: &paths,
+            directory: None,
+            replace: false,
+        };
+        let committed = std::cell::Cell::new(false);
+        let error = install_checked(package(), &|files, entries| adapter.validate_layout(files, entries), &mut |record| {
+            assert_eq!(std::fs::read(&record.path).unwrap(), b"new program");
+            committed.set(true);
+            Err("Pre-Release was turned off before commit".into())
+        })
+        .unwrap_err();
+        assert!(committed.get());
+        assert_eq!(error, "Pre-Release was turned off before commit");
+        assert!(!paths.apps().join(app.id).exists(), "a refused fresh install must not block the next admission");
+        assert!(!paths.manifest().exists());
+        let record = install_checked(package(), &|files, entries| adapter.validate_layout(files, entries), &mut |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read(record.path).unwrap(), b"new program");
+        assert_eq!(std::fs::read(&personal).unwrap(), b"nightly preferences");
+        assert_eq!(std::fs::read(&sentinel).unwrap(), b"stable bytes");
+        assert_eq!(std::fs::metadata(&sentinel).unwrap().modified().unwrap(), modified);
+    }
+
+    #[test]
+    fn failed_fresh_commit_preserves_preexisting_unrecorded_folders_and_files() {
+        for keep_personal_file in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = Paths::under(&dir.path().canonicalize().unwrap());
+            let app = CraftApp::by_id("photocraft").unwrap();
+            let destination = paths.apps().join(app.id);
+            std::fs::create_dir_all(&destination).unwrap();
+            let personal = destination.join("personal.txt");
+            if keep_personal_file {
+                std::fs::write(&personal, b"unrecorded user file").unwrap();
+            }
+            let zip = archive(dir.path(), "app.zip", &[("photocraft.exe", b"new program")]);
+            let error = install(app, &zip, "1.0.0", None, &paths, None, false, &mut |_| Err("manifest save failed".into())).unwrap_err();
+            assert_eq!(error, "manifest save failed");
+            assert!(destination.is_dir(), "even a preexisting empty folder must not be deleted");
+            assert!(!destination.join("photocraft.exe").exists());
+            if keep_personal_file {
+                assert_eq!(std::fs::read(&personal).unwrap(), b"unrecorded user file");
+            }
+        }
+    }
+
+    #[test]
+    fn failed_fresh_commit_retains_a_new_program_folder_if_an_unrecorded_file_arrives() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(&dir.path().canonicalize().unwrap());
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let personal = paths.apps().join(app.id).join("personal.txt");
+        let zip = archive(dir.path(), "app.zip", &[("photocraft.exe", b"new program")]);
+        let error = install(app, &zip, "1.0.0", None, &paths, None, false, &mut |_| {
+            std::fs::write(&personal, b"new unrecorded user file").unwrap();
+            Err("commit refused".into())
+        })
+        .unwrap_err();
+        assert!(error.contains("commit refused"));
+        assert!(error.contains("folder was retained"));
+        assert_eq!(std::fs::read(&personal).unwrap(), b"new unrecorded user file");
+        assert!(!personal.parent().unwrap().join("photocraft.exe").exists());
+    }
+
+    pub(crate) fn archive(root: &Path, name: &str, files: &[(&str, &[u8])]) -> PathBuf {
         let path = root.join(name);
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
         for (name, content) in files {

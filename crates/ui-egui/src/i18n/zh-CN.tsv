@@ -58,6 +58,7 @@
 	Discard download	丢弃下载
 	Release notes	更新说明
 	Reinstall	重新安装
+	Add desktop shortcut	添加桌面快捷方式
 	Uninstall…	卸载…
 	Launch options…	启动选项…
 	{name} launch options	{name} 启动选项
@@ -91,6 +92,7 @@
 	Updates always use the format an app was installed with.	更新时始终使用应用原来的安装格式。
 	Running in the background	后台运行
 	Keep running in the tray when the window is closed	关闭窗口后继续在系统托盘中运行
+	Hide ArtCraft Launcher from the Dock while in the background	在后台运行时从 Dock 中隐藏 ArtCraft Launcher
 	ArtCraft Launcher is still running	ArtCraft Launcher 仍在运行
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它已进入系统托盘：可通过托盘图标打开或退出，也可在设置中关闭此行为。
 	Show the window on the current desktop	在当前桌面显示窗口
@@ -288,6 +290,8 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Pin to top	置顶
 	Unpin	取消置顶
 	Pinned	已置顶
+	Pin {name} to top	将 {name} 置顶
+	Unpin {name}	取消置顶 {name}
 	Reorder {name}	重新排序 {name}
 	Move up	上移
 	Move down	下移
@@ -307,6 +311,10 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Retry update to {version}	重试更新至 {version}
 	The download is still here. It's checked again, then installed.	已下载的文件仍在。会先重新校验，然后安装。
 	Waiting for another app…	正在等待其他应用…
+	Waiting for another download…	正在等待其他下载…
+	Simultaneous downloads	同时下载数
+	No limit	不限制
+	Downloads running together share your connection, so each one is slower.	同时进行的下载会共享网络连接，因此每个下载都会变慢。
 	Waiting for other installs…	正在等待其他安装…
 
 # Package formats offered for download (PackageKind::label)
@@ -363,6 +371,9 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 @msg	custom install folders aren't supported on this system	此系统不支持自定义安装文件夹
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且并非由 ArtCraft Launcher 安装
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	无法将 {path} 移到废纸篓（{reason}）。请在 Finder 中移除。
+@msg	Desktop shortcut created for {name}	已为 {name} 创建桌面快捷方式
+@msg	Couldn't create the desktop shortcut: {e}	无法创建桌面快捷方式：{e}
+@msg	A desktop shortcut named {name} already exists	名为 {name} 的桌面快捷方式已存在
 	Apps are placed inside this folder.	应用会放置在此文件夹内。
 	Replace what's there?	替换现有内容？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安装 {name} 将覆盖它。
@@ -437,3 +448,59 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	已添加
 	Remove	移除
 	Add	添加
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable pre-release builds	Enable pre-release builds
+	Enable pre-release builds?	Enable pre-release builds?
+	Install pre-release	Install pre-release
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No pre-release build is available yet.	No pre-release build is available yet.
+	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Pre-Release	Pre-Release
+	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
+	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off pre-release builds	Turn off pre-release builds
+	Uninstall pre-release	Uninstall pre-release
+	Uninstall pre-release?	Uninstall pre-release?
+	Uninstall pre-release…	Uninstall pre-release…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Pre-release builds are off.	Pre-release builds are off.
+	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
+	Installed pre-release copy	Installed pre-release copy
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only pre-release destination (English fallback)
+	Could not check for pre-release builds.	Could not check for pre-release builds.
+	No pre-release builds are available yet.	No pre-release builds are available yet.
+	Nightly builds, separate from your stable apps.	Nightly builds, separate from your stable apps.
+
+# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
+	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	预发布版本让你提前体验新功能，但其中会有缺陷，并且可能导致未保存的工作丢失。
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	预发布版本会与稳定版应用并行安装，使用各自独立的设置和数据，不会改动你的稳定版环境。在预发布版本中打开重要文件之前，请务必备份，因为用较新版本保存的文件可能无法在稳定版中打开。
+	You can turn this off at any time without deleting your installed pre-release apps or their data.	你可以随时关闭此选项，而不会删除已安装的预发布版应用或其数据。
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{year}/{month}/{day}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	每夜构建
+	Discover nightly builds (Pre-Release page)	发现每夜构建（Pre-Release 页面）
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	安装、设置和数据均独立。关闭后仍会保留已安装的副本及其数据。
+	Betas and release candidates can replace your stable installation.	测试版和候选发布版可能会替换您的稳定版安装。
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	公告
+	No announcements	暂无公告
+@plural	Announcements, {n} unread|Announcements, {n} unread	公告，{n} 条未读

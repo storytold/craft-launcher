@@ -113,19 +113,29 @@ impl LauncherUi {
             wide,
             theme::COLUMN_GAP,
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, _) = &mut *state;
                 this.settings_language(ui);
                 this.settings_updates(ui);
+                if !wide {
+                    this.settings_nightly(ui);
+                }
                 this.settings_appearance(ui);
                 this.settings_agents(ui);
             },
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
                 this.settings_background(ui, &mut **host);
                 this.settings_community(ui);
+                if wide {
+                    this.settings_nightly(ui);
+                }
             },
         );
     }
@@ -195,16 +205,52 @@ impl LauncherUi {
             {
                 self.trigger_auto_updates();
             }
-            if self.caps.manage_apps {
+            // Linux always batches (`Settings::updates_batched`), so there is nothing to choose.
+            if self.caps.manage_apps && !cfg!(target_os = "linux") {
                 ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
+                let mut at_once = self.settings.simultaneous_downloads.min(4);
+                let no_limit = tl!("No limit").to_string();
+                row(ui, tl!("Simultaneous downloads"), 150.0, &mut |ui, label| {
+                    craft_ui::ComboBox::from_id_salt("at_once")
+                        .selected_text(if at_once == 0 { no_limit.clone() } else { at_once.to_string() })
+                        .width(150.0)
+                        .show_ui(ui, |ui| {
+                            for n in 1..=4 {
+                                ui.selectable_value(&mut at_once, n, n.to_string());
+                            }
+                            ui.selectable_value(&mut at_once, 0, no_limit.clone());
+                        })
+                        .response
+                        .labelled_by(label);
+                });
+                self.settings.simultaneous_downloads = at_once;
+                note(ui, tl!("Downloads running together share your connection, so each one is slower."));
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            note(ui, tl!("Betas and release candidates can replace your stable installation."));
             row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
                 self.version_lock(ui, launcher_id);
             });
             self.launcher_version_notes(ui);
+        });
+    }
+
+    /// Independent nightly discovery; the ordinary beta/RC filter stays in Updates.
+    fn settings_nightly(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Nightly builds"), |ui| {
+            let mut enabled = self.settings.nightly_enabled;
+            let response = ui.checkbox(&mut enabled, tl!("Discover nightly builds (Pre-Release page)"));
+            if response.changed() {
+                if enabled {
+                    self.open_nightly_consent(response.id);
+                    self.dialog = None;
+                } else {
+                    self.act(crate::app::UiAction::NightlyConsent(false));
+                }
+            }
+            note(ui, tl!("Separate installs, settings and data. Turning this off keeps installed copies and their data."));
         });
     }
 
@@ -325,6 +371,9 @@ impl LauncherUi {
                 ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop")).on_hover_text(tl!(
                     "When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."
                 ));
+                ui.add_enabled_ui(host.has_tray() && self.settings.close_to_tray, |ui| {
+                    ui.checkbox(&mut self.settings.hide_from_dock_when_hidden, tl!("Hide ArtCraft Launcher from the Dock while in the background"));
+                });
             }
             if let Some(mut on) = host.login_item()
                 && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()

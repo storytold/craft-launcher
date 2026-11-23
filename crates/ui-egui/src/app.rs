@@ -96,6 +96,8 @@ pub(crate) struct Toast {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum UiAction {
     Command(Command),
+    NightlyCommand(Command),
+    NightlyConsent(bool),
     /// [`Command::Launch`] with the app's launch flags, plus one launch-count increment.
     Launch(String),
     /// Re-run the manual update check, clearing the auto-update back-off.
@@ -142,6 +144,7 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    pub(crate) nightly: crate::nightly::NightlyState,
     /// AI agents: the gateway switch and the MCP clients.
     pub(crate) mcp_agents: McpAgents,
     /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
@@ -164,10 +167,14 @@ pub struct LauncherUi {
     pub(crate) launcher_job: Option<artcraft_launcher_core::protocol::JobPhase>,
     /// The new launcher is in place: quit so it can start.
     restart_requested: bool,
-    /// News from ArtCraft's release feed, shown inline until dismissed.
-    pub(crate) announcements: Vec<artcraft_launcher_core::feed::Notice>,
-    /// Alerts from the feed, shown as popups until acknowledged.
-    pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
+    /// Announcements from the signed notices file, listed in the header's bell until dismissed.
+    pub(crate) announcements: Vec<artcraft_launcher_core::notices::Notice>,
+    /// The bell's panel is open.
+    pub(crate) bell_open: bool,
+    /// Announcements that were unread when the panel opened: they keep a dot while it is open.
+    pub(crate) bell_new: std::collections::BTreeSet<String>,
+    /// Alerts from the signed notices file, shown as popups until acknowledged.
+    pub(crate) alerts: Vec<artcraft_launcher_core::notices::Notice>,
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
@@ -198,6 +205,8 @@ pub struct LauncherUi {
     /// Set when such a language comes into use, then kept for the session.
     pub(crate) cjk_font: Option<crate::i18n::Lang>,
     sent_options: Option<BackendOptions>,
+    /// The apps on screen in their order, as last told to the backend (queued downloads go in it).
+    sent_order: Vec<&'static str>,
     /// Unix seconds of the last look at what's installed (startup counts).
     last_detect: i64,
     /// Whether the window had focus last frame, to re-check when the user comes back to it.
@@ -266,9 +275,11 @@ impl LauncherUi {
         let platform = backend.platform();
         let mut settings = settings;
         settings.migrate();
+        let nightly = crate::nightly::NightlyState::new(backend.nightly_context(), platform);
         Self {
             backend,
             settings,
+            nightly,
             entries: artcraft_launcher_core::hosted_catalog::apps()
                 .iter()
                 .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
@@ -289,6 +300,8 @@ impl LauncherUi {
             launcher_job: None,
             restart_requested: false,
             announcements: Vec::new(),
+            bell_open: false,
+            bell_new: std::collections::BTreeSet::new(),
             alerts: Vec::new(),
             search: String::new(),
             toasts: Vec::new(),
@@ -307,6 +320,7 @@ impl LauncherUi {
             fonts_ready: false,
             cjk_font,
             sent_options: None,
+            sent_order: Vec::new(),
             last_detect: 0,
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
@@ -353,7 +367,7 @@ impl LauncherUi {
     /// Something is downloading or installing, the launcher's own update included: quitting now
     /// would cut it short.
     pub fn busy(&self) -> bool {
-        self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
+        self.backend.has_active_jobs() || self.nightly.busy() || self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
     }
 
     /// Looks for updates now (the tray's "Check for Updates").
@@ -375,7 +389,7 @@ impl LauncherUi {
 
     /// Queues one user action. Distinct controls may queue equal payloads in the same pass; the
     /// per-frame duplicate check happens in [`Self::flush_actions`] when the draw order is known.
-    fn act(&mut self, action: UiAction) {
+    pub(crate) fn act(&mut self, action: UiAction) {
         self.pending.push(action);
     }
 
@@ -413,6 +427,15 @@ impl LauncherUi {
             }
             match action {
                 UiAction::Command(command) => self.backend.send(command.clone()),
+                UiAction::NightlyCommand(command) => self.nightly.send(command.clone(), self.settings.nightly_enabled),
+                UiAction::NightlyConsent(enabled) => {
+                    self.settings.nightly_enabled = *enabled;
+                    self.nightly.consent_open = false;
+                    if *enabled {
+                        self.nightly.active = true;
+                    }
+                    self.nightly.configure(&self.settings);
+                }
                 UiAction::Launch(id) => {
                     let flags = self.settings.launch_flags.get(id).map_or("", String::as_str);
                     // The dialog only saves flags that split, but the settings file can be edited by hand.
@@ -470,17 +493,27 @@ impl LauncherUi {
         self.entries.iter_mut().find(|e| e.app.id == id)
     }
 
+    /// Sends the backend the settings it needs and, when it changed, the order of the apps on
+    /// screen. Runs every frame; only changes are sent.
     pub(crate) fn configure(&mut self) {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
+            nightly_enabled: false, // The stable backend never acquires nightly consent.
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
+            simultaneous_downloads: self.settings.simultaneous_downloads,
             install_locations: self.settings.install_locations.clone(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));
             self.sent_options = Some(options);
+        }
+        // Only the apps on screen: the backend puts any other app after them, in suite order.
+        let order = self.visible_ids();
+        if order != self.sent_order {
+            self.backend.send(Command::DownloadOrder(order.iter().map(|id| id.to_string()).collect()));
+            self.sent_order = order;
         }
     }
 
@@ -524,6 +557,7 @@ impl LauncherUi {
         // actually show: English where the system has no CJK face for the preference.
         set_current(effective_lang(&self.settings.language));
         self.configure();
+        self.nightly.logic(&self.settings);
         // A kept version's card notes a newer release; that needs the app's published list.
         self.request_pinned_lists();
         if !self.started {
@@ -611,6 +645,8 @@ impl LauncherUi {
                 false
             }
             Event::Notices { announcements, alerts } => {
+                let current = announcements.iter().chain(&alerts).map(|n| n.id.as_str()).collect();
+                self.settings.forget_notices_not_in(&current);
                 self.announcements = announcements;
                 self.alerts = alerts;
                 false
@@ -642,6 +678,11 @@ impl LauncherUi {
                 self.on_job_finished(app, result);
                 true
             }
+            Event::Notice { result, .. } => {
+                self.on_notice(result);
+                true
+            }
+            Event::NightlyStatus { .. } => false, // Nightly metadata never changes Stable scheduling or presentation.
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;
@@ -715,6 +756,14 @@ impl LauncherUi {
             Err(e) if e == INSTALL_CANCELLED => self.toast(tl!("Install cancelled"), false),
             // The Replace dialog says it all.
             Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. }) if *a == app) => {}
+            Err(e) => self.toast(e, true),
+        }
+    }
+
+    /// Toast for a side action that never owned the app's job phase (desktop shortcut, etc.).
+    fn on_notice(&mut self, result: Result<String, String>) {
+        match result {
+            Ok(msg) => self.toast(msg, false),
             Err(e) => self.toast(e, true),
         }
     }
@@ -793,7 +842,7 @@ impl LauncherUi {
                 if self.auto_update_attempted.contains(&(e.app.id.to_string(), v.clone())) { None } else { Some((e.app.id.to_string(), v)) }
             })
             .collect();
-        if self.settings.batch_updates && !to_update.is_empty() {
+        if self.settings.updates_batched() && !to_update.is_empty() {
             log::info!("auto-update: queuing {} updates together behind one prompt", to_update.len());
             for (id, version) in &to_update {
                 self.auto_update_attempted.insert((id.clone(), version.clone()));
@@ -903,6 +952,11 @@ impl LauncherUi {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
             .show(ui, |ui| {
+                ui.add_space(12.0);
+                if self.nightly.active {
+                    self.nightly_page(ui);
+                    return;
+                }
                 self.toolbar(ui);
                 ui.add_space(18.0);
                 let ids = self.visible_ids();
@@ -934,6 +988,7 @@ impl LauncherUi {
             });
         self.details_drawer(&ctx);
         self.dialogs(&ctx, host);
+        self.nightly_consent_modal(&ctx);
         self.flush_actions();
         self.draw_toasts(&ctx);
         if host.title_bar() == TitleBar::Custom {
@@ -1164,7 +1219,7 @@ mod tests {
         /// No install management, a neutral reveal label and no self-update, so UI paths needing them
         /// stay off.
         fn capabilities(&self) -> Capabilities {
-            Capabilities { manage_apps: false, reveal_label: "Show", self_update: false }
+            Capabilities { manage_apps: false, reveal_label: "Show", self_update: false, desktop_shortcuts: false }
         }
         /// Reports no platform, so the UI offers no OS-specific package format.
         fn platform(&self) -> Option<Platform> {
@@ -1217,6 +1272,63 @@ mod tests {
         );
         assert!(ui.entry(id).unwrap().detected);
         assert_eq!(sent.borrow().as_slice(), &[Command::Detect]);
+    }
+
+    /// The last screen order sent to the backend for its download queue.
+    fn last_order(sent: &RefCell<Vec<Command>>) -> Option<Vec<String>> {
+        sent.borrow().iter().rev().find_map(|command| match command {
+            Command::DownloadOrder(order) => Some(order.clone()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    /// Hidden apps are left out of the download order, so the backend puts them after the apps on
+    /// screen, in suite order.
+    fn the_download_order_leaves_out_hidden_apps() {
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.settings.hidden.extend(["wordcraft".to_string(), "filmcraft".to_string()]);
+        launcher.configure();
+        let order = last_order(&sent).expect("an order is sent");
+        assert_eq!(order, launcher.visible_ids());
+        assert_eq!(order.len(), launcher.entries.len() - 2);
+        assert!(!order.iter().any(|id| id == "wordcraft" || id == "filmcraft"), "{order:?}");
+    }
+
+    #[test]
+    /// Apps a search hides are left out of the download order, and come back once it is cleared.
+    fn the_download_order_follows_the_search() {
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.search = "photocraft".into();
+        launcher.configure();
+        assert_eq!(last_order(&sent).expect("an order is sent"), ["photocraft"]);
+        launcher.search.clear();
+        launcher.configure();
+        assert_eq!(last_order(&sent).expect("an order is sent"), launcher.visible_ids());
+        assert_eq!(launcher.visible_ids().len(), launcher.entries.len());
+    }
+
+    #[test]
+    /// The number of downloads allowed at once reaches the backend, and settings saved before it
+    /// existed allow one.
+    fn simultaneous_downloads_reach_the_backend() {
+        let old: Settings = serde_json::from_str(r#"{"prereleases":true}"#).unwrap();
+        assert_eq!(old.simultaneous_downloads, 1);
+        let (mut launcher, sent, _ctx) = launcher();
+        launcher.settings.simultaneous_downloads = 3;
+        launcher.configure();
+        let configured = sent.borrow().iter().rev().find_map(|command| match command {
+            Command::Configure(options) => Some(options.simultaneous_downloads),
+            _ => None,
+        });
+        assert_eq!(configured, Some(3));
+        launcher.settings.simultaneous_downloads = 0;
+        launcher.configure();
+        let configured = sent.borrow().iter().rev().find_map(|command| match command {
+            Command::Configure(options) => Some(options.simultaneous_downloads),
+            _ => None,
+        });
+        assert_eq!(configured, Some(0), "no limit is sent as 0");
     }
 
     /// A CJK preference is drawable only while that language's own face is installed: having the
@@ -1484,5 +1596,21 @@ mod tests {
         assert!(update_check_due(Some(NOW + 60), NOW, EVERY));
         assert!(update_check_due(Some(i64::MAX), NOW, EVERY));
         assert!(update_check_due(Some(i64::MIN), NOW, EVERY));
+    }
+    #[test]
+    fn shared_selection_declined_consent_never_activates_a_new_destination() {
+        let (mut refused, _, _) = launcher();
+        refused.pending.push(UiAction::NightlyConsent(false));
+        refused.flush_actions();
+        assert!(!refused.settings.nightly_enabled && !refused.nightly.active);
+        let (mut accepted, _, _) = launcher();
+        accepted.pending.push(UiAction::NightlyConsent(true));
+        accepted.flush_actions();
+        assert!(accepted.settings.nightly_enabled && accepted.nightly.active);
+        let (mut retained, _, _) = launcher();
+        retained.nightly.active = true;
+        retained.pending.push(UiAction::NightlyConsent(false));
+        retained.flush_actions();
+        assert!(!retained.settings.nightly_enabled && retained.nightly.active, "OFF must not force an already open management destination away");
     }
 }

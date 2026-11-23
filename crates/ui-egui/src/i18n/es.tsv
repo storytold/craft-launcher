@@ -76,6 +76,7 @@
 	Show in Explorer	Mostrar en el Explorador
 	Show in Files	Mostrar en Archivos
 	Reinstall	Reinstalar
+	Add desktop shortcut	Añadir acceso directo al escritorio
 	Uninstall…	Desinstalar…
 	Launch options…	Opciones de inicio…
 	{name} launch options	Opciones de inicio de {name}
@@ -109,6 +110,7 @@
 	Updates always use the format an app was installed with.	Las actualizaciones siempre usan el formato con el que se instaló cada aplicación.
 	Running in the background	En segundo plano
 	Keep running in the tray when the window is closed	Seguir abierto en la bandeja del sistema al cerrar la ventana
+	Hide ArtCraft Launcher from the Dock while in the background	Ocultar ArtCraft Launcher del Dock en segundo plano
 	ArtCraft Launcher is still running	ArtCraft Launcher sigue abierto
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Está en la bandeja del sistema: ábrelo o ciérralo desde su icono, o desactiva esto en los ajustes.
 	Show the window on the current desktop	Mostrar la ventana en el escritorio actual
@@ -137,6 +139,8 @@
 	Pin to top	Fijar arriba
 	Unpin	Quitar fijación
 	Pinned	Fijadas
+	Pin {name} to top	Fijar {name} arriba
+	Unpin {name}	Quitar fijación de {name}
 	Reorder {name}	Reordenar {name}
 	Move up	Subir
 	Move down	Bajar
@@ -169,6 +173,10 @@
 	Retry update to {version}	Reintentar la actualización a {version}
 	The download is still here. It's checked again, then installed.	La descarga sigue aquí. Se vuelve a comprobar y luego se instala.
 	Waiting for another app…	Esperando a otra aplicación…
+	Waiting for another download…	Esperando a otra descarga…
+	Simultaneous downloads	Descargas simultáneas
+	No limit	Sin límite
+	Downloads running together share your connection, so each one is slower.	Las descargas simultáneas comparten tu conexión, así que cada una es más lenta.
 	Waiting for other installs…	Esperando a otras instalaciones…
 	Installer (.msi)	Instalador (.msi)
 	Portable (.zip)	Portátil (.zip)
@@ -376,6 +384,9 @@ filter	Installed	Instaladas
 @msg	custom install folders aren't supported on this system	este sistema no admite carpetas de instalación personalizadas
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} ya existe y no fue instalado por ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	no se pudo mover {path} a la Papelera ({reason}). Elimínalo desde Finder.
+@msg	Desktop shortcut created for {name}	Acceso directo al escritorio creado para {name}
+@msg	Couldn't create the desktop shortcut: {e}	No se pudo crear el acceso directo al escritorio: {e}
+@msg	A desktop shortcut named {name} already exists	Ya existe un acceso directo al escritorio llamado {name}
 	Apps are placed inside this folder.	Las aplicaciones se guardan dentro de esta carpeta.
 	Replace what's there?	¿Reemplazar lo que hay?
 	{path} already exists. Installing {name} will overwrite it.	{path} ya existe. Instalar {name} lo sobrescribirá.
@@ -450,3 +461,59 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Añadida
 	Remove	Quitar
 	Add	Añadir
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable pre-release builds	Enable pre-release builds
+	Enable pre-release builds?	Enable pre-release builds?
+	Install pre-release	Install pre-release
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No pre-release build is available yet.	No pre-release build is available yet.
+	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Pre-Release	Pre-Release
+	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
+	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off pre-release builds	Turn off pre-release builds
+	Uninstall pre-release	Uninstall pre-release
+	Uninstall pre-release?	Uninstall pre-release?
+	Uninstall pre-release…	Uninstall pre-release…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Pre-release builds are off.	Pre-release builds are off.
+	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
+	Installed pre-release copy	Installed pre-release copy
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only pre-release destination (English fallback)
+	Could not check for pre-release builds.	Could not check for pre-release builds.
+	No pre-release builds are available yet.	No pre-release builds are available yet.
+	Nightly builds, separate from your stable apps.	Nightly builds, separate from your stable apps.
+
+# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
+	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	Las versiones preliminares te permiten probar novedades antes de tiempo, pero tendrán errores y pueden perder trabajo sin guardar.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	Se instalan junto a tus aplicaciones estables con sus propios ajustes y datos, sin modificar tu entorno estable. Haz siempre una copia de seguridad de los archivos importantes antes de abrirlos en una versión preliminar, ya que los archivos guardados en versiones más recientes podrían no abrirse en las versiones estables.
+	You can turn this off at any time without deleting your installed pre-release apps or their data.	Puedes desactivar esta opción en cualquier momento sin eliminar las aplicaciones preliminares instaladas ni sus datos.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{day}/{month}/{year}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	Compilaciones nocturnas
+	Discover nightly builds (Pre-Release page)	Buscar compilaciones nocturnas (página Pre-Release)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Instalaciones, ajustes y datos separados. Al desactivar se conservan las copias instaladas y sus datos.
+	Betas and release candidates can replace your stable installation.	Las betas y las versiones candidatas pueden reemplazar la instalación estable.
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	Anuncios
+	No announcements	No hay anuncios
+@plural	Announcements, {n} unread|Announcements, {n} unread	Anuncios, {n} sin leer|Anuncios, {n} sin leer

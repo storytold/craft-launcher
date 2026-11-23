@@ -24,3 +24,9 @@ pub fn unhide() {
         NSApplication::sharedApplication(mtm).unhide(None);
     }
 }
+
+/// Returns the app's hidden state on the main thread, or `None` elsewhere.
+pub fn is_hidden() -> Option<bool> {
+    let mtm = MainThreadMarker::new()?;
+    Some(NSApplication::sharedApplication(mtm).isHidden())
+}
