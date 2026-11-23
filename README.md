@@ -138,6 +138,15 @@ package or portable folder, the AppImage, or the `.deb`/`.rpm`) and reopens it.
 
 Updates use the same format an app was installed with. Every download is checked against the
 release's published SHA-256 before it is installed, and a running app is never replaced.
+When an update stops because the app or its command-line tool is open, another installation is
+in progress, or Windows refuses a file, the app's card names the cause and shows the error code
+in its details, with the installer log when there is one. On Windows, when Windows Installer
+stops with error 1603, the launcher reads that log. When one of the app installer's own checks
+failed, the card shows that check's message. When Windows Installer's saved copy of the installed
+version's installer is missing, the card says so and says to repair that version with
+`msiexec /fv`. A failed downgrade's details also say what is installed
+now. **Retry** on the card tries the update again, or **Resume** when the card
+keeps a paused download.
 
 The launcher writes its log to `logs/artcraft-launcher.log` in its data folder
 (`~/.local/share/artcraft-launcher` on Linux, `~/Library/Application Support/ArtCraft Launcher`

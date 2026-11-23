@@ -171,6 +171,7 @@
 	Update cancelled	Anulowano aktualizację
 	Uninstall cancelled	Anulowano odinstalowanie
 	Retry install	Ponów instalację
+	Retry reinstall	Ponów ponowną instalację
 	Retry update	Ponów aktualizację
 	Retry update to {version}	Ponów aktualizację do {version}
 	The download is still here. It's checked again, then installed.	Pobrany plik wciąż tu jest. Zostanie sprawdzony ponownie, a następnie zainstalowany.
@@ -242,6 +243,23 @@ month	Dec	gru
 	Not available here	Niedostępna w tym systemie
 	Updating…	Aktualizowanie…
 	Update paused	Aktualizacja wstrzymana
+	Update stopped	Aktualizacja zatrzymana
+	Install stopped	Instalacja zatrzymana
+	Reinstall stopped	Ponowna instalacja zatrzymana
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} lub narzędzie wiersza poleceń tej aplikacji jest otwarte. Zamknij je i spróbuj ponownie.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Działa program o tej samej nazwie co {name}. Jeśli to ta kopia, zamknij go i spróbuj ponownie.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Trwa inna instalacja. Poczekaj, aż się zakończy, i spróbuj ponownie.
+	Another program is using a file of {name}. Close that program, then press Retry.	Inny program używa pliku aplikacji {name}. Zamknij ten program i spróbuj ponownie.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows odmówił dostępu do pliku aplikacji {name}. Sprawdź uprawnienia folderu i spróbuj ponownie.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} lub narzędzie wiersza poleceń tej aplikacji jest otwarte. Zamknij je i wznów pobieranie.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Działa program o tej samej nazwie co {name}. Jeśli to ta kopia, zamknij go i wznów pobieranie.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Trwa inna instalacja. Poczekaj, aż się zakończy, i wznów pobieranie.
+	Another program is using a file of {name}. Close that program, then press Resume.	Inny program używa pliku aplikacji {name}. Zamknij ten program i wznów pobieranie.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows odmówił dostępu do pliku aplikacji {name}. Sprawdź uprawnienia folderu i wznów pobieranie.
+	The Windows Installer couldn't finish. The details below give its error code.	Instalator Windows nie mógł dokończyć pracy. Poniższe szczegóły podają kod błędu.
+	The installer of {name} stopped at one of its own checks and changed nothing. See the details below.	Instalator aplikacji {name} zatrzymał się na jednym z własnych sprawdzeń i niczego nie zmienił. Szczegóły podano poniżej.
+	The saved installer of the installed {name} version is missing. Repair that version with msiexec /fv, then try again.	Brakuje zapisanego instalatora zainstalowanej wersji aplikacji {name}. Napraw tę wersję poleceniem msiexec /fv i spróbuj ponownie.
+	Details: {details}	Szczegóły: {details}
 	Download paused	Pobieranie wstrzymane
 	{version} installed → {latest} released	{version} zainstalowana → {latest} wydana
 	Version {version}	Wersja {version}
@@ -332,6 +350,12 @@ filter	Installed	Zainstalowane
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Zainstalowano {name} w wersji {version} (to wydanie nie zawiera sumy kontrolnej, więc sprawdzono tylko rozmiar)
 @msg	{name} was removed	Usunięto {name}
 @msg	{name} is running. Quit it, then try again.	{name} jest uruchomiona. Zamknij ją i spróbuj ponownie.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	Narzędzie wiersza poleceń aplikacji {name} jest uruchomione. Zamknij je i spróbuj ponownie.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Działa program o nazwie {program}. Jeśli to {name}, zamknij go i spróbuj ponownie.
+@msg	Another program is using {file}. Close it, then try again.	Inny program używa pliku {file}. Zamknij go i spróbuj ponownie.
+@msg	Windows denied access to {file}.	Windows odmówił dostępu do {file}.
+@msg	{name}'s installer stopped at one of its own checks: {message}	Instalator aplikacji {name} zatrzymał się na jednym z własnych sprawdzeń: {message}
+@msg	The Windows Installer can't find its saved copy of the installer of the {name} version installed now, so it can't replace that version. Repair that version from its own installer (msiexec /fv with the installer's path), then try again.	Instalator Windows nie może znaleźć zapisanej kopii instalatora obecnie zainstalowanej wersji aplikacji {name}, więc nie może zastąpić tej wersji. Napraw tę wersję jej własnym instalatorem (msiexec /fv ze ścieżką do instalatora) i spróbuj ponownie.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} została zainstalowana z repozytorium {repo} lub AUR ({pkg}). Zaktualizuj ją poleceniem {cmd} lub sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} została zainstalowana z repozytorium {repo} lub AUR ({pkg}). Zaktualizuj ją za pomocą swojego pomocnika AUR (na przykład: yay -S {pkg}) lub poleceniem sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} została zainstalowana z AUR ({pkg}). Zaktualizuj ją poleceniem {cmd}
@@ -429,6 +453,7 @@ column	Author	Autor
 	Nightly	Wersja nocna
 	Nightly (none published yet)	Wersja nocna (jeszcze brak)
 	Install version {version}	Zainstaluj wersję {version}
+	Retry install of version {version}	Ponów instalację wersji {version}
 	Download selected version	Pobierz wybraną wersję
 	Older launcher versions require a manual reinstall.	Starsze wersje programu uruchamiającego wymagają ręcznej ponownej instalacji.
 	Your files may not open in older versions.	Starsza wersja może nie otwierać Twoich plików.

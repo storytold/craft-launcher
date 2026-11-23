@@ -25,6 +25,8 @@
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
+use std::path::{Path, PathBuf};
+
 use artcraft_launcher_core::protocol::CANCELLED;
 
 use super::msi_batch::{self, DECLINED, LAUNCH_FAILED};
@@ -40,12 +42,14 @@ pub(super) struct Steps<'a> {
     pub reinstall_previous: &'a mut dyn FnMut() -> Result<(), String>,
 }
 
-/// A removal that stopped: its error, and whether an earlier registration was already removed (an
-/// app can be registered more than once), in which case the app is partly gone.
+/// A removal that stopped: its error, whether an earlier registration was already removed (an
+/// app can be registered more than once), in which case the app is partly gone, and the
+/// `msiexec` exit code when it ran.
 #[derive(Debug)]
 pub(super) struct Removal {
     pub error: String,
     pub partly: bool,
+    pub code: Option<i32>,
 }
 
 /// Removes the installed copy, installs the chosen version, and puts the previous one back if
@@ -53,7 +57,7 @@ pub(super) struct Removal {
 /// something also puts the previous version back.
 pub(super) fn run(steps: Steps<'_>) -> Result<(), String> {
     let Steps { app, chosen, previous, remove, install_chosen, reinstall_previous } = steps;
-    if let Err(Removal { error, partly }) = remove() {
+    if let Err(Removal { error, partly, .. }) = remove() {
         if !partly {
             return Err(error);
         }
@@ -70,6 +74,48 @@ pub(super) fn run(steps: Steps<'_>) -> Result<(), String> {
     match reinstall_previous() {
         Ok(()) => Err(put_back(app, chosen, previous, &why)),
         Err(again) => Err(not_put_back(app, chosen, previous, &why, &reason(&again))),
+    }
+}
+
+/// A package going in or back: its file and version.
+pub(super) type Package<'a> = (&'a Path, &'a str);
+
+/// An `msiexec` exit code and the path of its log once it has run. A removal writes no log.
+pub(super) type Exit = Option<(i32, Option<PathBuf>)>;
+
+/// [`run`] with `install` running one package's `msiexec`. `exit` gets the exit code of the step
+/// that stopped the downgrade, so a failed downgrade can name what stopped it: a removal's code,
+/// or the chosen package's code and log. The put-back's code is not kept.
+pub(super) fn run_packages(
+    app: &str,
+    chosen: Package<'_>,
+    previous: Package<'_>,
+    remove: &mut dyn FnMut() -> Result<(), Removal>,
+    install: &dyn Fn(&Path, &mut Exit) -> Result<(), String>,
+    exit: &mut Exit,
+) -> Result<(), String> {
+    let mut removal = None;
+    let result = run(Steps {
+        app,
+        chosen: chosen.1,
+        previous: previous.1,
+        remove: &mut || remove().inspect_err(|stopped| removal = stopped.code),
+        install_chosen: &mut || install(chosen.0, exit),
+        reinstall_previous: &mut || install(previous.0, &mut None),
+    });
+    if let Some(code) = removal {
+        *exit = Some((code, None));
+    }
+    result
+}
+
+/// The `msiexec` exit code that stopped a finished elevated session, when one did: a removal's,
+/// which writes no log, or the chosen package's, whose log is `chosen_log`.
+pub(super) fn failed_exit(ended: &Ended, chosen_log: PathBuf) -> Exit {
+    match ended {
+        Ended::RemovalFailed(code) | Ended::PartlyRemovedPutBack(code) | Ended::PartlyRemovedNotPutBack { removal: code, .. } => Some((*code, None)),
+        Ended::PutBack(code) | Ended::NotPutBack { install: code, .. } => Some((*code, Some(chosen_log))),
+        _ => None,
     }
 }
 
@@ -188,21 +234,31 @@ pub(super) fn ended(code: Option<i32>) -> Ended {
 }
 
 /// What a finished elevated downgrade means for the person. `LaunchFailed` is not passed here:
-/// the caller reports [`no_session`] instead.
-pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> Result<(), String> {
+/// the caller reports [`no_session`] instead. A failed install of `chosen` or `previous` names
+/// the log it wrote (`logs`, in that order); a removal writes none.
+pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str, logs: [&Path; 2]) -> Result<(), String> {
     // Inside the session permission was already given: a cancel there is the progress window's.
     let msiexec = |code: i32| match super::explain(Some(code)).err().unwrap_or_default() {
         e if e == CANCELLED => "it was cancelled".to_string(),
         e => e,
     };
+    let installed = |code: i32, log: &Path| match msiexec(code) {
+        e if code == 1602 => e,
+        e => format!("{e}. Its log is at {}", log.display()),
+    };
+    let [chosen_log, previous_log] = logs;
     match ended {
         Ended::Done => Ok(()),
         Ended::Declined => Err(CANCELLED.to_string()),
         Ended::RemovalFailed(code) => Err(format!("{app} {previous} couldn't be removed ({}), so nothing was changed.", msiexec(code))),
-        Ended::PutBack(code) => Err(put_back(app, chosen, previous, &msiexec(code))),
-        Ended::NotPutBack { install, back } => Err(not_put_back(app, chosen, previous, &msiexec(install), &msiexec(back))),
+        Ended::PutBack(code) => Err(put_back(app, chosen, previous, &installed(code, chosen_log))),
+        Ended::NotPutBack { install, back } => {
+            Err(not_put_back(app, chosen, previous, &installed(install, chosen_log), &installed(back, previous_log)))
+        }
         Ended::PartlyRemovedPutBack(code) => Err(partly_removed_put_back(app, previous, &msiexec(code))),
-        Ended::PartlyRemovedNotPutBack { removal, back } => Err(partly_removed_not_put_back(app, previous, &msiexec(removal), &msiexec(back))),
+        Ended::PartlyRemovedNotPutBack { removal, back } => {
+            Err(partly_removed_not_put_back(app, previous, &msiexec(removal), &installed(back, previous_log)))
+        }
         Ended::LaunchFailed | Ended::Other(_) => {
             let code = match ended {
                 Ended::Other(Some(code)) => code.to_string(),

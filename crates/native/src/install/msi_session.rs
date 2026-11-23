@@ -47,6 +47,12 @@ use super::MsiScope;
 /// shown to anyone.
 pub(super) const NO_SESSION: &str = "no batch session";
 
+/// Stands between a member's message and its installer's exit code on the way through the
+/// installer queue, whose outcomes are text (see [`reported`] and [`heard`]). Windows allows no
+/// control character in a path, and [`super::explain`]'s messages hold none, so no message
+/// contains it. Never shown to anyone.
+const EXIT_CODE: char = '\u{1f}';
+
 /// How long the waiting side looks for the elevated copy's first act, writing its process id.
 /// A behavioural antivirus may hold a start-up up for minutes; falling back before the elevated
 /// copy has even begun would race its installers, so the wait is patient and the failure is an
@@ -162,11 +168,7 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
             SessionEnd::Done(codes) => {
                 for (at, entry) in &joined {
                     outcomes[*at] = match codes.iter().find(|(app, _)| app == &entry.app) {
-                        // A negative code is "no exit code" (see [`run_installer`]): no installer
-                        // ran, so there is no log to point at.
-                        Some((_, code)) => super::explain(Some(*code)).map_err(|e| {
-                            if *code == 1602 || *code < 0 { e } else { format!("{e}. Its log is at {}", super::msi_log(&entry.msi).display()) }
-                        }),
+                        Some((_, code)) => reported(&entry.msi, *code),
                         None => Err(format!("the shared install session never reported {}'s result", entry.app)),
                     };
                 }
@@ -194,6 +196,29 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
         let _ = std::fs::remove_file(file);
     }
     outcomes
+}
+
+/// What a member hears for `code`, its installer's exit code in the session's report. A negative
+/// code is "no exit code" (see [`run_installer`]): no installer ran, so the message names no log
+/// and [`heard`] finds no code.
+pub(super) fn reported(msi: &Path, code: i32) -> Result<(), String> {
+    super::explain(Some(code)).map_err(|e| {
+        if code < 0 {
+            return e;
+        }
+        let message = if code == 1602 { e } else { format!("{e}. Its log is at {}", super::msi_log(msi).display()) };
+        format!("{message}{EXIT_CODE}{code}")
+    })
+}
+
+/// What a member takes from the outcome it heard about `msi`: the message to show, and its
+/// installer's exit code and log for the app's card. Any other outcome carries no code.
+pub(super) fn heard(outcome: Result<(), String>, msi: &Path) -> (Result<(), String>, super::msi_downgrade::Exit) {
+    let Err(error) = &outcome else { return (outcome, None) };
+    match error.rsplit_once(EXIT_CODE).and_then(|(message, code)| Some((message, code.parse::<i32>().ok()?))) {
+        Some((message, code)) => (Err(message.to_string()), Some((code, Some(super::msi_log(msi))))),
+        None => (outcome, None),
+    }
 }
 
 /// Each target's outcome so far, the members in the session, and the files held for them.
@@ -675,6 +700,44 @@ mod tests {
                 left > 0
             };
             assert!(matches!(watch(&mut || Seen::Unwatched, &pid_file, &results, TOKEN, &mut pause), SessionEnd::Unknown));
+        }
+    }
+
+    #[test]
+    fn each_member_hears_its_own_exit_code_and_log() {
+        let (photocraft, lightcraft) = (Path::new(r"C:\Downloads\photocraft.msi"), Path::new(r"C:\Downloads\lightcraft.msi"));
+        let log = |msi: &Path| super::super::msi_log(msi);
+        let (message, exit) = heard(reported(photocraft, 1603), photocraft);
+        assert_eq!(message, Err(format!("the Windows Installer stopped with error 1603. Its log is at {}", log(photocraft).display())));
+        assert_eq!(exit, Some((1603, Some(log(photocraft)))));
+        let (message, exit) = heard(reported(lightcraft, 1618), lightcraft);
+        assert!(message.is_err_and(|e| e.starts_with("another installation is in progress") && e.ends_with(&log(lightcraft).display().to_string())));
+        assert_eq!(exit, Some((1618, Some(log(lightcraft)))));
+    }
+
+    #[test]
+    fn a_dismissed_prompt_keeps_its_code_and_the_cancelled_message() {
+        let msi = Path::new(r"C:\Downloads\photocraft.msi");
+        let (message, exit) = heard(reported(msi, 1602), msi);
+        assert_eq!(message, Err(artcraft_launcher_core::protocol::CANCELLED.to_string()));
+        assert_eq!(exit, Some((1602, Some(super::super::msi_log(msi)))));
+    }
+
+    #[test]
+    fn a_member_with_no_installer_result_hears_no_code() {
+        let msi = Path::new(r"C:\Downloads\photocraft.msi");
+        for code in [0, 3010, 1641] {
+            assert_eq!(heard(reported(msi, code), msi), (Ok(()), None), "exit code {code} is a success");
+        }
+        let (message, exit) = heard(reported(msi, -1), msi);
+        assert!(message.is_err_and(|e| !e.contains("log")), "no installer ran, so no log is named");
+        assert_eq!(exit, None);
+        for error in [
+            NO_SESSION,
+            "the shared install session never reported photocraft's result",
+            "the shared install session couldn't be watched. Try again.",
+        ] {
+            assert_eq!(heard(Err(error.to_string()), msi), (Err(error.to_string()), None));
         }
     }
 
