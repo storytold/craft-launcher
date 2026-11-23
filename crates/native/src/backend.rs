@@ -390,6 +390,12 @@ impl RefusedNightlyBackend {
     }
 }
 impl Backend for RefusedNightlyBackend {
+    /// Unusable storage doesn't make a platform without signing trust look available: Settings
+    /// shows the same calm "not available yet" as a usable context would.
+    fn nightly_available(&self) -> bool {
+        self.platform.is_some_and(crate::nightly_profile::new_installs_available)
+    }
+
     fn send(&mut self, command: Command) {
         match command {
             Command::Configure(_) | Command::DownloadOrder(_) => {}
@@ -2374,6 +2380,11 @@ impl NativeBackend {
 impl Backend for NativeBackend {
     fn has_active_jobs(&self) -> bool {
         !self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
+    }
+
+    fn nightly_available(&self) -> bool {
+        self.shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly
+            && self.platform.is_some_and(crate::nightly_profile::new_installs_available)
     }
 
     fn nightly_context(&self) -> Option<Box<dyn Backend>> {

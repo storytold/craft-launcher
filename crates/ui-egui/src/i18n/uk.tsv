@@ -465,6 +465,22 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Simultaneous downloads	Одночасні завантаження
 	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Шлюз Craft (craft-ai-mcp) не встановлено поруч із лаунчером.
 	Waiting for another download…	Очікування іншого завантаження…
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Шрифти
+	Allow font downloads	Дозволити завантаження шрифтів
+	Couldn't change the font download setting: {e}	Не вдалося змінити налаштування завантаження шрифтів: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Шрифти завантажуються з їхніх джерел лише тоді, коли ви встановлюєте шрифт. Попередній перегляд шрифтів має власне налаштування нижче. Це налаштування спільне для всіх застосунків Craft.
+	Sources	Джерела
+	Apps	Застосунки
+	Fonts for every Craft app	Шрифти для всіх застосунків Craft
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Показувати попередній перегляд шрифтів
+	Advanced	Додатково
+	Font preview server	Сервер попереднього перегляду шрифтів
+	Couldn't use this server: {e}	Не вдалося використати цей сервер: {e}
+	Couldn't change the font previews setting: {e}	Не вдалося змінити налаштування попереднього перегляду шрифтів: {e}
+	Set by {name} in the environment.	Задано змінною {name} у середовищі.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Невстановлені шрифти показують попередній перегляд із цього сервера, і встановлення спершу пробує його. Порожнє поле — типовий сервер.
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
 	Enable pre-release builds	Enable pre-release builds
@@ -511,6 +527,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Nightly builds	Нічні збірки
 	Discover nightly builds (Pre-Release page)	Шукати нічні збірки (сторінка Pre-Release)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Окремі встановлення, налаштування й дані. Після вимкнення встановлені копії та їхні дані зберігаються.
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	Бета-версії та кандидати на випуск можуть замінити стабільне встановлення.
 
 # Nightly status (English fallback; localization is maintained upstream).

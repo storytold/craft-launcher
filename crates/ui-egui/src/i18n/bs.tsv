@@ -454,6 +454,21 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Pin {name} to top	Prikači {name} na vrh
 	Unpin {name}	Otkači {name}
 	Hide ArtCraft Launcher from the Dock while in the background	Sakrij ArtCraft Launcher iz Docka dok radi u pozadini
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Fontovi
+	Allow font downloads	Dozvoli preuzimanje fontova
+	Couldn't change the font download setting: {e}	Nije moguće promijeniti postavku preuzimanja fontova: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Fontovi se preuzimaju iz svojih izvora samo kada instalirate font. Pregledi fontova imaju vlastitu postavku u nastavku. Ovu postavku dijele sve Craft aplikacije.
+	Sources	Izvori
+	Apps	Aplikacije
+	Fonts for every Craft app	Fontovi za sve Craft aplikacije
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Prikaži preglede fontova
+	Font preview server	Server za preglede fontova
+	Couldn't use this server: {e}	Ovaj server nije moguće koristiti: {e}
+	Couldn't change the font previews setting: {e}	Nije moguće promijeniti postavku pregleda fontova: {e}
+	Set by {name} in the environment.	Postavljeno varijablom {name} u okruženju.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Fontovi koje niste instalirali prikazuju pregled s ovog servera, a instalacije ga prvo pokušavaju. Prazno znači zadani server.
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
 	Enable pre-release builds	Enable pre-release builds
@@ -500,6 +515,7 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Nightly builds	Noćne verzije
 	Discover nightly builds (Pre-Release page)	Otkrij noćne verzije (stranica Pre-Release)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Odvojene instalacije, postavke i podaci. Isključivanje zadržava instalirane kopije i njihove podatke.
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	Bete i kandidati za izdanje mogu zamijeniti vašu stabilnu instalaciju.
 
 # Nightly status (English fallback; localization is maintained upstream).

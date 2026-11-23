@@ -448,6 +448,21 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	已添加
 	Remove	移除
 	Add	添加
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	字体
+	Allow font downloads	允许下载字体
+	Couldn't change the font download setting: {e}	无法更改字体下载设置：{e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	仅在您安装字体时，才会从其来源下载字体。字体预览在下方有单独的设置。所有 Craft 应用共用此设置。
+	Sources	来源
+	Apps	应用
+	Fonts for every Craft app	适用于所有 Craft 应用的字体
+# The font preview settings in Settings' Fonts box.
+	Show font previews	显示字体预览
+	Font preview server	字体预览服务器
+	Couldn't use this server: {e}	无法使用此服务器：{e}
+	Couldn't change the font previews setting: {e}	无法更改字体预览设置：{e}
+	Set by {name} in the environment.	由环境变量 {name} 设置。
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	未安装的字体从此服务器显示预览，安装时也会先尝试此服务器。留空则使用默认服务器。
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
 	Enable pre-release builds	Enable pre-release builds
@@ -494,6 +509,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Nightly builds	每夜构建
 	Discover nightly builds (Pre-Release page)	发现每夜构建（Pre-Release 页面）
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	安装、设置和数据均独立。关闭后仍会保留已安装的副本及其数据。
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	测试版和候选发布版可能会替换您的稳定版安装。
 
 # Nightly status (English fallback; localization is maintained upstream).
