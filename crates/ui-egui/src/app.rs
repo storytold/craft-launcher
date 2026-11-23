@@ -968,6 +968,7 @@ impl LauncherUi {
         egui::CentralPanel::default().frame(egui::Frame::new().fill(tokens.bg)).show(ui, |ui| {
             // The Pre-Release channel has its own page; Apps and Fonts belong to Stable.
             if self.nightly.active {
+                #[cfg(not(target_arch = "wasm32"))]
                 self.fonts.hidden();
                 egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| {
                     ui.add_space(12.0);
@@ -982,6 +983,7 @@ impl LauncherUi {
                 self.fonts.ui(ui, &mut self.settings.fonts, lang.code());
                 return;
             }
+            #[cfg(not(target_arch = "wasm32"))]
             self.fonts.hidden();
             ui.add_space(18.0);
             egui::Frame::new().inner_margin(egui::Margin::symmetric(20, 0)).show(ui, |ui| self.apps_page(ui));
