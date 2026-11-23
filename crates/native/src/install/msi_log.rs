@@ -44,7 +44,11 @@ pub(super) fn cause(log: &Path) -> Option<Cause> {
         file.seek(SeekFrom::Start(start)).ok()?;
         let mut tail = Vec::new();
         file.take(MAX_LOG_BYTES + 1).read_to_end(&mut tail).ok()?;
-        read.push('\n');
+        // A gap between the parts ends the start's last line. When the end begins where the start
+        // stops, a line that crosses the boundary is read whole.
+        if start > MAX_LOG_BYTES {
+            read.push('\n');
+        }
         read.push_str(&text(&tail, utf16));
     }
     find(&read)
@@ -276,5 +280,26 @@ mod tests {
         middle.resize(middle.len() + MAX_LOG_BYTES as usize, b' ');
         let (_dir, log) = written(&middle);
         assert_eq!(cause(&log), None, "past the parts that are read");
+    }
+
+    #[test]
+    fn a_line_across_the_boundary_of_a_log_the_parts_cover_is_read_whole() {
+        // A log longer than one part and shorter than two, so the end starts where the start
+        // stops, with the 1714 record split between them.
+        let record = "MSI (s) (10:20) [10:00:02:010]: Product: ExampleCraft -- Error 1714. The older version of ExampleCraft cannot be removed. System Error 1612.";
+        let split = record.find("1612.").unwrap();
+        let mut bytes = vec![b' '; MAX_LOG_BYTES as usize - split];
+        bytes.extend_from_slice(record.as_bytes());
+        bytes.extend_from_slice(b"\r\nAction ended 10:00:02: RemoveExistingProducts. Return value 3.\r\n");
+        bytes.resize(bytes.len() + 1024, b' ');
+        let (_dir, log) = written(&bytes);
+        assert_eq!(cause(&log), Some(Cause::CachedPackageMissing));
+        // The same in UTF-16, split at the same character, with the end read from an odd length.
+        let mut wide = utf16(&" ".repeat(MAX_LOG_BYTES as usize / 2 - 1 - split));
+        wide.extend(record.encode_utf16().flat_map(u16::to_le_bytes));
+        wide.extend(" ".repeat(1024).encode_utf16().flat_map(u16::to_le_bytes));
+        wide.push(b' ');
+        let (_dir, log) = written(&wide);
+        assert_eq!(cause(&log), Some(Cause::CachedPackageMissing), "in a UTF-16 log");
     }
 }
