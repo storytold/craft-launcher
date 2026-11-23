@@ -255,6 +255,11 @@ impl FontsTab {
         }
     }
 
+    /// Stops the catalog watch while another page is drawn; the next [`FontsTab::ui`] restarts it.
+    pub(crate) fn hidden(&mut self) {
+        self.watch = None;
+    }
+
     /// The panel, built on the first call: reading the indexes and scanning the installed fonts
     /// wait until then.
     fn panel_mut(&mut self, settings: &FontSettings) -> &mut FontsPanel {
