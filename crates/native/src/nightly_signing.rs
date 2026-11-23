@@ -575,9 +575,11 @@ mod tests {
 
     /// The production publisher check on executables supplied by a Windows guest run:
     /// CRAFT_NIGHTLY_PRODUCTION_EXE (a released PhotoCraft photocraft.exe) must pass, and
-    /// CRAFT_NIGHTLY_FOREIGN_EXE (another publisher's validly signed exe) must be refused. Each is
-    /// checked through `authenticate_windows` itself, as a payload's photocraft.exe. Without them
-    /// this lists a skip, which is not coverage.
+    /// CRAFT_NIGHTLY_FOREIGN_EXE must be refused by the publisher pin itself. The foreign file
+    /// must therefore be validly signed by someone else (pwsh.exe, say): a test-signed or
+    /// unsigned file is refused earlier by WinVerifyTrust and fails this test, as do a timeout
+    /// or a query error. Each is checked through `authenticate_windows` itself, as a payload's
+    /// photocraft.exe. Without them this lists a skip, which is not coverage.
     #[cfg(windows)]
     #[test]
     fn production_publisher_check_on_supplied_executables() {
@@ -599,7 +601,11 @@ mod tests {
         }
         if let Some(path) = foreign {
             let refused = check(path).expect_err("another publisher's executable must be refused");
-            writeln!(std::io::stdout().lock(), "PASS foreign executable refused: {refused}").unwrap();
+            assert_eq!(
+                refused, "The Nightly executable requires a valid timestamped signature from the exact pinned publisher, chain root and key usage.",
+                "the foreign executable must pass native verification and be refused by the pin, not by a timeout or another error"
+            );
+            writeln!(std::io::stdout().lock(), "PASS foreign executable refused by the publisher pin: {refused}").unwrap();
         }
     }
 
