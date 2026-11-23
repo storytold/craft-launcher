@@ -527,7 +527,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Nightly builds	Éjszakai buildek
 	Discover nightly builds (Pre-Release page)	Éjszakai buildek keresése (Pre-Release oldal)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Külön telepítések, beállítások és adatok. A kikapcsolás megőrzi a telepített példányokat és adataikat.
-	Pre-release builds aren't available on this platform yet.	Az előzetes verziók ezen a platformon még nem érhetők el.
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	A béták és a kiadásra jelölt verziók lecserélhetik a stabil telepítést.
 
 # Nightly status (English fallback; localization is maintained upstream).

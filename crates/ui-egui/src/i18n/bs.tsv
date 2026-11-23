@@ -500,7 +500,7 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Nightly builds	Noćne verzije
 	Discover nightly builds (Pre-Release page)	Otkrij noćne verzije (stranica Pre-Release)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Odvojene instalacije, postavke i podaci. Isključivanje zadržava instalirane kopije i njihove podatke.
-	Pre-release builds aren't available on this platform yet.	Predizdanja još nisu dostupna na ovoj platformi.
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	Bete i kandidati za izdanje mogu zamijeniti vašu stabilnu instalaciju.
 
 # Nightly status (English fallback; localization is maintained upstream).
