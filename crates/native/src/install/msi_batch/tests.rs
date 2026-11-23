@@ -45,7 +45,7 @@ fn the_command_line_is_the_single_app_route_with_the_same_parts() {
     // No folder and no scope: only the package and the log.
     assert_eq!(line(&msi, None, None).unwrap(), format!("/i \"{package}\" /passive /norestart /l*v \"{log}\""));
     // The same package, as the single-app route builds it.
-    let single = crate::install::msi_command(Path::new("msiexec.exe"), &msi).unwrap();
+    let (single, _) = crate::install::msi_command(Path::new("msiexec.exe"), &msi).unwrap();
     let args: Vec<String> = single.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
     assert_eq!(args, ["/i", &package, "/passive", "/norestart", "/l*v", &log]);
 }

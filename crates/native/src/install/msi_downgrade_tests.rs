@@ -92,7 +92,7 @@ fn a_failed_chosen_install_keeps_its_exit_code_and_log() {
         Err(format!("the Windows Installer stopped with error {code}"))
     };
     let mut exit = None;
-    let result = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut || Ok(()), &install, &mut exit);
+    let result = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut || Ok(()), &mut || Ok(()), &install, &mut exit);
     assert!(result.unwrap_err().contains("putting 0.14.0 back failed too"));
     assert_eq!(exit, Some((1618, Some(chosen.with_extension("log")))));
     // Another installation stopped the removal before it started: nothing was removed or
@@ -104,6 +104,7 @@ fn a_failed_chosen_install_keeps_its_exit_code_and_log() {
         "FilmCraft",
         (chosen, "0.13.0"),
         (previous, "0.14.0"),
+        &mut || Ok(()),
         &mut removal,
         &|_: &Path, _: &mut Exit| panic!("nothing installs"),
         &mut exit,
@@ -113,12 +114,32 @@ fn a_failed_chosen_install_keeps_its_exit_code_and_log() {
     // A removal that stopped after removing one registration keeps its code over the put-back's.
     let mut exit = None;
     let mut removal = || Err(Removal { error: "error 1603".to_string(), partly: true, code: Some(1603) });
-    let _ = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut removal, &install, &mut exit);
+    let _ = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut || Ok(()), &mut removal, &install, &mut exit);
     assert_eq!(exit, Some((1603, None)));
     // Windows Installer never started: no code is kept.
     let mut exit = None;
     let mut removal = || Err(Removal { error: "couldn't start the Windows Installer".to_string(), partly: false, code: None });
-    let _ = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut removal, &install, &mut exit);
+    let _ = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut || Ok(()), &mut removal, &install, &mut exit);
+    assert_eq!(exit, None);
+}
+
+/// The app started while the downgrade waited for its installer turn: the check made once that
+/// turn starts stops it before anything is removed or installed.
+#[test]
+fn a_program_started_while_waiting_stops_the_downgrade_before_removal() {
+    let (chosen, previous) = (Path::new(r"C:\Downloads\filmcraft-0.13.0.msi"), Path::new(r"C:\Downloads\filmcraft-0.14.0.msi"));
+    let running = "FilmCraft is running. Quit it, then try again.";
+    let mut exit = None;
+    let result = run_packages(
+        "FilmCraft",
+        (chosen, "0.13.0"),
+        (previous, "0.14.0"),
+        &mut || Err(running.to_string()),
+        &mut || panic!("nothing is removed"),
+        &|_: &Path, _: &mut Exit| panic!("nothing installs"),
+        &mut exit,
+    );
+    assert_eq!(result, Err(running.to_string()));
     assert_eq!(exit, None);
 }
 

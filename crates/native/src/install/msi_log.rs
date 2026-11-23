@@ -49,7 +49,7 @@ fn text(bytes: &[u8]) -> String {
 
 /// The cause the log's text names: a failed `LaunchConditions` action ("Return value 3"), or a
 /// missing cached package ("Local cached package ... is missing", or error 1714 with system
-/// error 1612).
+/// error 1612, see [`removal_failed_on_missing_cache`]).
 fn find(text: &str) -> Option<Cause> {
     let mut in_launch_conditions = false;
     let mut message = None;
@@ -70,10 +70,31 @@ fn find(text: &str) -> Option<Cause> {
         if in_launch_conditions && let Some(text) = condition_message(line) {
             message = Some(text);
         }
-        cached_missing |=
-            (line.contains("Local cached package") && line.contains("is missing")) || (line.contains("Error 1714") && line.contains("1612"));
+        cached_missing |= (line.contains("Local cached package") && line.contains("is missing")) || removal_failed_on_missing_cache(line);
     }
     cached_missing.then_some(Cause::CachedPackageMissing)
+}
+
+/// Whether `line` is error 1714 ("The older version of [2] cannot be removed. ... System Error
+/// [3].") with system error 1612, the installation source being unavailable. Field 1 of an error
+/// record is its number, and the 1714 message puts the product name in field 2 and the system
+/// error in field 3 (https://learn.microsoft.com/en-us/windows/win32/msi/error-table,
+/// https://learn.microsoft.com/en-us/windows/win32/msi/windows-installer-error-messages). The log
+/// shows the record either as the English message ("Error 1714. ... System Error 1612.") or by
+/// its numbered fields ("Note: 1: 1714 2: <product> 3: 1612"). Both numbers are compared whole,
+/// and the system error is the message's last one, so a product name that holds a number or
+/// those words does not count.
+fn removal_failed_on_missing_cache(line: &str) -> bool {
+    let rendered = line
+        .split_once("Error 1714.")
+        .and_then(|(_, rest)| rest.rsplit_once("System Error "))
+        .is_some_and(|(_, system)| system.trim_end().trim_end_matches('.') == "1612");
+    let numbered = line
+        .split_once("Note: 1: 1714 ")
+        .and_then(|(_, rest)| rest.strip_prefix("2: "))
+        .and_then(|rest| rest.rsplit_once(" 3: "))
+        .is_some_and(|(_, system)| system.trim_end() == "1612");
+    rendered || numbered
 }
 
 /// The message a failed launch condition shows, from a line logged while `LaunchConditions`
@@ -159,6 +180,17 @@ mod tests {
         for line in missing_cached_package().lines().filter(|line| line.contains("Local cached") || line.contains("1714")) {
             assert_eq!(find(line), Some(Cause::CachedPackageMissing), "{line}");
         }
+        // The same record by its numbered fields, without the English message: field 1 is the
+        // error, 2 the product and 3 the system error.
+        let numbered = [
+            "Action start 10:00:02: RemoveExistingProducts.",
+            "MSI (s) (10:20) [10:00:02:010]: Note: 1: 1714 2: ExampleCraft 1612 3: 1612 ",
+            "Action ended 10:00:02: RemoveExistingProducts. Return value 3.",
+        ]
+        .join("\r\n");
+        let (_dir, log) = written(&utf16(&numbered));
+        assert_eq!(cause(&log), Some(Cause::CachedPackageMissing));
+        assert_eq!(find("Note: 1: 1714 2:  3: 1612"), Some(Cause::CachedPackageMissing), "an empty product name");
     }
 
     #[test]
@@ -166,6 +198,19 @@ mod tests {
         let passed = failed_launch_condition().replace("LaunchConditions. Return value 3.", "LaunchConditions. Return value 1.");
         assert_eq!(find(&passed), None, "a launch condition that passed");
         assert_eq!(find("Error 1714. The older version of ExampleCraft cannot be removed. System Error 1603."), None, "1714 for another reason");
+        // A product name that holds the number, or the words, is not the system error.
+        for line in [
+            "Product: Craft1612 -- Error 1714. The older version of Craft1612 cannot be removed. System Error 1603.",
+            "Product: System Error 1612 -- Error 1714. The older version of System Error 1612 cannot be removed. System Error 1603.",
+            "Error 1714. The older version of ExampleCraft cannot be removed. System Error 16120.",
+            "Error 17140. The older version of ExampleCraft cannot be removed. System Error 1612.",
+            "MSI (s) (10:20) [10:00:02:010]: Note: 1: 1714 2: Craft1612 3: 1603",
+            "MSI (s) (10:20) [10:00:02:010]: Note: 1: 1714 2: Craft 3: 1612 3: 1603",
+            "MSI (s) (10:20) [10:00:02:010]: Note: 1: 1612 2: ExampleCraft 3: 1714",
+            "MSI (s) (10:20) [10:00:02:010]: Note: 1: 17140 2: ExampleCraft 3: 1612",
+        ] {
+            assert_eq!(find(line), None, "{line}");
+        }
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(cause(&dir.path().join("missing.log")), None);
         assert_eq!(cause(dir.path()), None, "a folder");

@@ -211,6 +211,24 @@ fn noted(error: std::io::Error, path: &Path, refused: &mut Option<Refused>) -> S
     error.to_string()
 }
 
+/// Others may read a held program file, but not write, rename or delete it, or open it for
+/// themselves alone.
+const FILE_SHARE_READ: u32 = 0x1;
+
+/// Copies the program file `old` to `saved` for a rollback with `copy` (`std::fs::copy`, which
+/// keeps its attributes, modified time and alternate data streams). A handle on `old` is held
+/// from before the copy to its end, so no other program can take the file for itself or write it
+/// in between: Windows refusing that handle is kept in `refused`, and a copy that then fails (the
+/// backup could not be written) is not.
+fn back_up(old: &Path, saved: &Path, refused: &mut Option<Refused>, copy: &dyn Fn(&Path, &Path) -> std::io::Result<u64>) -> Result<(), String> {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    let held = std::fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(old).map_err(|e| noted(e, old, refused))?;
+    let copied = copy(old, saved).map(|_| ()).map_err(|e| e.to_string());
+    drop(held);
+    copied
+}
+
 /// Keeps existing portable installations at their location and preserves unrecorded user files,
 /// unless `replace` allows writing over them.
 #[allow(clippy::too_many_arguments)]
@@ -306,11 +324,9 @@ pub fn install_noting(
             let saved = backup.join(relative);
             std::fs::create_dir_all(saved.parent().ok_or("no backup folder")?).map_err(|e| e.to_string())?;
             // Copy the rollback copy: cache and custom installation can be on different drives.
-            // Opening the program file is recorded as a refusal; writing the backup is not. The
-            // handle is closed before the copy and the remove, so the file is not left pending
-            // deletion. The copy keeps the file's attributes and modified time for the rollback.
-            drop(std::fs::File::open(&old).map_err(|e| noted(e, &old, refused))?);
-            std::fs::copy(&old, &saved).map_err(|e| e.to_string())?;
+            // The backup's handle on the program file is closed before the remove, so the file
+            // is not left pending deletion.
+            back_up(&old, &saved, refused, &|from, to| std::fs::copy(from, to))?;
             std::fs::remove_file(&old).map_err(|e| noted(e, &old, refused))?;
             moved.push(relative.clone());
         }
@@ -831,6 +847,37 @@ mod tests {
         #[allow(clippy::permissions_set_readonly_false)]
         permissions.set_readonly(false);
         std::fs::set_permissions(&library, permissions).unwrap();
+    }
+
+    /// While its backup is copied, the program file stays held: another program can't take it for
+    /// itself in between. A file another program already holds is named; a backup that can't be
+    /// written names no program file.
+    #[test]
+    fn a_program_file_stays_held_while_its_backup_is_copied() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("lib.dll");
+        std::fs::write(&old, b"library").unwrap();
+        let mut refused = None;
+        let copy = |from: &Path, to: &Path| {
+            let taken = std::fs::OpenOptions::new().read(true).share_mode(0).open(from).map(drop).map_err(|e| e.raw_os_error());
+            assert_eq!(taken, Err(Some(32)), "another program took the file during the copy");
+            std::fs::copy(from, to)
+        };
+        let saved = dir.path().join("lib.dll.backup");
+        assert_eq!(back_up(&old, &saved, &mut refused, &copy), Ok(()));
+        assert_eq!(std::fs::read(&saved).unwrap(), b"library");
+        assert_eq!(refused, None);
+        let mut refused = None;
+        let unwritable = |_: &Path, _: &Path| -> std::io::Result<u64> { Err(std::io::Error::from_raw_os_error(5)) };
+        assert!(back_up(&old, &dir.path().join("other.backup"), &mut refused, &unwritable).is_err());
+        assert_eq!(refused, None, "the backup could not be written");
+        // The file is no longer held once its backup is made.
+        let holder = std::fs::OpenOptions::new().read(true).share_mode(0).open(&old).unwrap();
+        let mut refused = None;
+        assert!(back_up(&old, &dir.path().join("third.backup"), &mut refused, &|_, _| panic!("nothing is copied")).is_err());
+        assert_eq!(refused.map(|refused| refused.code), Some(32), "a file another program holds is named");
+        drop(holder);
     }
 
     #[test]

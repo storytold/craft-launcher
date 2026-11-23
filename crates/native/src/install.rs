@@ -249,6 +249,9 @@ fn install_checking(
     let mut msi_exit = None;
     #[cfg(windows)]
     let mut refused = None;
+    // What a downgrade's second look found running once its installer turn started.
+    #[cfg(windows)]
+    let mut blocked = None;
     #[allow(unused_variables)]
     let version = release.version_label();
     let result = match kind {
@@ -282,6 +285,9 @@ fn install_checking(
                     msi_scope,
                     job.stop,
                     &mut *job.phase,
+                    // The app or its command-line tool may have started while the downgrade
+                    // waited for another Windows Installer job: looked for again before removal.
+                    &mut || closed_before_removal(app, running_copy, find_running, &mut blocked),
                     &mut msi_exit,
                 ),
                 None => windows::run_msi(
@@ -359,6 +365,9 @@ fn install_checking(
                 }
                 (None, None) => None,
             };
+            if let Some(failure) = blocked {
+                job.failure = Some(failure);
+            }
             Err(match classified {
                 Some((message, failure)) => {
                     job.failure = Some(failure);
@@ -416,6 +425,26 @@ fn open_failure(app: &CraftApp, location: &Path, running: &process::Running, det
     };
     let details = details.into_iter().map(str::to_string).chain(std::iter::once(program)).collect::<Vec<_>>().join(" · ");
     Some((error, InstallFailure { blocker, details }))
+}
+
+/// The look a downgrade takes again once its installer turn starts, before it removes anything:
+/// `Err` with the message, and the card's cause in `blocked`, when the copy at `location` or its
+/// command-line tool is running. `Ok` without a copy to look for.
+#[cfg(any(windows, test))]
+fn closed_before_removal(
+    app: &CraftApp,
+    location: Option<&Path>,
+    find_running: FindRunning<'_>,
+    blocked: &mut Option<InstallFailure>,
+) -> Result<(), String> {
+    let Some(location) = location else { return Ok(()) };
+    match open_failure(app, location, &find_running(&running_targets(app, location)), None) {
+        Some((error, failure)) => {
+            *blocked = Some(failure);
+            Err(error)
+        }
+        None => Ok(()),
+    }
 }
 
 /// The card's cause when the Windows Installer stopped an install with `code` (its log at
@@ -2440,15 +2469,17 @@ mod msi_log;
 #[cfg(any(windows, test))]
 pub mod msi_session;
 /// Builds the Windows Installer command separately so its package argument can be checked
-/// without starting an installer.
+/// without starting an installer. Also returns the log the command names, for the messages and
+/// the card once it has run: the package path is not resolved again afterwards.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn msi_command(program: &Path, msi: &Path) -> Result<std::process::Command, String> {
+fn msi_command(program: &Path, msi: &Path) -> Result<(std::process::Command, PathBuf), String> {
     let msi = msi_path(msi)?;
+    let log = msi_log(&msi);
     let mut command = process::command(program);
     // A verbose log beside the package: Windows Installer's own errors (1603 above all) say
     // nothing without it.
-    command.arg("/i").arg(&msi).args(["/passive", "/norestart", "/l*v"]).arg(msi_log(&msi));
-    Ok(command)
+    command.arg("/i").arg(&msi).args(["/passive", "/norestart", "/l*v"]).arg(&log);
+    Ok((command, log))
 }
 
 /// Where `msi_command` asks Windows Installer to write its log: beside the package as
@@ -2476,7 +2507,7 @@ pub mod windows {
 
     use super::{
         CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, msi_session, process, turn,
+        msi_log, msi_path, msi_scope_arguments, msi_session, process, turn,
     };
 
     pub(super) fn msiexec() -> PathBuf {
@@ -2548,7 +2579,7 @@ pub mod windows {
             log::warn!("{}: the batch session could not start; installing it by itself", app.name);
             return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope, exit));
         }
-        let (outcome, reported) = msi_session::heard(outcome, package.file);
+        let (outcome, reported) = msi_session::heard(outcome);
         *exit = reported;
         outcome
     }
@@ -2557,7 +2588,7 @@ pub mod windows {
     /// publisher. `exit` gets its exit code and the path of its log.
     fn run_direct(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>, exit: &mut msi_downgrade::Exit) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
-        let mut command = msi_command(&msiexec(), msi)?;
+        let (mut command, log) = msi_command(&msiexec(), msi)?;
         if let Some(dir) = destination {
             command.raw_arg(msi_folder_argument(dir)?);
         }
@@ -2565,17 +2596,18 @@ pub mod windows {
             command.raw_arg(argument);
         }
         let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
-        *exit = status.code().map(|code| (code, Some(msi_log(msi))));
+        // The log the command named, even when a link in the package's path changed meanwhile.
+        *exit = status.code().map(|code| (code, Some(log.clone())));
         explain(status.code()).map_err(|e| match status.code() {
             Some(1602) | None => e,
-            _ => format!("{e}. Its log is at {}", msi_log(msi).display()),
+            _ => format!("{e}. Its log is at {}", log.display()),
         })
     }
 
     /// Runs the launcher's own new MSI for a self-update, with the same progress window and no
     /// restart as [`run_msi`], and waits for it.
     pub fn reinstall(msi: &Path) -> Result<(), String> {
-        let status = msi_command(&msiexec(), msi)?.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
+        let status = msi_command(&msiexec(), msi)?.0.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
         explain(status.code())
     }
 
@@ -2599,7 +2631,9 @@ pub mod windows {
     /// over: removes it, installs `chosen` in the same folder and context, and puts `previous`
     /// back if that does not finish (see [`msi_downgrade`]). An all-users copy does all three
     /// under one permission prompt, or not at all; a per-user copy needs none, and runs them one
-    /// by one in a single turn of the installer queue. `exit` gets the exit code of the step that
+    /// by one in a single turn of the installer queue. `ready` runs once that turn starts, before
+    /// anything is removed: its error (the app was started while the job waited for the turn)
+    /// stops the downgrade with nothing changed. `exit` gets the exit code of the step that
     /// stopped it: a removal's, or the chosen package's with the path of its log.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn downgrade_msi(
@@ -2610,19 +2644,21 @@ pub mod windows {
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
+        ready: &mut dyn FnMut() -> Result<(), String>,
         exit: &mut msi_downgrade::Exit,
     ) -> Result<(), String> {
         if scope == Some(MsiScope::PerMachine) {
             let mut elevated = None;
             in_turn(stop, phase, JobPhase::Installing, || {
+                ready()?;
                 elevated = downgrade_elevated(app, &chosen, &previous, destination, scope)?;
                 Ok(())
             })?;
             // Separate prompts are no fallback: refusing a later one would leave no app at all.
             return match elevated {
-                Some(ended) => {
-                    *exit = msi_downgrade::failed_exit(&ended, msi_log(chosen.file));
-                    msi_downgrade::report(ended, app.name, chosen.version, previous.version, [&msi_log(chosen.file), &msi_log(previous.file)])
+                Some((ended, [chosen_log, previous_log])) => {
+                    *exit = msi_downgrade::failed_exit(&ended, chosen_log.clone());
+                    msi_downgrade::report(ended, app.name, chosen.version, previous.version, [&chosen_log, &previous_log])
                 }
                 None => Err(msi_downgrade::no_session(app.name, chosen.version)),
             };
@@ -2634,6 +2670,7 @@ pub mod windows {
                 app.name,
                 (chosen.file, chosen.version),
                 (previous.file, previous.version),
+                ready,
                 &mut || remove_registrations(app),
                 &|msi, exit| run_direct(msi, destination, scope, exit),
                 exit,
@@ -2642,25 +2679,31 @@ pub mod windows {
     }
 
     /// The one-prompt route: both packages held unchanged and checked again, then one elevated
-    /// session removes, installs and if needed puts back. `None` when that session can't start.
+    /// session removes, installs and if needed puts back. Returns how it ended with the logs its
+    /// script names for the chosen and the previous package; `None` when that session can't
+    /// start.
     fn downgrade_elevated(
         app: &CraftApp,
         chosen: &Package<'_>,
         previous: &Package<'_>,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
-    ) -> Result<Option<msi_downgrade::Ended>, String> {
-        let _held = (msi_batch::hold(chosen.file, chosen.sha256)?, msi_batch::hold(previous.file, previous.sha256)?);
+    ) -> Result<Option<(msi_downgrade::Ended, [PathBuf; 2])>, String> {
+        // Each package is resolved once: the file held, its script line and the log the messages
+        // name all come from the same path.
+        let (chosen_msi, previous_msi) = (msi_path(chosen.file)?, msi_path(previous.file)?);
+        let _held = (msi_batch::hold(&chosen_msi, chosen.sha256)?, msi_batch::hold(&previous_msi, previous.sha256)?);
         let installs = crate::detect::windows::msi_installs(app);
         if installs.is_empty() {
             return Err(format!("{} isn't registered with the Windows Installer", app.name));
         }
         let removals = msi_downgrade::elevated_removals(app.name, installs.iter().map(|m| (m.product_code.as_str(), m.scope)))?;
+        let logs = [msi_log(&chosen_msi), msi_log(&previous_msi)];
         let script = msi_downgrade::script(
             msi_batch::text(&msiexec())?,
             &removals,
-            &msi_batch::line(chosen.file, destination, scope)?,
-            &msi_batch::line(previous.file, destination, scope)?,
+            &msi_batch::line(&chosen_msi, destination, scope)?,
+            &msi_batch::line(&previous_msi, destination, scope)?,
         );
         let root =
             std::env::var_os("SystemRoot").map(PathBuf::from).filter(|root| root.is_absolute()).ok_or("SystemRoot is not set to an absolute path")?;
@@ -2677,7 +2720,7 @@ pub mod windows {
                 msi_downgrade::Ended::LaunchFailed
             }
         };
-        Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some(ended))
+        Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some((ended, logs)))
     }
 
     pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
@@ -2764,6 +2807,27 @@ mod tests {
         let (message, failure) = msi_failure(app, None, 1603, Some(&log), None, || panic!("no installed copy to look for")).unwrap();
         assert_eq!(message, None);
         assert_eq!(failure, InstallFailure { blocker: Blocker::InstallerFailed, details: format!("MSI 1603 · {}", log.display()) });
+    }
+
+    /// A downgrade looks again once its installer turn starts: a copy or command-line tool started
+    /// while it waited stops it with the card's cause, and without a running program it goes on.
+    #[test]
+    fn a_downgrade_looks_for_a_running_copy_again_before_removal() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let (exe, cli) = photocraft_copy();
+        let mut blocked = None;
+        let started = |targets: &[PathBuf]| {
+            assert_eq!(targets, running_targets(app, &exe), "the copy and its command-line tool are looked for");
+            process::Running::Confirmed(cli.clone())
+        };
+        let error = closed_before_removal(app, Some(&exe), &started, &mut blocked).unwrap_err();
+        assert_eq!(error, "PhotoCraft's command-line tool is running. Quit it, then try again.");
+        assert_eq!(blocked, Some(InstallFailure { blocker: Blocker::AppOpen, details: cli.display().to_string() }));
+        let mut blocked = None;
+        assert_eq!(closed_before_removal(app, Some(&exe), &|_| process::Running::No, &mut blocked), Ok(()));
+        assert_eq!(blocked, None);
+        assert_eq!(closed_before_removal(app, None, &|_| panic!("no copy to look for"), &mut blocked), Ok(()));
+        assert_eq!(blocked, None);
     }
 
     /// Windows Installer 1618 is another installation; 1603 is the app being open only when the
@@ -3133,7 +3197,8 @@ mod tests {
         std::fs::write(&file, b"test package").unwrap();
         let link = dir.path().join("current cache");
         std::os::unix::fs::symlink(&cache, &link).unwrap();
-        let command = msi_command(Path::new("msiexec.exe"), &link.join("PhotoCraft.msi")).unwrap();
+        let (command, log) = msi_command(Path::new("msiexec.exe"), &link.join("PhotoCraft.msi")).unwrap();
+        assert_eq!(log, file.canonicalize().unwrap().with_extension("log"));
         let args: Vec<_> = command.get_args().collect();
         assert_eq!(
             args,
@@ -3171,8 +3236,9 @@ mod tests {
         let resolved = msi_path(&linked).unwrap();
         assert_ne!(resolved.parent(), linked.parent(), "the package is reached through the link");
         assert_eq!(msi_log(&linked), resolved.with_extension("log"));
-        let command = msi_command(Path::new("msiexec.exe"), &linked).unwrap();
+        let (command, log) = msi_command(Path::new("msiexec.exe"), &linked).unwrap();
         assert_eq!(command.get_args().last(), Some(msi_log(&linked).as_os_str()), "the log the installer is told to write");
+        assert_eq!(log, resolved.with_extension("log"), "the log the messages name once it has run");
         // A package that can't be resolved still names a log beside it.
         let missing = dir.path().join("missing.msi");
         assert_eq!(msi_log(&missing), dir.path().join("missing.log"));

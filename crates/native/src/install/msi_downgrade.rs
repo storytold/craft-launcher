@@ -85,15 +85,18 @@ pub(super) type Exit = Option<(i32, Option<PathBuf>)>;
 
 /// [`run`] with `install` running one package's `msiexec`. `exit` gets the exit code of the step
 /// that stopped the downgrade, so a failed downgrade can name what stopped it: a removal's code,
-/// or the chosen package's code and log. The put-back's code is not kept.
+/// or the chosen package's code and log. The put-back's code is not kept. `ready` runs first; its
+/// error stops the downgrade before anything is removed.
 pub(super) fn run_packages(
     app: &str,
     chosen: Package<'_>,
     previous: Package<'_>,
+    ready: &mut dyn FnMut() -> Result<(), String>,
     remove: &mut dyn FnMut() -> Result<(), Removal>,
     install: &dyn Fn(&Path, &mut Exit) -> Result<(), String>,
     exit: &mut Exit,
 ) -> Result<(), String> {
+    ready()?;
     let mut removal = None;
     let result = run(Steps {
         app,
