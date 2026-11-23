@@ -31,6 +31,7 @@ mod nightly_trust;
 mod nightly_unix;
 #[cfg(all(test, windows))]
 mod nightly_windows_mechanics_tests;
+pub mod notices;
 pub mod packages;
 pub mod paths;
 pub mod pins;

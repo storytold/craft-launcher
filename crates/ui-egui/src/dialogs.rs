@@ -67,9 +67,10 @@ impl LauncherUi {
         }
     }
 
-    /// The first alert from the release feed the user hasn't acknowledged, as a popup.
+    /// The first current alert the user hasn't acknowledged, as a popup.
     fn alert_popup(&mut self, ctx: &egui::Context) {
-        let Some(alert) = self.alerts.iter().find(|a| !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
+        let now = self.backend.now();
+        let Some(alert) = self.alerts.iter().find(|a| a.current(now) && !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
         let t = Tokens::get(ctx);
         let modal = egui::Modal::new(egui::Id::unique("feed_alert").with(&alert.id)).frame(
             egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(theme::PAD as i8),

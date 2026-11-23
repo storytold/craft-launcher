@@ -167,10 +167,14 @@ pub struct LauncherUi {
     pub(crate) launcher_job: Option<artcraft_launcher_core::protocol::JobPhase>,
     /// The new launcher is in place: quit so it can start.
     restart_requested: bool,
-    /// News from ArtCraft's release feed, shown inline until dismissed.
-    pub(crate) announcements: Vec<artcraft_launcher_core::feed::Notice>,
-    /// Alerts from the feed, shown as popups until acknowledged.
-    pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
+    /// Announcements from the signed notices file, listed in the header's bell until dismissed.
+    pub(crate) announcements: Vec<artcraft_launcher_core::notices::Notice>,
+    /// The bell's panel is open.
+    pub(crate) bell_open: bool,
+    /// Announcements that were unread when the panel opened: they keep a dot while it is open.
+    pub(crate) bell_new: std::collections::BTreeSet<String>,
+    /// Alerts from the signed notices file, shown as popups until acknowledged.
+    pub(crate) alerts: Vec<artcraft_launcher_core::notices::Notice>,
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
@@ -296,6 +300,8 @@ impl LauncherUi {
             launcher_job: None,
             restart_requested: false,
             announcements: Vec::new(),
+            bell_open: false,
+            bell_new: std::collections::BTreeSet::new(),
             alerts: Vec::new(),
             search: String::new(),
             toasts: Vec::new(),
@@ -639,6 +645,8 @@ impl LauncherUi {
                 false
             }
             Event::Notices { announcements, alerts } => {
+                let current = announcements.iter().chain(&alerts).map(|n| n.id.as_str()).collect();
+                self.settings.forget_notices_not_in(&current);
                 self.announcements = announcements;
                 self.alerts = alerts;
                 false

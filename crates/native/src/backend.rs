@@ -561,8 +561,8 @@ impl NativeBackend {
                 publish_latest(app, latest, from, &self.shared, self.platform);
             }
         }
-        if let Some(f) = feed {
-            self.shared.emit(Event::Notices { announcements: f.announcements, alerts: f.alerts });
+        if let Some(n) = crate::notices::load(None, &self.paths, now) {
+            self.shared.emit(Event::Notices { announcements: n.announcements, alerts: n.alerts });
         }
     }
 
@@ -779,8 +779,15 @@ impl NativeBackend {
             } else {
                 check_plan(&http, mirror.as_ref(), pre, &paths, &shared)
             };
-            if let Some(f) = &feed {
-                shared.emit(Event::Notices { announcements: f.announcements.clone(), alerts: f.alerts.clone() });
+            // Notices on their own thread: a slow notices file must never hold up release checks.
+            // Stable only: the Pre-Release context has its own storage and never loads notices.
+            if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable {
+                let (notice_shared, notice_http, notice_paths) = (shared.clone(), http.clone(), paths.clone());
+                std::thread::spawn(move || {
+                    if let Some(n) = crate::notices::load(Some(&notice_http), &notice_paths, crate::now()) {
+                        notice_shared.emit(Event::Notices { announcements: n.announcements, alerts: n.alerts });
+                    }
+                });
             }
             let now = crate::now();
             let queue = Mutex::new(

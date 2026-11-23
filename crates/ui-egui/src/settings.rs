@@ -125,6 +125,8 @@ pub struct Settings {
     pub preferred_kinds: Vec<PackageKind>,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
     pub dismissed_notices: std::collections::BTreeSet<String>,
+    /// Announcements the user has seen in the bell (by notice id); the rest count as unread.
+    pub read_notices: std::collections::BTreeSet<String>,
     /// Updates already announced, so each version is announced once: app id → version.
     pub notified: BTreeMap<String, String>,
     /// Unix seconds of the last finished check.
@@ -147,6 +149,17 @@ pub struct Settings {
 impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &str = "auto";
+
+    /// Forgets read and dismissed notice ids the feed no longer sends, so neither set grows
+    /// forever. A feed with no notices at all forgets nothing: an empty answer (a glitch, or
+    /// nothing to say today) must not bring every old notice back as unread.
+    pub fn forget_notices_not_in(&mut self, current: &std::collections::BTreeSet<&str>) {
+        if current.is_empty() {
+            return;
+        }
+        self.read_notices.retain(|id| current.contains(id.as_str()));
+        self.dismissed_notices.retain(|id| current.contains(id.as_str()));
+    }
 
     /// Whether "Update all" and auto-update install together behind one permission prompt.
     /// Always on Linux, where the batch is one `pkexec` call; elsewhere the opt-in setting,
@@ -290,6 +303,7 @@ impl Default for Settings {
             simultaneous_downloads: 1,
             preferred_kinds: default_preferred_kinds(),
             dismissed_notices: std::collections::BTreeSet::new(),
+            read_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,
             hide_community_apps: false,
@@ -305,6 +319,18 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notices_the_feed_dropped_are_forgotten_but_an_empty_feed_forgets_nothing() {
+        let ids = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<std::collections::BTreeSet<_>>();
+        let mut s = Settings { read_notices: ids(&["a", "old"]), dismissed_notices: ids(&["b", "gone"]), ..Settings::default() };
+        s.forget_notices_not_in(&std::collections::BTreeSet::new());
+        assert_eq!(s.read_notices.len(), 2);
+        assert_eq!(s.dismissed_notices.len(), 2);
+        s.forget_notices_not_in(&["a", "b", "new"].into_iter().collect());
+        assert_eq!(s.read_notices, ids(&["a"]));
+        assert_eq!(s.dismissed_notices, ids(&["b"]));
+    }
 
     #[test]
     fn linux_batches_updates_even_with_the_setting_off() {
