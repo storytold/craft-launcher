@@ -350,12 +350,29 @@ fn authenticate_windows_as(root: &std::path::Path, files: &[std::path::PathBuf],
     Ok(held)
 }
 
+/// A cold Windows PowerShell start plus hashing a large signed executable took 81 seconds on a
+/// busy Windows 11 machine, so a genuinely signed build must not be refused for being slow.
+#[cfg(any(windows, test))]
+const WINDOWS_METADATA_DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// A query that ran out of time says so, distinctly from a signature refusal.
+#[cfg(any(windows, test))]
+fn metadata_query_error(error: String) -> String {
+    if error.contains("didn't finish within") {
+        format!(
+            "The Nightly signature check timed out after {} seconds; nothing was replaced. This is not a signature refusal, so try again.",
+            WINDOWS_METADATA_DEADLINE.as_secs()
+        )
+    } else {
+        error
+    }
+}
+
 #[cfg(windows)]
 fn read_windows_metadata(path: &std::path::Path) -> Result<String, String> {
     let command = windows_command(path, || winsafe::GetSystemDirectory().map(std::path::PathBuf::from).map_err(|error| error.to_string()))?;
-    // A cold Windows PowerShell start plus hashing a large signed executable has taken 80 seconds
-    // on a busy Windows 11 machine; a genuinely signed build must not be refused for being slow.
-    let output = crate::process::run_command_with_output(command, "Nightly Authenticode metadata", std::time::Duration::from_secs(180))?;
+    let output = crate::process::run_command_with_output(command, "Nightly Authenticode metadata", WINDOWS_METADATA_DEADLINE)
+        .map_err(metadata_query_error)?;
     if !output.success || !output.stderr.trim().is_empty() {
         return Err("The native Nightly Authenticode metadata query failed.".into());
     }
@@ -410,6 +427,14 @@ mod tests {
         for failure in ["tool unavailable", "native query timed out", "native trust error"] {
             assert!(windows_metadata_with(path, Some(&publisher), &native, |_| Err(failure.into())).is_err());
         }
+    }
+
+    #[test]
+    fn a_slow_signature_query_gets_three_minutes_and_says_it_timed_out() {
+        assert_eq!(WINDOWS_METADATA_DEADLINE, std::time::Duration::from_secs(180));
+        let timed_out = metadata_query_error("Nightly Authenticode metadata didn't finish within 180 seconds".into());
+        assert!(timed_out.contains("timed out after 180 seconds") && timed_out.contains("not a signature refusal"), "{timed_out}");
+        assert_eq!(metadata_query_error("couldn't start Nightly Authenticode metadata (denied)".into()), "couldn't start Nightly Authenticode metadata (denied)");
     }
 
     /// Azure Trusted Signing renews the leaf and its issuing CA, so neither is pinned: what must
