@@ -29,6 +29,24 @@ impl Paths {
         Self { data: root.join("data"), cache: root.join("cache") }
     }
 
+    pub(crate) fn private_temp() -> Result<Self, String> {
+        // shortcut: fallback installs aren't rediscovered after restart; add a persistent per-user root if this becomes common.
+        let dir = tempfile::Builder::new()
+            .prefix("artcraft-launcher-")
+            .tempdir()
+            .map_err(|e| format!("couldn't create a private temporary folder ({e})"))?;
+        Ok(Self::under(&dir.keep()))
+    }
+
+    pub(crate) fn unavailable() -> Self {
+        // These device paths cannot contain writable child directories, so failures stay safe.
+        #[cfg(unix)]
+        let root = std::path::Path::new("/dev/null");
+        #[cfg(windows)]
+        let root = std::path::Path::new(r"\\.\NUL");
+        Self::under(root)
+    }
+
     pub fn downloads(&self) -> PathBuf {
         self.cache.join("downloads")
     }
@@ -108,6 +126,30 @@ mod tests {
         write_atomic(&path, b"new manifest").unwrap();
         assert_eq!(std::fs::read(&unrelated).unwrap(), b"another writer's data");
         assert_eq!(std::fs::read(&path).unwrap(), b"new manifest");
+    }
+
+    #[test]
+    fn private_temporary_paths_are_unique_and_private() {
+        let first = Paths::private_temp().unwrap();
+        let second = Paths::private_temp().unwrap();
+        let first_root = first.data.parent().unwrap();
+        let second_root = second.data.parent().unwrap();
+        assert_ne!(first_root, second_root);
+        assert!(first_root.file_name().unwrap().to_string_lossy().starts_with("artcraft-launcher-"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(first_root).unwrap().permissions().mode() & 0o777, 0o700);
+        }
+        std::fs::remove_dir_all(first_root).unwrap();
+        std::fs::remove_dir_all(second_root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unavailable_paths_cannot_create_writable_folders() {
+        let paths = Paths::unavailable();
+        assert!(std::fs::create_dir_all(paths.data).is_err());
     }
 
     #[test]
