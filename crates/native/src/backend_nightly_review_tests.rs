@@ -471,6 +471,7 @@ fn review_probe_readonly_data_before_preparation_does_not_leave_an_orphan_slot()
     let (paths, old) = baseline(temp.path());
     let backend = fresh_backend(&paths);
     std::fs::set_permissions(&paths.data, std::fs::Permissions::from_mode(0o500)).unwrap();
+    assert_writes_denied(&paths.data);
     backend.start_job(APP, Work::Uninstall);
     std::fs::set_permissions(&paths.data, std::fs::Permissions::from_mode(0o700)).unwrap();
     assert!(std::fs::read(&old.path).unwrap().ends_with(b"old owned program bytes"));
