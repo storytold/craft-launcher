@@ -243,3 +243,77 @@ fn machine_status_never_accepts_error_multiple_signer_or_expiry_even_with_valids
     assert!(status(&crate::process::RunOutput::exit(1, &valid, "failure"), &pin, crate::now()).is_err());
     assert!(status(&crate::process::RunOutput::success(&valid), &"B".repeat(40), crate::now()).is_err());
 }
+
+// A real PhotoCraft v0.23.1 stable release file and its published detached signature, made by the
+// production Linux release key's signing subkey. See ATTRIBUTION.md for provenance.
+const RELEASE_SIGNED: &[u8] = include_bytes!("../tests/fixtures/linux-release-signed/SHA256SUMS.txt");
+const RELEASE_SIGNATURE: &[u8] = include_bytes!("../tests/fixtures/linux-release-signed/SHA256SUMS.txt.asc");
+
+fn configured_signer() -> &'static LinuxSigner<'static> {
+    crate::nightly_trust::LINUX_SIGNER.as_ref().expect("the reviewed Linux Nightly signer is configured")
+}
+
+#[test]
+fn configured_signer_key_is_its_pinned_primary_and_refuses_other_keys() {
+    let signer = configured_signer();
+    let root = tempfile::tempdir().unwrap();
+    let home = tempfile::Builder::new().prefix("pinned-key-").tempdir_in(root.path()).unwrap();
+    let pinned = home.path().join("pinned.asc");
+    std::fs::write(&pinned, signer.public_key).unwrap();
+    let shown = key_command(home.path(), &["--with-colons", "--show-keys", pinned.to_str().unwrap()]);
+    let records: Vec<Vec<&str>> = shown.lines().map(|line| line.split(':').collect()).collect();
+    // Exactly one certificate, whose primary (not a subkey) is the pin, usable and not revoked or expired.
+    let primaries: Vec<_> = records.iter().filter(|fields| fields[0] == "pub").collect();
+    assert_eq!(primaries.len(), 1, "{shown}");
+    assert!(!matches!(primaries[0][1], "r" | "e" | "i" | "d"), "{shown}");
+    let primary = records.iter().skip_while(|fields| fields[0] != "pub").find(|fields| fields[0] == "fpr").unwrap()[9];
+    assert!(primary.eq_ignore_ascii_case(signer.primary_fingerprint), "{shown}");
+    assert!(records.iter().any(|fields| matches!(fields[0], "pub" | "sub") && fields[11].contains('s')), "no signing key: {shown}");
+    let paths = Paths::under(root.path()).for_channel(InstallChannel::Nightly);
+    let other = key(root.path(), false);
+    let (asset, signature, bytes, file) = signed_archive(root.path(), &other, false, &elf());
+    assert!(prepare_with(&file, &asset, &signature, &bytes, &paths, signer, GPG).is_err());
+}
+
+fn release_fixture(root: &Path, name: &str, content: &[u8]) -> (Asset, Download, PathBuf) {
+    let file = root.join(name);
+    std::fs::write(&file, content).unwrap();
+    let asset = Asset {
+        name: name.into(),
+        url: "unused exact release fixture".into(),
+        size: content.len() as u64,
+        sha256: Some(crate::http::sha256_file(&file).unwrap()),
+    };
+    let signature = Download {
+        name: format!("{name}.asc"),
+        url: "unused exact release fixture".into(),
+        size: RELEASE_SIGNATURE.len() as u64,
+        sha256: format!("{:x}", Sha256::digest(RELEASE_SIGNATURE)),
+    };
+    (asset, signature, file)
+}
+
+#[test]
+fn configured_signer_accepts_a_real_release_signature_only_for_its_exact_bytes_and_primary_pin() {
+    let signer = configured_signer();
+    let root = tempfile::tempdir().unwrap();
+    let paths = Paths::under(root.path()).for_channel(InstallChannel::Nightly);
+    let (asset, signature, file) = release_fixture(root.path(), "release-signed", RELEASE_SIGNED);
+    let verified = prepare_with(&file, &asset, &signature, RELEASE_SIGNATURE, &paths, signer, GPG).unwrap();
+    assert_eq!(std::fs::read(&verified.file).unwrap(), RELEASE_SIGNED);
+    // One changed byte, even with a fresh matching checksum, does not borrow the real signature.
+    let mut changed = RELEASE_SIGNED.to_vec();
+    changed[0] ^= 1;
+    let (asset, signature, file) = release_fixture(root.path(), "release-changed", &changed);
+    assert!(prepare_with(&file, &asset, &signature, RELEASE_SIGNATURE, &paths, signer, GPG).is_err());
+    // The pin is the primary identity: pinning the signing subkey that made the signature refuses.
+    let home = tempfile::Builder::new().prefix("pinned-key-").tempdir_in(root.path()).unwrap();
+    let pinned = home.path().join("pinned.asc");
+    std::fs::write(&pinned, signer.public_key).unwrap();
+    let shown = key_command(home.path(), &["--with-colons", "--show-keys", pinned.to_str().unwrap()]);
+    let subkey = shown.lines().skip_while(|line| !line.starts_with("sub:")).find(|line| line.starts_with("fpr:")).unwrap().split(':').nth(9).unwrap();
+    assert!(!subkey.eq_ignore_ascii_case(signer.primary_fingerprint));
+    let subkey_pin = LinuxSigner { public_key: signer.public_key, primary_fingerprint: subkey };
+    let (asset, signature, file) = release_fixture(root.path(), "release-subkey-pin", RELEASE_SIGNED);
+    assert!(prepare_with(&file, &asset, &signature, RELEASE_SIGNATURE, &paths, &subkey_pin, GPG).is_err());
+}
