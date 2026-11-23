@@ -4769,12 +4769,14 @@ fn ai_agents_stay_hidden_until_their_flag_is_on() {
 
 #[test]
 /// The header holds the Settings gear, the announcements bell and the Stable/Pre-Release switch
-/// side by side at a wide and a narrow width, in both themes, without overlap or clipping.
+/// side by side at a wide width, a narrow one and one that needs the compact logo, in both
+/// themes, without overlap or clipping.
 fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
     use artcraft_launcher_core::notices::Notice;
     use egui_kittest::kittest::{NodeT, Queryable};
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
-        for width in [1180.0_f32, 560.0] {
+        // 440 is narrow enough that the wordmark gives way to the compact ArtCraft mark.
+        for width in [1180.0_f32, 560.0, 440.0] {
             let mut evs = events();
             evs.push(Event::Notices {
                 announcements: vec![Notice {
@@ -4793,7 +4795,10 @@ fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
             h.state_mut().as_mut().unwrap().settings.nightly_enabled = true;
             h.run_steps(6);
             let top = |h: &Harness<'static, Option<LauncherUi>>, label: &str| {
-                h.query_all_by_label(label).map(|node| node.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).unwrap_or_else(|| panic!("{label} missing at {width}"))
+                h.query_all_by_label(label)
+                    .map(|node| node.rect())
+                    .min_by(|a, b| a.top().total_cmp(&b.top()))
+                    .unwrap_or_else(|| panic!("{label} missing at {width}"))
             };
             let controls = [
                 ("Settings", top(&h, "Settings")),
