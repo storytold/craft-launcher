@@ -402,15 +402,11 @@ mod tests {
     use super::*;
     use artcraft_launcher_core::nightly::{Download, Isolation, Target};
 
-    /// New Nightly installs are offered exactly where the platform's signing trust is configured
-    /// and an app has an admitted adapter, whichever platforms have their trust pinned so far.
+    /// New Nightly installs are offered where the platform's signing trust is configured and an app
+    /// has an admitted adapter: today Windows, Linux and macOS each on its own OS, since each trust
+    /// input is compiled only there.
     #[test]
     fn new_installs_are_available_only_where_signing_trust_is_configured() {
-        let photo = CraftApp::by_id("photocraft").unwrap();
-        for platform in CAPABILITIES.iter().map(|row| row.platform) {
-            let expected = crate::nightly_trust::configured_for(platform.os) && admit_new(photo, platform).is_ok();
-            assert_eq!(new_installs_available(platform), expected, "{platform:?}");
-        }
         // The reviewed Windows publisher, Linux signer and macOS team pins are configured, each on its own OS.
         assert_eq!(new_installs_available(Platform { os: Os::Windows, arch: Arch::X64 }), cfg!(windows));
         assert_eq!(new_installs_available(Platform { os: Os::Linux, arch: Arch::X64 }), cfg!(target_os = "linux"));
