@@ -30,6 +30,7 @@ mod install_target;
 mod local_time;
 pub mod model;
 mod motion;
+mod nightly;
 mod notes;
 pub mod settings;
 mod settings_dialog;

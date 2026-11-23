@@ -57,6 +57,9 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 | `assets/app-icons/materialcraft.png` | MaterialCraft app icon (engraved rhino), 128 px | MaterialCraft project owner | [`storytold/materialcraft`](https://github.com/storytold/materialcraft) `assets/app-icon/hicolor/128x128/apps/ai.storyteller.materialcraft.png`, copied unmodified | MIT OR Apache-2.0 ([icon license](https://github.com/storytold/materialcraft/blob/main/assets/app-icon/LICENSE.txt)) |
 | `assets/app-icons/anicraft.png` | AniCraft app icon (engraved rabbit), 128 px | ArtCraft Team and the AniCraft contributors | [`storytold/AniCraft`](https://github.com/storytold/AniCraft) `assets/app-icon/hicolor/128x128/apps/ai.storyteller.anicraft.png`, copied unmodified | MIT OR Apache-2.0 (AniCraft's [`LICENSE-MIT`](https://github.com/storytold/AniCraft/blob/main/LICENSE-MIT), [`LICENSE-APACHE`](https://github.com/storytold/AniCraft/blob/main/LICENSE-APACHE)) |
 | `assets/app-icons/craft-anything.png` | Craft Anything app icon (engraved raven), 128 px | ArtCraft Team | [`storytold/craft-anything`](https://github.com/storytold/craft-anything) `assets/app-icon/hicolor/128x128/apps/ai.storyteller.craft-anything.png`, copied unmodified | **Not open source; not MIT or Apache-2.0.** Used on the terms of the ArtCraft brand assets (Craft Anything's [`assets/app-icon/LICENSE.txt`](https://github.com/storytold/craft-anything/blob/main/assets/app-icon/LICENSE.txt), [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt)) |
+| `assets/nightly-icons/` `photocraft.png`, `vectorcraft.png`, `filmcraft.png`, `lightcraft.png`, `pdfcraft.png`, `effectcraft.png`, `anicraft.png`, `designcraft.png`, `figcraft.png`, `soundcraft.png`, `wordcraft.png`, `deckcraft.png`, `cadcraft.png`, `gridcraft.png`, `texturecraft.png`, `materialcraft.png` | Pre-Release variant of each app's icon (same artwork on a darker background), shown on the Pre-Release page | The authors of each app's icon (see that app's `assets/app-icons/` row above); background recoloured by the ArtCraft Launcher contributors | Derived from each app's own icon sources at the pinned commits listed, with their SHA-256 and the exact transform, in [`assets/nightly-icons/SOURCES.json`](assets/nightly-icons/SOURCES.json); only the background colour changes | Same as that app's icon above: MIT OR Apache-2.0 |
+| `assets/nightly-icons/craft-anything.png` | Craft Anything Pre-Release icon (same artwork on a darker background) | ArtCraft Team | Derived from Craft Anything's icon sources at the pinned commit in [`assets/nightly-icons/SOURCES.json`](assets/nightly-icons/SOURCES.json); only the background colour changes | **Not open source; not MIT or Apache-2.0.** Same terms as Craft Anything's icon above ([`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt)) |
+| `assets/nightly-icons/artcraft-launcher.png` | ArtCraft Launcher Pre-Release icon: the unchanged blue "A" mark on a navy backplate | ArtCraft Team | Derived from `assets/app-icon/artcraft-launcher.svg` at the pinned commit in [`assets/nightly-icons/SOURCES.json`](assets/nightly-icons/SOURCES.json) | **Not open source; not MIT or Apache-2.0.** ArtCraft trademark, [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt) |
 
 ## Documentation and README
 
@@ -72,3 +75,15 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 | `crates/core/assets/launcher-catalog-public-key.pem` | Launcher catalog Ed25519 verification key | ArtCraft Team | Maintainer-supplied website catalog signing keypair  | MIT OR Apache-2.0 |
 | `crates/core/catalog.toml`                           | Bundled launcher catalog                  | ArtCraft Team | `storytold/artcraft-services` PR #205                | MIT OR Apache-2.0 |
 | `crates/core/tests/fixtures/hosted-catalog.toml.sig` | Detached catalog signature test fixture   | ArtCraft Team | Signature of the bundled catalog with its pinned key | MIT OR Apache-2.0 |
+
+## External native signing test fixture (not bundled)
+
+| Manifest | Title | Author | Source and version | License and acquisition |
+|---|---|---|---|---|
+| `crates/native/tests/fixtures/windows-signed-reference.json` | Signed `pwsh.exe` read-only native-verification reference | Microsoft Corporation | Official PowerShell v7.7.0 `PowerShell-7.7.0-win-x64.zip`, exact URL/archive and root-entry hashes in the manifest | MIT, upstream versioned `LICENSE.txt`; provision externally from the original release, hash before extraction, keep upstream notices alongside it. No binary is vendored, executed, bundled or installed by the test. |
+
+## Native filesystem dependency
+
+| Dependency | Author | Source and version | License |
+|---|---|---|---|
+| `rustix` | The rustix project developers | <https://github.com/bytecodealliance/rustix>, 1.1.5 (already locked; now directly used for Nightly held-directory operations) | MIT, selected from upstream's offered license alternatives; permission notice in `NOTICE` |

@@ -156,7 +156,7 @@ pub(crate) const HEADER_H: f32 = 48.0;
 /// Height of the footer bar.
 pub(crate) const FOOTER_H: f32 = 34.0;
 
-const CARD_MIN_W: f32 = 320.0;
+pub(crate) const CARD_MIN_W: f32 = 320.0;
 const CARD_H: f32 = 314.0;
 /// The app column's name and tagline sizes, to centre them on the icon.
 const TITLE_SIZE: f32 = 16.0;
@@ -172,6 +172,16 @@ impl LauncherUi {
     pub(crate) fn header(&mut self, ui: &mut Ui, bar: TitleBar) {
         let t = Tokens::get(ui.ctx());
         let h = HEADER_H;
+        let channel_width = self.channel_navigation_width(ui);
+        let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
+        // The Settings gear and the announcements bell are each one h-wide cell.
+        let reserved = h
+            + h
+            + channel_width.unwrap_or(0.0)
+            + theme::PAD
+            + if bar == TitleBar::Custom { widgets::window_buttons_width() } else { 0.0 }
+            + if bar == TitleBar::MacOs { TRAFFIC_LIGHTS_W } else { 0.0 };
+        let compact_brand = channel_width.is_some() && logo.x + 40.0 + reserved > ui.available_width();
         if bar != TitleBar::Native {
             widgets::title_bar_drag(ui);
         }
@@ -181,9 +191,16 @@ impl LauncherUi {
                 ui.add_space(TRAFFIC_LIGHTS_W);
             }
             // The ArtCraft wordmark exactly as supplied, in its own cell.
-            let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
-            let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
-            egui::Image::new(crate::icons::artcraft_logo(t.dark)).alt_text(tl!("ArtCraft")).paint_at(ui, Rect::from_center_size(cell.center(), logo));
+            let (cell, _) = ui.allocate_exact_size(vec2(if compact_brand { h } else { logo.x + 40.0 }, h), Sense::hover());
+            if compact_brand {
+                egui::Image::new(crate::icons::artcraft_mark())
+                    .alt_text(tl!("ArtCraft"))
+                    .paint_at(ui, Rect::from_center_size(cell.center(), vec2(28.0, 28.0)));
+            } else {
+                egui::Image::new(crate::icons::artcraft_logo(t.dark))
+                    .alt_text(tl!("ArtCraft"))
+                    .paint_at(ui, Rect::from_center_size(cell.center(), logo));
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if bar == TitleBar::Custom {
                     widgets::window_buttons(ui, h);
@@ -192,6 +209,11 @@ impl LauncherUi {
                     self.dialog = Some(Dialog::Settings);
                 }
                 self.bell(ui, h);
+                if let Some(width) = channel_width {
+                    ui.add_space(theme::PAD / 2.0);
+                    ui.allocate_ui_with_layout(vec2(width, h), egui::Layout::left_to_right(egui::Align::Center), |ui| self.channel_navigation(ui));
+                    ui.add_space(theme::PAD / 2.0);
+                }
                 // The controls reserve their actual widths before the secondary text gets space.
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     if ui.available_width() >= 17.0 + widgets::hud_galley(ui, tl!("Craft App Suite"), t.muted).size().x {

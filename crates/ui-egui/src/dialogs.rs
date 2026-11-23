@@ -52,7 +52,7 @@ impl LauncherUi {
             // A control inside a dialog opened a different one; don't restore the old dialog.
             return;
         }
-        if close || response.should_close() {
+        if close || response.should_close() || self.nightly.consent_open {
             self.dialog = if matches!(&dialog, Dialog::UnlockVersion { app, .. } if app == artcraft_launcher_core::catalog::LAUNCHER_ID) {
                 Some(Dialog::Settings)
             } else {
