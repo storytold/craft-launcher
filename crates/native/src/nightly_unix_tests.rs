@@ -547,6 +547,55 @@ fn archive_mutation_after_extraction_refuses_before_old_program_or_records_move(
 }
 
 #[test]
+fn mac_layout_accepts_a_stapled_notarization_ticket_but_no_other_bundle_additions() {
+    let contents = Path::new("PhotoCraft Nightly.app/Contents");
+    let mut files: Vec<PathBuf> =
+        ["MacOS/PhotoCraft", "Info.plist", "Resources/photocraft-nightly.icns", "_CodeSignature/CodeResources", "CodeResources"]
+            .iter()
+            .map(|file| contents.join(file))
+            .collect();
+    assert!(layout(Adapter::PhotoCraftMacV1, &files, &files).is_ok());
+    for extra in ["CodeResources.bak", "Frameworks/Helper.framework", "Resources/CodeResources/x", "MacOS/CodeResources"] {
+        files.push(contents.join(extra));
+        assert!(layout(Adapter::PhotoCraftMacV1, &files, &files).is_err(), "{extra}");
+        files.pop();
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn mac_nightly_requires_the_pinned_team_its_own_identifier_and_notarization() {
+    let bundle = Path::new("/private/owned/PhotoCraft Nightly.app");
+    let accepted = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict>\
+        <key>assessment:authority</key><dict><key>assessment:authority:source</key><string>Notarized Developer ID</string></dict>\
+        <key>assessment:verdict</key><true/></dict></plist>";
+    let mut calls = Vec::new();
+    verify_mac_signature(bundle, |program, args, _| {
+        calls.push(args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
+        Ok(crate::process::RunOutput::success(match args {
+            ["--status"] => "assessments enabled",
+            _ if program == "/usr/sbin/spctl" => accepted,
+            _ => "",
+        }))
+    })
+    .unwrap();
+    let identity = calls.iter().flatten().find(|arg| arg.contains("subject.OU")).unwrap();
+    assert!(identity.contains(crate::nightly_trust::MAC_TEAM.unwrap()));
+    assert!(identity.contains("identifier \"ai.storyteller.photocraft.nightly\""));
+    assert!(!identity.contains("identifier \"ai.storyteller.photocraft\""), "the stable identifier cannot stand in for the Nightly");
+    assert!(calls.iter().any(|args| args.iter().any(|arg| arg == "--check-notarization")));
+    assert!(calls.iter().any(|args| args.iter().any(|arg| arg == "--assess")));
+    let refused = verify_mac_signature(bundle, |_, args, _| {
+        Ok(if args.contains(&"--check-notarization") {
+            crate::process::RunOutput::exit(3, "", "not notarized")
+        } else {
+            crate::process::RunOutput::success("")
+        })
+    });
+    assert!(refused.unwrap_err().contains("not notarized"));
+}
+
+#[test]
 fn xdg_roots_use_the_home_default_for_unset_empty_and_relative_values() {
     let home = Path::new("/home/someone");
     for value in [None, Some(""), Some("relative/state")] {

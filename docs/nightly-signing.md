@@ -45,7 +45,10 @@ The query uses trusted built-in modules, no profile, path-as-data, and no downlo
 script/feed command. Unavailable/unknown/error evidence refuses before replacement.
 
 macOS retains strict/deep code integrity, pinned Nightly bundle/team, notarization,
-exact full version/architecture and existing assessment policy.
+exact full version/architecture and existing assessment policy. The team is
+`nightly_trust::MAC_TEAM`; new installs are admitted only while it is set and equals
+stable PhotoCraft's Developer ID team, and the stable Mac checks (`codesign`, then
+`spctl --assess` at `/usr/sbin/spctl`) run before the copy is swapped in and on every Open.
 
 ## Evidence limits and fixtures
 

@@ -103,9 +103,7 @@ pub(crate) fn admit_new(app: &CraftApp, platform: Platform) -> Result<Adapter, S
 
 fn configured_for_new_install(adapter: Adapter) -> Result<Adapter, String> {
     match adapter {
-        // Ordinary mac_team metadata is not Nightly configuration or package qualification.
-        // Keep the known row for strict retained-copy validation; do not admit a new payload.
-        Adapter::PhotoCraftMacV1 => Err("PhotoCraft Nightly on macOS is not configured; existing copies and data were left unchanged.".into()),
+        Adapter::PhotoCraftMacV1 => mac_team().map(|_| adapter),
         _ => Ok(adapter),
     }
 }
@@ -116,6 +114,22 @@ fn configured_for_new_install(adapter: Adapter) -> Result<Adapter, String> {
 pub(crate) fn new_installs_available(platform: Platform) -> bool {
     crate::nightly_trust::configured_for(platform.os)
         && artcraft_launcher_core::hosted_catalog::apps().iter().any(|app| app.has_separate_nightly_channel() && admit_new(app, platform).is_ok())
+}
+
+/// The Developer ID team a macOS Nightly must be signed by, for admission and every approval.
+pub(crate) fn mac_team() -> Result<&'static str, String> {
+    let stable = CraftApp::by_id("photocraft").and_then(|app| app.mac_team);
+    pinned_mac_team(crate::nightly_trust::MAC_TEAM, stable)
+}
+
+/// Ordinary mac_team metadata alone is not Nightly configuration: the source-owned Nightly pin
+/// must exist and still name the team stable PhotoCraft's Mac install verifies.
+fn pinned_mac_team(pinned: Option<&'static str>, stable: Option<&str>) -> Result<&'static str, String> {
+    let team = pinned.ok_or("PhotoCraft Nightly on macOS is not configured; existing copies and data were left unchanged.")?;
+    if stable != Some(team) {
+        return Err("The macOS Nightly signing team differs from stable PhotoCraft's; existing copies and data were left unchanged.".into());
+    }
+    Ok(team)
 }
 
 /// Retained management is tied to the same source-owned row, not a descriptor supplied command.
@@ -481,12 +495,7 @@ mod tests {
         ] {
             artifact.target = Target { os: os.into(), arch: arch.into(), format: format.into() };
             artifact.asset.name = format!("photocraft-{}-{suffix}", release.version.as_ref().unwrap());
-            if expected == Adapter::PhotoCraftMacV1 {
-                assert!(adapter(app, &release, &artifact, platform).is_err(), "new Mac payloads are refused until configured");
-                assert_eq!(for_app(app, platform), Ok(expected), "retain strict management of known old copies");
-            } else {
-                assert_eq!(adapter(app, &release, &artifact, platform), Ok(expected));
-            }
+            assert_eq!(adapter(app, &release, &artifact, platform), Ok(expected));
             let community = CraftApp { kind: artcraft_launcher_core::catalog::AppKind::Community, ..*app };
             assert!(adapter(&community, &release, &artifact, platform).is_err());
             let asset = artcraft_launcher_core::Asset {
@@ -501,6 +510,17 @@ mod tests {
             artifact.target.format = "dmg".into();
             assert!(adapter(app, &release, &artifact, platform).is_err());
         }
+    }
+
+    #[test]
+    fn mac_admission_needs_the_nightly_pin_and_the_stable_signing_team() {
+        let stable = CraftApp::by_id("photocraft").unwrap().mac_team;
+        assert!(stable.is_some());
+        assert!(pinned_mac_team(None, stable).is_err(), "catalog signing metadata alone does not configure the Nightly");
+        assert!(pinned_mac_team(Some("OTHERTEAM1"), stable).is_err(), "a pin that drifts from stable's team is refused");
+        assert!(pinned_mac_team(stable, None).is_err());
+        assert_eq!(pinned_mac_team(stable, stable), Ok(stable.unwrap()));
+        assert_eq!(mac_team(), Ok(stable.unwrap()), "the shipped pin is the stable PhotoCraft team");
     }
 
     #[test]
