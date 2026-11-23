@@ -388,19 +388,17 @@ mod tests {
     use super::*;
     use artcraft_launcher_core::nightly::{Download, Isolation, Target};
 
-    /// New Nightly installs are offered only where the signing trust is configured: Windows has
-    /// the reviewed publisher pin, Linux and macOS have none yet. Each OS's trust input exists
-    /// only on that OS, so a Linux test host reports all three unavailable.
+    /// New Nightly installs are offered exactly where the platform's signing trust is configured
+    /// and an app has an admitted adapter, whichever platforms have their trust pinned so far.
     #[test]
     fn new_installs_are_available_only_where_signing_trust_is_configured() {
-        let windows = Platform { os: Os::Windows, arch: Arch::X64 };
-        assert_eq!(new_installs_available(windows), cfg!(windows), "Windows is configured, on Windows");
-        for platform in [Platform { os: Os::Linux, arch: Arch::X64 }, Platform { os: Os::MacOs, arch: Arch::Arm64 }] {
-            assert!(!new_installs_available(platform), "{platform:?} has no configured signer");
-        }
-        // A known adapter alone is not availability: macOS has one, but no admitted signer.
         let photo = CraftApp::by_id("photocraft").unwrap();
-        assert!(for_app(photo, Platform { os: Os::MacOs, arch: Arch::Arm64 }).is_ok());
+        for platform in CAPABILITIES.iter().map(|row| row.platform) {
+            let expected = crate::nightly_trust::configured_for(platform.os) && admit_new(photo, platform).is_ok();
+            assert_eq!(new_installs_available(platform), expected, "{platform:?}");
+        }
+        // The reviewed Windows publisher pin is configured, on Windows.
+        assert_eq!(new_installs_available(Platform { os: Os::Windows, arch: Arch::X64 }), cfg!(windows));
     }
 
     fn fixture() -> (&'static CraftApp, Release, Artifact, Platform) {

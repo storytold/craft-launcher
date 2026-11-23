@@ -167,7 +167,8 @@ fn shared_selection_nightly_context_reports_configured_signing_trust() {
     let root = tempfile::tempdir().unwrap();
     let windows = Platform { os: Os::Windows, arch: Arch::X64 };
     let linux = Platform { os: Os::Linux, arch: Arch::X64 };
-    for (name, platform, configured) in [("windows", windows, cfg!(windows)), ("linux", linux, false)] {
+    for (name, platform) in [("windows", windows), ("linux", linux)] {
+        let configured = crate::nightly_profile::new_installs_available(platform);
         let stable = tests::backend(&root.path().join(name).join("stable"), platform, None);
         assert!(!stable.nightly_available(), "the stable context never offers nightly builds");
         let paths = Paths::under(&root.path().join(name).join("home")).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
