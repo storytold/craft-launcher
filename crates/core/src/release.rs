@@ -490,6 +490,12 @@ fn html_unescape(text: &str) -> String {
             continue;
         };
         let entity = &after_amp[..end];
+        if entity.contains('&') {
+            // This ampersand was ordinary text; the next one may still start a valid entity.
+            decoded.push('&');
+            rest = after_amp;
+            continue;
+        }
         let character = match entity {
             "amp" => Some('&'),
             "lt" => Some('<'),
@@ -925,9 +931,9 @@ mod tests {
     fn atom_feed_decodes_double_escaped_html_text_entities() {
         let atom = r#"<feed><entry>
             <link href="https://github.com/storytold/photocraft/releases/tag/v0.5.0"/>
-            <content type="html">&lt;p&gt;A &amp;amp; B &amp;lt; C &amp;#38; &amp;#x3C;tag&amp;#x3E;&lt;/p&gt;</content>
+            <content type="html">&lt;p&gt;A &amp;amp; B &amp;lt; C &amp;#38; &amp;#x3C;tag&amp;#x3E; R&amp;D and AT&amp;amp;T&lt;/p&gt;</content>
         </entry></feed>"#;
-        assert_eq!(notes_from_atom(atom, REPO, "v0.5.0").as_deref(), Some("A & B < C & <tag>"));
+        assert_eq!(notes_from_atom(atom, REPO, "v0.5.0").as_deref(), Some("A & B < C & <tag> R&D and AT&T"));
     }
 
     #[test]
