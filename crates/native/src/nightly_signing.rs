@@ -353,7 +353,9 @@ fn authenticate_windows_as(root: &std::path::Path, files: &[std::path::PathBuf],
 #[cfg(windows)]
 fn read_windows_metadata(path: &std::path::Path) -> Result<String, String> {
     let command = windows_command(path, || winsafe::GetSystemDirectory().map(std::path::PathBuf::from).map_err(|error| error.to_string()))?;
-    let output = crate::process::run_command_with_output(command, "Nightly Authenticode metadata", std::time::Duration::from_secs(60))?;
+    // A cold Windows PowerShell start plus hashing a large signed executable has taken 80 seconds
+    // on a busy Windows 11 machine; a genuinely signed build must not be refused for being slow.
+    let output = crate::process::run_command_with_output(command, "Nightly Authenticode metadata", std::time::Duration::from_secs(180))?;
     if !output.success || !output.stderr.trim().is_empty() {
         return Err("The native Nightly Authenticode metadata query failed.".into());
     }
