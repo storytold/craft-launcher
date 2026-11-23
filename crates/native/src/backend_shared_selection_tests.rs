@@ -187,7 +187,9 @@ fn shared_selection_refused_context_reports_availability_from_signing_trust_not_
     std::fs::create_dir_all(&real).unwrap();
     let alias = root.path().join("aliased-root");
     std::os::unix::fs::symlink(&real, &alias).unwrap();
-    for platform in [Platform { os: Os::Linux, arch: Arch::X64 }, Platform { os: Os::Windows, arch: Arch::X64 }, Platform { os: Os::MacOs, arch: Arch::Arm64 }] {
+    for platform in
+        [Platform { os: Os::Linux, arch: Arch::X64 }, Platform { os: Os::Windows, arch: Arch::X64 }, Platform { os: Os::MacOs, arch: Arch::Arm64 }]
+    {
         let paths = Paths::under(&alias).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
         let stable = tests::backend(&root.path().join(format!("{platform:?}")), platform, None);
         let context = stable.nightly_context_with_paths(Ok(paths)).unwrap();
