@@ -2611,6 +2611,18 @@ pub mod windows {
     }
 }
 
+#[cfg(unix)]
+fn complete_nightly_install(
+    downloaded: &Path,
+    authenticated: Option<&Path>,
+    install: impl FnOnce(&Path) -> Result<Record, String>,
+) -> Result<Option<Record>, String> {
+    let file = authenticated.unwrap_or(downloaded);
+    let record = install(file)?;
+    let _ = std::fs::remove_file(downloaded);
+    Ok(Some(record))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4346,18 +4358,6 @@ mod tests {
             assert!(signed_by(Path::new(&app), TEAM_ID), "{app} isn't signed by {TEAM_ID}");
         }
     }
-}
-
-#[cfg(unix)]
-fn complete_nightly_install(
-    downloaded: &Path,
-    authenticated: Option<&Path>,
-    install: impl FnOnce(&Path) -> Result<Record, String>,
-) -> Result<Option<Record>, String> {
-    let file = authenticated.unwrap_or(downloaded);
-    let record = install(file)?;
-    let _ = std::fs::remove_file(downloaded);
-    Ok(Some(record))
 }
 
 #[cfg(all(test, target_os = "linux"))]
