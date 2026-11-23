@@ -31,15 +31,18 @@ fn key_command(home: &Path, args: &[&str]) -> String {
 fn key(root: &Path, old: bool) -> DisposableKey {
     let home = tempfile::Builder::new().prefix("disposable-key-").tempdir_in(root).unwrap();
     let mut args = vec!["--quick-generate-key", "Disposable Nightly Test (NOT A RELEASE KEY)", "ed25519", "cert", "1d"];
+    // A trailing `!` freezes gpg's faked clock. Without it the time advances while each gpg process
+    // runs, so a slow primary-key step can land a second later than the next process's start and
+    // the subkey step then refuses with "Time conflict".
     if old {
-        args.splice(0..0, ["--faked-system-time", "1700000000"]);
+        args.splice(0..0, ["--faked-system-time", "1700000000!"]);
     }
     key_command(home.path(), &args);
     let listed = key_command(home.path(), &["--with-colons", "--list-keys"]);
     let fingerprint = listed.lines().find(|line| line.starts_with("fpr:")).unwrap().split(':').nth(9).unwrap().to_owned();
     let mut subkey = vec!["--quick-add-key", fingerprint.as_str(), "ed25519", "sign", "1d"];
     if old {
-        subkey.splice(0..0, ["--faked-system-time", "1700000000"]);
+        subkey.splice(0..0, ["--faked-system-time", "1700000000!"]);
     }
     key_command(home.path(), &subkey);
     DisposableKey { home, fingerprint }
@@ -59,7 +62,7 @@ fn signed_archive(root: &Path, signer: &DisposableKey, old: bool, content: &[u8]
     let detached = file.with_extension("gz.asc");
     let mut args = vec!["--armor", "--detach-sign", "--output", detached.to_str().unwrap(), file.to_str().unwrap()];
     if old {
-        args.splice(0..0, ["--faked-system-time", "1700000001"]);
+        args.splice(0..0, ["--faked-system-time", "1700000001!"]);
     }
     key_command(signer.home.path(), &args);
     let bytes = std::fs::read(detached).unwrap();
