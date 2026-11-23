@@ -100,8 +100,9 @@ pub(crate) fn install_scope(updated: Option<MsiScope>, fresh: bool, traces: &Tra
 
 /// Checks that no other registration of the app is in the other context. `others` are the product
 /// codes of the app's other uninstall records; each is looked up as `probe` looks up the copy being
-/// updated, and by its record (`record_scope`) when that lookup cannot run. A record that Windows
-/// Installer does not know is ignored.
+/// updated, and by its record (`record_scope`) when that lookup cannot run. When the lookup cannot
+/// run and the records give no single context, the update stops. A record that Windows Installer
+/// does not know is ignored.
 pub(crate) fn others_agree<'a>(
     scope: MsiScope,
     others: impl IntoIterator<Item = &'a str>,
@@ -115,7 +116,7 @@ pub(crate) fn others_agree<'a>(
             Err(ProbeError::Unknown) => None,
             Err(ProbeError::Unavailable(reason)) => {
                 log::warn!("Windows Installer context lookup for {code} could not run: {reason}");
-                record_scope(code)
+                Some(record_scope(code).ok_or(UNKNOWN_CONTEXT)?)
             }
         };
         if other.is_some_and(|other| other != scope) {
@@ -432,7 +433,18 @@ mod tests {
         // The lookup could not run: the other copy's own record decides.
         let unavailable = |_: &str| Err(ProbeError::Unavailable("blocked".into()));
         assert_eq!(others_agree(MsiScope::PerUser, [OTHER], unavailable, |_| Some(MsiScope::PerMachine)), Err(CONFLICTING_CONTEXT.to_string()));
-        assert_eq!(others_agree(MsiScope::PerUser, [OTHER], unavailable, |_| None), Ok(()));
+        assert_eq!(others_agree(MsiScope::PerUser, [OTHER], unavailable, |_| Some(MsiScope::PerUser)), Ok(()));
+    }
+
+    /// Another registration's lookup could not run, and its records give no single context (they are in
+    /// both hives or gone): its context is unknown, so the update stops.
+    #[test]
+    fn a_blocked_lookup_of_another_registration_without_one_record_context_stops_the_update() {
+        const OTHER: &str = "{87654321-4321-4321-4321-CBA987654321}";
+        let unavailable = |_: &str| Err(ProbeError::Unavailable("blocked".into()));
+        for scope in [MsiScope::PerUser, MsiScope::PerMachine] {
+            assert_eq!(others_agree(scope, [OTHER], unavailable, |_| None), Err(UNKNOWN_CONTEXT.to_string()), "{scope:?}");
+        }
     }
 
     #[test]
