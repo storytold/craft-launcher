@@ -38,3 +38,15 @@ pub(crate) const WINDOWS_PUBLISHER: Option<WindowsPublisher<'static>> = Some(Win
 /// Code Signing (id-kp-codeSigning).
 #[cfg(any(windows, test))]
 pub(crate) const CODE_SIGNING_EKU: &str = "1.3.6.1.5.5.7.3.3";
+
+/// Whether new Nightly payloads for `os` can be authenticated here: its reviewed trust input is
+/// set. macOS has no Nightly signing adapter enabled yet.
+pub(crate) fn configured_for(os: artcraft_launcher_core::Os) -> bool {
+    match os {
+        #[cfg(windows)]
+        artcraft_launcher_core::Os::Windows => WINDOWS_PUBLISHER.is_some(),
+        #[cfg(target_os = "linux")]
+        artcraft_launcher_core::Os::Linux => LINUX_SIGNER.is_some(),
+        _ => false,
+    }
+}

@@ -161,3 +161,18 @@ fn shared_selection_a_feed_repo_rename_keeps_the_apps_separate_channel_policy() 
     assert!(photo.separate_nightly, "the policy follows the app, not the renamed repo string");
     assert!(!release_query(Some(&feed), CraftApp::by_id("solidcraft").unwrap()).separate_nightly);
 }
+
+#[test]
+fn shared_selection_nightly_context_reports_configured_signing_trust() {
+    let root = tempfile::tempdir().unwrap();
+    let windows = Platform { os: Os::Windows, arch: Arch::X64 };
+    let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+    for (name, platform, configured) in [("windows", windows, cfg!(windows)), ("linux", linux, false)] {
+        let stable = tests::backend(&root.path().join(name).join("stable"), platform, None);
+        assert!(!stable.nightly_available(), "the stable context never offers nightly builds");
+        let paths = Paths::under(&root.path().join(name).join("home")).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        let mut nightly = stable.nightly_with_paths(paths);
+        nightly.platform = Some(platform);
+        assert_eq!(nightly.nightly_available(), configured, "{name}");
+    }
+}

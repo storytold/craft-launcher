@@ -2342,6 +2342,11 @@ impl Backend for NativeBackend {
         !self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
     }
 
+    fn nightly_available(&self) -> bool {
+        self.shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly
+            && self.platform.is_some_and(crate::nightly_profile::new_installs_available)
+    }
+
     fn nightly_context(&self) -> Option<Box<dyn Backend>> {
         // An unavailable home or aliased namespace is not an ephemeral Nightly profile and
         // must never silently select the stable context or temporary storage.

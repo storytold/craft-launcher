@@ -110,6 +110,16 @@ fn configured_for_new_install(adapter: Adapter) -> Result<Adapter, String> {
     }
 }
 
+/// Whether new Nightly builds can be discovered and installed on `platform` at all: some app
+/// has an admitted adapter here and the platform's signing trust is configured. Retained copies
+/// are managed either way.
+pub(crate) fn new_installs_available(platform: Platform) -> bool {
+    crate::nightly_trust::configured_for(platform.os)
+        && artcraft_launcher_core::hosted_catalog::apps()
+            .iter()
+            .any(|app| app.has_separate_nightly_channel() && admit_new(app, platform).is_ok())
+}
+
 /// Retained management is tied to the same source-owned row, not a descriptor supplied command.
 pub(crate) fn for_app(app: &CraftApp, platform: Platform) -> Result<Adapter, String> {
     CAPABILITIES
@@ -379,6 +389,21 @@ impl Adapter {
 mod tests {
     use super::*;
     use artcraft_launcher_core::nightly::{Download, Isolation, Target};
+
+    /// New Nightly installs are offered only where the signing trust is configured: Windows has
+    /// the reviewed publisher pin, Linux and macOS have none yet. Each OS's trust input exists
+    /// only on that OS, so a Linux test host reports all three unavailable.
+    #[test]
+    fn new_installs_are_available_only_where_signing_trust_is_configured() {
+        let windows = Platform { os: Os::Windows, arch: Arch::X64 };
+        assert_eq!(new_installs_available(windows), cfg!(windows), "Windows is configured, on Windows");
+        for platform in [Platform { os: Os::Linux, arch: Arch::X64 }, Platform { os: Os::MacOs, arch: Arch::Arm64 }] {
+            assert!(!new_installs_available(platform), "{platform:?} has no configured signer");
+        }
+        // A known adapter alone is not availability: macOS has one, but no admitted signer.
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        assert!(for_app(photo, Platform { os: Os::MacOs, arch: Arch::Arm64 }).is_ok());
+    }
 
     fn fixture() -> (&'static CraftApp, Release, Artifact, Platform) {
         let app = CraftApp::by_id("photocraft").unwrap();
