@@ -1,0 +1,13 @@
+MIT License
+
+NoteCraft App Icon (koala mascot)
+Copyright 2026 AlienTech Software
+
+Created with Microsoft Copilot (Windows Copilot), using the owner's account.
+
+Basis for the rights in the image:
+- Owner statement, 2026-10-18: the account is the owner's, the tool is licensed to them, and its terms allow using and distributing the output, including in releases.
+- Owner confirmation, 2026-11-10: AI-generated art is acceptable for this project.
+- Microsoft Services Agreement, section 14(s)(vi), effective 2026-09-30, checked 2026-11-10: Microsoft claims no ownership of output: https://www.microsoft.com/en-us/servicesagreement
+
+Licensed under MIT - free to use, modify, and redistribute.
