@@ -92,9 +92,9 @@ fn main() -> ExitCode {
     artcraft_launcher_native::process::ensure_discord_detection_started();
 
     let wake: Wake = Arc::new(OnceLock::new());
-    let starts = match single_instance::claim(wake.clone()) {
+    let (starts, answering) = match single_instance::claim(wake.clone()) {
         Instance::Secondary => return ExitCode::SUCCESS,
-        Instance::Primary(rx) => rx,
+        Instance::Primary(rx, answering) => (rx, answering),
     };
     // The log file lives in the launcher's data folder (beside the executable in portable mode);
     // opened after the arguments (so `--version` leaves no file behind) and once this is the only
@@ -173,6 +173,18 @@ fn main() -> ExitCode {
                 if let Some(next) = backends.after_failure(&e) {
                     log::warn!("the window didn't start: {e}; trying {next:?} instead");
                     continue;
+                }
+                // Stop answering other starts before the dialog: while it is open, a second start
+                // would otherwise defer to this launcher and exit with nothing on screen. Now it
+                // gets no answer and starts on its own (`Answering::stop`).
+                // Not while something is installing: those workers go on during the dialog, and a
+                // second launcher beside them could start the same install or overwrite the
+                // record of installed apps. That start defers to this one instead, as a newer
+                // start does to a busy launcher (`single_instance`).
+                if !launcher.ui.busy() {
+                    answering.stop();
+                    // The tray icon and the rest go before the dialog, not after it.
+                    drop(launcher);
                 }
                 report_startup_failure(attempt, &e, startup_language(saved_settings(settings_path.as_deref())));
                 return ExitCode::FAILURE;
