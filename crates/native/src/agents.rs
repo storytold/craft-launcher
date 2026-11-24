@@ -17,9 +17,6 @@ use serde_json::{Map, Value, json};
 
 use artcraft_launcher_core::CraftApp;
 
-use crate::detect;
-use crate::manifest::Manifest;
-
 /// The key our entry has in a client's `mcpServers`.
 pub use artcraft_launcher_core::mcp_config::SERVER_KEY;
 /// The app list and its folder override, from `craft-ai-agents` (the one place that reads and
@@ -198,11 +195,12 @@ pub fn unregister(config: &Path, gateway: &Path) -> Result<(), String> {
 }
 
 /// Every installed Craft app with a usable MCP command, in suite order.
-pub fn installed_apps(manifest: &Manifest, snapshot: &detect::Snapshot) -> Vec<AppEntry> {
+/// The backend supplies detection so tests can substitute their own installed copies.
+pub fn installed_apps(detect: impl Fn(&CraftApp) -> Option<artcraft_launcher_core::Installed>) -> Vec<AppEntry> {
     artcraft_launcher_core::SUITE
         .iter()
         .filter_map(|app| {
-            let installed = detect::detect(app, manifest, snapshot)?;
+            let installed = detect(app)?;
             #[cfg(target_os = "linux")]
             if installed.source == artcraft_launcher_core::InstallSource::Flatpak {
                 // The MCP gateway starts on the host and needs an absolute host path.

@@ -118,11 +118,11 @@ fn nightly_app(id: &str) -> Option<ImageSource<'static>> {
     })
 }
 
-/// Nightly-only artwork; the explicit translated Pre-Release tag stays beside the title.
+/// Nightly-only artwork; the explicit translated Developer Build tag stays beside the title.
 /// Stable cards and the ordinary Launcher's Settings hero never use these sources.
 pub(crate) fn nightly_icon(ui: &mut egui::Ui, id: &str, name: &str, size: f32) {
     let Some(source) = nightly_app(id) else { return };
-    let name = format!("{name} · {}", tl!("Pre-Release"));
+    let name = format!("{name} · {}", tl!("Developer Build"));
     ui.add(egui::Image::new(source).fit_to_exact_size(egui::Vec2::splat(size)).alt_text(crate::i18n::fmt(tl!("{name} icon"), &[("name", &name)])));
 }
 
