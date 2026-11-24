@@ -22,6 +22,9 @@ in [GLOSSARY.md](../GLOSSARY.md).
    hour in each copy's own data folder; the two copies don't share a file, so the nightly
    storage stays separate.
 2. **GitHub's own count.** Stop at the lower of the budget and `X-RateLimit-Remaining` minus 10.
+   Each request counts against that number before GitHub answers, a lower count within one
+   window stands, and a refill time is trusted for at most an hour. Requests that carry
+   `ARTCRAFT_LAUNCHER_GITHUB_TOKEN` have their own limit and skip the budget.
 3. **Priority when short.** The user's own action (Choose version, installing a pinned version,
    a forced check, opening Developer Builds), then installed apps, then apps not installed, then
    the Nightly track, then nightly discovery.
@@ -33,7 +36,8 @@ in [GLOSSARY.md](../GLOSSARY.md).
 6. **Nightly track.** At most every 3 hours per app. Nightly discovery for Developer Builds
    already waits 6 hours between automatic sweeps (`nightly_lookup::EVERY`).
 7. **Forced check.** Skips the per-app throttles but not the budget; a second one within 2
-   minutes reuses the last answer.
+   minutes of a forced one reuses its answers (an automatic check doesn't count). A budget
+   refusal of nightly discovery isn't saved as a server backoff.
 8. **Budget spent.** Saved answers stay. The footer and automation results say when GitHub is
    next asked ("Next GitHub check at 14:05"); a refused forced check is not reported as success.
 

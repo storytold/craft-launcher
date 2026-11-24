@@ -14,6 +14,9 @@ pub(crate) const DEVELOPER_BUILDS: usize = 15;
 const HOUR: i64 = 60 * 60;
 /// Requests left to the rest of the network: stop this many short of GitHub's own count.
 const NETWORK_RESERVE: i64 = 10;
+/// The longest GitHub's own count is trusted to hold requests back, as for GitHub's refusals
+/// ([`crate::source`]): a computer clock behind GitHub's can't stretch it past this.
+const MAX_NETWORK_WAIT: i64 = HOUR;
 
 /// Requests kept back for more urgent ones.
 // lean: fixed reserves per priority; a queue ordered by priority if user actions still starve.
@@ -58,12 +61,18 @@ impl GitHubBudget {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         // A clock set back can't keep requests in the window for longer than an hour.
         state.asked.retain(|at| *at > now - HOUR && *at <= now);
-        let network = state.github.filter(|(_, reset)| *reset > now);
+        // A refill time further off than GitHub ever names comes from a clock set back since.
+        let network = state.github.filter(|(_, reset)| *reset > now && *reset - now <= MAX_NETWORK_WAIT);
         let own = self.limit as i64 - state.asked.len() as i64;
         let left = network.map_or(own, |(remaining, _)| own.min(remaining - NETWORK_RESERVE));
         let needed = held_back(priority) + 1;
         if left >= needed {
             state.asked.push(now);
+            // Counted against GitHub's count at once: requests in flight on other threads haven't
+            // answered with a newer one yet.
+            if let Some((remaining, reset)) = network {
+                state.github = Some((remaining - 1, reset));
+            }
             self.save(&state);
             return Ok(());
         }
@@ -75,11 +84,17 @@ impl GitHubBudget {
         Err(own_free.max(network_free))
     }
 
-    /// Notes GitHub's own count from an answer's `X-RateLimit-Remaining` and `X-RateLimit-Reset`.
-    pub(crate) fn observe(&self, remaining: Option<i64>, reset: Option<i64>) {
+    /// Notes GitHub's own count from an answer's `X-RateLimit-Remaining` and `X-RateLimit-Reset`
+    /// at `now`. Answers can arrive out of order: within one window the lowest count stands, and
+    /// a higher one is taken only once the window has moved on.
+    pub(crate) fn observe(&self, remaining: Option<i64>, reset: Option<i64>, now: i64) {
         if let (Some(remaining), Some(reset)) = (remaining, reset) {
+            let reset = reset.min(now + MAX_NETWORK_WAIT);
             let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-            state.github = Some((remaining, reset));
+            state.github = match state.github {
+                Some((known, window)) if window > now && reset <= window => Some((known.min(remaining), window)),
+                _ => Some((remaining, reset)),
+            };
             self.save(&state);
         }
     }
@@ -124,11 +139,43 @@ mod tests {
     #[test]
     fn githubs_own_count_stops_the_launcher_early_until_it_refills() {
         let budget = GitHubBudget::in_memory(STABLE);
-        budget.observe(Some(NETWORK_RESERVE + 1), Some(NOW + 600));
+        budget.observe(Some(NETWORK_RESERVE + 1), Some(NOW + 600), NOW);
         assert!(budget.take(Priority::User, NOW).is_ok(), "one left before the reserve");
-        budget.observe(Some(NETWORK_RESERVE), Some(NOW + 600));
+        budget.observe(Some(NETWORK_RESERVE), Some(NOW + 600), NOW);
         assert_eq!(budget.take(Priority::User, NOW), Err(NOW + 600), "the rest is the network's");
         assert!(budget.take(Priority::User, NOW + 600).is_ok(), "GitHub's count refilled");
+    }
+
+    #[test]
+    fn requests_in_flight_count_against_githubs_count_before_it_answers() {
+        let budget = GitHubBudget::in_memory(STABLE);
+        budget.observe(Some(NETWORK_RESERVE + 2), Some(NOW + 600), NOW);
+        let mut taken = 0;
+        while budget.take(Priority::User, NOW).is_ok() {
+            taken += 1;
+        }
+        assert_eq!(taken, 2, "only what is left above the reserve, though no answer came back");
+    }
+
+    #[test]
+    fn an_older_answer_doesnt_give_back_what_a_newer_one_spent() {
+        let budget = GitHubBudget::in_memory(STABLE);
+        budget.observe(Some(NETWORK_RESERVE), Some(NOW + 600), NOW);
+        budget.observe(Some(NETWORK_RESERVE + 1), Some(NOW + 600), NOW);
+        assert!(budget.take(Priority::User, NOW).is_err(), "the lower count of the window stands");
+        // A new window refills it.
+        budget.observe(Some(50), Some(NOW + 600 + HOUR), NOW + 601);
+        assert!(budget.take(Priority::User, NOW + 601).is_ok());
+    }
+
+    #[test]
+    fn a_far_off_refill_time_holds_requests_back_no_longer_than_an_hour() {
+        let budget = GitHubBudget::in_memory(STABLE);
+        // A computer clock two days behind GitHub's.
+        budget.observe(Some(0), Some(NOW + 2 * 86_400), NOW);
+        let free = budget.take(Priority::User, NOW).unwrap_err();
+        assert!(free <= NOW + MAX_NETWORK_WAIT, "held until {free}");
+        assert!(budget.take(Priority::User, NOW + MAX_NETWORK_WAIT).is_ok());
     }
 
     #[test]
