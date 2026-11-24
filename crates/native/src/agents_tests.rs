@@ -66,10 +66,10 @@ fi
         origin: None,
         installation: Some("extra".into()),
     };
-    assert!(flatpak_entry(app, &installed, flatpak.clone()).is_none(), "a GUI-only package is left out");
+    assert!(flatpak_entry(app, &installed, flatpak.clone(), Vec::new()).is_none(), "a GUI-only package is left out");
 
     std::fs::write(bin.join("photocraft-cli"), []).unwrap();
-    let entry = flatpak_entry(app, &installed, flatpak.clone()).unwrap();
+    let entry = flatpak_entry(app, &installed, flatpak.clone(), Vec::new()).unwrap();
     let list = dir.path().join("list");
     write_apps(&list, &[entry]).unwrap();
     let (apps, skipped) = craft_ai_agents::load(&list).unwrap().unwrap();
@@ -78,6 +78,22 @@ fi
     assert_eq!(entry.id, "photocraft");
     assert_eq!(entry.command, flatpak);
     assert_eq!(entry.args, ["run", "--installation=extra", "--command=photocraft-cli", "ai.storyteller.photocraft", "mcp"]);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn flatpak_launches_read_the_live_registry_without_write_access() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("shared agent registry");
+    let args = flatpak_consent_args(&dir);
+    let path = dir.to_str().unwrap();
+    assert_eq!(args, [format!("--filesystem={path}:ro"), format!("--env={DIR_ENV}={path}"), "--env=CRAFT_FLAGS=AI-MCP".into()]);
+    assert!(dir.is_dir(), "the directory can be mounted before the switch is turned on");
+    assert!(!enabled(&dir), "mounting the directory does not grant consent");
+    write_apps(&dir, &[]).unwrap();
+    assert!(enabled(&dir));
+    remove_apps(&dir).unwrap();
+    assert!(!enabled(&dir), "the same mount sees consent removed");
 }
 
 #[test]

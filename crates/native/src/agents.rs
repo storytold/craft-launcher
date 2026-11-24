@@ -209,7 +209,7 @@ pub fn installed_apps(manifest: &Manifest, snapshot: &detect::Snapshot) -> Vec<A
                 if crate::process::in_sandbox() {
                     return None;
                 }
-                return flatpak_entry(app, &installed, crate::process::which("flatpak")?);
+                return flatpak_entry(app, &installed, crate::process::which("flatpak")?, flatpak_agent_args(app));
             }
             native_entry(app, &installed.location)
         })
@@ -222,7 +222,7 @@ fn native_entry(app: &CraftApp, location: &str) -> Option<AppEntry> {
 }
 
 #[cfg(target_os = "linux")]
-fn flatpak_entry(app: &CraftApp, installed: &artcraft_launcher_core::Installed, flatpak: PathBuf) -> Option<AppEntry> {
+fn flatpak_entry(app: &CraftApp, installed: &artcraft_launcher_core::Installed, flatpak: PathBuf, agent_args: Vec<String>) -> Option<AppEntry> {
     let id = installed.package.as_deref()?;
     let scope = crate::packages::flatpak_scope(installed.installation.as_deref());
     let mut info = crate::process::command(&flatpak);
@@ -236,8 +236,34 @@ fn flatpak_entry(app: &CraftApp, installed: &artcraft_launcher_core::Installed, 
     // so it gets the runtime and permissions of the installed package.
     let bin = deployment.join("files/bin");
     let cli = app.stems().map(|stem| format!("{stem}-cli")).find(|name| bin.join(name).is_file())?;
-    let args = vec!["run".into(), scope, format!("--command={cli}"), id.into(), "mcp".into()];
+    let mut args = vec!["run".into(), scope, format!("--command={cli}")];
+    args.extend(agent_args);
+    args.extend([id.into(), "mcp".into()]);
     Some(AppEntry { id: app.id.into(), name: app.name.into(), command: flatpak, args })
+}
+
+/// Share the same agent consent with the Flatpak window and the CLI that talks to it. Flatpak
+/// uses a private XDG config directory, so expose only the registry directory, read-only.
+#[cfg(target_os = "linux")]
+pub(crate) fn flatpak_agent_args(app: &CraftApp) -> Vec<String> {
+    if crate::process::in_sandbox() || craft_ai_agents::known_name(app.id).is_none() || !flag_on() {
+        return Vec::new();
+    }
+    mcp_dir().map_or_else(Vec::new, |dir| flatpak_consent_args(&dir))
+}
+
+#[cfg(target_os = "linux")]
+fn flatpak_consent_args(dir: &Path) -> Vec<String> {
+    let Some(path) = dir.to_str().filter(|_| dir.is_absolute()) else {
+        return Vec::new();
+    };
+    // Mount the directory even before consent is on. The launcher creates, replaces and removes
+    // apps.json while the sandbox is running, so mounting just that file would miss updates.
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        log::warn!("couldn't share the agent registry with Flatpak at {} ({e})", dir.display());
+        return Vec::new();
+    }
+    vec![format!("--filesystem={path}:ro"), format!("--env={DIR_ENV}={path}"), format!("--env={}={}", craft_flags::ENV, craft_flags::AI_MCP.id)]
 }
 
 /// The `-cli` binary beside a detected main executable, under any name the app has shipped as

@@ -1023,7 +1023,10 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
         InstallSource::Flatpak => {
             let mut cmd = process::flatpak_command();
             cmd.arg("run");
+            cmd.arg(crate::packages::flatpak_scope(installed.installation.as_deref()));
             cmd.args(process::env_args(&env));
+            #[cfg(target_os = "linux")]
+            cmd.args(crate::agents::flatpak_agent_args(app));
             // The id detection found it under, which may be one of the app's older ones.
             cmd.arg(installed.package.clone().unwrap_or_else(|| app.bundle_id()));
             // After the app's id: flags before it would go to `flatpak run` itself.
