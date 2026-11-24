@@ -1023,13 +1023,13 @@ ink_light = [6, 52, 196]
 kind = "community"
 msi_publisher = "MailCraft contributors"
 name = "MailCraft"
-publisher = "UCS Care Group"
+publisher = "UCS Labs"
 repo = "UCS-Care-Group/mailcraft"
 site = "https://mailcraft.work"
 tagline = "Mail, calendar and contacts"
 [apps.details]
 headline = "Mail, calendar, contacts and tasks, in one native app."
-about = "An open-source mail program by UCS Care Group, written from scratch in Rust: the folder pane, message list and reading pane people already know, with a calendar, people and to-dos. Works with Microsoft 365, Outlook.com and IMAP. In public beta, and it can be driven by AI agents through its MCP server."
+about = "An open-source mail program by UCS Labs, written from scratch in Rust: the folder pane, message list and reading pane people already know, with a calendar, people and to-dos. Works with Microsoft 365, Outlook.com and IMAP. In public beta, and it can be driven by AI agents through its MCP server."
 platforms = "macOS, Windows, Linux, FreeBSD, web"
 [[apps.details.features]]
 text = "Conversations, flags, categories, rules, search with a query language, and HTML mail shown without running anything in it."
