@@ -1044,3 +1044,45 @@ title = "Files"
 [[apps.details.features]]
 text = "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."
 title = "Desktop, web and agents"
+
+[[apps]]
+bundle = "io.github.mustafayusufyalcin.beatcraft"
+color = [242, 155, 62]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "beatcraft"
+binary = "beatcraft"
+mac_bundle_id = "io.github.mustafayusufyalcin.beatcraft"
+mac_bundle_name = "BeatCraft"
+website = "https://mustafayusufyalcin.github.io/beatcraft/"
+windows_msi_publisher = "BeatCraft contributors"
+desktop_categories = ["AudioVideo", "Audio", "Music", "Sequencer"]
+startup_wm_class = "io.github.mustafayusufyalcin.beatcraft"
+icon_url = "https://getartcraft.com/launcher-app-icons/beatcraft-798503eba615657dcbdd174b0fb31d66b7d0ea5a4f0bd24332d2950715a3bcb0.png"
+icon_sha256 = "798503eba615657dcbdd174b0fb31d66b7d0ea5a4f0bd24332d2950715a3bcb0"
+ink_dark = [247, 178, 102]
+ink_light = [158, 84, 6]
+kind = "community"
+msi_publisher = "BeatCraft contributors"
+name = "BeatCraft"
+publisher = "Mustafa Yusuf Yalçın and Yusuf Arslan"
+repo = "MustafaYusufYalcin/beatcraft"
+site = "https://mustafayusufyalcin.github.io/beatcraft/"
+tagline = "Pattern-based beat making"
+[apps.details]
+headline = "Build beats from patterns: step sequencer, piano roll, playlist and mixer."
+about = "An open-source beat maker by Mustafa Yusuf Yalçın and Yusuf Arslan, written in Rust. Every sound is synthesized by the app itself, so there is nothing else to download. Its CLI and MCP server offer 19 commands, enough for an AI agent to build and export a beat from start to finish. In early alpha: no samples, MIDI input, audio recording or undo yet."
+platforms = "macOS, Windows, Linux, web"
+[[apps.details.features]]
+text = "A channel rack with 16, 32 or 64 steps per pattern, a piano roll for melodies, and swing."
+title = "Patterns"
+[[apps.details.features]]
+text = "A playlist that lines patterns up into a song, and a mixer with level, pan, mute and solo per track and built-in filter, delay and reverb effects."
+title = "Arrangement"
+[[apps.details.features]]
+text = "Eleven built-in synthesized instruments, from kick and hats to sub bass, lead and pad, and export to a 16-bit stereo WAV file."
+title = "Sound"
+[[apps.details.features]]
+text = "A desktop app, a browser build, a CLI and an MCP server whose file access can be kept to the folders you name."
+title = "Desktop, web and agents"
