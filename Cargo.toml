@@ -31,8 +31,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = { version = "1", features = ["serde"] }
 log = "0.4"
-# All date/time conversion goes through jiff (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
-jiff = "0.2"
+# All calendar conversion goes through chrono (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
+# No default features: no clock and no system zone, so it builds for wasm32 too. 0.4.45 has
+# `NaiveDate::{to,from}_epoch_days`, which core and xtask use.
+chrono = { version = "0.4.45", default-features = false }
 # Feature flags (craft-libs#1118, merged in craft-libs#1119).
 craft-flags = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "eeb5b26198865182463ceba31c8b64394793d22b" }
 # The agents switch and app list (Settings › AI agents), shared with the craft-ai-mcp gateway and

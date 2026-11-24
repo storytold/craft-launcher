@@ -509,19 +509,20 @@ fn unix_now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
 }
 
-/// `2026-10-10T12:00:00Z` (through jiff's civil calendar). jiff spans only years -9999..=9999, far
-/// narrower than the whole `i64` the old hand-rolled Hinnant code converted, so the instant is
-/// moved into range by whole 400-year Gregorian cycles (146_097 days) and the real year restored
-/// afterwards. jiff still does the month/day; the cycle count only shifts the year, keeping every
-/// `i64` exact (e.g. `i64::MAX` → year 292277026596) with no epoch fallback.
+/// `2026-10-10T12:00:00Z` (through chrono's civil calendar). chrono spans only about ±262,000
+/// years, far narrower than the whole `i64` the old hand-rolled Hinnant code converted, so the
+/// instant is moved into range by whole 400-year Gregorian cycles (146_097 days; the range
+/// extension craft-contrib's standards/time.md sanctions) and the real year restored afterwards. chrono still does
+/// the month/day; the cycle count only shifts the year, keeping every `i64` exact (e.g.
+/// `i64::MAX` → year 292277026596) with no epoch fallback.
 fn rfc3339(secs: i64) -> String {
+    use chrono::Datelike;
     let rem = secs.rem_euclid(86_400);
-    let epoch = jiff::civil::Date::constant(1970, 1, 1);
     let days = secs.div_euclid(86_400);
     let (cycles, rest) = (days.div_euclid(146_097), days.rem_euclid(146_097));
-    // `rest` is in `0..146_097` (under one 400-year cycle), so `epoch + rest days` lands in
-    // 1970..=2369 (inside jiff's range) and `rest * 86_400` never overflows.
-    let date = epoch.checked_add(jiff::SignedDuration::from_secs(rest * 86_400)).unwrap_or(epoch);
+    // `rest` is in `0..146_097` (under one 400-year cycle), so it fits an `i32` and the date lands
+    // in 1970..=2369, inside chrono's range; the 1970-01-01 fallback is unreachable.
+    let date = i32::try_from(rest).ok().and_then(chrono::NaiveDate::from_epoch_days).unwrap_or_default();
     // Restore the real year through `i128` so `cycles * 400` can't overflow at the `i64` extremes.
     let y = i128::from(date.year()) + i128::from(cycles) * 400;
     let y = i64::try_from(y).unwrap_or(if y < 0 { i64::MIN } else { i64::MAX });
@@ -787,8 +788,8 @@ mod tests {
     fn dates_and_versions() {
         assert_eq!(rfc3339(0), "1970-01-01T00:00:00Z");
         assert_eq!(rfc3339(1_791_500_000), "2026-10-08T22:53:20Z");
-        // Year 10000 and the `i64` extremes are past jiff's own calendar range (-9999..=9999), but
-        // the 400-year cycle reduction keeps the dates the old Hinnant code produced, not the epoch.
+        // Year 10000 is inside chrono's range; the `i64` extremes are far outside it, and the
+        // 400-year cycle reduction keeps the dates the old Hinnant code produced, not the epoch.
         assert_eq!(rfc3339(253_402_300_800), "10000-01-01T00:00:00Z");
         assert_eq!(rfc3339(i64::MAX), "292277026596-12-04T15:30:07Z");
         assert_eq!(rfc3339(i64::MIN), "-292277022657-01-27T08:29:52Z");
