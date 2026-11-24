@@ -138,14 +138,20 @@ impl Feed {
         if self.mirror.is_none() && now.saturating_sub(fetched_at) > MAX_AGE {
             return FeedAnswer::AskGitHub;
         }
-        // The feed's repo must be the app's, or one the feed says it moved to.
-        let repo = self.repo_for(app);
+        // The feed's repo must be the app's, one the feed says it moved to, or the app's former repo
+        // (downloads are then checked against that one).
+        let mut repo = self.repo_for(app);
         if let Some(feed_repo) = &entry.repo
             && !feed_repo.eq_ignore_ascii_case(&repo)
         {
-            return FeedAnswer::AskGitHub;
+            match app.former_repo.filter(|former| feed_repo.eq_ignore_ascii_case(former)) {
+                Some(former) => repo = former.to_string(),
+                None => return FeedAnswer::AskGitHub,
+            }
         }
         match &entry.release {
+            // The app's other name may have the release: GitHub is asked about both.
+            None if app.former_repo.is_some() => FeedAnswer::AskGitHub,
             None => FeedAnswer::Fresh(None),
             Some(r) => match r.to_release(&repo, self.mirror.as_deref()) {
                 Some(release) => FeedAnswer::Fresh(Some(release)),
@@ -430,6 +436,33 @@ mod tests {
         assert_eq!(feed.answer(&LAUNCHER, NOW), FeedAnswer::AskGitHub);
         // An app the launcher doesn't know is simply carried along.
         assert!(feed.apps.contains_key("brandnewcraft"));
+    }
+
+    #[test]
+    fn an_app_with_a_former_repo_is_matched_under_either_name() {
+        // MailCraft moved from `UCS-Care-Group` to `UCSLabs` (#1593): a feed still naming the former
+        // repo is used, with downloads checked against that repo, and "no release" under one name
+        // sends the launcher to GitHub, where the other name is asked too.
+        let mailcraft = app("mailcraft");
+        let former = mailcraft.former_repo.unwrap();
+        let entry = |repo: &str, release: &str| {
+            format!(
+                r#"{{"release_info": {{"apps": {{"mailcraft": {{"repo": "{repo}", "app_last_fetched": "2026-10-09T13:00:00Z", "latest_release": {release}}}}}}}}}"#
+            )
+        };
+        let asset = |repo: &str| {
+            format!(
+                r#"{{"name": "mailcraft-0.15.0-x.msi", "size_bytes": 1, "download_url": "https://github.com/{repo}/releases/download/v0.15.0/mailcraft-0.15.0-x.msi", "sha256": "{HASH}"}}"#
+            )
+        };
+        let release = format!(r#"{{"tag": "v0.15.0", "assets": [{}, {}]}}"#, asset(former), asset(mailcraft.repo));
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&entry(former, &release)).unwrap().answer(mailcraft, NOW) else { panic!() };
+        assert_eq!(r.assets.len(), 1);
+        assert!(r.assets[0].url.starts_with(&release::download_prefix(former)));
+        for repo in [mailcraft.repo, former] {
+            assert_eq!(Feed::parse(&entry(repo, "null")).unwrap().answer(mailcraft, NOW), FeedAnswer::AskGitHub, "{repo}");
+        }
+        assert_eq!(Feed::parse(&entry("someone/mailcraft", &release)).unwrap().answer(mailcraft, NOW), FeedAnswer::AskGitHub);
     }
 
     #[test]

@@ -178,7 +178,12 @@ impl WebBackend {
             ctx.request_repaint();
             let mut limited = None;
             for app in artcraft_launcher_core::hosted_catalog::apps() {
-                let latest = latest(&release::ReleaseQuery::for_app(app, app.repo), pre).await;
+                let query = release::ReleaseQuery::for_app(app, app.repo);
+                let mut latest = latest(&query, pre).await;
+                // No release under `repo`: its former name may have one (storytold/craft-launcher#1593).
+                if let (Ok(LatestRelease::None), Some(former)) = (&latest, query.former()) {
+                    latest = self::latest(&former, pre).await;
+                }
                 if let Err(Some(reset)) = &latest {
                     limited = Some(*reset);
                 }

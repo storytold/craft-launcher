@@ -192,14 +192,17 @@ impl VerifiedCatalog {
                     ),
                 });
             }
+            // A pinned app keeps its compiled repos, whichever of them the website names.
+            let pinned = SUITE.iter().find(|a| a.id == record.id);
             apps.push(CraftApp {
+                repo: pinned.map_or_else(|| intern(record.repo), |a| a.repo),
+                former_repo: pinned.and_then(|a| a.former_repo),
                 id: intern(record.id),
                 name: intern(record.name),
                 tagline: intern(record.tagline),
                 color: record.color,
                 ink_light: record.ink_light,
                 ink_dark: record.ink_dark,
-                repo: intern(record.repo),
                 former_ids: intern_list(record.former_ids),
                 former_names: intern_list(record.former_names),
                 former_bundles: intern_list(record.former_bundles),
@@ -283,7 +286,8 @@ fn valid_record(r: &Record) -> bool {
     // A signature cannot expand the compiled community allowlist or change existing install
     // identities. These checks keep native detection/uninstall and publisher verification pinned.
     if let Some(pinned) = SUITE.iter().find(|a| a.id == r.id) {
-        if r.repo != pinned.repo
+        // The website may still list the repo under its former name until it catches up.
+        if (r.repo != pinned.repo && Some(r.repo.as_str()) != pinned.former_repo)
             || (r.kind == "official") != (pinned.kind == AppKind::Official)
             || r.publisher != pinned.publisher
             || r.msi_publisher.as_deref() != pinned.msi_publisher
@@ -373,7 +377,7 @@ mod tests {
         assert_eq!(catalog.rejected_entries, 0);
         for record in &catalog.records {
             let bundled = SUITE.iter().find(|app| app.id == record.id).unwrap();
-            assert_eq!(record.repo, bundled.repo);
+            assert!(record.repo == bundled.repo || Some(record.repo.as_str()) == bundled.former_repo, "{}", record.id);
         }
     }
 
