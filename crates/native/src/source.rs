@@ -443,7 +443,8 @@ fn with_former<T>(query: &ReleaseQuery, ask: impl Fn(&ReleaseQuery) -> T, no_rel
 impl GitHubSource {
     fn versions_in(&self, query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
         if let Some((at, list)) = self.cache.lock().unwrap_or_else(PoisonError::into_inner).versions.get(&query.repo)
-            && crate::now().saturating_sub(*at) < max_age
+            // A list stamped in the future (the clock set back since) isn't recent.
+            && (0..max_age).contains(&crate::now().saturating_sub(*at))
         {
             return Ok(list.clone());
         }
@@ -720,7 +721,7 @@ mod tests {
         let saved = |age: i64| {
             let cache = CacheFile { versions: [(REPO.to_string(), (crate::now() - age, list.clone()))].into(), ..Default::default() };
             std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
-            let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0));
+            let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
             GitHubSource::new(http, path.clone())
         };
         let pin = artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into());
@@ -731,6 +732,9 @@ mod tests {
         assert_eq!(answer.source, Source::Cache);
         assert!(day_old.versions(&q(REPO)).is_err(), "a list older than an hour is asked for again");
         assert_eq!(saved(30 * 60).versions(&q(REPO)).unwrap().len(), 2, "a recent list stands in");
+        let ahead = saved(-60);
+        assert!(ahead.versions_within(&q(REPO), 0).is_err(), "a pressed check asks GitHub past a list stamped ahead");
+        assert!(ahead.versions(&q(REPO)).is_err(), "a list stamped in the future isn't recent");
     }
 
     /// A request the launcher's own budget held back says so, not that GitHub's limit was

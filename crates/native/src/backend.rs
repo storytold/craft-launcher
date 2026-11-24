@@ -3369,7 +3369,7 @@ mod tests {
         let list = vec![Release { tag: "nightly-2026-11-23".into(), prerelease: true, ..Default::default() }];
         let cache = serde_json::json!({ "entries": {}, "versions": { word.repo: [crate::now() - 60, list] } });
         std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
-        let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0));
+        let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
         let source = crate::source::GitHubSource::new(http, path);
         let shared = shared();
         let (latest, _, _) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, false, NOW);
