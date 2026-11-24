@@ -2143,32 +2143,37 @@ fn latest_for(
     if due {
         let query = ReleaseQuery::for_app(app, repo).with_priority(github_priority(app, &VersionTrack::Stable, shared, force));
         let answer = source.latest(&query, pre);
-        // GitHub couldn't answer (its limit, the launcher's budget, the network) and nothing was
-        // saved: a stable release the feed lists stands rather than an error.
-        if matches!(answer.latest, LatestRelease::Failed(_))
-            && let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| f.answer(app, now))
-        {
+        // GitHub couldn't answer (its limit, the launcher's budget, the network), or fell back
+        // to a saved release older than the feed's: the feed's stable release stands.
+        let live = answer.source == Source::GitHubApi && !matches!(answer.latest, LatestRelease::Failed(_));
+        if !live && let Some(stable) = feed_if_newer(feed, app, now, Some(&answer.latest)) {
             return (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed));
         }
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
     } else {
         let cached = source.cached(&ReleaseQuery::for_app(app, repo), pre);
-        // With pre-releases on, a stable release the feed already lists outranks an older beta
-        // or RC GitHub named last time, without waiting for GitHub's next turn.
-        match (pre.then(|| feed.map(|f| f.answer(app, now))).flatten(), &cached) {
-            (Some(FeedAnswer::Fresh(Some(stable))), Some(LatestRelease::Found(saved)))
-                if stable.version.as_ref().zip(saved.version.as_ref()).is_some_and(|(stable, saved)| version::is_newer(stable, saved)) =>
-            {
-                (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed))
-            }
-            // Nothing saved from GitHub for this track yet (pre-releases just turned on): the
-            // feed's stable release stands until GitHub's turn.
-            (Some(FeedAnswer::Fresh(Some(stable))), None | Some(LatestRelease::None)) => {
-                (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed))
-            }
-            _ => (cached, Origin::GitHub, None),
+        // A stable release the feed already lists outranks an older one (or a beta or RC) GitHub
+        // named last time, without waiting for GitHub's next turn; so does it when nothing is
+        // saved from GitHub for this track yet (pre-releases just turned on). A check reusing a
+        // forced one's answers keeps whichever of the two is newer.
+        match feed_if_newer(feed, app, now, cached.as_ref()) {
+            Some(stable) => (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed)),
+            None => (cached, Origin::GitHub, None),
         }
     }
+}
+
+/// The feed's fresh stable release for `app`, when it is newer than `github`'s answer, or that
+/// answer is missing, empty or failed.
+fn feed_if_newer(feed: Option<&Feed>, app: &CraftApp, now: i64, github: Option<&LatestRelease>) -> Option<Release> {
+    let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| f.answer(app, now)) else { return None };
+    let newer = match github {
+        Some(LatestRelease::Found(saved)) => {
+            stable.version.as_ref().zip(saved.version.as_ref()).is_some_and(|(stable, saved)| version::is_newer(stable, saved))
+        }
+        _ => true,
+    };
+    newer.then_some(stable)
 }
 
 impl Shared {
@@ -3314,6 +3319,51 @@ mod tests {
         let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Refused, &shared(), true, false, NOW);
         assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.6.0"), "{latest:?}");
         assert_eq!(used, Some(Source::Feed));
+    }
+
+    /// A check reusing a forced one's answers, or a GitHub turn that fell back to a saved
+    /// release, keeps the feed's stable release when it is newer than what GitHub had saved.
+    #[test]
+    fn an_older_saved_github_answer_doesnt_hide_the_feeds_newer_release() {
+        /// GitHub answering only from the release it saved, `self.0`.
+        struct Saved(&'static str);
+        impl Saved {
+            fn saved(&self) -> LatestRelease {
+                LatestRelease::Found(Release { tag: format!("v{}", self.0), version: version::parse(self.0), ..Release::default() })
+            }
+        }
+        impl ReleaseSource for Saved {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: self.saved(), source: Source::Cache }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                Some(self.saved())
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+            fn newest_tag(&self, _repo: &str) -> Option<String> {
+                Some("v0.8.0".into())
+            }
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let tag = |latest: Option<LatestRelease>| match latest {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => format!("{other:?}"),
+        };
+        // Reusing a forced check: the feed's v0.6.0 is newer than the saved v0.5.0.
+        let reusing = shared();
+        reusing.github_asked.lock().unwrap().insert(asked_key(photo, false), NOW - 60);
+        reusing.reusing_forced.store(true, Ordering::SeqCst);
+        assert_eq!(tag(latest_for(photo, Some(&feed()), LOADED, &Saved("0.5.0"), &reusing, false, false, NOW).0), "v0.6.0");
+        // A refused turn answered from a saved RC older than the feed's release.
+        let plan = remote_plan(true, (None, LOADED)).1;
+        let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Saved("0.6.0-rc.1"), &shared(), true, false, NOW);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+        // A saved RC newer than the feed's release stands.
+        let (latest, _, _) = latest_for(photo, Some(&feed()), plan, &Saved("0.7.0-rc.1"), &shared(), true, false, NOW);
+        assert_eq!(tag(latest), "v0.7.0-rc.1");
     }
 
     /// A check pressed again within the reuse window keeps the newer release the forced check
