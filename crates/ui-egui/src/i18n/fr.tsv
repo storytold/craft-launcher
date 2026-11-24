@@ -523,15 +523,17 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Installed developer build	Installed developer build
 	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
 
-# Availability-only pre-release destination (English fallback)
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
 	Could not check for developer builds.	Could not check for developer builds.
 	No developer builds are available yet.	No developer builds are available yet.
-	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Le canal des préversions est mis à jour automatiquement chaque nuit avec le code le plus récent. Il peut contenir des bogues, des problèmes de performances et de stabilité, ainsi que des fonctions inachevées. Pour un travail important, utilisez le canal stable.
 
-# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
-	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.
-	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.
-	You can turn this off at any time without deleting your installed developer builds or their data.	You can turn this off at any time without deleting your installed developer builds or their data.
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	Les préversions vous permettent de découvrir les nouveautés en avance, mais elles contiendront des bugs et peuvent entraîner la perte de travail non enregistré.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	Elles s’installent à côté de vos applications stables avec leurs propres réglages et données, sans modifier votre environnement stable. Sauvegardez toujours vos fichiers importants avant de les ouvrir dans une préversion : les fichiers enregistrés dans une version plus récente risquent de ne pas s’ouvrir dans les versions stables.
+	You can turn this off at any time without deleting your installed developer builds or their data.	Vous pouvez désactiver cette option à tout moment sans supprimer vos préversions installées ni leurs données.
 
 # Nightly build calendar date (date-only, never publication time or a local timestamp).
 	{month}/{day}/{year}	{day}/{month}/{year}
