@@ -104,6 +104,9 @@ impl LauncherUi {
     }
 
     fn settings_contents(&mut self, ui: &mut Ui, host: &mut dyn Host, wide: bool) {
+        // The right column holds install, fonts and background settings, which need app
+        // management: without it (the web build) it would be empty, so one column is drawn.
+        let wide = wide && self.caps.manage_apps;
         // The columns are drawn from two closures that both need `self` and `host`: the pieces
         // are drawn one after the other, through a cell, never at the same time (were they ever,
         // the second would be skipped rather than panic).

@@ -4868,3 +4868,22 @@ fn wide_settings_columns_are_about_the_same_height() {
     assert!(left.max(right) < 1.5 * left.min(right), "left column {left:.0}px, right {right:.0}px");
     snapshot(&mut h, "settings-wide-columns");
 }
+
+/// Without app management (the web build) the right column would have nothing in it, so wide
+/// Settings is one column: every checkbox starts at the same left edge.
+#[test]
+fn settings_without_app_management_is_one_column() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, false);
+    h.set_size(egui::vec2(1180.0, 4000.0));
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(8);
+    let mut edges: Vec<i64> = h
+        .root()
+        .children_recursive()
+        .filter(|node| node.accesskit_node().role() == egui::accesskit::Role::CheckBox)
+        .filter_map(|node| node.accesskit_node().bounding_box().map(|rect| rect.x0.round() as i64))
+        .collect();
+    edges.dedup();
+    assert!(!edges.is_empty() && edges.iter().all(|x| *x == edges[0]), "checkboxes start at {edges:?}");
+}
