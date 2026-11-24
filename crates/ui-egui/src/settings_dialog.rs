@@ -1,6 +1,8 @@
 //! The Settings dialog: a large card in the shape of the app page (see `sheet.rs`), with the
 //! groups of settings in boxes, two columns once the window is wide enough.
 
+use artcraft_launcher_core::mcp_config::{McpConfigFormat, mcp_config};
+use artcraft_launcher_core::protocol::{Command, McpClientState};
 use artcraft_launcher_core::{Os, PackageKind};
 use egui::{RichText, Ui, vec2};
 
@@ -111,18 +113,31 @@ impl LauncherUi {
             wide,
             theme::COLUMN_GAP,
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, _) = &mut *state;
                 this.settings_language(ui);
                 this.settings_updates(ui);
+                if !wide {
+                    this.settings_nightly(ui);
+                }
                 this.settings_appearance(ui);
+                this.settings_agents(ui);
             },
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
+                #[cfg(not(target_arch = "wasm32"))]
+                this.settings_fonts(ui);
                 this.settings_background(ui, &mut **host);
                 this.settings_community(ui);
+                if wide {
+                    this.settings_nightly(ui);
+                }
             },
         );
     }
@@ -192,16 +207,60 @@ impl LauncherUi {
             {
                 self.trigger_auto_updates();
             }
-            if self.caps.manage_apps {
+            // Linux always batches (`Settings::updates_batched`), so there is nothing to choose.
+            if self.caps.manage_apps && !cfg!(target_os = "linux") {
                 ui.checkbox(&mut self.settings.batch_updates, tl!("Ask for permission once when updating all apps"));
+                let mut at_once = self.settings.simultaneous_downloads.min(4);
+                let no_limit = tl!("No limit").to_string();
+                row(ui, tl!("Simultaneous downloads"), 150.0, &mut |ui, label| {
+                    craft_ui::ComboBox::from_id_salt("at_once")
+                        .selected_text(if at_once == 0 { no_limit.clone() } else { at_once.to_string() })
+                        .width(150.0)
+                        .show_ui(ui, |ui| {
+                            for n in 1..=4 {
+                                ui.selectable_value(&mut at_once, n, n.to_string());
+                            }
+                            ui.selectable_value(&mut at_once, 0, no_limit.clone());
+                        })
+                        .response
+                        .labelled_by(label);
+                });
+                self.settings.simultaneous_downloads = at_once;
+                note(ui, tl!("Downloads running together share your connection, so each one is slower."));
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            note(ui, tl!("Betas and release candidates can replace your stable installation."));
             row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
                 self.version_lock(ui, launcher_id);
             });
             self.launcher_version_notes(ui);
+        });
+    }
+
+    /// Independent nightly discovery; the ordinary beta/RC filter stays in Updates.
+    fn settings_nightly(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Nightly builds"), |ui| {
+            let mut enabled = self.settings.nightly_enabled;
+            // Where builds can't be verified yet, nothing is offered to download; a choice
+            // already on can still be turned off.
+            let available = self.nightly.available();
+            let interactive = available || enabled;
+            let checkbox = egui::Checkbox::new(&mut enabled, tl!("Discover nightly builds (Pre-Release page)"));
+            let response = ui.add_enabled(interactive, checkbox);
+            if !available {
+                note(ui, tl!("Pre-release builds aren't available on this platform yet."));
+            }
+            if response.changed() {
+                if enabled {
+                    self.open_nightly_consent(response.id);
+                    self.dialog = None;
+                } else {
+                    self.act(crate::app::UiAction::NightlyConsent(false));
+                }
+            }
+            note(ui, tl!("Separate installs, settings and data. Turning this off keeps installed copies and their data."));
         });
     }
 
@@ -306,6 +365,34 @@ impl LauncherUi {
         });
     }
 
+    /// The font store's download consent, preview settings and font sources, which every Craft app
+    /// shares.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn settings_fonts(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Fonts"), |ui| {
+            let now = ui.input(|i| i.time);
+            let mut allowed = self.fonts.downloads_allowed(now);
+            if ui.checkbox(&mut allowed, tl!("Allow font downloads")).changed()
+                && let Err(e) = self.fonts.set_downloads_allowed(allowed)
+            {
+                self.toast_from_ui(fmt(tl!("Couldn't change the font download setting: {e}"), &[("e", &e)]), true);
+            }
+            note(
+                ui,
+                tl!(
+                    "Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting."
+                ),
+            );
+            ui.add_space(10.0);
+            self.fonts.preview_settings_ui(ui);
+            ui.add_space(10.0);
+            widgets::hud(ui, tl!("Sources"), Tokens::get(ui.ctx()).faint);
+            ui.add_space(2.0);
+            let lang = crate::app::drawable_lang(&self.settings.language, self.cjk_font);
+            self.fonts.sources_ui(ui, &self.settings.fonts, lang.code());
+        });
+    }
+
     /// Tray, desktop and login-item choices. The whole panel is omitted when the host cannot manage
     /// apps or has no tray, desktops and login item; a failed login-item change becomes a UI toast
     /// instead of being ignored.
@@ -322,6 +409,9 @@ impl LauncherUi {
                 ui.checkbox(&mut self.settings.show_on_current_desktop, tl!("Show the window on the current desktop")).on_hover_text(tl!(
                     "When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on."
                 ));
+                ui.add_enabled_ui(host.has_tray() && self.settings.close_to_tray, |ui| {
+                    ui.checkbox(&mut self.settings.hide_from_dock_when_hidden, tl!("Hide ArtCraft Launcher from the Dock while in the background"));
+                });
             }
             if let Some(mut on) = host.login_item()
                 && ui.checkbox(&mut on, tl!("Start ArtCraft Launcher when I log in")).changed()
@@ -368,5 +458,112 @@ impl LauncherUi {
             ui.checkbox(&mut self.settings.hide_community_apps, tl!("Hide community apps"));
         });
         self.settings.theme = theme_choice;
+    }
+
+    /// AI agents: one switch that lets MCP clients reach every installed Craft app through the
+    /// `craft-ai-mcp` gateway (it is the person's consent: off, no agent reaches any app), then
+    /// quick install (Add/Remove per MCP client found here) and the configuration to copy for any
+    /// other client.
+    fn settings_agents(&mut self, ui: &mut Ui) {
+        // Behind the `AI-MCP` feature flag, set in `ArtCraft/flags.toml` or `CRAFT_FLAGS` only.
+        if !self.caps.manage_apps || !self.mcp_agents.flag_on {
+            return;
+        }
+        let t = Tokens::get(ui.ctx());
+        sheet::panel(ui, tl!("AI agents"), |ui| {
+            note(
+                ui,
+                tl!(
+                    "While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed."
+                ),
+            );
+            ui.add_space(8.0);
+            let agents = self.mcp_agents.clone();
+            if !agents.gateway_found {
+                ui.label(RichText::new(tl!("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.")).size(12.0).color(t.muted));
+                // Turning on needs the gateway; turning off and removing entries never does.
+                if !agents.enabled {
+                    return;
+                }
+            }
+            let mut on = agents.enabled;
+            if ui.checkbox(&mut on, tl!("Let AI agents use Craft apps")).changed() && on != agents.enabled {
+                self.act_command(Command::McpSetAgents { enabled: on });
+            }
+            if !agents.enabled {
+                return;
+            }
+            ui.label(RichText::new(tl!("Apps agents can reach: {count}").replace("{count}", &agents.apps.to_string())).size(12.0).color(t.muted));
+            ui.add_space(10.0);
+            ui.label(RichText::new(tl!("Quick install")).strong());
+            note(ui, tl!("Adds the Craft apps to that client. Restart the client afterwards."));
+            ui.add_space(4.0);
+            for c in &agents.clients {
+                self.draw_client_row(ui, &t, c, agents.gateway_found);
+            }
+            if let Some(gateway) = agents.gateway.as_deref() {
+                ui.add_space(10.0);
+                ui.label(RichText::new(tl!("Other clients")).strong());
+                note(ui, tl!("Copy the configuration and paste it into the client's MCP settings."));
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for format in McpConfigFormat::ALL {
+                        let label = match format {
+                            McpConfigFormat::Json => tl!("Copy JSON"),
+                            McpConfigFormat::VsCode => tl!("Copy for VS Code"),
+                            McpConfigFormat::CodexToml => tl!("Copy for Codex (TOML)"),
+                        };
+                        if ui.button(label).clicked() {
+                            ui.ctx().copy_text(mcp_config(format, gateway));
+                            self.toast(tl!("Configuration copied."), false);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /// One MCP client: its name, and Add or Remove (or "Not installed" when it isn't). Add is
+    /// offered only while the gateway is there to add.
+    fn draw_client_row(&mut self, ui: &mut Ui, t: &Tokens, c: &McpClientState, can_add: bool) {
+        ui.horizontal(|ui| {
+            ui.label(c.name.as_str());
+            if c.added {
+                ui.label(RichText::new(tl!("Added")).size(12.0).color(t.muted));
+                if ui.button(tl!("Remove")).clicked() {
+                    self.act_command(Command::McpSetClient { client: c.client, added: false });
+                    self.mcp_restart_offer = None;
+                }
+            } else if c.installed && can_add {
+                if ui.button(tl!("Add")).clicked() {
+                    self.act_command(Command::McpSetClient { client: c.client, added: true });
+                    if c.restartable {
+                        self.mcp_restart_offer = Some(c.client);
+                    }
+                }
+            } else if !c.installed {
+                ui.label(RichText::new(tl!("Not installed")).size(12.0).color(t.muted));
+            }
+        });
+        // A client reads its MCP servers only when it starts: right after adding, say so and offer
+        // to do the restart, which people otherwise miss.
+        if c.added && c.restartable && self.mcp_restart_offer == Some(c.client) {
+            let name = [("client", c.name.as_str())];
+            note(
+                ui,
+                &fmt(
+                    tl!(
+                        "{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing."
+                    ),
+                    &name,
+                ),
+            );
+            if ui.button(fmt(tl!("Restart {client}"), &name)).clicked() {
+                self.act_command(Command::McpRestartClient { client: c.client });
+                self.mcp_restart_offer = None;
+                self.toast(fmt(tl!("Restarting {client}…"), &name), false);
+            }
+            ui.add_space(4.0);
+        }
     }
 }

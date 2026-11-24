@@ -59,6 +59,7 @@
 	Discard download	捨棄下載
 	Release notes	更新說明
 	Reinstall	重新安裝
+	Add desktop shortcut	新增桌面捷徑
 	Uninstall…	解除安裝…
 	All releases	所有版本
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 已推出。
@@ -85,6 +86,7 @@
 	Updates always use the format an app was installed with.	更新一律沿用應用程式安裝時的格式。
 	Running in the background	在背景執行
 	Keep running in the tray when the window is closed	關閉視窗後仍在系統匣中執行
+	Hide ArtCraft Launcher from the Dock while in the background	在背景執行時從 Dock 隱藏 ArtCraft Launcher
 	ArtCraft Launcher is still running	ArtCraft Launcher 仍在執行
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	它位於系統匣中：請從系統匣圖示開啟或結束，或在設定中關閉此功能。
 	Show the window on the current desktop	在目前的桌面顯示視窗
@@ -288,6 +290,8 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Pin to top	置頂
 	Unpin	取消置頂
 	Pinned	已置頂
+	Pin {name} to top	將 {name} 置頂
+	Unpin {name}	取消置頂 {name}
 	Reorder {name}	重新排序 {name}
 	Move up	上移
 	Move down	下移
@@ -307,6 +311,10 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Retry update to {version}	重試更新至 {version}
 	The download is still here. It's checked again, then installed.	下載的檔案仍在。會再次檢查，然後安裝。
 	Waiting for another app…	正在等待另一個應用程式…
+	Waiting for another download…	正在等待其他下載…
+	Simultaneous downloads	同時下載數
+	No limit	不限制
+	Downloads running together share your connection, so each one is slower.	同時進行的下載會共用網路連線，因此每個下載都會變慢。
 	Waiting for other installs…	正在等待其他安裝…
 	Installer (.msi)	安裝程式（.msi）
 	Portable (.zip)	免安裝版（.zip）
@@ -357,6 +365,9 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 @msg	custom install folders aren't supported on this system	此系統不支援自訂安裝資料夾
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} 已存在，且不是由 ArtCraft Launcher 安裝的
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	無法將 {path} 移至垃圾桶（{reason}）。請改在 Finder 中將其移除。
+@msg	Desktop shortcut created for {name}	已為 {name} 建立桌面捷徑
+@msg	Couldn't create the desktop shortcut: {e}	無法建立桌面捷徑：{e}
+@msg	A desktop shortcut named {name} already exists	名為 {name} 的桌面捷徑已存在
 	Apps are placed inside this folder.	應用程式會放在此資料夾內。
 	Replace what's there?	要取代現有內容嗎？
 	{path} already exists. Installing {name} will overwrite it.	{path} 已存在。安裝 {name} 將會覆寫它。
@@ -408,3 +419,96 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	解除版本鎖定？
 	{app} is pinned to {version}. Follow the latest release instead?	{app} 已鎖定為 {version}。是否改為使用最新版本？
 	Unlock	解除鎖定
+
+	AI agents	AI 代理
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	開啟後，Claude、Cursor 或 LM Studio 等使用 MCP 的 AI 應用程式只需一個項目，即可使用所有已安裝的 Craft 應用程式。關閉後，任何代理都無法存取它們，並會移除在此加入的項目。
+	Quick install	快速安裝
+	Adds the Craft apps to that client. Restart the client afterwards.	將 Craft 應用程式加入該用戶端。之後請重新啟動用戶端。
+	Other clients	其他用戶端
+	Copy the configuration and paste it into the client's MCP settings.	複製設定，並將其貼到用戶端的 MCP 設定中。
+	Copy JSON	複製 JSON
+	Copy for VS Code	複製為 VS Code 格式
+	Copy for Codex (TOML)	複製為 Codex 格式 (TOML)
+	Configuration copied.	已複製設定。
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} 只在啟動時載入 MCP 伺服器，因此 Craft 應用程式會在重新啟動後出現。重新啟動會關閉 {client}，包括正在產生的回覆。
+	Restart {client}	重新啟動 {client}
+	Restarting {client}…	正在重新啟動 {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	啟動器旁未安裝 Craft 閘道 (craft-ai-mcp)。
+	Let AI agents use Craft apps	允許 AI 代理使用 Craft 應用程式
+	Apps agents can reach: {count}	代理可使用的應用程式：{count}
+	Added	已加入
+	Remove	移除
+	Add	加入
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	字型
+	Allow font downloads	允許下載字型
+	Couldn't change the font download setting: {e}	無法變更字型下載設定：{e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	只有在你安裝字型時，才會從其來源下載字型。字型預覽在下方有單獨的設定。所有 Craft 應用程式共用這項設定。
+	Sources	來源
+	Apps	應用程式
+	Fonts for every Craft app	供所有 Craft 應用程式使用的字型
+# The font preview settings in Settings' Fonts box.
+	Show font previews	顯示字型預覽
+	Advanced	進階
+	Font preview server	字型預覽伺服器
+	Couldn't use this server: {e}	無法使用這部伺服器：{e}
+	Couldn't change the font previews setting: {e}	無法變更字型預覽設定：{e}
+	Set by {name} in the environment.	由環境變數 {name} 設定。
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	尚未安裝的字型會從這部伺服器顯示預覽，安裝時也會先試用這部伺服器。留空則使用預設伺服器。
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable pre-release builds	Enable pre-release builds
+	Enable pre-release builds?	Enable pre-release builds?
+	Install pre-release	Install pre-release
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No pre-release build is available yet.	No pre-release build is available yet.
+	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Pre-Release	Pre-Release
+	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
+	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off pre-release builds	Turn off pre-release builds
+	Uninstall pre-release	Uninstall pre-release
+	Uninstall pre-release?	Uninstall pre-release?
+	Uninstall pre-release…	Uninstall pre-release…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Pre-release builds are off.	Pre-release builds are off.
+	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
+	Installed pre-release copy	Installed pre-release copy
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only pre-release destination (English fallback)
+	Could not check for pre-release builds.	Could not check for pre-release builds.
+	No pre-release builds are available yet.	No pre-release builds are available yet.
+	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	預先發佈管道每晚會以最新程式碼自動更新，可能存在錯誤、效能與穩定性問題，以及尚未完成的功能。重要工作請使用穩定版管道。
+
+# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
+	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	預先發佈版本讓你提早體驗新功能，但其中會有錯誤，也可能導致尚未儲存的工作遺失。
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	預先發佈版本會與穩定版應用程式並行安裝，使用各自獨立的設定與資料，不會更動你的穩定版環境。在預先發佈版本中開啟重要檔案前，請務必先備份，因為以較新版本儲存的檔案可能無法在穩定版中開啟。
+	You can turn this off at any time without deleting your installed pre-release apps or their data.	你可以隨時關閉此選項，而不會刪除已安裝的預先發佈版應用程式或其資料。
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{year}/{month}/{day}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	每夜組建
+	Discover nightly builds (Pre-Release page)	探索每夜組建（Pre-Release 頁面）
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	安裝、設定和資料皆獨立。關閉後仍會保留已安裝的副本及其資料。
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	測試版與候選發行版可能會取代您的穩定版安裝。
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	公告
+	No announcements	目前沒有公告
+@plural	Announcements, {n} unread|Announcements, {n} unread	公告，{n} 則未讀

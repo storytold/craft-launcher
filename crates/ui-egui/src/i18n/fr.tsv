@@ -74,6 +74,7 @@
 	Show in Explorer	Afficher dans l'Explorateur
 	Show in Files	Afficher dans Fichiers
 	Reinstall	Réinstaller
+	Add desktop shortcut	Ajouter un raccourci bureau
 	Uninstall…	Désinstaller…
 	Launch options…	Options de lancement…
 	{name} launch options	Options de lancement de {name}
@@ -107,6 +108,7 @@
 	Updates always use the format an app was installed with.	Les mises à jour utilisent toujours le format avec lequel l'application a été installée.
 	Running in the background	Exécution en arrière-plan
 	Keep running in the tray when the window is closed	Rester actif dans la zone de notification à la fermeture de la fenêtre
+	Hide ArtCraft Launcher from the Dock while in the background	Masquer ArtCraft Launcher du Dock en arrière-plan
 	ArtCraft Launcher is still running	ArtCraft Launcher est toujours en cours
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Il est dans la zone de notification : ouvrez-le ou quittez-le depuis son icône, ou désactivez ceci dans les réglages.
 	Show the window on the current desktop	Afficher la fenêtre sur le bureau actuel
@@ -136,6 +138,8 @@
 	Pin to top	Épingler en haut
 	Unpin	Désépingler
 	Pinned	Épinglés
+	Pin {name} to top	Épingler {name} en haut
+	Unpin {name}	Désépingler {name}
 	Reorder {name}	Réordonner {name}
 	Move up	Monter
 	Move down	Descendre
@@ -168,6 +172,10 @@
 	Retry update to {version}	Réessayer la mise à jour vers {version}
 	The download is still here. It's checked again, then installed.	Le téléchargement est toujours là. Il sera vérifié à nouveau, puis installé.
 	Waiting for another app…	En attente d'une autre application…
+	Waiting for another download…	En attente d'un autre téléchargement…
+	Simultaneous downloads	Téléchargements simultanés
+	No limit	Illimité
+	Downloads running together share your connection, so each one is slower.	Les téléchargements simultanés partagent votre connexion, chacun est donc plus lent.
 	Waiting for other installs…	En attente d'autres installations…
 
 # Package formats offered for download (PackageKind::label)
@@ -393,6 +401,9 @@ filter	Installed	Installées
 @msg	custom install folders aren't supported on this system	les dossiers d’installation personnalisés ne sont pas pris en charge sur ce système
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} existe déjà et n’a pas été installé par ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	impossible de déplacer {path} vers la Corbeille ({reason}). Supprimez-le dans le Finder.
+@msg	Desktop shortcut created for {name}	Raccourci bureau créé pour {name}
+@msg	Couldn't create the desktop shortcut: {e}	Impossible de créer le raccourci bureau : {e}
+@msg	A desktop shortcut named {name} already exists	Un raccourci bureau nommé {name} existe déjà
 	Apps are placed inside this folder.	Les applications sont placées dans ce dossier.
 	Replace what's there?	Remplacer l’existant ?
 	{path} already exists. Installing {name} will overwrite it.	{path} existe déjà. L’installation de {name} l’écrasera.
@@ -447,3 +458,95 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Déverrouiller la version ?
 	{app} is pinned to {version}. Follow the latest release instead?	{app} est fixé à la version {version}. Suivre plutôt la dernière version ?
 	Unlock	Déverrouiller
+
+	AI agents	Agents IA
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Tant que cette option est activée, les apps d'IA qui utilisent MCP, comme Claude, Cursor ou LM Studio, peuvent travailler avec toutes les apps Craft installées grâce à une seule entrée. Désactivée, aucun agent ne peut les atteindre et les entrées ajoutées ici sont retirées.
+	Quick install	Installation rapide
+	Adds the Craft apps to that client. Restart the client afterwards.	Ajoute les apps Craft à ce client. Redémarrez ensuite le client.
+	Other clients	Autres clients
+	Copy the configuration and paste it into the client's MCP settings.	Copiez la configuration et collez-la dans les réglages MCP du client.
+	Copy JSON	Copier le JSON
+	Copy for VS Code	Copier pour VS Code
+	Copy for Codex (TOML)	Copier pour Codex (TOML)
+	Configuration copied.	Configuration copiée.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} ne charge ses serveurs MCP qu'au démarrage : les apps Craft apparaissent après un redémarrage. Le redémarrage ferme {client}, y compris une réponse en cours de rédaction.
+	Restart {client}	Redémarrer {client}
+	Restarting {client}…	Redémarrage de {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	La passerelle Craft (craft-ai-mcp) n'est pas installée à côté du lanceur.
+	Let AI agents use Craft apps	Permettre aux agents IA d'utiliser les apps Craft
+	Apps agents can reach: {count}	Apps accessibles aux agents : {count}
+	Added	Ajoutée
+	Remove	Retirer
+	Add	Ajouter
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Polices
+	Allow font downloads	Autoriser le téléchargement de polices
+	Couldn't change the font download setting: {e}	Impossible de modifier le réglage de téléchargement des polices : {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Les polices sont téléchargées depuis leurs sources uniquement quand vous en installez une. Les aperçus de polices ont leur propre réglage ci-dessous. Ce réglage est commun à toutes les apps Craft.
+	Sources	Sources
+	Apps	Applications
+	Fonts for every Craft app	Polices pour toutes les applications Craft
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Afficher les aperçus de polices
+	Font preview server	Serveur d'aperçus de polices
+	Couldn't use this server: {e}	Impossible d'utiliser ce serveur : {e}
+	Couldn't change the font previews setting: {e}	Impossible de modifier le réglage des aperçus de polices : {e}
+	Set by {name} in the environment.	Défini par {name} dans l'environnement.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Les polices non installées affichent leur aperçu depuis ce serveur, et les installations l'essaient en premier. Vide : le serveur par défaut.
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable pre-release builds	Enable pre-release builds
+	Enable pre-release builds?	Enable pre-release builds?
+	Install pre-release	Install pre-release
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No pre-release build is available yet.	No pre-release build is available yet.
+	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Pre-Release	Pre-Release
+	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
+	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off pre-release builds	Turn off pre-release builds
+	Uninstall pre-release	Uninstall pre-release
+	Uninstall pre-release?	Uninstall pre-release?
+	Uninstall pre-release…	Uninstall pre-release…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Pre-release builds are off.	Pre-release builds are off.
+	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
+	Installed pre-release copy	Installed pre-release copy
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only pre-release destination (English fallback)
+	Could not check for pre-release builds.	Could not check for pre-release builds.
+	No pre-release builds are available yet.	No pre-release builds are available yet.
+	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Le canal des préversions est mis à jour automatiquement chaque nuit avec le code le plus récent. Il peut contenir des bogues, des problèmes de performances et de stabilité, ainsi que des fonctions inachevées. Pour un travail important, utilisez le canal stable.
+
+# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
+	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	Les préversions vous permettent de découvrir les nouveautés en avance, mais elles contiendront des bugs et peuvent entraîner la perte de travail non enregistré.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	Elles s’installent à côté de vos applications stables avec leurs propres réglages et données, sans modifier votre environnement stable. Sauvegardez toujours vos fichiers importants avant de les ouvrir dans une préversion : les fichiers enregistrés dans une version plus récente risquent de ne pas s’ouvrir dans les versions stables.
+	You can turn this off at any time without deleting your installed pre-release apps or their data.	Vous pouvez désactiver cette option à tout moment sans supprimer vos préversions installées ni leurs données.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{day}/{month}/{year}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	Versions nightly
+	Discover nightly builds (Pre-Release page)	Découvrir les versions nightly (page Pre-Release)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Installations, réglages et données séparés. La désactivation conserve les copies installées et leurs données.
+	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	Les bêtas et les versions candidates peuvent remplacer votre installation stable.
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	Annonces
+	No announcements	Aucune annonce
+@plural	Announcements, {n} unread|Announcements, {n} unread	Annonces, {n} non lue|Annonces, {n} non lues
