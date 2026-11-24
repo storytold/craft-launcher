@@ -38,24 +38,59 @@ mod linux {
         Ok(())
     }
 
+    /// Why a Nightly archive wasn't authenticated.
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) enum PrepareError {
+        /// The archive itself is refused: its bytes don't match the release, or its genuine
+        /// published signature doesn't verify it from the pinned key. It can never install.
+        Refused(String),
+        /// It couldn't be checked this time: the signature didn't arrive intact, the verifier or
+        /// storage failed, or trust isn't configured. The download may still be good.
+        Unavailable(String),
+    }
+
+    impl From<PrepareError> for String {
+        fn from(error: PrepareError) -> Self {
+            match error {
+                PrepareError::Refused(message) | PrepareError::Unavailable(message) => message,
+            }
+        }
+    }
+
+    fn unavailable(error: impl ToString) -> PrepareError {
+        PrepareError::Unavailable(error.to_string())
+    }
+
+    fn refused(message: &str) -> PrepareError {
+        PrepareError::Refused(message.into())
+    }
+
     // Parse the documented --status-fd protocol, not OpenPGP packets or human-readable output.
     // GnuPG checks crypto/key validity; we independently require one exact primary identity,
     // a binary detached signature, a strong digest, and no revocation/expiry/error status.
-    fn status(output: &crate::process::RunOutput, expected: &str, now: i64) -> Result<(), String> {
+    fn status(output: &crate::process::RunOutput, expected: &str, now: i64) -> Result<(), PrepareError> {
         if output.stdout.len() > 64 * 1024 {
-            return Err("The Nightly OpenPGP verifier returned excessive status output.".into());
+            return Err(refused("The Nightly OpenPGP verifier returned excessive status output."));
         }
         if !output.success {
+            let reported = |kind: &str| output.stdout.lines().any(|line| line.starts_with(&format!("[GNUPG:] {kind} ")));
             // Only the pinned key is imported, so a signature by any other key can't be checked:
             // say so plainly rather than as a verifier failure.
-            let unknown_key = output.stdout.lines().any(|line| line.starts_with("[GNUPG:] NO_PUBKEY ") || line.starts_with("[GNUPG:] ERRSIG "));
-            return Err(if unknown_key { NOT_SIGNED_BY_ARTCRAFT } else { "The Nightly OpenPGP verifier failed." }.into());
+            if reported("NO_PUBKEY") || reported("ERRSIG") {
+                return Err(refused(NOT_SIGNED_BY_ARTCRAFT));
+            }
+            if reported("BADSIG") {
+                return Err(refused("This Nightly download doesn't match ArtCraft's signature for it, so it wasn't installed."));
+            }
+            // Anything else is the verifier's own trouble, not a verdict on the archive.
+            return Err(unavailable("The Nightly OpenPGP verifier failed."));
         }
         let mut valid = 0;
         let mut good = 0;
         let mut started = 0;
         for line in output.stdout.lines() {
-            let fields: Vec<_> = line.strip_prefix("[GNUPG:] ").ok_or("Unexpected Nightly OpenPGP status output.")?.split_whitespace().collect();
+            let fields: Vec<_> =
+                line.strip_prefix("[GNUPG:] ").ok_or_else(|| refused("Unexpected Nightly OpenPGP status output."))?.split_whitespace().collect();
             match fields.first().copied() {
                 Some("NEWSIG") => started += 1,
                 Some("GOODSIG") => good += 1,
@@ -67,7 +102,7 @@ mod linux {
                         || fields[9] != "00"
                         || fields[4].parse::<i64>().map_or(true, |expiry| expiry != 0 && expiry <= now)
                     {
-                        return Err("The Nightly detached signature does not have the pinned primary identity and validity.".into());
+                        return Err(refused("The Nightly detached signature does not have the pinned primary identity and validity."));
                     }
                     valid += 1;
                 }
@@ -80,11 +115,11 @@ mod linux {
                     | "TRUST_ULTIMATE"
                     | "VERIFICATION_COMPLIANCE_MODE",
                 ) => {}
-                _ => return Err("The Nightly OpenPGP verifier reported an unsupported, expired, revoked or error status.".into()),
+                _ => return Err(refused("The Nightly OpenPGP verifier reported an unsupported, expired, revoked or error status.")),
             }
         }
         if valid != 1 || good != 1 || started != 1 {
-            return Err("The Nightly archive requires exactly one valid signature from the pinned signer.".into());
+            return Err(refused("The Nightly archive requires exactly one valid signature from the pinned signer."));
         }
         Ok(())
     }
@@ -120,11 +155,14 @@ mod linux {
         signature: &Download,
         http: &crate::http::Http,
         paths: &Paths,
-    ) -> Result<VerifiedArchive, String> {
-        let signer = crate::nightly_trust::LINUX_SIGNER
-            .as_ref()
-            .ok_or("No independently trusted Linux Nightly signer is configured; the installed copy and data were left unchanged.")?;
-        let bytes = http.get_bytes(&signature.url, MAX_SIGNATURE_BYTES)?.ok_or("The Nightly archive signature is missing.")?;
+    ) -> Result<VerifiedArchive, PrepareError> {
+        let signer = crate::nightly_trust::LINUX_SIGNER.as_ref().ok_or_else(|| {
+            unavailable("No independently trusted Linux Nightly signer is configured; the installed copy and data were left unchanged.")
+        })?;
+        let bytes = http
+            .get_bytes(&signature.url, MAX_SIGNATURE_BYTES)
+            .map_err(unavailable)?
+            .ok_or_else(|| unavailable("The Nightly archive signature is missing."))?;
         prepare_with(file, asset, signature, &bytes, paths, signer, GPG)
     }
 
@@ -136,41 +174,42 @@ mod linux {
         paths: &Paths,
         signer: &LinuxSigner<'_>,
         program: &str,
-    ) -> Result<VerifiedArchive, String> {
+    ) -> Result<VerifiedArchive, PrepareError> {
         use sha2::{Digest, Sha256};
         if !fingerprint(signer.primary_fingerprint) {
-            return Err("The pinned Linux Nightly primary fingerprint is unavailable or malformed.".into());
+            return Err(unavailable("The pinned Linux Nightly primary fingerprint is unavailable or malformed."));
         }
-        armor(signer.public_key.as_bytes(), "PUBLIC KEY BLOCK", MAX_PUBLIC_KEY)?;
-        armor(bytes, "SIGNATURE", MAX_SIGNATURE_BYTES)?;
+        armor(signer.public_key.as_bytes(), "PUBLIC KEY BLOCK", MAX_PUBLIC_KEY).map_err(unavailable)?;
+        // A signature that didn't arrive intact says nothing about the archive.
+        armor(bytes, "SIGNATURE", MAX_SIGNATURE_BYTES).map_err(unavailable)?;
         if bytes.len() as u64 != signature.size || !format!("{:x}", Sha256::digest(bytes)).eq_ignore_ascii_case(&signature.sha256) {
-            return Err("The Nightly detached signature does not match its published size and checksum.".into());
+            return Err(unavailable("The Nightly detached signature does not match its published size and checksum."));
         }
-        crate::nightly_profile::validate_paths(paths)?;
-        std::fs::create_dir_all(&paths.cache).map_err(|error| error.to_string())?;
-        let home = tempfile::Builder::new().prefix("nightly-auth-").tempdir_in(&paths.cache).map_err(|error| error.to_string())?;
+        crate::nightly_profile::validate_paths(paths).map_err(unavailable)?;
+        std::fs::create_dir_all(&paths.cache).map_err(unavailable)?;
+        let home = tempfile::Builder::new().prefix("nightly-auth-").tempdir_in(&paths.cache).map_err(unavailable)?;
         let snapshot = home.path().join("archive.tar.gz");
-        let mut input = std::fs::File::open(file).map_err(|error| error.to_string())?.take(asset.size.saturating_add(1));
+        let mut input = std::fs::File::open(file).map_err(unavailable)?.take(asset.size.saturating_add(1));
         if asset.size == 0 || asset.size > MAX_ARCHIVE {
-            return Err("The Nightly archive exceeds its authentication limit.".into());
+            return Err(refused("The Nightly archive exceeds its authentication limit."));
         }
-        let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(&snapshot).map_err(|error| error.to_string())?;
-        let copied = std::io::copy(&mut input, &mut out).map_err(|error| error.to_string())?;
+        let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(&snapshot).map_err(unavailable)?;
+        let copied = std::io::copy(&mut input, &mut out).map_err(unavailable)?;
         if copied != asset.size
             || asset.sha256.as_ref().is_none_or(|hash| crate::http::sha256_file(&snapshot).map_or(true, |actual| !actual.eq_ignore_ascii_case(hash)))
         {
-            return Err("The exact Nightly archive bytes do not match the verified release.".into());
+            return Err(refused("The exact Nightly archive bytes do not match the verified release."));
         }
         drop(out);
         let public_key = home.path().join("pinned-public.asc");
         let detached = home.path().join("archive.tar.gz.asc");
-        std::fs::write(&public_key, signer.public_key).map_err(|error| error.to_string())?;
-        std::fs::write(&detached, bytes).map_err(|error| error.to_string())?;
-        let imported = gpg(home.path(), &["--import".as_ref(), public_key.as_os_str()], program)?;
+        std::fs::write(&public_key, signer.public_key).map_err(unavailable)?;
+        std::fs::write(&detached, bytes).map_err(unavailable)?;
+        let imported = gpg(home.path(), &["--import".as_ref(), public_key.as_os_str()], program).map_err(unavailable)?;
         if !imported.success {
-            return Err("The pinned Linux Nightly public key could not be imported.".into());
+            return Err(unavailable("The pinned Linux Nightly public key could not be imported."));
         }
-        let verified = gpg(home.path(), &["--verify".as_ref(), detached.as_os_str(), snapshot.as_os_str()], program)?;
+        let verified = gpg(home.path(), &["--verify".as_ref(), detached.as_os_str(), snapshot.as_os_str()], program).map_err(unavailable)?;
         status(&verified, signer.primary_fingerprint, crate::now())?;
         Ok(VerifiedArchive { _home: home, file: snapshot })
     }
@@ -183,7 +222,7 @@ mod linux {
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) use linux::prepare as prepare_linux;
+pub(crate) use linux::{PrepareError as LinuxPrepareError, prepare as prepare_linux};
 
 #[cfg(any(windows, test))]
 #[derive(serde::Deserialize)]

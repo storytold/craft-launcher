@@ -280,9 +280,12 @@ fn install_at_with_profile(
     let authenticated = if profile.is_some() {
         let signature = signature.ok_or("The signed Nightly archive has no detached signature.")?;
         // A refused archive can never be installed, so it doesn't wait in the downloads for the
-        // next try.
-        Some(crate::nightly_signing::prepare_linux(&file, asset, signature, job.http, job.paths).inspect_err(|_| {
-            let _ = std::fs::remove_file(&file);
+        // next try. One that couldn't be checked this time (a failed signature fetch, say) stays.
+        Some(crate::nightly_signing::prepare_linux(&file, asset, signature, job.http, job.paths).map_err(|error| {
+            if matches!(error, crate::nightly_signing::LinuxPrepareError::Refused(_)) {
+                let _ = std::fs::remove_file(&file);
+            }
+            String::from(error)
         })?)
     } else {
         None

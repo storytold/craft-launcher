@@ -160,10 +160,14 @@ fn signed_archive_test_key_passes_exact_bytes_and_bad_missing_wrong_key_tool_fai
             _ => {}
         }
         let trust = LinuxSigner { public_key: key, primary_fingerprint: pin };
-        assert!(
-            prepare_with(&file, &asset, &declared, &candidate, &paths, &trust, if case == 7 { "/no/such/nightly-verifier" } else { GPG }).is_err(),
-            "case {case}"
-        );
+        let result = prepare_with(&file, &asset, &declared, &candidate, &paths, &trust, if case == 7 { "/no/such/nightly-verifier" } else { GPG });
+        // A signature that didn't arrive intact or a verifier that can't run says nothing about the
+        // archive, so it is kept for the next try; a genuine signature from another key refuses it.
+        match case {
+            0 | 3 | 5 | 6 | 7 | 9 => assert!(matches!(result, Err(PrepareError::Unavailable(_))), "case {case}"),
+            1 | 2 => assert!(matches!(result, Err(PrepareError::Refused(_))), "case {case}"),
+            _ => assert!(result.is_err(), "case {case}"),
+        }
         assert_eq!(std::fs::read(&initial.path).unwrap(), before);
         assert_eq!(std::fs::metadata(&initial.path).unwrap().modified().unwrap(), modified);
         assert_eq!(std::fs::read(&personal).unwrap(), b"preserved personal data");
@@ -177,7 +181,7 @@ fn signed_archive_test_key_passes_exact_bytes_and_bad_missing_wrong_key_tool_fai
     let mut changed = asset.clone();
     changed.size += 1;
     changed.sha256 = Some(crate::http::sha256_file(&file).unwrap());
-    assert!(prepare_with(&file, &changed, &signature, &bytes, &paths, &trusted, GPG).is_err());
+    assert!(matches!(prepare_with(&file, &changed, &signature, &bytes, &paths, &trusted, GPG), Err(PrepareError::Refused(_))));
     // The authenticated private copy survives later mutation of the download, but any mutation
     // of that private copy is detected before extraction/replacement by the transaction digest.
     std::fs::write(&verified.file, b"changed after verification").unwrap();
@@ -244,8 +248,11 @@ fn machine_status_never_accepts_error_multiple_signer_or_expiry_even_with_valids
     assert!(status(&crate::process::RunOutput::exit(1, &valid, "failure"), &pin, crate::now()).is_err());
     // A signature by a key other than the pinned one (the only key imported) says so plainly.
     let unknown = "[GNUPG:] NEWSIG\n[GNUPG:] ERRSIG 0123456789ABCDEF 22 8 00 1795280000 9 -\n[GNUPG:] NO_PUBKEY 0123456789ABCDEF\n";
-    assert_eq!(status(&crate::process::RunOutput::exit(2, unknown, ""), &pin, crate::now()).unwrap_err(), NOT_SIGNED_BY_ARTCRAFT);
-    assert_ne!(status(&crate::process::RunOutput::exit(2, "[GNUPG:] NEWSIG\n[GNUPG:] BADSIG 0123456789ABCDEF test\n", ""), &pin, crate::now()).unwrap_err(), NOT_SIGNED_BY_ARTCRAFT);
+    assert_eq!(status(&crate::process::RunOutput::exit(2, unknown, ""), &pin, crate::now()).unwrap_err(), refused(NOT_SIGNED_BY_ARTCRAFT));
+    // A bad signature refuses the archive; a verifier that fails without a verdict doesn't.
+    let bad = "[GNUPG:] NEWSIG\n[GNUPG:] BADSIG 0123456789ABCDEF test\n";
+    assert!(matches!(status(&crate::process::RunOutput::exit(1, bad, ""), &pin, crate::now()), Err(PrepareError::Refused(message)) if message != NOT_SIGNED_BY_ARTCRAFT));
+    assert!(matches!(status(&crate::process::RunOutput::exit(2, "", "gpg: fatal"), &pin, crate::now()), Err(PrepareError::Unavailable(_))));
     assert!(status(&crate::process::RunOutput::success(&valid), &"B".repeat(40), crate::now()).is_err());
 }
 
