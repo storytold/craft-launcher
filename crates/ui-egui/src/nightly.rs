@@ -332,32 +332,16 @@ impl LauncherUi {
             self.nightly.focus_tab = false;
             return None;
         }
-        let font = egui::TextStyle::Button.resolve(ui.style());
-        let width: f32 = [tl!("Stable"), tl!("Developer Builds")]
-            .iter()
-            .map(|label| ui.painter().layout_no_wrap((*label).into(), font.clone(), Tokens::get(ui.ctx()).ink).size().x + 24.0)
-            .sum();
+        let width: f32 = [tl!("Stable"), tl!("Developer Builds")].iter().map(|label| channel_label_width(ui, label)).sum();
         Some(width)
     }
 
     pub(crate) fn channel_navigation(&mut self, ui: &mut Ui) {
-        let tokens = Tokens::get(ui.ctx());
-        ui.scope(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            ui.spacing_mut().button_padding.x = 12.0;
-            ui.visuals_mut().selection.bg_fill = tokens.invert_bg;
-            ui.visuals_mut().selection.stroke.color = tokens.invert_fg;
-            ui.horizontal(|ui| {
-                let stable = RichText::new(tl!("Stable")).color(if self.nightly.active { tokens.ink } else { tokens.invert_fg });
-                ui.selectable_value(&mut self.nightly.active, false, stable);
-                let prerelease = RichText::new(tl!("Developer Builds")).color(if self.nightly.active { tokens.invert_fg } else { tokens.ink });
-                let tab = ui.selectable_value(&mut self.nightly.active, true, prerelease);
-                if self.nightly.focus_tab {
-                    tab.request_focus();
-                    self.nightly.focus_tab = false;
-                }
-            });
-        });
+        let tab = channel_switch(ui, &mut self.nightly.active, [tl!("Stable"), tl!("Developer Builds")]);
+        if self.nightly.focus_tab {
+            tab.request_focus();
+            self.nightly.focus_tab = false;
+        }
     }
 
     /// Align the actions to the title's right when their translated labels fit.
@@ -967,6 +951,63 @@ mod build_date_tests {
     }
 }
 
+/// The widest a header switch label is drawn, in points before its padding. A longer
+/// translation is cut short with "…" so it can't push the gear and the bell out of the
+/// header; the full label stays in its tooltip and accessible name.
+const CHANNEL_LABEL_MAX: f32 = 140.0;
+/// The switch buttons' horizontal padding on both sides, plus a point so a label that fits
+/// isn't cut by rounding.
+const CHANNEL_LABEL_PAD: f32 = 25.0;
+
+/// The font a header switch button lays its label out in.
+fn channel_label_font(ui: &Ui) -> egui::FontId {
+    // Query the same stock style as Button: this SDK's default uses Body, not TextStyle::Button.
+    let style: egui::widget_style::ButtonStyle = ui.widget_style(ui.scope_id().with("channel-switch"), &Default::default());
+    style.atom_layout.text_style.font_id
+}
+
+/// The width one header switch button takes, its label capped at [`CHANNEL_LABEL_MAX`].
+fn channel_label_width(ui: &Ui, label: &str) -> f32 {
+    let natural = ui.painter().layout_no_wrap(label.into(), channel_label_font(ui), Tokens::get(ui.ctx()).ink).size().x;
+    natural.min(CHANNEL_LABEL_MAX) + CHANNEL_LABEL_PAD
+}
+
+/// The Stable / Developer Builds switch; returns the Developer Builds tab.
+fn channel_switch(ui: &mut Ui, active: &mut bool, [stable, nightly]: [&str; 2]) -> egui::Response {
+    let tokens = Tokens::get(ui.ctx());
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.spacing_mut().button_padding.x = 12.0;
+        ui.visuals_mut().selection.bg_fill = tokens.invert_bg;
+        ui.visuals_mut().selection.stroke.color = tokens.invert_fg;
+        ui.horizontal(|ui| {
+            let mut tab = |ui: &mut Ui, label: &str, value: bool| {
+                let color = if *active == value { tokens.invert_fg } else { tokens.ink };
+                let width = channel_label_width(ui, label);
+                let cut = width - CHANNEL_LABEL_PAD >= CHANNEL_LABEL_MAX;
+                let mut response = ui
+                    .scope(|ui| {
+                        ui.set_max_width(width);
+                        ui.add(egui::Button::selectable(*active == value, RichText::new(label).color(color)).truncate())
+                    })
+                    .inner;
+                if cut {
+                    response = response.on_hover_text(label);
+                }
+                if response.clicked() && *active != value {
+                    *active = value;
+                    response.mark_changed();
+                }
+                response
+            };
+            tab(ui, stable, false);
+            tab(ui, nightly, true)
+        })
+        .inner
+    })
+    .inner
+}
+
 #[cfg(test)]
 mod layout_tests {
     use super::*;
@@ -1003,6 +1044,25 @@ mod layout_tests {
         );
         harness.run_steps(5);
         harness
+    }
+
+    #[test]
+    fn a_long_switch_label_is_cut_short_and_keeps_its_full_name() {
+        const LONG: &str = "Сборки для разработчиков с ночными изменениями";
+        let mut harness = Harness::new_ui_state(
+            |ui, active: &mut bool| {
+                channel_switch(ui, active, ["Stable", LONG]);
+            },
+            false,
+        );
+        harness.run_steps(2);
+        let tab = harness.get_by_label(LONG);
+        assert!(tab.rect().width() <= CHANNEL_LABEL_MAX + CHANNEL_LABEL_PAD + 0.5, "the label is capped: {:?}", tab.rect());
+        tab.click();
+        harness.run_steps(2);
+        assert!(*harness.state(), "the cut-short tab still switches");
+        let stable = harness.get_by_label("Stable").rect();
+        assert!(stable.width() < CHANNEL_LABEL_MAX, "a short label keeps its own width: {stable:?}");
     }
 
     #[test]
