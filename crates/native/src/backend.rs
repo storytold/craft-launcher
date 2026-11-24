@@ -2667,8 +2667,8 @@ fn run_mcp(shared: &Shared, cmd: Command) {
 /// The installed apps with their CLIs, from a fresh detection snapshot.
 fn detected_apps(shared: &Shared) -> Vec<crate::agents::InstalledApp> {
     let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    let snapshot = crate::detect::Snapshot::take();
-    crate::agents::installed_apps(&manifest, &snapshot)
+    let snapshot = shared.host.snapshot();
+    crate::agents::installed_apps(|app| shared.host.detect(app, &manifest, &snapshot))
 }
 
 #[cfg(test)]

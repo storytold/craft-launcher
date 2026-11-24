@@ -411,6 +411,12 @@ mod tests {
         assert_eq!(new_installs_available(Platform { os: Os::Windows, arch: Arch::X64 }), cfg!(windows));
         assert_eq!(new_installs_available(Platform { os: Os::Linux, arch: Arch::X64 }), cfg!(target_os = "linux"));
         assert_eq!(new_installs_available(Platform { os: Os::MacOs, arch: Arch::Arm64 }), cfg!(target_os = "macos") && mac_team().is_ok());
+        // Without an admitted adapter (no Arm64 Windows or Linux Nightly yet) nothing is offered,
+        // whatever trust the OS has.
+        for platform in [Platform { os: Os::Windows, arch: Arch::Arm64 }, Platform { os: Os::Linux, arch: Arch::Arm64 }] {
+            assert!(admit_new(CraftApp::by_id("photocraft").unwrap(), platform).is_err(), "{platform:?}");
+            assert!(!new_installs_available(platform), "{platform:?}");
+        }
     }
 
     fn fixture() -> (&'static CraftApp, Release, Artifact, Platform) {

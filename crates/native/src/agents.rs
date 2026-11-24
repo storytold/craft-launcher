@@ -17,8 +17,6 @@ use serde_json::{Map, Value, json};
 
 use artcraft_launcher_core::CraftApp;
 
-use crate::detect;
-use crate::manifest::Manifest;
 
 /// The key our entry has in a client's `mcpServers`.
 pub use artcraft_launcher_core::mcp_config::SERVER_KEY;
@@ -223,13 +221,14 @@ pub struct InstalledApp {
     pub cli_path: Option<PathBuf>,
 }
 
-/// Every installed Craft app, in suite order. Detection decides what is installed; this adds the
-/// CLI each app serves MCP from.
-pub fn installed_apps(manifest: &Manifest, snapshot: &detect::Snapshot) -> Vec<InstalledApp> {
+/// Every installed Craft app, in suite order. `detect` decides what is installed (the backend
+/// passes its own detection, which tests keep off the host); this adds the CLI each app serves
+/// MCP from.
+pub fn installed_apps(detect: impl Fn(&CraftApp) -> Option<artcraft_launcher_core::Installed>) -> Vec<InstalledApp> {
     artcraft_launcher_core::SUITE
         .iter()
         .filter_map(|app| {
-            let installed = detect::detect(app, manifest, snapshot)?;
+            let installed = detect(app)?;
             Some(InstalledApp {
                 id: app.id.to_string(),
                 name: app.name.to_string(),

@@ -73,14 +73,22 @@ mod linux {
             return Err(refused("The Nightly OpenPGP verifier returned excessive status output."));
         }
         if !output.success {
-            let reported = |kind: &str| output.stdout.lines().any(|line| line.starts_with(&format!("[GNUPG:] {kind} ")));
+            let statuses: Vec<Vec<&str>> = output.stdout.lines().filter_map(|line| line.strip_prefix("[GNUPG:] ")).map(|line| line.split_whitespace().collect()).collect();
+            let reported = |kind: &str| statuses.iter().any(|fields| fields.first() == Some(&kind));
+            // ERRSIG <keyid> <pkalgo> <hashalgo> <class> <time> <rc>: rc 9 is a missing public key.
+            let errsig = |rc: &str| statuses.iter().any(|fields| fields.first() == Some(&"ERRSIG") && fields.get(6) == Some(&rc));
             // Only the pinned key is imported, so a signature by any other key can't be checked:
             // say so plainly rather than as a verifier failure.
-            if reported("NO_PUBKEY") || reported("ERRSIG") {
+            if reported("NO_PUBKEY") || errsig("9") {
                 return Err(refused(NOT_SIGNED_BY_ARTCRAFT));
             }
             if reported("BADSIG") {
                 return Err(refused("This Nightly download doesn't match ArtCraft's signature for it, so it wasn't installed."));
+            }
+            // rc 4 is an algorithm this system's gpg doesn't support (an old gpg without EdDSA, say):
+            // the system's limit, not a verdict on the archive or its signer.
+            if errsig("4") {
+                return Err(unavailable("This system's gpg can't check the Nightly signature's algorithm; update GnuPG and try again."));
             }
             // Anything else is the verifier's own trouble, not a verdict on the archive.
             return Err(unavailable("The Nightly OpenPGP verifier failed."));

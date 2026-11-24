@@ -253,6 +253,11 @@ fn machine_status_never_accepts_error_multiple_signer_or_expiry_even_with_valids
     let bad = "[GNUPG:] NEWSIG\n[GNUPG:] BADSIG 0123456789ABCDEF test\n";
     assert!(matches!(status(&crate::process::RunOutput::exit(1, bad, ""), &pin, crate::now()), Err(PrepareError::Refused(message)) if message != NOT_SIGNED_BY_ARTCRAFT));
     assert!(matches!(status(&crate::process::RunOutput::exit(2, "", "gpg: fatal"), &pin, crate::now()), Err(PrepareError::Unavailable(_))));
+    // An algorithm this gpg can't do is the system's limit, not another signer.
+    let unsupported = "[GNUPG:] NEWSIG\n[GNUPG:] ERRSIG 0123456789ABCDEF 22 8 00 1795280000 4 -\n";
+    assert!(matches!(status(&crate::process::RunOutput::exit(2, unsupported, ""), &pin, crate::now()), Err(PrepareError::Unavailable(message)) if message != NOT_SIGNED_BY_ARTCRAFT));
+    let missing_key_only = "[GNUPG:] NEWSIG\n[GNUPG:] ERRSIG 0123456789ABCDEF 22 8 00 1795280000 9 -\n";
+    assert_eq!(status(&crate::process::RunOutput::exit(2, missing_key_only, ""), &pin, crate::now()).unwrap_err(), refused(NOT_SIGNED_BY_ARTCRAFT));
     assert!(status(&crate::process::RunOutput::success(&valid), &"B".repeat(40), crate::now()).is_err());
 }
 
