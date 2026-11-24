@@ -507,16 +507,15 @@ impl NativeBackend {
                     shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                     let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
                     match &existing {
-                        Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
+                        Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).and_then(|()| {
                             let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                            let removed_app = m.apps.remove(app.id).is_some();
-                            let removed_cli = remove_cli_tool(&paths, &mut m, app.id);
-                            if removed_app || removed_cli {
-                                let _ = m.save(&paths.manifest());
-                            }
-                            format!("{} was removed", app.name)
+                            finish_uninstall(&paths, &mut m, app, true)
                         }),
-                        None => Err(format!("{} isn't installed", app.name)),
+                        // The app is already gone, but its command-line tool may be left from a removal that failed: try again.
+                        None => {
+                            let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+                            finish_uninstall(&paths, &mut m, app, false)
+                        }
                     }
                 } else {
                     let (approved, batch) = match &work {
@@ -1007,17 +1006,39 @@ fn install_cli_tool(
     String::new()
 }
 
-/// Removes the command-line tool the launcher installed for `id`, and its record. Whether the
-/// manifest changed. A tool that can't be removed keeps its record, so a later removal can try again.
+/// Removes the command-line tool the launcher installed for `id`, and its record: whether the
+/// manifest changed. A tool that can't be removed keeps its record, so a later removal can try again, and the
+/// error says why.
 #[cfg_attr(not(unix), allow(unused_variables))]
-fn remove_cli_tool(paths: &Paths, manifest: &mut crate::manifest::Manifest, id: &str) -> bool {
-    let Some(record) = manifest.cli.get(id) else { return false };
+fn remove_cli_tool(paths: &Paths, manifest: &mut crate::manifest::Manifest, id: &str) -> Result<bool, String> {
+    let Some(record) = manifest.cli.get(id) else { return Ok(false) };
     #[cfg(unix)]
     if let Err(e) = install::cli_tool::remove(paths, record) {
         log::warn!("{id}: command-line tool: {e}");
-        return false;
+        return Err(e);
     }
-    manifest.cli.remove(id).is_some()
+    Ok(manifest.cli.remove(id).is_some())
+}
+
+/// What an uninstall does beyond the app itself: forget its record and take away its command-line tool.
+/// `installed` says whether the app was there and has just been removed. A tool that can't be removed is
+/// reported and keeps its record, so a later uninstall retries it, even when the app itself is gone by then
+/// (an app with no tool left to clean up is "not installed" as before).
+fn finish_uninstall(paths: &Paths, m: &mut crate::manifest::Manifest, app: &CraftApp, installed: bool) -> Result<String, String> {
+    if !installed && !m.cli.contains_key(app.id) {
+        return Err(format!("{} isn't installed", app.name));
+    }
+    let removed_app = installed && m.apps.remove(app.id).is_some();
+    let tool = remove_cli_tool(paths, m, app.id);
+    if removed_app || matches!(tool, Ok(true)) {
+        let _ = m.save(&paths.manifest());
+    }
+    match (installed, tool) {
+        (true, Ok(_)) => Ok(format!("{} was removed", app.name)),
+        (true, Err(e)) => Ok(format!("{} was removed, but its command-line tool couldn't be removed ({e}). Remove it again to retry", app.name)),
+        (false, Ok(_)) => Ok(format!("The command-line tool of {} was removed", app.name)),
+        (false, Err(e)) => Err(format!("The command-line tool of {} couldn't be removed ({e})", app.name)),
+    }
 }
 
 /// Whether an install may write over what is at its destination.
@@ -3301,6 +3322,69 @@ mod tests {
                 );
                 assert!(backend.shared.jobs.lock().unwrap().is_empty());
             }
+        }
+    }
+
+    #[cfg(unix)]
+    mod cli_cleanup {
+        use super::*;
+        use crate::manifest::{CliRecord, Manifest};
+
+        /// A tool installed under `real`, reached through a `cli` link, so that removing it is refused until the link is a real folder.
+        fn blocked(dir: &std::path::Path) -> (Paths, Manifest, std::path::PathBuf) {
+            let paths = Paths::under(dir);
+            let real = dir.join("elsewhere");
+            let folder_name = "pdfcraft-cli-0.20.0-macos-universal";
+            std::fs::create_dir_all(real.join("bin")).unwrap();
+            std::fs::create_dir_all(real.join(folder_name)).unwrap();
+            std::fs::write(real.join(folder_name).join("pdfcraft-cli"), "tool").unwrap();
+            std::fs::create_dir_all(paths.cli().parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(&real, paths.cli()).unwrap();
+            let folder = paths.cli().join(folder_name);
+            let link = paths.cli_bin().join("pdfcraft-cli");
+            std::os::unix::fs::symlink(folder.join("pdfcraft-cli"), &link).unwrap();
+            let mut m = Manifest::default();
+            m.cli.insert("pdfcraft".into(), CliRecord { version: "0.20.0".into(), folder, link, installed_at: 1 });
+            (paths, m, real)
+        }
+
+        fn app() -> &'static CraftApp {
+            CraftApp::by_id("pdfcraft").unwrap()
+        }
+
+        #[test]
+        fn an_uninstall_says_when_the_tool_could_not_be_removed_and_keeps_its_record() {
+            let dir = tempfile::tempdir().unwrap();
+            let (paths, mut m, _) = blocked(dir.path());
+            let text = finish_uninstall(&paths, &mut m, app(), true).unwrap();
+            assert!(text.contains("was removed, but its command-line tool couldn't be removed"), "{text}");
+            assert!(m.cli.contains_key("pdfcraft"), "the record stays for a retry");
+        }
+
+        #[test]
+        fn a_later_uninstall_retries_the_tool_even_when_the_app_is_gone() {
+            let dir = tempfile::tempdir().unwrap();
+            let (paths, mut m, real) = blocked(dir.path());
+            let record = m.cli.get("pdfcraft").unwrap().clone();
+            let err = finish_uninstall(&paths, &mut m, app(), false).unwrap_err();
+            assert!(err.contains("couldn't be removed"), "{err}");
+            assert!(m.cli.contains_key("pdfcraft"));
+            // What blocked it is put right: `cli` is a real folder now.
+            std::fs::remove_file(paths.cli()).unwrap();
+            std::fs::rename(&real, paths.cli()).unwrap();
+            let text = finish_uninstall(&paths, &mut m, app(), false).unwrap();
+            assert!(text.contains("command-line tool of"), "{text}");
+            assert!(m.cli.is_empty(), "the record is gone");
+            assert!(std::fs::symlink_metadata(&record.link).is_err(), "the link is gone");
+            assert!(std::fs::symlink_metadata(&record.folder).is_err(), "the folder is gone");
+        }
+
+        #[test]
+        fn an_app_that_is_gone_and_has_no_tool_is_not_installed() {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = Paths::under(dir.path());
+            let err = finish_uninstall(&paths, &mut Manifest::default(), app(), false).unwrap_err();
+            assert!(err.contains("isn't installed"), "{err}");
         }
     }
 }
