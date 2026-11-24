@@ -334,3 +334,18 @@ fn configured_signer_accepts_a_real_release_signature_only_for_its_exact_bytes_a
     let (asset, signature, file) = release_fixture(root.path(), "release-subkey-pin", RELEASE_SIGNED);
     assert!(prepare_with(&file, &asset, &signature, RELEASE_SIGNATURE, &paths, &subkey_pin, GPG).is_err());
 }
+
+/// Only an archive that is actually different is refused (and later removed from the downloads);
+/// one whose private copy couldn't be hashed is kept for the next try.
+#[test]
+fn an_archive_that_cannot_be_hashed_is_kept_and_only_a_different_one_is_refused() {
+    let digest = "ab".repeat(32);
+    let asset = Asset { name: "photocraft.tar.gz".into(), size: 3, sha256: Some(digest.clone()), ..Asset::default() };
+    let snapshot = Path::new("unread-snapshot.tar.gz");
+    assert_eq!(archive_matches(snapshot, &asset, 3, |_| Ok(digest.to_uppercase())), Ok(()));
+    assert!(matches!(archive_matches(snapshot, &asset, 3, |_| Err("couldn't read it".into())), Err(PrepareError::Unavailable(_))));
+    assert!(matches!(archive_matches(snapshot, &asset, 3, |_| Ok("cd".repeat(32))), Err(PrepareError::Refused(_))));
+    assert!(matches!(archive_matches(snapshot, &asset, 4, |_| Ok(digest.clone())), Err(PrepareError::Refused(_))));
+    let unchecked = Asset { sha256: None, ..asset };
+    assert!(matches!(archive_matches(snapshot, &unchecked, 3, |_| Ok(digest.clone())), Err(PrepareError::Refused(_))));
+}

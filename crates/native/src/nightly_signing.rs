@@ -158,6 +158,18 @@ mod linux {
         crate::process::run_command_with_output(command, program, Duration::from_secs(30))
     }
 
+    /// Whether the private copy is exactly the release's archive. A copy that couldn't be hashed
+    /// says nothing about the download, so only an actual difference refuses it.
+    fn archive_matches(snapshot: &Path, asset: &Asset, copied: u64, sha256: impl Fn(&Path) -> Result<String, String>) -> Result<(), PrepareError> {
+        const MISMATCH: &str = "The exact Nightly archive bytes do not match the verified release.";
+        let expected = asset.sha256.as_ref().ok_or_else(|| refused(MISMATCH))?;
+        if copied != asset.size {
+            return Err(refused(MISMATCH));
+        }
+        let actual = sha256(snapshot).map_err(unavailable)?;
+        if actual.eq_ignore_ascii_case(expected) { Ok(()) } else { Err(refused(MISMATCH)) }
+    }
+
     pub(crate) fn prepare(
         file: &Path,
         asset: &Asset,
@@ -204,12 +216,8 @@ mod linux {
         }
         let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(&snapshot).map_err(unavailable)?;
         let copied = std::io::copy(&mut input, &mut out).map_err(unavailable)?;
-        if copied != asset.size
-            || asset.sha256.as_ref().is_none_or(|hash| crate::http::sha256_file(&snapshot).map_or(true, |actual| !actual.eq_ignore_ascii_case(hash)))
-        {
-            return Err(refused("The exact Nightly archive bytes do not match the verified release."));
-        }
         drop(out);
+        archive_matches(&snapshot, asset, copied, crate::http::sha256_file)?;
         let public_key = home.path().join("pinned-public.asc");
         let detached = home.path().join("archive.tar.gz.asc");
         std::fs::write(&public_key, signer.public_key).map_err(unavailable)?;
