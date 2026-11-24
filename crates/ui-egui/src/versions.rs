@@ -92,11 +92,15 @@ impl LauncherUi {
         ui.label(RichText::new(tl!("Your files may not open in older versions.")).color(t.muted));
         let nightly_note = if app.has_separate_nightly_channel() {
             // Its nightlies are not in this picker: they install separately on the Pre-Release page.
-            tl!("Nightly builds use a separate install and settings. Stable updates stay unchanged.")
+            Some(tl!("Nightly builds use a separate install and settings. Stable updates stay unchanged."))
         } else {
-            tl!("Enable automatic installs in Settings to follow new nightly builds.")
+            // Only beside the Nightly row, which follows the nightly builds setting.
+            (self.settings.nightly_enabled || self.settings.versions.get(id) == Some(&VersionTrack::Nightly))
+                .then(|| tl!("Enable automatic installs in Settings to follow new nightly builds."))
         };
-        ui.label(RichText::new(nightly_note).color(t.muted));
+        if let Some(note) = nightly_note {
+            ui.label(RichText::new(note).color(t.muted));
+        }
         ui.add_space(12.0);
         let (mut close, mut install) = (false, false);
         ui.horizontal(|ui| {
@@ -198,6 +202,21 @@ impl LauncherUi {
             .filter(|r| self.has_version_download(app, r))
             .map(|r| r.tag);
         let latest_label = |tag: &str| crate::fmt(tl!("{version} (latest release)"), &[("version", tag)]);
+        // Betas and release candidates are listed only with pre-releases on, nightlies only with
+        // nightly builds on. The installed or chosen one stays, so the user sees it and can leave it.
+        let installed = if id == LAUNCHER_ID {
+            version::parse(env!("CARGO_PKG_VERSION"))
+        } else {
+            self.entry(id).and_then(|entry| entry.installed.as_ref()?.version.clone())
+        };
+        let listed = |r: &Release| {
+            let wanted = if is_nightly(r) {
+                self.settings.nightly_enabled
+            } else {
+                self.settings.prereleases || (!r.prerelease && r.version.as_ref().is_some_and(version::is_stable))
+            };
+            wanted || choice == VersionTrack::Pinned(r.tag.clone()) || (installed.is_some() && r.version == installed)
+        };
         let summary = match &choice {
             VersionTrack::Stable => latest.as_deref().map_or_else(|| tl!("Latest release").to_string(), latest_label),
             VersionTrack::Nightly => tl!("Nightly").to_string(),
@@ -218,7 +237,7 @@ impl LauncherUi {
                 {
                     picked = Some(VersionTrack::Stable);
                 }
-                if !app.has_separate_nightly_channel() {
+                if !app.has_separate_nightly_channel() && (self.settings.nightly_enabled || choice == VersionTrack::Nightly) {
                     let nightly = list
                         .as_ref()
                         .and_then(|result| result.as_ref().ok())
@@ -243,6 +262,7 @@ impl LauncherUi {
                         for r in releases {
                             if (app.has_separate_nightly_channel() && artcraft_launcher_core::release::separate_channel_nightly(r))
                                 || !self.has_version_download(app, r)
+                                || !listed(r)
                             {
                                 continue;
                             }
@@ -482,7 +502,8 @@ mod tests {
         let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(700.0, 700.0)).build_ui_state(
             move |ui, state: &mut Option<LauncherUi>| {
                 let launcher = state.get_or_insert_with(|| {
-                    let mut settings = crate::settings::Settings { language: "en".into(), notify: false, ..Default::default() };
+                    let mut settings =
+                        crate::settings::Settings { language: "en".into(), notify: false, nightly_enabled: true, ..Default::default() };
                     settings.versions.insert(id.into(), saved.clone());
                     let mut launcher = LauncherUi::new(ui.ctx(), Box::new(recorder.clone()), settings);
                     let app = CraftApp::by_id(id).unwrap();
