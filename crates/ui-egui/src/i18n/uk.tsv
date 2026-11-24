@@ -513,7 +513,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 # Availability-only pre-release destination (English fallback)
 	Could not check for pre-release builds.	Could not check for pre-release builds.
 	No pre-release builds are available yet.	No pre-release builds are available yet.
-	Nightly builds, separate from your stable apps.	Nightly builds, separate from your stable apps.
+	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.
 
 # Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
 	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	Попередні версії дають змогу раніше випробувати нові можливості, але в них будуть помилки й можлива втрата незбереженої роботи.
