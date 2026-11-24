@@ -76,6 +76,7 @@
 	Show in Explorer	Megjelenítés a Fájlkezelőben
 	Show in Files	Megjelenítés a fájlkezelőben
 	Reinstall	Újratelepítés
+	Add desktop shortcut	Asztali parancsikon hozzáadása
 	Uninstall…	Eltávolítás…
 	Launch options…	Indítási beállítások…
 	{name} launch options	{name} indítási beállításai
@@ -109,6 +110,7 @@
 	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
 	Running in the background	Futtatás a háttérben
 	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
+	Hide ArtCraft Launcher from the Dock while in the background	ArtCraft Launcher elrejtése a Dockból a háttérben
 	ArtCraft Launcher is still running	Az ArtCraft Launcher továbbra is fut
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	A tálcára került: az ikonjáról megnyitható vagy bezárható, vagy kapcsolja ki ezt a beállításokban.
 	Show the window on the current desktop	Ablak megjelenítése az aktuális asztalon
@@ -138,6 +140,8 @@
 	Pin to top	Rögzítés felülre
 	Unpin	Rögzítés feloldása
 	Pinned	Rögzítettek
+	Pin {name} to top	{name} rögzítése felülre
+	Unpin {name}	{name} rögzítésének feloldása
 	Reorder {name}	Átrendezés: {name}
 	Move up	Feljebb
 	Move down	Lejjebb
@@ -170,6 +174,10 @@
 	Retry update to {version}	Frissítés újrapróbálása: {version}
 	The download is still here. It's checked again, then installed.	A letöltött fájl megmaradt. Újra ellenőrizzük, majd telepítjük.
 	Waiting for another app…	Várakozás egy másik alkalmazásra…
+	Waiting for another download…	Várakozás egy másik letöltésre…
+	Simultaneous downloads	Egyidejű letöltések
+	No limit	Korlátlan
+	Downloads running together share your connection, so each one is slower.	Az egyidejű letöltések megosztják a kapcsolatot, így mindegyik lassabb.
 	Waiting for other installs…	Várakozás a többi telepítésre…
 
 # Package formats offered for download (PackageKind::label)
@@ -396,6 +404,9 @@ filter	Installed	Telepítve
 @msg	custom install folders aren't supported on this system	ezen a rendszeren nem támogatottak az egyéni telepítési mappák
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	a(z) {path} már létezik, és nem az ArtCraft Launcher telepítette
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	a(z) {path} nem helyezhető a Kukába ({reason}). Távolítsa el a Finderben.
+@msg	Desktop shortcut created for {name}	Asztali parancsikon létrehozva: {name}
+@msg	Couldn't create the desktop shortcut: {e}	Nem sikerült létrehozni az asztali parancsikont: {e}
+@msg	A desktop shortcut named {name} already exists	Már létezik egy {name} nevű asztali parancsikon
 	Apps are placed inside this folder.	Az alkalmazások ebbe a mappába kerülnek.
 	Replace what's there?	Lecseréli, ami ott van?
 	{path} already exists. Installing {name} will overwrite it.	{path} már létezik. A(z) {name} telepítése felülírja.
@@ -450,3 +461,98 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Feloldja a verzió zárolását?
 	{app} is pinned to {version}. Follow the latest release instead?	A(z) {app} a(z) {version} verzióra van rögzítve. Inkább a legújabb kiadást kövesse?
 	Unlock	Feloldás
+
+	AI agents	AI-ügynökök
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Amíg ez be van kapcsolva, az MCP-t használó AI-alkalmazások, például a Claude, a Cursor vagy az LM Studio, egyetlen bejegyzésen át dolgozhatnak minden telepített Craft alkalmazással. Kikapcsolva egyetlen ügynök sem éri el őket, és az itt hozzáadott bejegyzések törlődnek.
+	Quick install	Gyors telepítés
+	Adds the Craft apps to that client. Restart the client afterwards.	Hozzáadja a Craft alkalmazásokat ehhez a klienshez. Utána indítsa újra a klienst.
+	Other clients	Más kliensek
+	Copy the configuration and paste it into the client's MCP settings.	Másolja ki a konfigurációt, és illessze be a kliens MCP-beállításaiba.
+	Copy JSON	JSON másolása
+	Copy for VS Code	Másolás VS Code-hoz
+	Copy for Codex (TOML)	Másolás Codexhez (TOML)
+	Configuration copied.	Konfiguráció kimásolva.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	A(z) {client} csak induláskor tölti be az MCP-kiszolgálóit, ezért a Craft alkalmazások újraindítás után jelennek meg. Az újraindítás bezárja a(z) {client} alkalmazást, a még íródó választ is.
+	Restart {client}	{client} újraindítása
+	Restarting {client}…	{client} újraindítása…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	A Craft átjáró (craft-ai-mcp) nincs telepítve az indító mellé.
+	Let AI agents use Craft apps	AI-ügynökök használhatják a Craft alkalmazásokat
+	Apps agents can reach: {count}	Ügynökök által elérhető alkalmazások: {count}
+	Added	Hozzáadva
+	Remove	Eltávolítás
+	Add	Hozzáadás
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Betűtípusok
+	Allow font downloads	Betűtípus-letöltések engedélyezése
+	Couldn't change the font download setting: {e}	Nem sikerült módosítani a betűtípus-letöltési beállítást: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	A betűtípusok csak telepítéskor töltődnek le a forrásukból. Az előnézeteknek lent saját beállításuk van. Ez a beállítás minden Craft-alkalmazásra érvényes.
+	Sources	Források
+	Apps	Alkalmazások
+	Fonts for every Craft app	Betűtípusok minden Craft-alkalmazáshoz
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Betűtípus-előnézetek megjelenítése
+	Font preview server	Betűtípus-előnézeti kiszolgáló
+	Couldn't use this server: {e}	Ez a kiszolgáló nem használható: {e}
+	Couldn't change the font previews setting: {e}	Nem sikerült módosítani a betűtípus-előnézetek beállítását: {e}
+	Set by {name} in the environment.	A környezetben a(z) {name} állítja be.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	A nem telepített betűtípusok előnézete erről a kiszolgálóról jön, és a telepítés is először ezt próbálja. Üresen hagyva az alapértelmezett kiszolgáló.
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Az előzetes kiadások csatornája minden éjjel automatikusan frissül a legújabb kóddal. Hibák, teljesítmény- és stabilitási problémák, valamint befejezetlen funkciók lehetnek benne. Fontos munkához használd a stabil csatornát.
+
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	Az előzetes verziókkal korábban kipróbálhatod az újdonságokat, de lesznek bennük hibák, és elveszhet a nem mentett munkád.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	A stabil alkalmazásaid mellé települnek, saját beállításokkal és adatokkal, így a stabil környezeted változatlan marad. Mindig készíts biztonsági másolatot a fontos fájlokról, mielőtt megnyitod őket egy előzetes verzióban, mert az újabb verziókkal mentett fájlok nem feltétlenül nyithatók meg a stabil verziókban.
+	You can turn this off at any time without deleting your installed developer builds or their data.	Ezt bármikor kikapcsolhatod a telepített előzetes alkalmazásverziók vagy az adataik törlése nélkül.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{year}. {month}. {day}.
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	Éjszakai buildek
+	Discover nightly builds (Developer Builds page)	Éjszakai buildek keresése (Developer Builds oldal)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Külön telepítések, beállítások és adatok. A kikapcsolás megőrzi a telepített példányokat és adataikat.
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	A béták és a kiadásra jelölt verziók lecserélhetik a stabil telepítést.
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	Közlemények
+	No announcements	Nincsenek közlemények
+@plural	Announcements, {n} unread|Announcements, {n} unread	Közlemények, {n} olvasatlan|Közlemények, {n} olvasatlan

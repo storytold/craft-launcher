@@ -79,6 +79,7 @@
 	Show in Explorer	Explorer-ში ჩვენება
 	Show in Files	Files-ში ჩვენება
 	Reinstall	ხელახლა ინსტალაცია
+	Add desktop shortcut	სამუშაო მაგიდის მალსახმობის დამატება
 	Uninstall…	დეინსტალაცია…
 	All releases	ყველა გამოშვება
 	ArtCraft Launcher {version} is available.	ხელმისაწვდომია ArtCraft Launcher {version}.
@@ -105,6 +106,7 @@
 	Updates always use the format an app was installed with.	განახლება ყოველთვის იმ ფორმატს იყენებს, რომლითაც აპლიკაცია დაინსტალირდა.
 	Running in the background	ფონურ რეჟიმში მუშაობა
 	Keep running in the tray when the window is closed	ფანჯრის დახურვის შემდეგ მუშაობის გაგრძელება შეტყობინებების არეში
+	Hide ArtCraft Launcher from the Dock while in the background	ფონურ რეჟიმში ArtCraft Launcher-ის Dock-იდან დამალვა
 	ArtCraft Launcher is still running	ArtCraft Launcher კვლავ მუშაობს
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	ის შეტყობინებების არეშია: გახსენით ან დახურეთ მისი ხატულით, ან გამორთეთ ეს ფუნქცია პარამეტრებში.
 	Show the window on the current desktop	ფანჯრის ჩვენება მიმდინარე სამუშაო მაგიდაზე
@@ -170,10 +172,16 @@
 	Move up	ზემოთ გადატანა
 	Pin to top	ზევით დამაგრება
 	Pinned	დამაგრებული
+	Pin {name} to top	{name}-ის ზევით დამაგრება
+	Unpin {name}	{name}-ის დამაგრების მოხსნა
 	Reorder {name}	{name}-ის თანმიმდევრობის შეცვლა
 	Unpin	დამაგრების მოხსნა
 	The download is still here. It's checked again, then installed.	ჩამოტვირთული ფაილი ისევ აქ არის. ჯერ ხელახლა შემოწმდება, შემდეგ დაინსტალირდება.
 	Waiting for another app…	სხვა აპლიკაციის მოლოდინი…
+	Waiting for another download…	სხვა ჩამოტვირთვის მოლოდინი…
+	Simultaneous downloads	ერთდროული ჩამოტვირთვები
+	No limit	შეზღუდვის გარეშე
+	Downloads running together share your connection, so each one is slower.	ერთად მიმდინარე ჩამოტვირთვები კავშირს იზიარებენ, ამიტომ თითოეული უფრო ნელია.
 	Waiting for other installs…	სხვა ინსტალაციების მოლოდინი…
 
 # Package formats offered for download (PackageKind::label)
@@ -397,6 +405,9 @@ filter	Installed	დაინსტალირებული
 @msg	custom install folders aren't supported on this system	ამ სისტემაზე ინსტალაციის საქაღალდის არჩევა არ არის მხარდაჭერილი
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} უკვე არსებობს და ის ArtCraft Launcher-ს არ დაუინსტალირებია
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} ნაგავში ვერ გადავიდა ({reason}). წაშალეთ ის Finder-ში.
+@msg	Desktop shortcut created for {name}	{name}-ის სამუშაო მაგიდის მალსახმობი შეიქმნა
+@msg	Couldn't create the desktop shortcut: {e}	სამუშაო მაგიდის მალსახმობის შექმნა ვერ მოხერხდა: {e}
+@msg	A desktop shortcut named {name} already exists	სამუშაო მაგიდის მალსახმობი სახელით {name} უკვე არსებობს
 	Apps are placed inside this folder.	აპლიკაციები ამ საქაღალდეში განთავსდება.
 	Replace what's there?	ჩანაცვლდეს არსებული?
 	{path} already exists. Installing {name} will overwrite it.	{path} უკვე არსებობს. {name}-ის ინსტალაცია მას გადააწერს.
@@ -448,3 +459,99 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	განიბლოკოს ვერსია?
 	{app} is pinned to {version}. Follow the latest release instead?	{app} ფიქსირებულია {version} ვერსიაზე. სანაცვლოდ გამოიყენოთ უახლესი გამოშვება?
 	Unlock	განბლოკვა
+
+	AI agents	AI აგენტები
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	სანამ ეს ჩართულია, MCP-ის მქონე AI აპებს, მაგალითად Claude-ს, Cursor-ს ან LM Studio-ს, ერთი ჩანაწერით შეუძლიათ ყველა დაინსტალირებულ Craft აპთან მუშაობა. გამორთვისას ვერცერთი აგენტი ვერ მიაღწევს მათ და აქ დამატებული ჩანაწერები წაიშლება.
+	Quick install	სწრაფი დაყენება
+	Adds the Craft apps to that client. Restart the client afterwards.	ამატებს Craft აპებს ამ კლიენტში. შემდეგ კლიენტი გადატვირთეთ.
+	Other clients	სხვა კლიენტები
+	Copy the configuration and paste it into the client's MCP settings.	დააკოპირეთ კონფიგურაცია და ჩასვით კლიენტის MCP პარამეტრებში.
+	Copy JSON	JSON-ის კოპირება
+	Copy for VS Code	კოპირება VS Code-ისთვის
+	Copy for Codex (TOML)	კოპირება Codex-ისთვის (TOML)
+	Configuration copied.	კონფიგურაცია დაკოპირდა.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} MCP სერვერებს მხოლოდ გაშვებისას ტვირთავს, ამიტომ Craft აპები გადატვირთვის შემდეგ გამოჩნდება. გადატვირთვა ხურავს {client}-ს, მათ შორის პასუხს, რომელსაც ახლა წერს.
+	Restart {client}	{client}-ის გადატვირთვა
+	Restarting {client}…	{client} გადაიტვირთება…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft კარიბჭე (craft-ai-mcp) გამშვების გვერდით არ არის დაინსტალირებული.
+	Let AI agents use Craft apps	AI აგენტებს Craft აპების გამოყენების ნება
+	Apps agents can reach: {count}	აგენტებისთვის ხელმისაწვდომი აპები: {count}
+	Added	დამატებულია
+	Remove	წაშლა
+	Add	დამატება
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	შრიფტები
+	Allow font downloads	შრიფტების ჩამოტვირთვის დაშვება
+	Couldn't change the font download setting: {e}	შრიფტების ჩამოტვირთვის პარამეტრის შეცვლა ვერ მოხერხდა: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	შრიფტები მათი წყაროებიდან მხოლოდ მაშინ ჩამოიტვირთება, როცა შრიფტს აინსტალირებთ. შრიფტების გადახედვას ქვემოთ საკუთარი პარამეტრი აქვს. ამ პარამეტრს ყველა Craft აპლიკაცია იზიარებს.
+	Sources	წყაროები
+	Apps	აპლიკაციები
+	Fonts for every Craft app	შრიფტები ყველა Craft აპლიკაციისთვის
+# The font preview settings in Settings' Fonts box.
+	Show font previews	შრიფტების გადახედვის ჩვენება
+	Advanced	დამატებითი
+	Font preview server	შრიფტების გადახედვის სერვერი
+	Couldn't use this server: {e}	ამ სერვერის გამოყენება ვერ მოხერხდა: {e}
+	Couldn't change the font previews setting: {e}	შრიფტების გადახედვის პარამეტრის შეცვლა ვერ მოხერხდა: {e}
+	Set by {name} in the environment.	დაყენებულია გარემოში {name}-ით.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	დაუინსტალირებელი შრიფტების გადახედვა ამ სერვერიდან ჩანს და ინსტალაციაც ჯერ მას ცდის. ცარიელი ნიშნავს ნაგულისხმევ სერვერს.
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	წინასწარი ვერსიების არხი ყოველ ღამე ავტომატურად განახლდება უახლესი კოდით. მასში შეიძლება იყოს შეცდომები, წარმადობისა და სტაბილურობის პრობლემები და დაუსრულებელი ფუნქციები. მნიშვნელოვანი სამუშაოსთვის გამოიყენეთ სტაბილური არხი.
+
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	წინასწარი ვერსიები სიახლეების ადრე გამოცდის საშუალებას გაძლევთ, თუმცა მათში იქნება ხარვეზები და შესაძლოა შეუნახავი ნამუშევარი დაიკარგოს.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	ისინი სტაბილური აპლიკაციების გვერდით, საკუთარი პარამეტრებითა და მონაცემებით ყენდება და თქვენს სტაბილურ გარემოს უცვლელად ტოვებს. მნიშვნელოვანი ფაილების წინასწარ ვერსიაში გახსნამდე ყოველთვის შექმენით მათი სარეზერვო ასლები, რადგან უფრო ახალ ვერსიებში შენახული ფაილები შესაძლოა სტაბილურ ვერსიებში აღარ გაიხსნას.
+	You can turn this off at any time without deleting your installed developer builds or their data.	ამ პარამეტრის გამორთვა ნებისმიერ დროს შეგიძლიათ, დაინსტალირებული წინასწარი ვერსიებისა და მათი მონაცემების წაშლის გარეშე.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{day}.{month}.{year}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	ღამის აწყობები
+	Discover nightly builds (Developer Builds page)	ღამის აწყობების მოძიება (Developer Builds გვერდი)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	ცალკე ინსტალაციები, პარამეტრები და მონაცემები. გამორთვა ინარჩუნებს დაინსტალირებულ ასლებსა და მათ მონაცემებს.
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	ბეტა და გამოშვების კანდიდატმა ვერსიებმა შეიძლება ჩაანაცვლოს თქვენი სტაბილური ინსტალაცია.
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	განცხადებები
+	No announcements	განცხადებები არ არის
+@plural	Announcements, {n} unread|Announcements, {n} unread	განცხადებები, {n} წაუკითხავი|განცხადებები, {n} წაუკითხავი

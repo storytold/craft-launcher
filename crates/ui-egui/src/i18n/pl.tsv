@@ -77,6 +77,7 @@
 	Show in Explorer	Pokaż w Eksploratorze plików
 	Show in Files	Pokaż w menedżerze plików
 	Reinstall	Przeinstaluj
+	Add desktop shortcut	Dodaj skrót na pulpicie
 	Uninstall…	Odinstaluj…
 	Launch options…	Opcje uruchamiania…
 	{name} launch options	Opcje uruchamiania aplikacji {name}
@@ -110,6 +111,7 @@
 	Updates always use the format an app was installed with.	Aktualizacje zawsze używają formatu, w jakim pierwotnie zainstalowano aplikację.
 	Running in the background	Działanie w tle
 	Keep running in the tray when the window is closed	Po zamknięciu okna działaj w zasobniku systemowym
+	Hide ArtCraft Launcher from the Dock while in the background	Ukrywaj ArtCraft Launcher w Docku podczas działania w tle
 	ArtCraft Launcher is still running	ArtCraft Launcher nadal działa
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Jest w zasobniku systemowym: otwórz go lub zamknij z jego ikony, albo wyłącz to w ustawieniach.
 	Show the window on the current desktop	Pokaż okno na bieżącym pulpicie
@@ -139,6 +141,8 @@
 	Pin to top	Przypnij na górze
 	Unpin	Odepnij
 	Pinned	Przypięte
+	Pin {name} to top	Przypnij {name} na górze
+	Unpin {name}	Odepnij {name}
 	Reorder {name}	Zmień kolejność: {name}
 	Move up	W górę
 	Move down	W dół
@@ -171,6 +175,10 @@
 	Retry update to {version}	Ponów aktualizację do {version}
 	The download is still here. It's checked again, then installed.	Pobrany plik wciąż tu jest. Zostanie sprawdzony ponownie, a następnie zainstalowany.
 	Waiting for another app…	Oczekiwanie na inną aplikację…
+	Waiting for another download…	Oczekiwanie na inne pobieranie…
+	Simultaneous downloads	Jednoczesne pobierania
+	No limit	Bez limitu
+	Downloads running together share your connection, so each one is slower.	Jednoczesne pobierania dzielą połączenie, więc każde jest wolniejsze.
 	Waiting for other installs…	Oczekiwanie na inne instalacje…
 
 # Package formats offered for download (PackageKind::label)
@@ -397,6 +405,9 @@ filter	Installed	Zainstalowane
 @msg	custom install folders aren't supported on this system	własne foldery instalacji nie są obsługiwane w tym systemie
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} już istnieje i nie został zainstalowany przez ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	nie można przenieść {path} do Kosza ({reason}). Usuń go w Finderze.
+@msg	Desktop shortcut created for {name}	Utworzono skrót na pulpicie dla {name}
+@msg	Couldn't create the desktop shortcut: {e}	Nie można utworzyć skrótu na pulpicie: {e}
+@msg	A desktop shortcut named {name} already exists	Skrót na pulpicie o nazwie {name} już istnieje
 	Apps are placed inside this folder.	Aplikacje są umieszczane w tym folderze.
 	Replace what's there?	Zastąpić to, co tam jest?
 	{path} already exists. Installing {name} will overwrite it.	{path} już istnieje. Instalacja {name} go nadpisze.
@@ -451,3 +462,98 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Unlock version?	Odblokować wersję?
 	{app} is pinned to {version}. Follow the latest release instead?	Aplikacja {app} jest przypięta do wersji {version}. Zamiast tego śledzić najnowsze wydanie?
 	Unlock	Odblokuj
+
+	AI agents	Agenci AI
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Gdy ta opcja jest włączona, aplikacje AI korzystające z MCP, takie jak Claude, Cursor czy LM Studio, mogą przez jeden wpis pracować z każdą zainstalowaną aplikacją Craft. Gdy jest wyłączona, żaden agent nie ma do nich dostępu, a dodane tutaj wpisy są usuwane.
+	Quick install	Szybka instalacja
+	Adds the Craft apps to that client. Restart the client afterwards.	Dodaje aplikacje Craft do tego klienta. Potem uruchom klienta ponownie.
+	Other clients	Inni klienci
+	Copy the configuration and paste it into the client's MCP settings.	Skopiuj konfigurację i wklej ją w ustawieniach MCP klienta.
+	Copy JSON	Kopiuj JSON
+	Copy for VS Code	Kopiuj dla VS Code
+	Copy for Codex (TOML)	Kopiuj dla Codex (TOML)
+	Configuration copied.	Skopiowano konfigurację.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} wczytuje serwery MCP tylko przy uruchomieniu, więc aplikacje Craft pojawią się po ponownym uruchomieniu. Ponowne uruchomienie zamyka {client}, także odpowiedź, którą właśnie pisze.
+	Restart {client}	Uruchom ponownie {client}
+	Restarting {client}…	Ponowne uruchamianie {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Brama Craft (craft-ai-mcp) nie jest zainstalowana obok launchera.
+	Let AI agents use Craft apps	Pozwól agentom AI używać aplikacji Craft
+	Apps agents can reach: {count}	Aplikacje dostępne dla agentów: {count}
+	Added	Dodano
+	Remove	Usuń
+	Add	Dodaj
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Czcionki
+	Allow font downloads	Zezwalaj na pobieranie czcionek
+	Couldn't change the font download setting: {e}	Nie udało się zmienić ustawienia pobierania czcionek: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Czcionki są pobierane z ich źródeł tylko wtedy, gdy instalujesz czcionkę. Podglądy czcionek mają własne ustawienie poniżej. To ustawienie jest wspólne dla wszystkich aplikacji Craft.
+	Sources	Źródła
+	Apps	Aplikacje
+	Fonts for every Craft app	Czcionki dla wszystkich aplikacji Craft
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Pokazuj podglądy czcionek
+	Font preview server	Serwer podglądów czcionek
+	Couldn't use this server: {e}	Nie można użyć tego serwera: {e}
+	Couldn't change the font previews setting: {e}	Nie udało się zmienić ustawienia podglądów czcionek: {e}
+	Set by {name} in the environment.	Ustawione przez {name} w środowisku.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Niezainstalowane czcionki pokazują podglądy z tego serwera, a instalacja próbuje go najpierw. Puste pole oznacza serwer domyślny.
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Kanał wersji przedpremierowych jest automatycznie aktualizowany każdej nocy najnowszym kodem. Może zawierać błędy, problemy z wydajnością i stabilnością oraz niedokończone funkcje. Do ważnej pracy używaj kanału stabilnego.
+
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	Wersje przedpremierowe pozwalają wcześniej wypróbować nowości, ale będą zawierać błędy i mogą spowodować utratę niezapisanej pracy.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	Instalują się obok Twoich stabilnych aplikacji i korzystają z własnych ustawień oraz danych, nie zmieniając stabilnego środowiska. Zawsze twórz kopie zapasowe ważnych plików przed otwarciem ich w wersji przedpremierowej, ponieważ pliki zapisane w nowszych wersjach mogą nie otwierać się w wersjach stabilnych.
+	You can turn this off at any time without deleting your installed developer builds or their data.	Możesz wyłączyć tę opcję w dowolnym momencie bez usuwania zainstalowanych aplikacji przedpremierowych ani ich danych.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{day}.{month}.{year}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	Kompilacje nightly
+	Discover nightly builds (Developer Builds page)	Wyszukuj kompilacje nightly (strona Developer Builds)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Oddzielne instalacje, ustawienia i dane. Wyłączenie zachowuje zainstalowane kopie i ich dane.
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	Wersje beta i kandydaci do wydania mogą zastąpić stabilną instalację.
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	Ogłoszenia
+	No announcements	Brak ogłoszeń
+@plural	Announcements, {n} unread|Announcements, {n} unread	Ogłoszenia, {n} nieprzeczytane|Ogłoszenia, {n} nieprzeczytane|Ogłoszenia, {n} nieprzeczytanych
