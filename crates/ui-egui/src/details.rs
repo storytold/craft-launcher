@@ -156,6 +156,9 @@ impl LauncherUi {
 
                 ui.set_min_size(panel.size());
                 ui.set_max_size(panel.size());
+                // Nothing on the page draws past the card: the scroll area keeps its bar at the
+                // clip's right edge, so a page wider than the card can't push the bar out (#1615).
+                ui.set_clip_rect(panel.intersect(ui.clip_rect()));
                 // A bar that stays on screen says there is more below the fold; in the app's colour.
                 let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
                 // One scroll position per app, so the next app opens at its top.
@@ -358,6 +361,10 @@ impl LauncherUi {
     fn hero_identity(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, status: &AppStatus, t: &Tokens, wide: bool) {
         let app = entry.app;
         let hero_w = ui.available_width();
+        // The main button grows with its label ("Install version v0.24.0-rc.1"), so the actions
+        // get the width they took last pass when that is more than ACTION_W, and the text the rest.
+        let actions_id = Id::unique(("details-actions-w", app.id));
+        let actions_w = ui.data(|d| d.get_temp::<f32>(actions_id)).unwrap_or(ACTION_W).max(ACTION_W);
         ui.horizontal(|ui| {
             if let Some(icon) = crate::icons::app(app.id) {
                 // Decorative: the wordmark beside it carries the app name.
@@ -365,7 +372,7 @@ impl LauncherUi {
             }
             ui.add_space(8.0);
             // Beside the buttons when the page is wide: the text keeps what they leave.
-            let text_w = if wide { (hero_w - ICON - 16.0 - ACTION_W - 24.0).max(200.0) } else { (hero_w - ICON - 16.0).max(40.0) };
+            let text_w = if wide { (hero_w - ICON - 16.0 - actions_w - 24.0).max(200.0) } else { (hero_w - ICON - 16.0).max(40.0) };
             ui.vertical(|ui| {
                 ui.set_width(text_w);
                 ui.spacing_mut().item_spacing.y = 5.0;
@@ -383,9 +390,14 @@ impl LauncherUi {
             if wide {
                 // The main button and its menu, at the right, level with the name.
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.allocate_ui_with_layout(vec2(ACTION_W, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    let row = ui.allocate_ui_with_layout(vec2(actions_w, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         self.actions_in(ui, entry, status, ACTION_W, crate::views::Place::Details);
                     });
+                    let used = row.response.rect.width();
+                    if (used.max(ACTION_W) - actions_w).abs() > 0.5 {
+                        ui.data_mut(|d| d.insert_temp(actions_id, used));
+                        ui.ctx().request_discard("details actions width");
+                    }
                 });
             }
         });

@@ -3738,6 +3738,42 @@ fn the_drawer_and_the_enlarged_picture_survive_any_window_size() {
     }
 }
 
+/// The details card's scrollbar sits inside the card, against its right edge, at the window size
+/// of #1615 (Windows 11, maximised) and with a long chosen-version label in the hero's action row;
+/// the action row stays inside the card too.
+#[test]
+fn the_details_scrollbar_stays_inside_the_card() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    let window = egui::vec2(1770.0, 1320.0);
+    h.set_size(window);
+    h.run_steps(8);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.24.0-rc.1".into()));
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(20);
+    // The card as `details_drawer` sizes it: 1280 x 1000 in the middle of this window.
+    let card = egui::Rect::from_center_size(egui::pos2(window.x / 2.0, window.y / 2.0), egui::vec2(1280.0, 1000.0));
+    let bars: Vec<egui::Rect> = h
+        .query_all_by_role(egui::accesskit::Role::ScrollBar)
+        .map(|n| n.rect())
+        .filter(|r| r.top() >= card.top() - 1.0 && r.bottom() <= card.bottom() + 1.0)
+        .collect();
+    assert_eq!(bars.len(), 1, "one scrollbar on the card: {bars:?}");
+    let bar = bars[0];
+    assert!(bar.left() >= card.left() && bar.right() <= card.right() + 0.5, "the bar {bar:?} is outside the card {card:?}");
+    assert!(bar.right() >= card.right() - 4.0, "the bar {bar:?} is not against the card's right edge {card:?}");
+    // The drawer's controls come after the grid card's in the tree.
+    let install = h.get_all_by_label("Install version v0.24.0-rc.1").last().expect("the drawer offers the chosen version").rect();
+    let menu = h.get_all_by_label("More actions for PhotoCraft").last().expect("the drawer's … menu").rect();
+    for r in [install, menu] {
+        assert!(r.right() <= bar.left(), "{r:?} runs under the bar {bar:?} or out of the card {card:?}");
+    }
+}
+
 #[test]
 /// At 720–1180 px the rate-limit notice stays readable and clear of the footer's checked time
 /// and eight right-side links.
