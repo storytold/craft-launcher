@@ -19,14 +19,9 @@ pub(crate) fn clock(secs: i64) -> (i8, i8) {
     clock_at(secs, offset(secs))
 }
 
-/// `(hour, minute)` of `secs` seen from `offset` seconds east of UTC, through jiff; midnight when
-/// `secs` or `offset` is out of jiff's range.
+/// `(hour, minute)` of `secs` seen from `offset` seconds east of UTC.
 fn clock_at(secs: i64, offset: i64) -> (i8, i8) {
-    let zone = i32::try_from(offset).ok().and_then(|o| jiff::tz::Offset::from_seconds(o).ok()).unwrap_or(jiff::tz::Offset::UTC);
-    jiff::Timestamp::from_second(secs).map_or((0, 0), |at| {
-        let time = at.to_zoned(zone.to_time_zone()).time();
-        (time.hour(), time.minute())
-    })
+    time::clock_from_unix(secs.saturating_add(offset))
 }
 
 /// `(year, month, day)` of `secs` seen from `offset` seconds east of UTC.
