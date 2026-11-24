@@ -1,8 +1,13 @@
+# Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0
+# Russian translation © 2026 SuperSfera LLC, MIT OR Apache-2.0
 [Desktop Entry]
 Type=Application
 Name=ArtCraft Launcher
+Name[ru]=ArtCraft Launcher
 GenericName=App Launcher
+GenericName[ru]=Запуск приложений
 Comment=Install, update and launch the Craft App Suite
+Comment[ru]=Установка, обновление и запуск приложений Craft App Suite
 Exec=artcraft-launcher
 TryExec=artcraft-launcher
 Icon=ai.storyteller.artcraft-launcher
@@ -11,3 +16,4 @@ StartupNotify=true
 StartupWMClass=ai.storyteller.artcraft-launcher
 Categories=Utility;PackageManager;
 Keywords=artcraft;craft;launcher;installer;updater;photocraft;filmcraft;apps;
+Keywords[ru]=artcraft;craft;лаунчер;запуск;установщик;обновление;photocraft;filmcraft;приложения;
