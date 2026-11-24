@@ -473,7 +473,9 @@ fn review_after_exclusive_move() {
     });
 }
 
-#[cfg(all(test, unix))]
+// Exclusive moves exist only where Nightly installs are staged; elsewhere move_to refuses
+// before renaming anything, which this success-path test can't observe.
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod move_identity_tests {
     use super::*;
 
