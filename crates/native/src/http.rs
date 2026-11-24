@@ -28,6 +28,10 @@ pub enum Fetched {
     RateLimited {
         reset: Option<i64>,
     },
+    /// Not asked: the launcher's own GitHub budget is spent for this priority until `until`.
+    OverBudget {
+        until: i64,
+    },
 }
 
 #[derive(Clone)]
@@ -41,6 +45,8 @@ pub struct Http {
     direct_download: ureq::Agent,
     token: Option<String>,
     nightly_mirror: Option<NightlyMirror>,
+    /// Shared by every clone, so every GitHub API request counts against the one budget.
+    budget: std::sync::Arc<crate::github_budget::GitHubBudget>,
 }
 
 /// An indeterminate Nightly lookup; a server-supplied backoff applies to every resource kind.
@@ -191,7 +197,14 @@ impl Http {
         // An optional token raises GitHub's limit from 60 to 5000 requests an hour. Only ever sent
         // to api.github.com.
         let token = std::env::var("ARTCRAFT_LAUNCHER_GITHUB_TOKEN").ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-        Ok(Self { small, feed, no_redirect, download, direct, direct_download, token, nightly_mirror: None })
+        let budget = std::sync::Arc::new(crate::github_budget::GitHubBudget::in_memory(crate::github_budget::STABLE));
+        Ok(Self { small, feed, no_redirect, download, direct, direct_download, token, nightly_mirror: None, budget })
+    }
+
+    /// Counts GitHub API requests against `budget` instead of a fresh one.
+    pub(crate) fn with_budget(mut self, budget: crate::github_budget::GitHubBudget) -> Self {
+        self.budget = std::sync::Arc::new(budget);
+        self
     }
 
     /// Production/default builds ignore the staging environment, including malformed values.
@@ -212,8 +225,18 @@ impl Http {
         }
     }
 
-    /// GET a GitHub API resource, revalidating with `etag` when given.
+    /// GET a GitHub API resource, revalidating with `etag` when given, for the user.
     pub fn get_api(&self, url: &str, etag: Option<&str>) -> Result<Fetched, String> {
+        self.get_api_as(url, etag, artcraft_launcher_core::release::Priority::User)
+    }
+
+    /// [`get_api`](Self::get_api), counted against the GitHub budget for `priority`.
+    pub fn get_api_as(&self, url: &str, etag: Option<&str>, priority: artcraft_launcher_core::release::Priority) -> Result<Fetched, String> {
+        if url.starts_with("https://api.github.com/")
+            && let Err(until) = self.budget.take(priority, crate::now())
+        {
+            return Ok(Fetched::OverBudget { until });
+        }
         // A request carrying the token must not follow a redirect: a cross-origin `Location`
         // could otherwise forward the bearer token. Requests without one keep the old behaviour.
         let agent = if self.token.is_some() && url.starts_with("https://api.github.com/") { &self.no_redirect } else { &self.small };
@@ -231,6 +254,8 @@ impl Http {
         let mut resp = req.call().map_err(|e| format!("{UNREACHABLE} GitHub ({e})"))?;
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
         let status = resp.status().as_u16();
+        let count = |name: &str| header(name).and_then(|v| v.trim().parse::<i64>().ok());
+        self.budget.observe(count("x-ratelimit-remaining"), count("x-ratelimit-reset"));
         match status {
             200 => {
                 let etag = header("etag");
@@ -291,7 +316,26 @@ impl Http {
     /// redirects and body reads. Callers own logical URLs and the overall discovery budget;
     /// this method owns transport failure/backoff, not authoritative absence (except HTTP 404).
     /// Stable's helpers deliberately keep their existing policies.
-    pub(crate) fn nightly_get(&self, url: &str, max: usize, timeout: Duration, _lookup_now: i64) -> Result<Option<Vec<u8>>, NightlyHttpError> {
+    #[cfg(test)]
+    pub(crate) fn nightly_get(&self, url: &str, max: usize, timeout: Duration, lookup_now: i64) -> Result<Option<Vec<u8>>, NightlyHttpError> {
+        self.nightly_get_as(url, max, timeout, lookup_now, artcraft_launcher_core::release::Priority::Discovery)
+    }
+
+    /// [`nightly_get`](Self::nightly_get), with an API request counted against the GitHub budget
+    /// for `priority`.
+    pub(crate) fn nightly_get_as(
+        &self,
+        url: &str,
+        max: usize,
+        timeout: Duration,
+        _lookup_now: i64,
+        priority: artcraft_launcher_core::release::Priority,
+    ) -> Result<Option<Vec<u8>>, NightlyHttpError> {
+        if url.starts_with("https://api.github.com/")
+            && let Err(until) = self.budget.take(priority, crate::now())
+        {
+            return Err(NightlyHttpError { why: "The launcher's GitHub budget is spent for now.".into(), retry_at: Some(until) });
+        }
         // The lookup timestamp predates admission/queueing and network I/O. It cannot anchor
         // a server's relative wait. Sample the wall clock only after receiving its response.
         self.nightly_get_with_receipt_clock(url, max, timeout, crate::now)
@@ -327,6 +371,10 @@ impl Http {
             }
             let mut resp = req.call().map_err(|e| failed(format!("{UNREACHABLE} Nightly resource ({e})")))?;
             let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok());
+            if api {
+                let count = |name: &str| header(name).and_then(|v| v.trim().parse::<i64>().ok());
+                self.budget.observe(count("x-ratelimit-remaining"), count("x-ratelimit-reset"));
+            }
             match resp.status().as_u16() {
                 200 => {
                     let announced = header("content-length").and_then(|v| v.parse::<u64>().ok());

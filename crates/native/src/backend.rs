@@ -12,7 +12,7 @@ use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
     Source, VersionTrack,
 };
-use artcraft_launcher_core::release::{Asset, Release, ReleaseQuery};
+use artcraft_launcher_core::release::{Asset, Priority, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
@@ -29,6 +29,8 @@ const RESTART_WAIT: Duration = Duration::from_secs(10 * 60);
 /// Automatic checks closer together than this reuse the last answers. The UI asks every five
 /// minutes; this stops a burst of requests (refresh, focus, timers) from repeating work.
 const FRESH_FOR: i64 = 4 * 60;
+/// A forced check this soon after the last check reuses its GitHub answers (#713).
+const FORCED_REUSE: i64 = 2 * 60;
 /// Once every app has loaded, GitHub is asked about an app the feed can't vouch for at most this
 /// often (pressing Refresh asks right away).
 const GITHUB_FALLBACK_EVERY: i64 = 60 * 60;
@@ -413,7 +415,13 @@ impl NativeBackend {
         lifecycle: Arc<ProcessLifecycle>,
     ) -> Self {
         let waker: Waker = Arc::new(waker);
-        let http = match Http::new().and_then(|http| {
+        let limit = if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
+            crate::github_budget::DEVELOPER_BUILDS
+        } else {
+            crate::github_budget::STABLE
+        };
+        let budget = crate::github_budget::GitHubBudget::load(paths.github_budget(), limit);
+        let http = match Http::new().map(|http| http.with_budget(budget)).and_then(|http| {
             if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly { http.with_nightly_test_transport() } else { Ok(http) }
         }) {
             Ok(h) => Some(h),
@@ -705,6 +713,8 @@ impl NativeBackend {
             shared.emit(Event::CheckStarted);
             // One sweep and one request at a time. All admitted app lookups share this deadline.
             let started = Instant::now();
+            // Opening the page or pressing its check is the user's own action.
+            let priority = if manual { Priority::User } else { Priority::Discovery };
             for app in apps.into_iter().filter(|app| chosen.contains(&crate::nightly_lookup::key(app, platform))) {
                 let enabled = || {
                     shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
@@ -724,7 +734,7 @@ impl NativeBackend {
                         &app,
                         platform,
                         now,
-                        &mut |url, max, timeout, now| http.nightly_get(url, max, timeout, now),
+                        &mut |url, max, timeout, now| http.nightly_get_as(url, max, timeout, now, priority),
                         &|| started.elapsed(),
                         &enabled,
                     )
@@ -762,10 +772,14 @@ impl NativeBackend {
             return;
         };
         let now = crate::now();
-        let recent = self.shared.last_check.lock().unwrap_or_else(PoisonError::into_inner).is_some_and(|t| now - t < FRESH_FOR);
-        if (recent && !force) || self.shared.checking.swap(true, Ordering::SeqCst) {
+        let last = *self.shared.last_check.lock().unwrap_or_else(PoisonError::into_inner);
+        if (last.is_some_and(|t| now - t < FRESH_FOR) && !force) || self.shared.checking.swap(true, Ordering::SeqCst) {
             return;
         }
+        // A check pressed again within moments still finishes, but reuses what the last one asked
+        // GitHub instead of asking again.
+        // lean: any check in the window stands in, not only a pressed one.
+        let force = force && !last.is_some_and(|t| now - t < FORCED_REUSE);
         let shared = self.shared.clone();
         let busy = BusyGuard { shared: shared.clone(), flag: BusyFlag::Checking };
         let paths = self.paths.clone();
@@ -1939,7 +1953,8 @@ fn sweep(
                     let (latest, from, used) = match mirror {
                         Some(_) => mirror_chosen(app, feed, now, track),
                         None if *track != VersionTrack::Stable => {
-                            let answer = source.chosen(&release_query(feed, app), track);
+                            let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
+                            let answer = source.chosen(&query, track);
                             (Some(answer.latest), Origin::GitHub, Some(answer.source))
                         }
                         None => latest_for(app, feed, fallback, source.as_ref(), shared, options.prereleases, force, now),
@@ -2114,7 +2129,8 @@ fn latest_for(
         due
     };
     if due {
-        let answer = source.latest(&ReleaseQuery::for_app(app, repo), pre);
+        let query = ReleaseQuery::for_app(app, repo).with_priority(github_priority(app, &VersionTrack::Stable, shared, force));
+        let answer = source.latest(&query, pre);
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
     } else {
         let cached = source.cached(&ReleaseQuery::for_app(app, repo), pre);
@@ -2128,6 +2144,19 @@ fn latest_for(
             }
             _ => (cached, Origin::GitHub, None),
         }
+    }
+}
+
+/// Who a GitHub request about `app` is for, when the GitHub budget runs short.
+fn github_priority(app: &CraftApp, track: &VersionTrack, shared: &Shared, force: bool) -> Priority {
+    if force {
+        Priority::User
+    } else if *track == VersionTrack::Nightly {
+        Priority::NightlyTrack
+    } else if shared.installed.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id) {
+        Priority::Installed
+    } else {
+        Priority::NotInstalled
     }
 }
 

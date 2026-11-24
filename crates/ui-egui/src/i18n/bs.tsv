@@ -181,8 +181,8 @@ month	Oct	okt
 month	Nov	nov
 month	Dec	dec
 	Not checked yet	Još nije provjereno
-	GitHub's hourly limit was reached; full details return in {min} min	Dostignuto je satno ograničenje GitHuba; potpuni detalji se vraćaju za {min} min
-	GitHub limit hit; back in {min} min	Dostignuto ograničenje GitHuba; ponovo za {min} min
+	Next GitHub check at {time}	Next GitHub check at {time}
+	Next check at {time}	Next check at {time}
 	Installing for {platform}	Instalacija za {platform}
 	Downloads for {platform}	Preuzimanja za {platform}
 	No downloads for this system	Nema preuzimanja za ovaj sistem

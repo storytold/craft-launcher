@@ -104,6 +104,10 @@ pub struct GitHubSource {
     versions_cache: Mutex<BTreeMap<String, (i64, Vec<Release>)>>,
     cache_path: std::path::PathBuf,
     limited_until: Mutex<Option<i64>>,
+    /// The launcher's own GitHub budget held a request back until this time (Unix seconds). Unlike
+    /// [`limited_until`](Self::limited_until) it stops nothing: the budget decides each request
+    /// by its priority. It only tells the footer when GitHub is next asked.
+    over_budget_until: Mutex<Option<i64>>,
     /// github.com couldn't be reached; don't ask it again until this time (Unix seconds).
     pages_quiet_until: Mutex<Option<i64>>,
 }
@@ -117,6 +121,7 @@ impl GitHubSource {
             versions_cache: Mutex::new(BTreeMap::new()),
             cache_path,
             limited_until: Mutex::new(None),
+            over_budget_until: Mutex::new(None),
             pages_quiet_until: Mutex::new(None),
         }
     }
@@ -143,7 +148,7 @@ impl GitHubSource {
     }
 
     fn ask_api(&self, query: &ReleaseQuery, prereleases: bool) -> Result<Option<Answer>, String> {
-        self.ask_api_with(query, prereleases, |url, etag| self.http.get_api(url, etag))
+        self.ask_api_with(query, prereleases, |url, etag| self.http.get_api_as(url, etag, query.priority))
     }
 
     fn ask_api_with(
@@ -191,6 +196,10 @@ impl GitHubSource {
                                     *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                                     return Ok(None);
                                 }
+                                Fetched::OverBudget { until } => {
+                                    self.note_over_budget(until);
+                                    return Ok(None);
+                                }
                                 Fetched::NotModified | Fetched::NotFound => {
                                     return Err("GitHub's release list changed while it was read; the newest ordinary release is unknown.".into());
                                 }
@@ -224,7 +233,15 @@ impl GitHubSource {
                 *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                 Ok(None)
             }
+            Fetched::OverBudget { until } => {
+                self.note_over_budget(until);
+                Ok(None)
+            }
         }
+    }
+
+    fn note_over_budget(&self, until: i64) {
+        *self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(until);
     }
 
     /// The version list. For an app whose nightlies have their own channel, pages full of them are
@@ -249,6 +266,11 @@ impl GitHubSource {
                 Fetched::RateLimited { reset } => {
                     *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                     return Err("GitHub's request limit was reached. Try again later.".into());
+                }
+                Fetched::OverBudget { until } => {
+                    self.note_over_budget(until);
+                    let minutes = ((until - crate::now()) / 60).max(1);
+                    return Err(format!("The launcher has used its GitHub requests for now; try again in {minutes} min."));
                 }
                 Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
             };
@@ -395,7 +417,7 @@ impl GitHubSource {
         if self.limited() {
             return Err("GitHub's request limit was reached. Try again later.".into());
         }
-        let list = self.versions_with(query, |url, etag| self.http.get_api(url, etag))?;
+        let list = self.versions_with(query, |url, etag| self.http.get_api_as(url, etag, query.priority))?;
         self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).insert(query.repo.clone(), (crate::now(), list.clone()));
         Ok(list)
     }
@@ -441,8 +463,9 @@ impl ReleaseSource for GitHubSource {
     }
 
     fn rate_limited_until(&self) -> Option<i64> {
-        let until = *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner);
-        until.filter(|u| *u > crate::now())
+        let limited = *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner);
+        let over_budget = *self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner);
+        limited.max(over_budget).filter(|u| *u > crate::now())
     }
 
     fn save(&self) {
@@ -468,7 +491,7 @@ mod tests {
 
     /// PhotoCraft's own repo has the separate channel; any other repo in these tests does not.
     fn q(repo: &str) -> ReleaseQuery {
-        ReleaseQuery { repo: repo.into(), separate_nightly: repo == REPO, former_repo: None }
+        ReleaseQuery { repo: repo.into(), separate_nightly: repo == REPO, former_repo: None, priority: Default::default() }
     }
 
     const REPO: &str = "storytold/photocraft";
@@ -600,6 +623,22 @@ mod tests {
         assert!(source.pages_quiet());
         let err = source.ask_pages(&q(REPO)).unwrap_err();
         assert!(err.contains("couldn't be reached a moment ago"), "{err}");
+    }
+
+    /// The launcher's own budget holding a background request back says when GitHub is next
+    /// asked, but unlike GitHub's own refusal it doesn't stop the next, more urgent request.
+    #[test]
+    fn a_spent_budget_is_reported_without_stopping_more_urgent_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0));
+        let source = GitHubSource::new(http, dir.path().join("releases.json"));
+        let until = crate::now() + 600;
+        assert!(matches!(source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until })), Ok(None)));
+        assert_eq!(source.rate_limited_until(), Some(until), "the footer can say when GitHub is next asked");
+        assert!(!source.limited(), "a more urgent request still goes to the budget");
+        // A budget of nothing never reaches the network.
+        let refused = source.http.get_api_as("https://api.github.com/repos/storytold/wordcraft/releases/latest", None, Default::default());
+        assert!(matches!(refused, Ok(Fetched::OverBudget { .. })), "{refused:?}");
     }
 
     #[test]

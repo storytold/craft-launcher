@@ -127,8 +127,8 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未檢查
-	GitHub's hourly limit was reached; full details return in {min} min	已達到 GitHub 的每小時上限；完整資訊將在 {min} 分鐘後恢復
-	GitHub limit hit; back in {min} min	已觸及 GitHub 上限；{min} 分鐘後恢復
+	Next GitHub check at {time}	Next GitHub check at {time}
+	Next check at {time}	Next check at {time}
 	Installing for {platform}	正在為 {platform} 安裝
 	Downloads for {platform}	{platform} 適用的下載項目
 	No downloads for this system	此系統沒有可下載的項目

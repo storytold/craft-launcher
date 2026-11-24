@@ -14,6 +14,12 @@ pub(crate) fn civil(secs: i64) -> (i64, u32, u32) {
     civil_at(secs, offset(secs))
 }
 
+/// `(hour, minute)` of the Unix time `secs` on this computer's clock.
+pub(crate) fn clock(secs: i64) -> (i64, i64) {
+    let seconds = secs.saturating_add(offset(secs)).rem_euclid(86_400);
+    (seconds / 3600, seconds % 3600 / 60)
+}
+
 /// `(year, month, day)` of `secs` seen from `offset` seconds east of UTC.
 fn civil_at(secs: i64, offset: i64) -> (i64, u32, u32) {
     time::civil_from_unix(secs.saturating_add(offset))

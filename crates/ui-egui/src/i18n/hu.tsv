@@ -223,8 +223,8 @@ month	Oct	okt.
 month	Nov	nov.
 month	Dec	dec.
 	Not checked yet	Még nem történt ellenőrzés
-	GitHub's hourly limit was reached; full details return in {min} min	Elértük a GitHub óránkénti lekérdezési korlátját; a részletes adatok {min} perc múlva lesznek újra elérhetők
-	GitHub limit hit; back in {min} min	GitHub-korlát elérve; újrapróbálás {min} perc múlva
+	Next GitHub check at {time}	Next GitHub check at {time}
+	Next check at {time}	Next check at {time}
 	Installing for {platform}	Telepítés {platform} rendszerre
 	Downloads for {platform}	Letöltések {platform} rendszerre
 	No downloads for this system	Nincsenek letöltések ehhez a rendszerhez

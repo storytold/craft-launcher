@@ -46,6 +46,11 @@ impl Paths {
         self.cache.join("releases.json")
     }
 
+    /// The GitHub API requests of the last hour, kept beside the release cache.
+    pub fn github_budget(&self) -> PathBuf {
+        self.cache.join("github-budget.json")
+    }
+
     /// The last answer from ArtCraft's release feed, for an instant first paint and as a fallback.
     pub fn feed_cache(&self) -> PathBuf {
         self.cache.join("feed.json")

@@ -221,8 +221,8 @@ month	Oct	окт.
 month	Nov	нояб.
 month	Dec	дек.
 	Not checked yet	Ещё не проверялось
-	GitHub's hourly limit was reached; full details return in {min} min	Достигнут часовой лимит GitHub; полные детали вернутся через {min} мин
-	GitHub limit hit; back in {min} min	Лимит GitHub исчерпан; вернётся через {min} мин
+	Next GitHub check at {time}	Next GitHub check at {time}
+	Next check at {time}	Next check at {time}
 	Installing for {platform}	Установка для {platform}
 	Downloads for {platform}	Скачивание для {platform}
 	No downloads for this system	Нет загрузок для этой системы

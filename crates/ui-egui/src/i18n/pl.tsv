@@ -224,8 +224,8 @@ month	Oct	paź
 month	Nov	lis
 month	Dec	gru
 	Not checked yet	Jeszcze nie sprawdzono
-	GitHub's hourly limit was reached; full details return in {min} min	Osiągnięto godzinowy limit GitHuba; pełne informacje wrócą za {min} min
-	GitHub limit hit; back in {min} min	Limit GitHuba osiągnięty; powrót za {min} min
+	Next GitHub check at {time}	Next GitHub check at {time}
+	Next check at {time}	Next check at {time}
 	Installing for {platform}	Instalowanie dla {platform}
 	Downloads for {platform}	Do pobrania dla {platform}
 	No downloads for this system	Brak pobrań dla tego systemu
