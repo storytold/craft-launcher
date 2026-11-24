@@ -1014,7 +1014,8 @@ impl NativeBackend {
                 report_partial(app, &shared, &paths, platform);
                 drop(job);
                 // One poll sees both: a Blocked alone would offer Retry while the job still runs.
-                let blocked = (!uninstall).then(|| Event::Blocked { app: app.id.to_string(), failure: failure.filter(|_| result.is_err()) });
+                let blocked =
+                    (!uninstall && !launching).then(|| Event::Blocked { app: app.id.to_string(), failure: failure.filter(|_| result.is_err()) });
                 shared.emit_all(blocked.into_iter().chain([Event::JobFinished { app: app.id.to_string(), result }]));
             }));
         }))
@@ -3811,6 +3812,37 @@ mod tests {
         // exits without sending.
         drop(backend);
         assert_eq!(received.recv().unwrap(), (true, true));
+    }
+
+    /// Opening an app sends no `Blocked`, so the card keeps what stopped the last install.
+    #[test]
+    fn opening_an_app_keeps_the_install_blocker() {
+        let Some(platform) = native_platform() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
+        let shared_for_waker = shared.clone();
+        let (sent, received) = mpsc::channel();
+        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+            let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
+                return;
+            };
+            let polled: Vec<Event> = shared.events.lock().unwrap().drain(..).collect();
+            for event in polled {
+                if matches!(&event, Event::Blocked { app, .. } | Event::JobFinished { app, .. } if app == APP) {
+                    let _ = sent.send(event);
+                }
+            }
+        });
+        *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
+
+        assert!(backend.start_job(APP, Work::Launch(Vec::new())));
+        // The worker then holds the last reference to the waker, so the channel closes if it
+        // exits without sending.
+        drop(backend);
+        assert!(matches!(received.recv().unwrap(), Event::JobFinished { .. }));
     }
 
     /// A nightly update stopped by the running app hands its blocker to the worker, which sends
