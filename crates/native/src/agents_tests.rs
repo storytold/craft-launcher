@@ -84,9 +84,11 @@ fi
 #[test]
 fn flatpak_launches_read_the_live_registry_without_write_access() {
     let temp = tempfile::tempdir().unwrap();
-    let dir = temp.path().join("shared agent registry");
-    let args = flatpak_consent_args(&dir);
-    let path = dir.to_str().unwrap();
+    let config = temp.path().join("XDG config");
+    let dir = config.join("ArtCraft/mcp");
+    let args = flatpak_consent_args(&config, &dir).unwrap();
+    let canonical = dir.canonicalize().unwrap();
+    let path = canonical.to_str().unwrap();
     assert_eq!(args, [format!("--filesystem={path}:ro"), format!("--env={DIR_ENV}={path}"), "--env=CRAFT_FLAGS=AI-MCP".into()]);
     assert!(dir.is_dir(), "the directory can be mounted before the switch is turned on");
     assert!(!enabled(&dir), "mounting the directory does not grant consent");
@@ -94,6 +96,51 @@ fn flatpak_launches_read_the_live_registry_without_write_access() {
     assert!(enabled(&dir));
     remove_apps(&dir).unwrap();
     assert!(!enabled(&dir), "the same mount sees consent removed");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn flatpak_does_not_share_an_overridden_registry() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = temp.path().join("config");
+    let dir = temp.path().join("other/ArtCraft/mcp");
+    assert!(flatpak_consent_args(&config, &dir).is_none());
+    assert!(!dir.exists(), "the override is left alone");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn flatpak_does_not_follow_symlinks_below_the_config_root() {
+    use std::os::unix::fs::symlink;
+
+    for component in ["ArtCraft", "ArtCraft/mcp"] {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("config");
+        let outside = temp.path().join("outside");
+        let link = config.join(component);
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        symlink(&outside, &link).unwrap();
+
+        assert!(flatpak_consent_args(&config, &config.join("ArtCraft/mcp")).is_none(), "{component} points outside the registry");
+        assert_eq!(std::fs::read_dir(outside).unwrap().count(), 0, "the target is left alone");
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn flatpak_can_share_the_registry_under_a_relocated_config_root() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let config = temp.path().join("config");
+    let target = temp.path().join("settings");
+    std::fs::create_dir(&target).unwrap();
+    symlink(&target, &config).unwrap();
+
+    let args = flatpak_consent_args(&config, &config.join("ArtCraft/mcp")).unwrap();
+    let registry = target.join("ArtCraft/mcp").canonicalize().unwrap();
+    assert!(args.contains(&format!("--filesystem={}:ro", registry.display())));
 }
 
 #[test]

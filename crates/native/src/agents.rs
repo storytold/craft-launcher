@@ -249,21 +249,37 @@ pub(crate) fn flatpak_agent_args(app: &CraftApp) -> Vec<String> {
     if crate::process::in_sandbox() || craft_ai_agents::known_name(app.id).is_none() || !flag_on() {
         return Vec::new();
     }
-    mcp_dir().map_or_else(Vec::new, |dir| flatpak_consent_args(&dir))
+    let (Some(config), Some(dir)) = (dirs::config_local_dir(), mcp_dir()) else { return Vec::new() };
+    flatpak_consent_args(&config, &dir).unwrap_or_default()
 }
 
 #[cfg(target_os = "linux")]
-fn flatpak_consent_args(dir: &Path) -> Vec<String> {
-    let Some(path) = dir.to_str().filter(|_| dir.is_absolute()) else {
-        return Vec::new();
-    };
+fn flatpak_consent_args(config: &Path, dir: &Path) -> Option<Vec<String>> {
+    // CRAFT_MCP_DIR can name an arbitrary folder. Only the dedicated default registry is shared.
+    if !config.is_absolute() || dir != config.join("ArtCraft/mcp") {
+        return None;
+    }
     // Mount the directory even before consent is on. The launcher creates, replaces and removes
     // apps.json while the sandbox is running, so mounting just that file would miss updates.
-    if let Err(e) = std::fs::create_dir_all(dir) {
-        log::warn!("couldn't share the agent registry with Flatpak at {} ({e})", dir.display());
-        return Vec::new();
+    std::fs::create_dir_all(config).ok()?;
+    let mut registry = config.canonicalize().ok()?;
+    for name in ["ArtCraft", "mcp"] {
+        registry.push(name);
+        match std::fs::create_dir(&registry) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => {
+                log::warn!("couldn't share the agent registry with Flatpak at {} ({e})", registry.display());
+                return None;
+            }
+        }
+        // Allow a relocated XDG config root, but reject aliases within it.
+        if !registry.symlink_metadata().ok()?.is_dir() {
+            return None;
+        }
     }
-    vec![format!("--filesystem={path}:ro"), format!("--env={DIR_ENV}={path}"), format!("--env={}={}", craft_flags::ENV, craft_flags::AI_MCP.id)]
+    let path = registry.to_str()?;
+    Some(vec![format!("--filesystem={path}:ro"), format!("--env={DIR_ENV}={path}"), format!("--env={}={}", craft_flags::ENV, craft_flags::AI_MCP.id)])
 }
 
 /// The `-cli` binary beside a detected main executable, under any name the app has shipped as
