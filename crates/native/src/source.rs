@@ -42,11 +42,22 @@ pub trait ReleaseSource: Send + Sync {
         if *track == artcraft_launcher_core::protocol::VersionTrack::Stable {
             return self.latest(query, false);
         }
+        // A pinned version never changes: once it is saved, GitHub isn't asked about it again.
+        if let artcraft_launcher_core::protocol::VersionTrack::Pinned(_) = track
+            && let Some(saved @ LatestRelease::Found(_)) = self.saved_choice(query, track)
+        {
+            return Answer { latest: saved, source: Source::Cache };
+        }
         let latest = match self.versions(query) {
             Ok(list) => release::choose_version_for(&list, track, query.separate_nightly).map_or(LatestRelease::None, LatestRelease::Found),
             Err(why) => LatestRelease::Failed(why),
         };
         Answer { latest, source: Source::GitHubApi }
+    }
+    /// The release `track` follows in the version list saved last time, however old, without
+    /// asking GitHub. `None` when no list is saved.
+    fn saved_choice(&self, _query: &ReleaseQuery, _track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        None
     }
     /// The last answer saved for the query's repo, for an instant first paint.
     fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease>;
@@ -75,7 +86,13 @@ struct Entry {
 #[derive(Default, Serialize, Deserialize)]
 struct CacheFile {
     entries: BTreeMap<String, Entry>,
+    /// Each repo's version list and when it was fetched (Unix seconds).
+    #[serde(default)]
+    versions: BTreeMap<String, (i64, Vec<Release>)>,
 }
+
+/// How long a version list stands in for asking GitHub again (#713).
+const VERSIONS_FRESH: i64 = 60 * 60;
 
 /// Once github.com itself hasn't answered, the release-pages route is left alone for this long.
 /// Without it a machine with no network at all would take that route for every app in the catalog
@@ -101,7 +118,6 @@ fn page_len(text: &str) -> Result<usize, String> {
 pub struct GitHubSource {
     http: Http,
     cache: Mutex<CacheFile>,
-    versions_cache: Mutex<BTreeMap<String, (i64, Vec<Release>)>>,
     cache_path: std::path::PathBuf,
     limited_until: Mutex<Option<i64>>,
     /// The launcher's own GitHub budget held a request back until this time (Unix seconds). Unlike
@@ -118,7 +134,6 @@ impl GitHubSource {
         Self {
             http,
             cache: Mutex::new(cache),
-            versions_cache: Mutex::new(BTreeMap::new()),
             cache_path,
             limited_until: Mutex::new(None),
             over_budget_until: Mutex::new(None),
@@ -409,8 +424,8 @@ fn with_former<T>(query: &ReleaseQuery, ask: impl Fn(&ReleaseQuery) -> T, no_rel
 
 impl GitHubSource {
     fn versions_in(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
-        if let Some((at, list)) = self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).get(&query.repo)
-            && crate::now().saturating_sub(*at) < 15 * 60
+        if let Some((at, list)) = self.cache.lock().unwrap_or_else(PoisonError::into_inner).versions.get(&query.repo)
+            && crate::now().saturating_sub(*at) < VERSIONS_FRESH
         {
             return Ok(list.clone());
         }
@@ -418,8 +433,16 @@ impl GitHubSource {
             return Err("GitHub's request limit was reached. Try again later.".into());
         }
         let list = self.versions_with(query, |url, etag| self.http.get_api_as(url, etag, query.priority))?;
-        self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).insert(query.repo.clone(), (crate::now(), list.clone()));
+        self.cache.lock().unwrap_or_else(PoisonError::into_inner).versions.insert(query.repo.clone(), (crate::now(), list.clone()));
+        // Kept on disk at once: a restart shouldn't ask for the list again within the hour.
+        self.save();
         Ok(list)
+    }
+
+    fn saved_choice_in(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        let (_, list) = cache.versions.get(&query.repo)?;
+        Some(release::choose_version_for(list, track, query.separate_nightly).map_or(LatestRelease::None, LatestRelease::Found))
     }
 
     fn latest_in(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
@@ -450,6 +473,10 @@ impl ReleaseSource for GitHubSource {
 
     fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease> {
         with_former(query, |q| self.cached_in(q, prereleases), |c| matches!(c, None | Some(LatestRelease::None)))
+    }
+
+    fn saved_choice(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        with_former(query, |q| self.saved_choice_in(q, track), |c| matches!(c, None | Some(LatestRelease::None)))
     }
 
     fn newest_tag(&self, repo: &str) -> Option<String> {
@@ -641,6 +668,33 @@ mod tests {
         assert!(matches!(refused, Ok(Fetched::OverBudget { .. })), "{refused:?}");
     }
 
+    /// A pinned version is answered from the saved version list however old it is, the list
+    /// itself stands in for an hour, and both survive a restart (#713). The budget of 0 makes any
+    /// request to GitHub fail, so an answer here came from disk.
+    #[test]
+    fn a_pinned_version_and_a_recent_version_list_are_answered_without_github() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("releases.json");
+        let list: Vec<Release> = ["v0.6.0", "v0.5.0"]
+            .iter()
+            .map(|tag| Release { tag: (*tag).into(), version: artcraft_launcher_core::version::parse(tag), ..Default::default() })
+            .collect();
+        let saved = |age: i64| {
+            let cache = CacheFile { versions: [(REPO.to_string(), (crate::now() - age, list.clone()))].into(), ..Default::default() };
+            std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+            let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0));
+            GitHubSource::new(http, path.clone())
+        };
+        let pin = artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into());
+
+        let day_old = saved(86_400);
+        let answer = day_old.chosen(&q(REPO), &pin);
+        assert!(matches!(&answer.latest, LatestRelease::Found(r) if r.tag == "v0.5.0"), "{answer:?}");
+        assert_eq!(answer.source, Source::Cache);
+        assert!(day_old.versions(&q(REPO)).is_err(), "a list older than an hour is asked for again");
+        assert_eq!(saved(30 * 60).versions(&q(REPO)).unwrap().len(), 2, "a recent list stands in");
+    }
+
     #[test]
     fn a_refusal_waits_for_the_reset_github_names() {
         assert_eq!(retry_at(Some(1_000 + 600), 1_000), 1_600);
@@ -658,6 +712,7 @@ mod tests {
         let cache = CacheFile {
             entries: [(repo.into(), Entry { etag: Some("old-etag".into()), release: Some(release.clone()), prereleases: true, fetched_at: 7 })]
                 .into(),
+            ..Default::default()
         };
         let path = temp.path().join("releases.json");
         std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();

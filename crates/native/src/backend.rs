@@ -29,6 +29,8 @@ const RESTART_WAIT: Duration = Duration::from_secs(10 * 60);
 /// Automatic checks closer together than this reuse the last answers. The UI asks every five
 /// minutes; this stops a burst of requests (refresh, focus, timers) from repeating work.
 const FRESH_FOR: i64 = 4 * 60;
+/// An app following the nightly is asked about at most this often: nightlies come once a night.
+const NIGHTLY_TRACK_EVERY: i64 = 3 * 60 * 60;
 /// A forced check this soon after the last check reuses its GitHub answers (#713).
 const FORCED_REUSE: i64 = 2 * 60;
 /// Once every app has loaded, GitHub is asked about an app the feed can't vouch for at most this
@@ -1952,11 +1954,7 @@ fn sweep(
                     };
                     let (latest, from, used) = match mirror {
                         Some(_) => mirror_chosen(app, feed, now, track),
-                        None if *track != VersionTrack::Stable => {
-                            let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
-                            let answer = source.chosen(&query, track);
-                            (Some(answer.latest), Origin::GitHub, Some(answer.source))
-                        }
+                        None if *track != VersionTrack::Stable => track_answer(app, track, feed, source.as_ref(), shared, force, now),
                         None => latest_for(app, feed, fallback, source.as_ref(), shared, options.prereleases, force, now),
                     };
                     let latest = if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
@@ -2145,6 +2143,31 @@ fn latest_for(
             _ => (cached, Origin::GitHub, None),
         }
     }
+}
+
+/// The release a pinned or nightly `track` follows. A pinned version is saved once (see
+/// [`ReleaseSource::chosen`]); the nightly is asked about at most every [`NIGHTLY_TRACK_EVERY`],
+/// with the saved version list standing in between (#713).
+fn track_answer(
+    app: &CraftApp,
+    track: &VersionTrack,
+    feed: Option<&Feed>,
+    source: &dyn ReleaseSource,
+    shared: &Shared,
+    force: bool,
+    now: i64,
+) -> (Option<LatestRelease>, Origin, Option<Source>) {
+    let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
+    if *track == VersionTrack::Nightly && !force {
+        let mut asked = shared.github_asked.lock().unwrap_or_else(PoisonError::into_inner);
+        let due = asked.get(app.id).is_none_or(|t| now - t >= NIGHTLY_TRACK_EVERY);
+        if !due && let Some(saved) = source.saved_choice(&query, track) {
+            return (Some(saved), Origin::GitHub, None);
+        }
+        asked.insert(app.id.to_string(), now);
+    }
+    let answer = source.chosen(&query, track);
+    (Some(answer.latest), Origin::GitHub, Some(answer.source))
 }
 
 /// Who a GitHub request about `app` is for, when the GitHub budget runs short.
@@ -3176,6 +3199,43 @@ mod tests {
         assert_eq!(github.0.load(Ordering::SeqCst), 1, "one GitHub ask in the hour");
         latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
         assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+    }
+
+    /// An app following the nightly is asked about at most every three hours, the saved version
+    /// list answering in between, unless the user presses check (#713).
+    #[test]
+    fn the_nightly_track_is_asked_about_every_three_hours() {
+        #[derive(Default)]
+        struct Lists(AtomicUsize);
+        impl ReleaseSource for Lists {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+            }
+            fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(Vec::new())
+            }
+            fn saved_choice(&self, _query: &ReleaseQuery, _track: &VersionTrack) -> Option<LatestRelease> {
+                Some(LatestRelease::None)
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let (github, shared) = (Lists::default(), shared());
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        let asked = |at: i64, force: bool| {
+            track_answer(word, &VersionTrack::Nightly, None, &github, &shared, force, at);
+            github.0.load(Ordering::SeqCst)
+        };
+        assert_eq!(asked(NOW, false), 1);
+        assert_eq!(asked(NOW + 60 * 60, false), 1, "the saved list answers within the three hours");
+        assert_eq!(asked(NOW + NIGHTLY_TRACK_EVERY, false), 2);
+        assert_eq!(asked(NOW + NIGHTLY_TRACK_EVERY + 60, true), 3, "a pressed check asks at once");
     }
 
     /// Refresh looks past a feed that is behind GitHub (#91).

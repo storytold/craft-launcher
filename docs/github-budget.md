@@ -30,7 +30,8 @@ in [GLOSSARY.md](../GLOSSARY.md).
    an older saved beta or RC at once.
 5. **Pinned version.** Fetched once and saved; asked again only when the pin changes or the
    saved copy is missing. The Choose version list is kept an hour, on disk.
-6. **Nightly track.** At most every 3 hours per app.
+6. **Nightly track.** At most every 3 hours per app. Nightly discovery for Developer Builds
+   already waits 6 hours between automatic sweeps (`nightly_lookup::EVERY`).
 7. **Forced check.** Skips the per-app throttles but not the budget; a second one within 2
    minutes reuses the last answer.
 8. **Budget spent.** Saved answers stay. The footer and automation results say when GitHub is
