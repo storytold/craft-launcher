@@ -225,6 +225,14 @@ impl Http {
         }
     }
 
+    /// This client without the user's GitHub token, for tests that must not depend on the
+    /// environment's `ARTCRAFT_LAUNCHER_GITHUB_TOKEN`.
+    #[cfg(test)]
+    pub(crate) fn without_token(mut self) -> Self {
+        self.token = None;
+        self
+    }
+
     /// Whether a request to `url` counts against the GitHub budget: GitHub API requests made
     /// without a token. A token has its own, far larger limit (5000 an hour) that isn't shared
     /// with the network, so the budget doesn't cap it.
@@ -937,7 +945,7 @@ pub(crate) mod tests {
         for _ in 0..2 {
             assert!(budget.take(artcraft_launcher_core::release::Priority::User, now).is_ok());
         }
-        let http = Http::new().unwrap().with_budget(budget);
+        let http = Http::new().unwrap().with_budget(budget).without_token();
         let url = "https://api.github.com/repos/storytold/photocraft/releases?per_page=1";
         let refused = http.nightly_get_as(url, 1024, Duration::from_secs(1), now, artcraft_launcher_core::release::Priority::Discovery).unwrap_err();
         let mut state = crate::nightly_lookup::State::default();

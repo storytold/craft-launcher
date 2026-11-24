@@ -85,14 +85,16 @@ impl GitHubBudget {
     }
 
     /// Notes GitHub's own count from an answer's `X-RateLimit-Remaining` and `X-RateLimit-Reset`
-    /// at `now`. Answers can arrive out of order: within one window the lowest count stands, and
-    /// a higher one is taken only once the window has moved on.
+    /// at `now`. Answers can arrive out of order: within one window the lowest count stands, an
+    /// answer from an earlier window is ignored, and a later window replaces the count.
     pub(crate) fn observe(&self, remaining: Option<i64>, reset: Option<i64>, now: i64) {
         if let (Some(remaining), Some(reset)) = (remaining, reset) {
             let reset = reset.min(now + MAX_NETWORK_WAIT);
             let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
             state.github = match state.github {
-                Some((known, window)) if window > now && reset <= window => Some((known.min(remaining), window)),
+                Some((known, window)) if window > now && reset == window => Some((known.min(remaining), window)),
+                // A late answer from a window GitHub has since refilled says nothing about this one.
+                Some((known, window)) if window > now && reset < window => Some((known, window)),
                 _ => Some((remaining, reset)),
             };
             self.save(&state);
@@ -166,6 +168,14 @@ mod tests {
         // A new window refills it.
         budget.observe(Some(50), Some(NOW + 600 + HOUR), NOW + 601);
         assert!(budget.take(Priority::User, NOW + 601).is_ok());
+    }
+
+    #[test]
+    fn a_late_answer_from_the_last_window_doesnt_empty_the_new_one() {
+        let budget = GitHubBudget::in_memory(STABLE);
+        budget.observe(Some(59), Some(NOW + HOUR), NOW);
+        budget.observe(Some(0), Some(NOW + 1), NOW);
+        assert!(budget.take(Priority::User, NOW).is_ok(), "the refilled window's count stands");
     }
 
     #[test]
