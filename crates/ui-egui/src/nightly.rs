@@ -1727,6 +1727,8 @@ mod trust_gate_tests {
         let mut harness = settings_open(false, false);
         assert!(harness.get_by_label(CHECKBOX).accesskit_node().is_disabled(), "consent can't be given");
         harness.get_by_label(NOT_YET);
+        harness.get_by_label(CHECKBOX).scroll_to_me();
+        harness.run_steps(3);
         harness.get_by_label(CHECKBOX).click();
         harness.run_steps(3);
         let state = harness.state().as_ref().unwrap();
@@ -1747,6 +1749,9 @@ mod trust_gate_tests {
         let mut harness = settings_open(false, true);
         assert!(!harness.get_by_label(CHECKBOX).accesskit_node().is_disabled());
         harness.get_by_label(NOT_YET);
+        // The panel sits below the Fonts panel, outside the scroll viewport; a click there misses.
+        harness.get_by_label(CHECKBOX).scroll_to_me();
+        harness.run_steps(3);
         harness.get_by_label(CHECKBOX).click();
         harness.run_steps(3);
         assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
