@@ -358,7 +358,7 @@ struct RefusedNightlyBackend {
 impl RefusedNightlyBackend {
     fn new(reason: String, platform: Option<Platform>, waker: Waker) -> Self {
         let reason = format!(
-            "Pre-Release storage is unavailable: {reason} Existing copies and data were not opened or changed. Fix the folders and restart the launcher to try again."
+            "Developer build storage is unavailable: {reason} Existing copies and data were not opened or changed. Fix the folders and restart the launcher to try again."
         );
         let apps = artcraft_launcher_core::hosted_catalog::apps()
             .iter()
@@ -883,7 +883,7 @@ impl NativeBackend {
             match work {
                 Work::Install(None) => {
                     if !self.options().nightly_enabled {
-                        return Err("Pre-Release installs and updates are off. Retained copies and data are kept.".into());
+                        return Err("Developer build installs and updates are off. Retained copies and data are kept.".into());
                     }
                     selected_nightly(app, &self.shared, platform)?;
                     Ok(())
@@ -1357,7 +1357,7 @@ struct NightlyInstallPlan {
 
 fn nightly_install_plan(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>) -> Result<NightlyInstallPlan, String> {
     if !shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled {
-        return Err("Pre-Release installs and updates are off. Retained copies and data are kept.".into());
+        return Err("Developer build installs and updates are off. Retained copies and data are kept.".into());
     }
     let platform = platform.ok_or("This nightly target is not supported on this system.")?;
     let verified = selected_nightly(app, shared, platform)?;
@@ -1399,7 +1399,7 @@ fn run_nightly_install(app: &CraftApp, shared: &Shared, platform: Option<Platfor
         crate::nightly::owned_installation(app, record, paths, platform)?;
         let consent = shared.options.lock().unwrap_or_else(PoisonError::into_inner);
         if !consent.nightly_enabled {
-            return Err("Pre-Release was turned off; the pending install was not committed.".into());
+            return Err("Developer builds were turned off; the pending install was not committed.".into());
         }
         let updated = lease.publish(previous.as_ref(), Some(record))?;
         committed = true;
@@ -1445,7 +1445,7 @@ fn install_plan(
     if app.has_separate_nightly_channel()
         && (artcraft_launcher_core::release::separate_channel_nightly(&release) || artcraft_launcher_core::release::is_nightly_track(track))
     {
-        return Err("Nightly builds use the separate Pre-Release channel; the stable copy was left unchanged.".into());
+        return Err("Nightly builds use the separate developer channel; the stable copy was left unchanged.".into());
     }
     if !release_matches_track(app, &release, track, options.prereleases) {
         return Err("the selected version isn't available yet. Check for updates before installing.".into());
