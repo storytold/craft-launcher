@@ -247,10 +247,10 @@ impl LauncherUi {
             // already on can still be turned off.
             let available = self.nightly.available();
             let interactive = available || enabled;
-            let checkbox = egui::Checkbox::new(&mut enabled, tl!("Discover nightly builds (Pre-Release page)"));
+            let checkbox = egui::Checkbox::new(&mut enabled, tl!("Discover nightly builds (Developer Builds page)"));
             let response = ui.add_enabled(interactive, checkbox);
             if !available {
-                note(ui, tl!("Pre-release builds aren't available on this platform yet."));
+                note(ui, tl!("Developer builds aren't available on this platform yet."));
             }
             if response.changed() {
                 if enabled {

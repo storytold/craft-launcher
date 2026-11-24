@@ -471,51 +471,52 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Fontovi koje niste instalirali prikazuju pregled s ovog servera, a instalacije ga prvo pokušavaju. Prazno znači zadani server.
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
-	Enable pre-release builds	Enable pre-release builds
-	Enable pre-release builds?	Enable pre-release builds?
-	Install pre-release	Install pre-release
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
 	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
-	No pre-release build is available yet.	No pre-release build is available yet.
-	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
 	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
 	Open stable	Open stable
-	Pre-Release	Pre-Release
-	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
-	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
 	Show installed copy	Show installed copy
 	Stable	Stable
-	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
 	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
 	Try nightly builds	Try nightly builds
-	Turn off pre-release builds	Turn off pre-release builds
+	Turn off developer builds	Turn off developer builds
 	Uninstall pre-release	Uninstall pre-release
 	Uninstall pre-release?	Uninstall pre-release?
 	Uninstall pre-release…	Uninstall pre-release…
 
 # Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
-	Pre-release builds are off.	Pre-release builds are off.
-	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
-	Installed pre-release copy	Installed pre-release copy
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
 	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
 
 # Availability-only pre-release destination (English fallback)
-	Could not check for pre-release builds.	Could not check for pre-release builds.
-	No pre-release builds are available yet.	No pre-release builds are available yet.
-	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Kanal predizdanja se automatski ažurira svake noći najnovijim kodom. Može imati greške, probleme s performansama i stabilnošću te nedovršen rad. Za važan posao koristite stabilni kanal.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.
 
 # Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
-	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	Predizdanja vam omogućavaju da ranije isprobate novosti, ali će sadržavati greške i mogu izgubiti nesačuvani rad.
-	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	Instaliraju se uz vaše stabilne aplikacije s vlastitim postavkama i podacima, bez promjena u vašem stabilnom okruženju. Uvijek napravite sigurnosnu kopiju važnih datoteka prije nego što ih otvorite u predizdanju jer se datoteke sačuvane u novijim verzijama možda neće moći otvoriti u stabilnim verzijama.
-	You can turn this off at any time without deleting your installed pre-release apps or their data.	Ovo možete isključiti u bilo kojem trenutku bez brisanja instaliranih predizdanja aplikacija ili njihovih podataka.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.
+	You can turn this off at any time without deleting your installed developer builds or their data.	You can turn this off at any time without deleting your installed developer builds or their data.
 
 # Nightly build calendar date (date-only, never publication time or a local timestamp).
 	{month}/{day}/{year}	{day}.{month}.{year}.
 
 # Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
 	Nightly builds	Noćne verzije
-	Discover nightly builds (Pre-Release page)	Otkrij noćne verzije (stranica Pre-Release)
+	Discover nightly builds (Developer Builds page)	Otkrij noćne verzije (stranica Developer Builds)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Odvojene instalacije, postavke i podaci. Isključivanje zadržava instalirane kopije i njihove podatke.
-	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	Bete i kandidati za izdanje mogu zamijeniti vašu stabilnu instalaciju.
 
 # Nightly status (English fallback; localization is maintained upstream).

@@ -203,7 +203,7 @@ impl GitHubSource {
                     Some(release::parse_github_release(&text, repo)?)
                 };
                 if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(separate, release)) {
-                    return Err("This Nightly belongs to the separate Pre-Release channel, not the ordinary release cache.".into());
+                    return Err("This Nightly belongs to the separate developer channel, not the ordinary release cache.".into());
                 }
                 let etag = if multi_page { None } else { etag };
                 self.store(repo, Entry { etag, release: release.clone(), prereleases, fetched_at: crate::now() });
@@ -309,7 +309,7 @@ impl GitHubSource {
         let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
         let r = release::release_from_sums(repo, &tag, &sums);
         if !release::ordinary_release_allowed(query.separate_nightly, &r) {
-            return Err("The latest release is a Nightly of the separate Pre-Release channel, not an ordinary release.".into());
+            return Err("The latest release is a Nightly of the separate developer channel, not an ordinary release.".into());
         }
         self.store(repo, Entry { etag: None, release: Some(r.clone()), prereleases: false, fetched_at: crate::now() });
         Ok(Answer { latest: LatestRelease::Found(r), source: Source::GitHubPages })

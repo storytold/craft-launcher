@@ -4822,7 +4822,7 @@ fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
                 ("Settings", top(&h, "Settings")),
                 ("bell", top(&h, "Announcements, 1 unread")),
                 ("Stable", top(&h, "Stable")),
-                ("Pre-Release", top(&h, "Pre-Release")),
+                ("Developer Builds", top(&h, "Developer Builds")),
             ];
             for (name, rect) in &controls {
                 assert!(rect.left() >= 0.0 && rect.right() <= width + 0.5, "{name} is clipped at {width}: {rect:?}");

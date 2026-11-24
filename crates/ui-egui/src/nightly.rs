@@ -333,7 +333,7 @@ impl LauncherUi {
             return None;
         }
         let font = egui::TextStyle::Button.resolve(ui.style());
-        let width: f32 = [tl!("Stable"), tl!("Pre-Release")]
+        let width: f32 = [tl!("Stable"), tl!("Developer Builds")]
             .iter()
             .map(|label| ui.painter().layout_no_wrap((*label).into(), font.clone(), Tokens::get(ui.ctx()).ink).size().x + 24.0)
             .sum();
@@ -350,7 +350,7 @@ impl LauncherUi {
             ui.horizontal(|ui| {
                 let stable = RichText::new(tl!("Stable")).color(if self.nightly.active { tokens.ink } else { tokens.invert_fg });
                 ui.selectable_value(&mut self.nightly.active, false, stable);
-                let prerelease = RichText::new(tl!("Pre-Release")).color(if self.nightly.active { tokens.invert_fg } else { tokens.ink });
+                let prerelease = RichText::new(tl!("Developer Builds")).color(if self.nightly.active { tokens.invert_fg } else { tokens.ink });
                 let tab = ui.selectable_value(&mut self.nightly.active, true, prerelease);
                 if self.nightly.focus_tab {
                     tab.request_focus();
@@ -363,8 +363,8 @@ impl LauncherUi {
     /// Align the actions to the title's right when their translated labels fit.
     /// Allocate left to right so visual and keyboard order remain the same.
     fn nightly_page_heading(&mut self, ui: &mut Ui) -> bool {
-        let heading = tl!("Pre-Release");
-        let labels = [tl!("Check for updates"), tl!("Turn off pre-release builds")];
+        let heading = tl!("Developer Builds");
+        let labels = [tl!("Check for updates"), tl!("Turn off developer builds")];
         let color = Tokens::get(ui.ctx()).ink;
         // Query the same stock style as Button: this SDK's default uses Body,
         // not TextStyle::Button. A narrower estimate would wrap the second action.
@@ -396,7 +396,7 @@ impl LauncherUi {
             if ui.add_enabled(!self.nightly.checking && retry_allowed, egui::Button::new(tl!("Check for updates"))).clicked() {
                 self.act(UiAction::NightlyCommand(Command::CheckForUpdates { force: true }));
             }
-            if ui.button(tl!("Turn off pre-release builds")).clicked() {
+            if ui.button(tl!("Turn off developer builds")).clicked() {
                 self.act(UiAction::NightlyConsent(false));
             }
         });
@@ -405,23 +405,23 @@ impl LauncherUi {
     pub(crate) fn nightly_page(&mut self, ui: &mut Ui) {
         let tokens = Tokens::get(ui.ctx());
         let inline_actions = self.nightly_page_heading(ui);
-        ui.label(tl!("The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work."));
+        ui.label(tl!("The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work."));
         ui.add_space(8.0);
         if self.settings.nightly_enabled && !self.nightly.available() {
             egui::Frame::new().fill(tokens.sunken).inner_margin(12).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.add(egui::Label::new(RichText::new(tl!("Pre-release builds aren't available on this platform yet.")).strong()).wrap());
+                ui.add(egui::Label::new(RichText::new(tl!("Developer builds aren't available on this platform yet.")).strong()).wrap());
                 ui.add(egui::Label::new(tl!("Separate installs, settings and data. Turning this off keeps installed copies and their data.")).wrap());
-                if ui.button(tl!("Turn off pre-release builds")).clicked() {
+                if ui.button(tl!("Turn off developer builds")).clicked() {
                     self.act(UiAction::NightlyConsent(false));
                 }
             });
         } else if !self.settings.nightly_enabled {
             egui::Frame::new().fill(tokens.sunken).inner_margin(12).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.label(RichText::new(tl!("Pre-release builds are off.")).strong());
+                ui.label(RichText::new(tl!("Developer builds are off.")).strong());
                 ui.add(
-                    egui::Label::new(tl!("Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings."))
+                    egui::Label::new(tl!("Installed copies and their data are kept. To discover new builds, enable developer builds in Settings."))
                         .wrap(),
                 );
                 // Only Settings may enable the channel; this page only manages retained copies.
@@ -433,7 +433,7 @@ impl LauncherUi {
             self.nightly_page_actions(ui);
         }
         if self.nightly.backend.is_none() {
-            ui.label(tl!("Pre-release installation is unavailable on this platform."));
+            ui.label(tl!("Developer build installation is unavailable on this platform."));
         }
         if self.nightly.checking {
             ui.spinner();
@@ -449,14 +449,14 @@ impl LauncherUi {
                 if self.nightly.checking {
                     ui.label(tl!("Checking…"));
                 } else if enabled && let Some(status) = self.nightly.statuses.values().find(|status| status.message.is_some()) {
-                    ui.label(tl!("Could not check for pre-release builds."));
+                    ui.label(tl!("Could not check for developer builds."));
                     let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
                     nightly_status_labels(ui, status, now);
                 } else if enabled
                     && self.nightly.checked_at.is_some()
                     && entries.iter().any(|entry| matches!(entry.latest, Some(LatestRelease::None)))
                 {
-                    ui.label(tl!("No pre-release builds are available yet."));
+                    ui.label(tl!("No developer builds are available yet."));
                     if let Some(status) = self.nightly.statuses.values().find(|status| !status.stale && status.verified_at.is_some()) {
                         let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
                         nightly_status_labels(ui, status, now);
@@ -511,10 +511,10 @@ impl LauncherUi {
                 ui.vertical(|ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(crate::widgets::heading(entry.app.name, crate::theme::DIALOG_TITLE, tokens.ink_strong));
-                        crate::widgets::badge(ui, tl!("Pre-Release"), tokens.accent_ink);
+                        crate::widgets::badge(ui, tl!("Developer Build"), tokens.accent_ink);
                     });
                     if entry.installed.is_some() {
-                        ui.label(RichText::new(tl!("Installed pre-release copy")).color(tokens.ink));
+                        ui.label(RichText::new(tl!("Installed developer build")).color(tokens.ink));
                     }
                     if let Some(version) = nightly_card_version(entry, enabled) {
                         ui.add(egui::Label::new(RichText::new(nightly_build_label(&version, crate::i18n::current())).strong()).wrap());
@@ -533,7 +533,7 @@ impl LauncherUi {
                         match &entry.latest {
                             Some(LatestRelease::Failed(_)) => {}
                             Some(LatestRelease::None) => {
-                                ui.add(egui::Label::new(tl!("No pre-release build is available yet.")).wrap());
+                                ui.add(egui::Label::new(tl!("No developer build is available yet.")).wrap());
                             }
                             Some(LatestRelease::Found(_)) => {}
                             None => {
@@ -572,7 +572,7 @@ impl LauncherUi {
                         .add_enabled(
                             entry.installable == Some(true)
                                 && self.nightly.statuses.get(entry.app.id).is_some_and(|status| !status.stale && status.verified_at.is_some()),
-                            egui::Button::new(RichText::new(tl!("Install pre-release")).color(tokens.invert_fg))
+                            egui::Button::new(RichText::new(tl!("Install developer build")).color(tokens.invert_fg))
                                 .fill(tokens.invert_bg)
                                 .min_size(egui::vec2(ui.available_width(), crate::theme::CONTROL_H)),
                         )
@@ -604,7 +604,7 @@ impl LauncherUi {
                 ui.set_width(440.0_f32.min(ctx.content_rect().width() - 80.0).max(100.0));
                 ui.label(crate::widgets::heading(tl!("Uninstall pre-release?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
                 ui.add_space(8.0);
-                ui.add(egui::Label::new(tl!("Only this pre-release copy will be removed. Stable copies and user data are kept.")).wrap());
+                ui.add(egui::Label::new(tl!("Only this developer build will be removed. Stable copies and user data are kept.")).wrap());
                 ui.add_space(16.0);
                 ui.horizontal_wrapped(|ui| {
                     let no = ui.button(tl!("Cancel"));
@@ -629,20 +629,20 @@ impl LauncherUi {
         let mut cancel = false;
         let response = egui::Modal::new(egui::Id::unique("nightly-consent-v1")).frame(frame).show(ctx, |ui| {
             ui.set_width(440.0_f32.min(ctx.content_rect().width() - 80.0).max(100.0));
-            ui.label(crate::widgets::heading(tl!("Enable pre-release builds?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
+            ui.label(crate::widgets::heading(tl!("Enable developer builds?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
             ui.add_space(8.0);
-            ui.add(egui::Label::new(RichText::new(tl!("Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.")).strong()).wrap());
+            ui.add(egui::Label::new(RichText::new(tl!("Developer builds let you try new work early, but they will have bugs and may lose unsaved work.")).strong()).wrap());
             ui.add_space(8.0);
             ui.add(
                 egui::Label::new(tl!(
-                    "They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions."
+                    "They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions."
                 ))
                 .wrap(),
             );
             ui.add_space(8.0);
             ui.add(
                 egui::Label::new(tl!(
-                    "You can turn this off at any time without deleting your installed pre-release apps or their data."
+                    "You can turn this off at any time without deleting your installed developer builds or their data."
                 ))
                 .wrap(),
             );
@@ -654,7 +654,7 @@ impl LauncherUi {
                     self.nightly.consent_focus = false;
                 }
                 cancel = no.clicked();
-                enable = ui.button(tl!("Enable pre-release builds")).clicked();
+                enable = ui.button(tl!("Enable developer builds")).clicked();
             });
         });
         if enable {
@@ -796,7 +796,7 @@ mod keyboard_tests {
         );
         harness.run_steps(5);
         assert!(harness.query_by_label("Try nightly builds").is_none());
-        assert!(harness.query_by_label("Pre-Release").is_none(), "no first-run OFF destination");
+        assert!(harness.query_by_label("Developer Builds").is_none(), "no first-run OFF destination");
         harness.get_by_label("Settings").focus();
         harness.key_press(egui::Key::Enter);
         harness.run_steps(3);
@@ -806,8 +806,8 @@ mod keyboard_tests {
         assert!(harness.state().as_ref().unwrap().settings.prereleases, "the existing beta/RC filter still changes independently");
         assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
         assert!(!harness.state().as_ref().unwrap().nightly.consent_open);
-        assert!(harness.query_by_label("Pre-Release").is_none(), "the beta/RC filter never opts into nightly discovery");
-        harness.get_by_label("Discover nightly builds (Pre-Release page)").focus();
+        assert!(harness.query_by_label("Developer Builds").is_none(), "the beta/RC filter never opts into nightly discovery");
+        harness.get_by_label("Discover nightly builds (Developer Builds page)").focus();
         harness.key_press(egui::Key::Space);
         harness.run_steps(3);
         assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
@@ -819,22 +819,22 @@ mod keyboard_tests {
         assert!(matches!(harness.state().as_ref().unwrap().dialog, Some(crate::app::Dialog::Settings)));
         assert!(harness.state().as_ref().unwrap().settings.prereleases, "cancelling nightly consent keeps the beta/RC choice");
         assert!(
-            harness.get_by_label("Discover nightly builds (Pre-Release page)").accesskit_node().is_focused(),
+            harness.get_by_label("Discover nightly builds (Developer Builds page)").accesskit_node().is_focused(),
             "Cancel restores the real Settings checkbox focus"
         );
-        harness.get_by_label("Discover nightly builds (Pre-Release page)").focus();
+        harness.get_by_label("Discover nightly builds (Developer Builds page)").focus();
         harness.key_press(egui::Key::Space);
         harness.run_steps(3);
         harness.key_press(egui::Key::Tab);
         harness.run_steps(2);
-        assert!(harness.get_by_label("Enable pre-release builds").accesskit_node().is_focused());
+        assert!(harness.get_by_label("Enable developer builds").accesskit_node().is_focused());
         harness.key_press(egui::Key::Enter);
         harness.run_steps(3);
         assert!(harness.state().as_ref().unwrap().settings.nightly_enabled);
         assert!(harness.state().as_ref().unwrap().settings.prereleases, "nightly confirmation does not alter the beta/RC filter");
         assert!(harness.state().as_ref().unwrap().nightly.active, "dedicated destination appears only after consent");
         assert!(!harness.state().as_ref().unwrap().nightly.consent_open);
-        assert!(harness.get_by_role_and_label(egui::accesskit::Role::Button, "Pre-Release").accesskit_node().is_focused());
+        assert!(harness.get_by_role_and_label(egui::accesskit::Role::Button, "Developer Builds").accesskit_node().is_focused());
     }
 }
 
@@ -1010,13 +1010,13 @@ mod layout_tests {
         for width in [1180.0, 560.0] {
             let harness = page(width);
             let heading = harness
-                .get_all_by_label("Pre-Release")
+                .get_all_by_label("Developer Builds")
                 .filter(|node| node.accesskit_node().role() == egui::accesskit::Role::Label)
                 .map(|node| node.rect())
                 .min_by(|a, b| a.top().total_cmp(&b.top()))
                 .unwrap();
             let check = harness.get_by_label("Check for updates").rect();
-            let off = harness.get_by_label("Turn off pre-release builds").rect();
+            let off = harness.get_by_label("Turn off developer builds").rect();
             if width > 1000.0 {
                 assert!((heading.center().y - check.center().y).abs() <= 0.5, "actions align with the title");
                 assert!(check.left() > heading.right(), "actions stay to the title's right");
@@ -1048,7 +1048,7 @@ mod layout_tests {
         harness.run_steps(2);
         harness.key_press(egui::Key::Tab);
         harness.run_steps(2);
-        assert!(harness.get_by_label("Turn off pre-release builds").accesskit_node().is_focused());
+        assert!(harness.get_by_label("Turn off developer builds").accesskit_node().is_focused());
         harness.key_press(egui::Key::Enter);
         harness.run_steps(3);
         assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
@@ -1255,7 +1255,7 @@ mod status_tests {
     fn unusable_storage_errors_never_open_the_destination_without_consent() {
         let fake = FakeBackend::default();
         let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
-        let refusal = "Pre-Release storage is unavailable: the nightly folder contains an alias.";
+        let refusal = "Developer build storage is unavailable: the nightly folder contains an alias.";
         fake.events.borrow_mut().push(Event::Notice { app: "photocraft".into(), result: Err(refusal.into()) });
         state.logic(&Settings::default());
         assert!(!state.destination_visible(false), "an error is not consent");
@@ -1435,7 +1435,7 @@ mod polish_tests {
                 for (name, card, install) in &cases {
                     let sent = Rc::new(RefCell::new(Vec::new()));
                     let mut harness = page(width, theme, card.clone(), sent.clone());
-                    let button = harness.query_by_label("Install pre-release");
+                    let button = harness.query_by_label("Install developer build");
                     if let Some(enabled) = install {
                         let button = button.unwrap_or_else(|| panic!("missing install action: {name}"));
                         assert_eq!(!button.accesskit_node().is_disabled(), *enabled, "{name}");
@@ -1465,7 +1465,7 @@ mod polish_tests {
                 let mut consent = page(width, theme, current(), Rc::new(RefCell::new(Vec::new())));
                 consent.state_mut().as_mut().unwrap().open_nightly_consent(egui::Id::unique("polish-consent-reference"));
                 consent.run_steps(3);
-                let consent_title = consent.get_by_label("Enable pre-release builds?").rect();
+                let consent_title = consent.get_by_label("Enable developer builds?").rect();
                 let consent_frame = consent.ctx.memory(|memory| memory.area_rect(egui::Id::unique("nightly-consent-v1"))).unwrap();
                 let consent_padding = consent_title.min - consent_frame.min;
                 for enabled in [false, true] {
@@ -1476,7 +1476,7 @@ mod polish_tests {
                         harness.key_press(egui::Key::Enter);
                         harness.run_steps(3);
                         let title = harness.get_by_label("Uninstall pre-release?").rect();
-                        let body = harness.get_by_label("Only this pre-release copy will be removed. Stable copies and user data are kept.").rect();
+                        let body = harness.get_by_label("Only this developer build will be removed. Stable copies and user data are kept.").rect();
                         let cancel = harness.get_by_label("Cancel");
                         let frame = harness.ctx.memory(|memory| memory.area_rect(egui::Id::unique("nightly-uninstall-v1"))).unwrap();
                         let padding = title.min - frame.min;
@@ -1520,7 +1520,7 @@ mod polish_tests {
         let sent: Commands = Rc::default();
         let card = Card { installed: None, installable: Some(true), ..current() };
         let mut harness = page(1180.0, ThemeChoice::Light, card, sent);
-        assert!(harness.query_by_label("Install pre-release").is_some(), "precondition: an installable build offers the install action");
+        assert!(harness.query_by_label("Install developer build").is_some(), "precondition: an installable build offers the install action");
         let set_job = |harness: &mut Harness<'static, Option<LauncherUi>>, job: Option<JobPhase>| {
             let launcher = harness.state_mut().as_mut().unwrap();
             launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap().job = job;
@@ -1533,7 +1533,7 @@ mod polish_tests {
             set_job(&mut harness, Some(phase));
             harness.run_steps(3);
             assert!(
-                harness.query_by_label("Install pre-release").is_none(),
+                harness.query_by_label("Install developer build").is_none(),
                 "{caption}: the install action must not stay clickable while installing"
             );
             let progress = harness.get_by_label(caption);
@@ -1541,7 +1541,7 @@ mod polish_tests {
         }
         set_job(&mut harness, None);
         harness.run_steps(3);
-        assert!(harness.query_by_label("Install pre-release").is_some(), "the action returns when the job ends");
+        assert!(harness.query_by_label("Install developer build").is_some(), "the action returns when the job ends");
     }
 }
 
@@ -1719,8 +1719,8 @@ mod trust_gate_tests {
         harness
     }
 
-    const CHECKBOX: &str = "Discover nightly builds (Pre-Release page)";
-    const NOT_YET: &str = "Pre-release builds aren't available on this platform yet.";
+    const CHECKBOX: &str = "Discover nightly builds (Developer Builds page)";
+    const NOT_YET: &str = "Developer builds aren't available on this platform yet.";
 
     #[test]
     fn settings_says_pre_release_is_not_available_yet_without_configured_trust() {
@@ -1734,7 +1734,7 @@ mod trust_gate_tests {
         harness.run_steps(3);
         let state = harness.state().as_ref().unwrap();
         assert!(!state.settings.nightly_enabled && !state.nightly.consent_open);
-        assert!(harness.query_by_label("Pre-Release").is_none(), "no Pre-Release destination");
+        assert!(harness.query_by_label("Developer Builds").is_none(), "no Pre-Release destination");
     }
 
     #[test]
