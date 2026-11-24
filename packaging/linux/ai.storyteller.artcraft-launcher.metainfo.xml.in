@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Translated strings in this file may be used under its CC0-1.0 metadata license. -->
 <!-- AppStream metadata (software centres, Flathub). Template: package.sh and the Flatpak
      manifest substitute @VERSION@ and @DATE@ from Cargo.toml and the build date. -->
 <component type="desktop-application">
