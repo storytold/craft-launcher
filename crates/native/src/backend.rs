@@ -1013,10 +1013,9 @@ impl NativeBackend {
                 publish_detected(app, found, &shared, platform);
                 report_partial(app, &shared, &paths, platform);
                 drop(job);
-                if !uninstall {
-                    shared.emit(Event::Blocked { app: app.id.to_string(), failure: failure.filter(|_| result.is_err()) });
-                }
-                shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+                // One poll sees both: a Blocked alone would offer Retry while the job still runs.
+                let blocked = (!uninstall).then(|| Event::Blocked { app: app.id.to_string(), failure: failure.filter(|_| result.is_err()) });
+                shared.emit_all(blocked.into_iter().chain([Event::JobFinished { app: app.id.to_string(), result }]));
             }));
         }))
     }
@@ -1354,6 +1353,10 @@ fn nightly_install_plan(app: &CraftApp, shared: &Shared, paths: &Paths, platform
 /// Runs only the verified private portable transaction; its commit can never update Stable's
 /// manifest. Consent is checked again at the transactional commit, including after queue waits.
 fn run_nightly_install(app: &CraftApp, shared: &Shared, platform: Option<Platform>, job: &mut install::Job<'_>) -> Result<String, String> {
+    #[cfg(test)]
+    if let Some(hook) = REVIEW_NIGHTLY_INSTALL.with(|hook| hook.borrow_mut().take()) {
+        return hook(job);
+    }
     let paths = job.paths;
     let adapter = crate::nightly_profile::for_app(app, platform.ok_or("This nightly platform is not supported.")?)?;
     let lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
@@ -1480,7 +1483,9 @@ fn run_install(
             place,
             failure: None,
         };
-        return run_nightly_install(app, shared, platform, &mut job);
+        let result = run_nightly_install(app, shared, platform, &mut job);
+        *failure = job.failure.take();
+        return result;
     }
     // The ways out below that never reach the installer (a missing release, the overwrite
     // question, a paused download) free the rest of the batch at once; from `install_at` on, the
@@ -3776,6 +3781,64 @@ mod tests {
         assert_eq!(backend.download_size(APP), plan);
     }
 
+    /// A poll that finds an install's `Blocked` also finds its `JobFinished`, so the card never
+    /// offers Retry while the job is still running.
+    #[test]
+    fn blocked_and_job_finished_arrive_in_one_poll() {
+        let Some(platform) = native_platform() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
+        let shared_for_waker = shared.clone();
+        let (sent, received) = mpsc::channel();
+        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+            let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
+                return;
+            };
+            let polled: Vec<Event> = shared.events.lock().unwrap().drain(..).collect();
+            let blocked = polled.iter().any(|event| matches!(event, Event::Blocked { app, .. } if app == APP));
+            let finished = polled.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
+            if blocked || finished {
+                let _ = sent.send((blocked, finished));
+            }
+        });
+        *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
+
+        assert!(backend.start_job(APP, Work::Install(None)));
+        // The worker then holds the last reference to the waker, so the channel closes if it
+        // exits without sending.
+        drop(backend);
+        assert_eq!(received.recv().unwrap(), (true, true));
+    }
+
+    /// A nightly update stopped by the running app hands its blocker to the worker, which sends
+    /// it in `Blocked`.
+    #[test]
+    fn a_nightly_update_reports_what_blocked_it() {
+        let mut shared = shared();
+        shared.channel = artcraft_launcher_core::nightly::InstallChannel::Nightly;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let open = InstallFailure { blocker: artcraft_launcher_core::protocol::Blocker::AppOpen, details: "photocraft".into() };
+        let set = open.clone();
+        REVIEW_NIGHTLY_INSTALL.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |job: &mut install::Job<'_>| {
+                job.failure = Some(set);
+                Err("PhotoCraft is open.".into())
+            }))
+        });
+        let app = CraftApp::by_id(APP).unwrap();
+        let mut failure = None;
+        let options = BackendOptions::default();
+        let stop = Stop::default();
+        let result = run_install(app, &shared, &paths, Some(&http), None, &options, None, None, &stop, None, None, &mut failure, None, None);
+        assert_eq!(result, Err("PhotoCraft is open.".into()));
+        assert_eq!(failure, Some(open));
+    }
+
     /// Puts the planned download on disk, as a failed install leaves it.
     fn keep_file(backend: &NativeBackend) -> std::path::PathBuf {
         let app = CraftApp::by_id(APP).unwrap();
@@ -4256,6 +4319,11 @@ mod tests {
     }
 }
 
+/// Runs in place of [`run_nightly_install`] once, on the thread that sets it.
+#[cfg(test)]
+type ReviewNightlyInstallHook = Box<dyn FnOnce(&mut install::Job<'_>) -> Result<String, String>>;
+#[cfg(test)]
+thread_local! { static REVIEW_NIGHTLY_INSTALL: std::cell::RefCell<Option<ReviewNightlyInstallHook>> = std::cell::RefCell::new(None); }
 #[cfg(test)]
 thread_local! { static REVIEW_BEFORE_MANIFEST_SAVE: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = std::cell::RefCell::new(None); }
 #[cfg(test)]
