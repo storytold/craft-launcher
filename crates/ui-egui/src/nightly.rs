@@ -405,7 +405,7 @@ impl LauncherUi {
     pub(crate) fn nightly_page(&mut self, ui: &mut Ui) {
         let tokens = Tokens::get(ui.ctx());
         let inline_actions = self.nightly_page_heading(ui);
-        ui.label(tl!("Nightly builds, separate from your stable apps."));
+        ui.label(tl!("The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work."));
         ui.add_space(8.0);
         if self.settings.nightly_enabled && !self.nightly.available() {
             egui::Frame::new().fill(tokens.sunken).inner_margin(12).show(ui, |ui| {
