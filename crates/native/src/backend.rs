@@ -113,6 +113,8 @@ struct Shared {
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
     last_check: Mutex<Option<i64>>,
+    /// When a forced check last asked GitHub (Unix seconds), for [`FORCED_REUSE`].
+    last_forced: Mutex<Option<i64>>,
     /// The newer ArtCraft Launcher release, once a check has found one, with the repo that check
     /// read it from (the feed's rename, if any): its download links must be that repo's.
     launcher_release: Mutex<Option<(Release, String)>>,
@@ -471,6 +473,7 @@ impl NativeBackend {
             feed_throttle: Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now())),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
+            last_forced: Mutex::new(None),
         });
         let pins = if channel == artcraft_launcher_core::nightly::InstallChannel::Stable {
             craft_update::pins::Pins::default_path()
@@ -776,10 +779,7 @@ impl NativeBackend {
         if (last.is_some_and(|t| now - t < FRESH_FOR) && !force) || self.shared.checking.swap(true, Ordering::SeqCst) {
             return;
         }
-        // A check pressed again within moments still finishes, but reuses what the last one asked
-        // GitHub instead of asking again.
-        // lean: any check in the window stands in, not only a pressed one.
-        let force = force && !last.is_some_and(|t| now - t < FORCED_REUSE);
+        let force = self.shared.forced_now(force, now);
         let shared = self.shared.clone();
         let busy = BusyGuard { shared: shared.clone(), flag: BusyFlag::Checking };
         let paths = self.paths.clone();
@@ -2155,6 +2155,24 @@ fn latest_for(
     }
 }
 
+impl Shared {
+    /// Whether a check asked for with `force` at `now` really skips the per-app throttles. A
+    /// forced check pressed again within [`FORCED_REUSE`] of the last forced one still finishes,
+    /// but reuses what that one asked GitHub. Only a forced check opens the window: one right after
+    /// an automatic check (at launch, say) or a settings change still asks.
+    fn forced_now(&self, force: bool, now: i64) -> bool {
+        if !force {
+            return false;
+        }
+        let mut last = self.last_forced.lock().unwrap_or_else(PoisonError::into_inner);
+        if last.is_some_and(|t| (0..FORCED_REUSE).contains(&(now - t))) {
+            return false;
+        }
+        *last = Some(now);
+        true
+    }
+}
+
 /// Who a GitHub request about `app` is for, when the GitHub budget runs short.
 fn github_priority(app: &CraftApp, track: &VersionTrack, shared: &Shared, force: bool) -> Priority {
     if force {
@@ -2970,6 +2988,7 @@ mod tests {
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
             last_check: Mutex::new(None),
+            last_forced: Mutex::new(None),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),
             self_updating: OnceLock::new(),
@@ -3242,6 +3261,18 @@ mod tests {
         latest_for(photo, Some(&feed), plan, &github, &shared, true, false, NOW + 20 * 60);
         latest_for(photo, Some(&feed), plan, &github, &shared, false, false, NOW + 30 * 60);
         assert_eq!(github.0.load(Ordering::SeqCst), 2, "each setting keeps its own hourly pace");
+    }
+
+    /// A forced check right after an automatic one (the one at launch) still asks GitHub; only
+    /// pressing it again within two minutes of a forced one reuses that one's answers (#713).
+    #[test]
+    fn only_a_recent_forced_check_makes_a_forced_check_reuse_answers() {
+        let shared = shared();
+        *shared.last_check.lock().unwrap() = Some(NOW - 30);
+        assert!(shared.forced_now(true, NOW), "an automatic check doesn't stand in for a forced one");
+        assert!(!shared.forced_now(true, NOW + 60), "pressed again at once: reused");
+        assert!(!shared.forced_now(false, NOW + 61));
+        assert!(shared.forced_now(true, NOW + FORCED_REUSE), "asks again after the window");
     }
 
     /// Refresh looks past a feed that is behind GitHub (#91).

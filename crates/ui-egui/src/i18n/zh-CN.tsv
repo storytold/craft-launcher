@@ -126,8 +126,8 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未检查
-	Next GitHub check at {time}	Next GitHub check at {time}
-	Next check at {time}	Next check at {time}
+	Next GitHub check at {time}	下次检查 GitHub：{time}
+	Next check at {time}	下次检查：{time}
 	Installing for {platform}	安装平台：{platform}
 	Downloads for {platform}	下载平台：{platform}
 	No downloads for this system	此系统暂无可用下载

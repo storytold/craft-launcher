@@ -15,9 +15,18 @@ pub(crate) fn civil(secs: i64) -> (i64, u32, u32) {
 }
 
 /// `(hour, minute)` of the Unix time `secs` on this computer's clock.
-pub(crate) fn clock(secs: i64) -> (i64, i64) {
-    let seconds = secs.saturating_add(offset(secs)).rem_euclid(86_400);
-    (seconds / 3600, seconds % 3600 / 60)
+pub(crate) fn clock(secs: i64) -> (i8, i8) {
+    clock_at(secs, offset(secs))
+}
+
+/// `(hour, minute)` of `secs` seen from `offset` seconds east of UTC, through jiff; midnight when
+/// `secs` or `offset` is out of jiff's range.
+fn clock_at(secs: i64, offset: i64) -> (i8, i8) {
+    let zone = i32::try_from(offset).ok().and_then(|o| jiff::tz::Offset::from_seconds(o).ok()).unwrap_or(jiff::tz::Offset::UTC);
+    jiff::Timestamp::from_second(secs).map_or((0, 0), |at| {
+        let time = at.to_zoned(zone.to_time_zone()).time();
+        (time.hour(), time.minute())
+    })
 }
 
 /// `(year, month, day)` of `secs` seen from `offset` seconds east of UTC.
@@ -67,7 +76,18 @@ fn offset(secs: i64) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::civil_at;
+    use super::{civil_at, clock_at};
+
+    #[test]
+    fn a_clock_time_follows_the_zone_it_is_read_in() {
+        // 2026-10-07 22:30 UTC.
+        let at = 1_791_412_200;
+        assert_eq!(clock_at(at, 0), (22, 30));
+        // Tokyo, UTC+9: 07:30 the next morning.
+        assert_eq!(clock_at(at, 9 * 3600), (7, 30));
+        // India, UTC+5:30: 04:00.
+        assert_eq!(clock_at(at, 5 * 3600 + 1800), (4, 0));
+    }
 
     #[test]
     fn a_date_follows_the_zone_it_is_read_in() {

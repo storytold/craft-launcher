@@ -221,8 +221,8 @@ month	Oct	окт.
 month	Nov	нояб.
 month	Dec	дек.
 	Not checked yet	Ещё не проверялось
-	Next GitHub check at {time}	Next GitHub check at {time}
-	Next check at {time}	Next check at {time}
+	Next GitHub check at {time}	Следующая проверка GitHub в {time}
+	Next check at {time}	Следующая проверка в {time}
 	Installing for {platform}	Установка для {platform}
 	Downloads for {platform}	Скачивание для {platform}
 	No downloads for this system	Нет загрузок для этой системы

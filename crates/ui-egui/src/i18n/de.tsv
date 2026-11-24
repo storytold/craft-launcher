@@ -223,8 +223,8 @@ month	Oct	Okt.
 month	Nov	Nov.
 month	Dec	Dez.
 	Not checked yet	Noch nicht geprüft
-	Next GitHub check at {time}	Next GitHub check at {time}
-	Next check at {time}	Next check at {time}
+	Next GitHub check at {time}	Nächste GitHub-Prüfung um {time}
+	Next check at {time}	Nächste Prüfung um {time}
 	Installing for {platform}	Installation für {platform}
 	Downloads for {platform}	Downloads für {platform}
 	No downloads for this system	Keine Downloads für dieses System

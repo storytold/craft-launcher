@@ -181,8 +181,8 @@ month	Oct	okt
 month	Nov	nov
 month	Dec	dec
 	Not checked yet	Još nije provjereno
-	Next GitHub check at {time}	Next GitHub check at {time}
-	Next check at {time}	Next check at {time}
+	Next GitHub check at {time}	Sljedeća provjera GitHuba u {time}
+	Next check at {time}	Sljedeća provjera u {time}
 	Installing for {platform}	Instalacija za {platform}
 	Downloads for {platform}	Preuzimanja za {platform}
 	No downloads for this system	Nema preuzimanja za ovaj sistem

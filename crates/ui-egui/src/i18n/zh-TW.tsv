@@ -127,8 +127,8 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未檢查
-	Next GitHub check at {time}	Next GitHub check at {time}
-	Next check at {time}	Next check at {time}
+	Next GitHub check at {time}	下次檢查 GitHub：{time}
+	Next check at {time}	下次檢查：{time}
 	Installing for {platform}	正在為 {platform} 安裝
 	Downloads for {platform}	{platform} 適用的下載項目
 	No downloads for this system	此系統沒有可下載的項目
