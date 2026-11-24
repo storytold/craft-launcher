@@ -124,8 +124,8 @@ impl LauncherUi {
                 // nightly opt-in, which keeps the two columns about the same height.
                 this.settings_language(ui);
                 this.settings_updates(ui);
-                this.settings_nightly(ui);
                 this.settings_appearance(ui);
+                this.settings_nightly(ui);
                 this.settings_community(ui);
                 this.settings_agents(ui);
             },
