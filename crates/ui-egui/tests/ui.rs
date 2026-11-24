@@ -4838,3 +4838,33 @@ fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
         }
     }
 }
+
+/// Wide Settings is two columns that scroll together: neither may run far past the other, or one
+/// side scrolls through empty space (Fonts once left the right column twice the left's height).
+#[test]
+fn wide_settings_columns_are_about_the_same_height() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.set_size(egui::vec2(1180.0, 4000.0));
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(8);
+    let top = h.get_by_label("Language").accesskit_node().bounding_box().unwrap().y0 - 40.0;
+    let split = h.get_by_label("Install folder").accesskit_node().bounding_box().unwrap().x0 - 20.0;
+    let (mut left, mut right) = (top, top);
+    for node in h.root().children_recursive() {
+        let node = node.accesskit_node();
+        let mut ancestor = node.parent();
+        let mut in_dialog = false;
+        while let Some(parent) = ancestor {
+            in_dialog |= parent.role() == egui::accesskit::Role::Dialog;
+            ancestor = parent.parent();
+        }
+        let footer = matches!(node.label().as_deref(), Some("Quit ArtCraft Launcher" | "Done"));
+        let Some(rect) = node.bounding_box().filter(|rect| in_dialog && !footer && rect.y0 >= top) else { continue };
+        let column = if rect.x0 < split { &mut left } else { &mut right };
+        *column = column.max(rect.y1);
+    }
+    let (left, right) = (left - top, right - top);
+    assert!(left.max(right) < 1.5 * left.min(right), "left column {left:.0}px, right {right:.0}px");
+    snapshot(&mut h, "settings-wide-columns");
+}

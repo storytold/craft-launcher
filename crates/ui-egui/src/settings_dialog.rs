@@ -117,12 +117,13 @@ impl LauncherUi {
                     return;
                 };
                 let (this, _) = &mut *state;
+                // Fonts makes the right column long, so the left also takes Community and the
+                // nightly opt-in, which keeps the two columns about the same height.
                 this.settings_language(ui);
                 this.settings_updates(ui);
-                if !wide {
-                    this.settings_nightly(ui);
-                }
+                this.settings_nightly(ui);
                 this.settings_appearance(ui);
+                this.settings_community(ui);
                 this.settings_agents(ui);
             },
             |ui| {
@@ -134,10 +135,6 @@ impl LauncherUi {
                 #[cfg(not(target_arch = "wasm32"))]
                 this.settings_fonts(ui);
                 this.settings_background(ui, &mut **host);
-                this.settings_community(ui);
-                if wide {
-                    this.settings_nightly(ui);
-                }
             },
         );
     }
