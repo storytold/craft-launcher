@@ -350,9 +350,8 @@ impl LauncherUi {
         let heading = tl!("Developer Builds");
         let labels = [tl!("Check for updates"), tl!("Turn off developer builds")];
         let color = Tokens::get(ui.ctx()).ink;
-        // Query the same stock style as Button: this SDK's default uses Body,
-        // not TextStyle::Button. A narrower estimate would wrap the second action.
-        let button_style: egui::widget_style::ButtonStyle = ui.widget_style(ui.scope_id().with("nightly-heading-actions"), &Default::default());
+        // The same stock style as Button: a narrower estimate would wrap the second action.
+        let button_style = stock_button_style(ui);
         let button_font = button_style.atom_layout.text_style.font_id;
         let button_margin = button_style.atom_layout.frame.total_margin().sum().x;
         let actions_width: f32 =
@@ -961,9 +960,20 @@ const CHANNEL_LABEL_PAD: f32 = 25.0;
 
 /// The font a header switch button lays its label out in.
 fn channel_label_font(ui: &Ui) -> egui::FontId {
-    // Query the same stock style as Button: this SDK's default uses Body, not TextStyle::Button.
-    let style: egui::widget_style::ButtonStyle = ui.widget_style(ui.scope_id().with("channel-switch"), &Default::default());
-    style.atom_layout.text_style.font_id
+    stock_button_style(ui).atom_layout.text_style.font_id
+}
+
+/// The stock style Button lays its label out with (this SDK's default uses Body, not
+/// TextStyle::Button), read without a widget id: `Ui::widget_style` asks for another frame
+/// whenever the id has no response yet, which for a measurement is every frame.
+fn stock_button_style(ui: &Ui) -> egui::widget_style::ButtonStyle {
+    ui.ctx().get_widget_style(&egui::widget_style::StyleArgs {
+        classes: &Default::default(),
+        state: Default::default(),
+        stack: ui.stack(),
+        style: ui.style(),
+        ctx: ui.ctx(),
+    })
 }
 
 /// The width one header switch button takes, its label capped at [`CHANNEL_LABEL_MAX`].
@@ -1055,7 +1065,7 @@ mod layout_tests {
             },
             false,
         );
-        harness.run_steps(2);
+        assert!(harness.try_run().is_ok(), "measuring the labels doesn't ask for frame after frame");
         let tab = harness.get_by_label(LONG);
         assert!(tab.rect().width() <= CHANNEL_LABEL_MAX + CHANNEL_LABEL_PAD + 0.5, "the label is capped: {:?}", tab.rect());
         tab.click();
