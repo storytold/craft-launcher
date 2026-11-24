@@ -115,6 +115,9 @@ struct Shared {
     last_check: Mutex<Option<i64>>,
     /// When a forced check last asked GitHub (Unix seconds), for [`FORCED_REUSE`].
     last_forced: Mutex<Option<i64>>,
+    /// Set while a check the user pressed reuses the last forced check's answers: it still looks
+    /// past a feed that is behind GitHub, so it can't swap GitHub's newer answer for the feed's.
+    reusing_forced: AtomicBool,
     /// The newer ArtCraft Launcher release, once a check has found one, with the repo that check
     /// read it from (the feed's rename, if any): its download links must be that repo's.
     launcher_release: Mutex<Option<(Release, String)>>,
@@ -474,6 +477,7 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
             last_forced: Mutex::new(None),
+            reusing_forced: AtomicBool::new(false),
         });
         let pins = if channel == artcraft_launcher_core::nightly::InstallChannel::Stable {
             craft_update::pins::Pins::default_path()
@@ -779,7 +783,9 @@ impl NativeBackend {
         if (last.is_some_and(|t| now - t < FRESH_FOR) && !force) || self.shared.checking.swap(true, Ordering::SeqCst) {
             return;
         }
+        let pressed = force;
         let force = self.shared.forced_now(force, now);
+        self.shared.reusing_forced.store(pressed && !force, Ordering::SeqCst);
         let shared = self.shared.clone();
         let busy = BusyGuard { shared: shared.clone(), flag: BusyFlag::Checking };
         let paths = self.paths.clone();
@@ -2115,8 +2121,11 @@ fn latest_for(
     if fallback.trust_feed {
         match feed.map(|f| f.answer(app, now)) {
             // The feed can lag GitHub by some minutes after a release. A check the user pressed
-            // looks past it when GitHub's quota-free redirect names something newer (#91).
-            Some(FeedAnswer::Fresh(found)) if !(force && feed_is_behind(source, &repo, found.as_ref())) => {
+            // looks past it when GitHub's quota-free redirect names something newer (#91); one
+            // reusing the last forced check's answers then takes GitHub's saved answer.
+            Some(FeedAnswer::Fresh(found))
+                if !((force || shared.reusing_forced.load(Ordering::SeqCst)) && feed_is_behind(source, &repo, found.as_ref())) =>
+            {
                 return (Some(found.map_or(LatestRelease::None, LatestRelease::Found)), Origin::ArtCraftApi, Some(Source::Feed));
             }
             Some(FeedAnswer::Fresh(_) | FeedAnswer::AskGitHub) | None => {}
@@ -2989,6 +2998,7 @@ mod tests {
             detecting: AtomicBool::new(false),
             last_check: Mutex::new(None),
             last_forced: Mutex::new(None),
+            reusing_forced: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),
             self_updating: OnceLock::new(),
@@ -3273,6 +3283,35 @@ mod tests {
         assert!(!shared.forced_now(true, NOW + 60), "pressed again at once: reused");
         assert!(!shared.forced_now(false, NOW + 61));
         assert!(shared.forced_now(true, NOW + FORCED_REUSE), "asks again after the window");
+    }
+
+    /// A check pressed again within the reuse window keeps the newer release the forced check
+    /// found on GitHub, rather than the feed's older one.
+    #[test]
+    fn a_reused_forced_check_keeps_githubs_newer_answer_over_the_feed() {
+        struct Saved;
+        impl ReleaseSource for Saved {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                panic!("a reused check doesn't ask the API again")
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                Some(LatestRelease::Found(Release { tag: "v0.7.0".into(), version: version::parse("0.7.0"), ..Release::default() }))
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+            fn newest_tag(&self, _repo: &str) -> Option<String> {
+                Some("v0.7.0".into())
+            }
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let shared = shared();
+        // The forced check a minute ago asked GitHub; this press reuses it.
+        shared.github_asked.lock().unwrap().insert(asked_key(photo, false), NOW - 60);
+        shared.reusing_forced.store(true, Ordering::SeqCst);
+        let (latest, _, _) = latest_for(photo, Some(&feed()), LOADED, &Saved, &shared, false, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.7.0"), "{latest:?}");
     }
 
     /// Refresh looks past a feed that is behind GitHub (#91).

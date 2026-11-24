@@ -630,7 +630,7 @@ mod tests {
     #[test]
     fn a_spent_budget_is_reported_without_stopping_more_urgent_requests() {
         let dir = tempfile::tempdir().unwrap();
-        let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0));
+        let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
         let source = GitHubSource::new(http, dir.path().join("releases.json"));
         let until = crate::now() + 600;
         assert!(matches!(source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until })), Ok(None)));
