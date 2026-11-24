@@ -19,7 +19,7 @@ fn complete(shared: &Shared, paths: &Paths, platform: Platform, run: u64) {
     finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(run))), shared, paths);
     shared.nightly_state.lock().unwrap().finish();
 }
-#[cfg(any(target_os = "linux", target_os = "macos"))] // A Linux Nightly install plan is staged only there.
+#[cfg(any(target_os = "linux", target_os = "macos"))] // A Nightly install plan is staged only there.
 #[test]
 fn selection_ui_and_install_gate_agree_and_failed_refresh_retains_stale_success() {
     let (_temp, shared, paths, platform) = fixture();
