@@ -1168,6 +1168,12 @@ fn should_hide_app_for_hidden_start(hidden: bool, close_to_tray: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn eframe_and_tray_use_the_same_settings_file() {
+        let file = super::settings_file::path(super::APP_ID).unwrap();
+        assert_eq!(super::native_options(false, None).persistence_path.as_deref(), Some(file.as_path()));
+    }
+
     use std::ptr::NonNull;
     use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
     use std::sync::mpsc::Sender;
