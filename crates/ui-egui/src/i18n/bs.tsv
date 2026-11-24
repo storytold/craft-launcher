@@ -501,7 +501,7 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 # Availability-only pre-release destination (English fallback)
 	Could not check for pre-release builds.	Could not check for pre-release builds.
 	No pre-release builds are available yet.	No pre-release builds are available yet.
-	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.
+	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Kanal predizdanja se automatski ažurira svake noći najnovijim kodom. Može imati greške, probleme s performansama i stabilnošću te nedovršen rad. Za važan posao koristite stabilni kanal.
 
 # Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
 	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	Predizdanja vam omogućavaju da ranije isprobate novosti, ali će sadržavati greške i mogu izgubiti nesačuvani rad.
