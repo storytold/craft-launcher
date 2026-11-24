@@ -9,7 +9,7 @@ use artcraft_launcher_core::status::AppStatus;
 use artcraft_launcher_core::{PackageKind, time};
 use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, vec2};
 
-use crate::app::{Dialog, LauncherUi, TitleBar};
+use crate::app::{Dialog, LauncherUi, Page, TitleBar};
 use crate::i18n::{current, fmt, t, tn, tr_ctx};
 use crate::model::{self, AppEntry};
 use crate::settings::{Filter, SortKey, ViewMode};
@@ -156,7 +156,7 @@ pub(crate) const HEADER_H: f32 = 48.0;
 /// Height of the footer bar.
 pub(crate) const FOOTER_H: f32 = 34.0;
 
-const CARD_MIN_W: f32 = 320.0;
+pub(crate) const CARD_MIN_W: f32 = 320.0;
 const CARD_H: f32 = 314.0;
 /// The app column's name and tagline sizes, to centre them on the icon.
 const TITLE_SIZE: f32 = 16.0;
@@ -172,6 +172,16 @@ impl LauncherUi {
     pub(crate) fn header(&mut self, ui: &mut Ui, bar: TitleBar) {
         let t = Tokens::get(ui.ctx());
         let h = HEADER_H;
+        let channel_width = self.channel_navigation_width(ui);
+        let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
+        // The Settings gear and the announcements bell are each one h-wide cell.
+        let reserved = h
+            + h
+            + channel_width.unwrap_or(0.0)
+            + theme::PAD
+            + if bar == TitleBar::Custom { widgets::window_buttons_width() } else { 0.0 }
+            + if bar == TitleBar::MacOs { TRAFFIC_LIGHTS_W } else { 0.0 };
+        let compact_brand = channel_width.is_some() && logo.x + 40.0 + reserved > ui.available_width();
         if bar != TitleBar::Native {
             widgets::title_bar_drag(ui);
         }
@@ -181,15 +191,28 @@ impl LauncherUi {
                 ui.add_space(TRAFFIC_LIGHTS_W);
             }
             // The ArtCraft wordmark exactly as supplied, in its own cell.
-            let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
-            let (cell, _) = ui.allocate_exact_size(vec2(logo.x + 40.0, h), Sense::hover());
-            egui::Image::new(crate::icons::artcraft_logo(t.dark)).alt_text(tl!("ArtCraft")).paint_at(ui, Rect::from_center_size(cell.center(), logo));
+            let (cell, _) = ui.allocate_exact_size(vec2(if compact_brand { h } else { logo.x + 40.0 }, h), Sense::hover());
+            if compact_brand {
+                egui::Image::new(crate::icons::artcraft_mark())
+                    .alt_text(tl!("ArtCraft"))
+                    .paint_at(ui, Rect::from_center_size(cell.center(), vec2(28.0, 28.0)));
+            } else {
+                egui::Image::new(crate::icons::artcraft_logo(t.dark))
+                    .alt_text(tl!("ArtCraft"))
+                    .paint_at(ui, Rect::from_center_size(cell.center(), logo));
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if bar == TitleBar::Custom {
                     widgets::window_buttons(ui, h);
                 }
-                if widgets::nav_icon(ui, widgets::Glyph::Settings, tl!("Settings"), h, false).clicked() {
+                if widgets::nav_icon(ui, crate::icons::settings(), tl!("Settings"), h, false).clicked() {
                     self.dialog = Some(Dialog::Settings);
+                }
+                self.bell(ui, h);
+                if let Some(width) = channel_width {
+                    ui.add_space(theme::PAD / 2.0);
+                    ui.allocate_ui_with_layout(vec2(width, h), egui::Layout::left_to_right(egui::Align::Center), |ui| self.channel_navigation(ui));
+                    ui.add_space(theme::PAD / 2.0);
                 }
                 // The controls reserve their actual widths before the secondary text gets space.
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -214,7 +237,6 @@ impl LauncherUi {
             self.launcher_update_banner(ui, &t, &r);
             ui.add_space(14.0);
         }
-        self.announcements(ui);
         let updates = self.count(Filter::Updates);
         let compact = self.toolbar_row(ui, &t, updates);
         if compact {
@@ -298,6 +320,11 @@ impl LauncherUi {
     fn toolbar_row(&mut self, ui: &mut Ui, t: &Tokens, updates: usize) -> bool {
         let mut compact = false;
         ui.horizontal(|ui| {
+            self.page_toggle(ui);
+            // The rest of the row works on the apps; the Fonts page has its own search.
+            if self.page != Page::Apps {
+                return;
+            }
             self.refresh_button(ui);
             // Hiding an app is only undone from here, so the way back to the hidden ones stays
             // while there are any: a toggle, lit while the hidden apps are what the page shows.
@@ -358,6 +385,17 @@ impl LauncherUi {
         });
     }
 
+    /// The toggle between the launcher's pages, left out where there is only one (the web build).
+    fn page_toggle(&mut self, ui: &mut Ui) {
+        let pages = pages();
+        if pages.len() > 1 {
+            let mut page = self.page;
+            if widgets::cells(ui, &mut page, &pages) {
+                self.set_page(page);
+            }
+        }
+    }
+
     /// The toolbar's check button. It queues a forced check through the UI action boundary and is
     /// disabled while `self.checking`; the backend receives the check only when this pass flushes.
     fn refresh_button(&mut self, ui: &mut Ui) {
@@ -400,37 +438,6 @@ impl LauncherUi {
                     self.act_command(Command::Install { app: id });
                 }
             }
-        }
-    }
-
-    /// News from ArtCraft's release feed (and app renames), until the user dismisses each.
-    fn announcements(&mut self, ui: &mut Ui) {
-        let t = Tokens::get(ui.ctx());
-        let shown: Vec<artcraft_launcher_core::feed::Notice> =
-            self.announcements.iter().filter(|n| !self.settings.dismissed_notices.contains(&n.id)).take(3).cloned().collect();
-        for notice in shown {
-            egui::Frame::new().fill(t.sunken).stroke(t.hairline()).inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                        if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Dismiss")).clicked() {
-                            self.settings.dismissed_notices.insert(notice.id.clone());
-                        }
-                        if let Some(link) = &notice.link {
-                            widgets::hud_link(ui, tl!("Learn more"), link);
-                        }
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                            ui.spacing_mut().item_spacing.y = 2.0;
-                            if !notice.title.is_empty() {
-                                ui.label(RichText::new(&notice.title).family(theme::semibold()).color(t.ink_strong));
-                            }
-                            if !notice.body.is_empty() {
-                                ui.add(egui::Label::new(RichText::new(&notice.body).color(t.muted)).wrap());
-                            }
-                        });
-                    });
-                });
-            });
-            ui.add_space(8.0);
         }
     }
 
@@ -1521,6 +1528,15 @@ enum PinDropAxis {
     Horizontal,
     /// Table rows: above/below the row midline.
     Vertical,
+}
+
+/// The pages the toolbar's toggle offers, in order: the Craft App Suite, then Fonts (desktop only).
+fn pages() -> Vec<(Page, widgets::Cell<'static>)> {
+    let mut pages = vec![(Page::Apps, widgets::Cell { label: tl!("Apps"), tip: tl!("Craft App Suite"), count: None })];
+    if cfg!(not(target_arch = "wasm32")) {
+        pages.push((Page::Fonts, widgets::Cell { label: tl!("Fonts"), tip: tl!("Fonts for every Craft app"), count: None }));
+    }
+    pages
 }
 
 /// What the grid's sort dropdown offers: the order and, for names, which way. The installed apps
