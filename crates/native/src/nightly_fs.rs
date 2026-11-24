@@ -500,3 +500,31 @@ mod move_identity_tests {
         assert_eq!(std::fs::read(root.join("moved aside")).unwrap(), b"owned bytes");
     }
 }
+
+// Where exclusive moves and Nightly staging don't exist (FreeBSD and other Unix systems), both
+// refuse cleanly: nothing is renamed, and the isolation check stops before any install.
+#[cfg(all(test, unix, not(any(target_os = "linux", target_os = "macos"))))]
+mod unsupported_platform_tests {
+    use super::*;
+
+    #[test]
+    fn move_to_refuses_and_leaves_the_source_in_place() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        std::fs::write(root.join("owned"), b"owned bytes").unwrap();
+        let dir = Dir::open(&root).unwrap();
+        let expected = dir.info(Path::new("owned")).unwrap().unwrap().0;
+        let error = dir.move_to(Path::new("owned"), &dir, Path::new("destination"), &expected).unwrap_err();
+        assert_eq!(error, "Exclusive Nightly moves are unavailable on this platform.");
+        assert_eq!(std::fs::read(root.join("owned")).unwrap(), b"owned bytes");
+        assert!(!root.join("destination").exists());
+    }
+
+    #[test]
+    fn nightly_staging_refuses_on_this_platform() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths =
+            crate::paths::Paths::under(&temp.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        assert_eq!(crate::nightly_unix::validate_namespaces(&paths).unwrap_err(), "No nightly isolation contract is staged for this Unix platform.");
+    }
+}
