@@ -49,7 +49,7 @@ fn failure(why: impl Into<String>) -> NightlyHttpError {
 impl Budget<'_> {
     fn get(&mut self, url: &str, max: usize) -> Result<Vec<u8>, NightlyHttpError> {
         if !(self.enabled)() {
-            return Err(failure("Pre-Release discovery was turned off."));
+            return Err(failure("Developer build discovery was turned off."));
         }
         let remaining = MAX_TIME
             .checked_sub((self.elapsed)())
@@ -71,14 +71,14 @@ impl Budget<'_> {
             return Err(failure("The Nightly discovery elapsed-time budget was exhausted."));
         }
         if !(self.enabled)() {
-            return Err(failure("Pre-Release discovery was turned off."));
+            return Err(failure("Developer build discovery was turned off."));
         }
         Ok(body)
     }
 
     fn coverage_complete(&self) -> Result<(), NightlyHttpError> {
         if !(self.enabled)() {
-            return Err(failure("Pre-Release discovery was turned off."));
+            return Err(failure("Developer build discovery was turned off."));
         }
         if (self.elapsed)() >= MAX_TIME {
             return Err(failure("The Nightly discovery elapsed-time budget was exhausted before final coverage."));

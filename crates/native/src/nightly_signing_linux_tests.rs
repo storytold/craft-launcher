@@ -1,5 +1,6 @@
-// Authored synthetic archives and disposable generated test keys only. Not release signing,
-// not a reviewed production key, and never reachable through a runtime trust override.
+// Authored synthetic archives and disposable generated test keys, plus one real signed stable
+// release file checked against the configured production signer. No test key is reachable
+// through a runtime trust override.
 use artcraft_launcher_core::nightly::InstallChannel;
 use sha2::{Digest, Sha256};
 
@@ -159,10 +160,14 @@ fn signed_archive_test_key_passes_exact_bytes_and_bad_missing_wrong_key_tool_fai
             _ => {}
         }
         let trust = LinuxSigner { public_key: key, primary_fingerprint: pin };
-        assert!(
-            prepare_with(&file, &asset, &declared, &candidate, &paths, &trust, if case == 7 { "/no/such/nightly-verifier" } else { GPG }).is_err(),
-            "case {case}"
-        );
+        let result = prepare_with(&file, &asset, &declared, &candidate, &paths, &trust, if case == 7 { "/no/such/nightly-verifier" } else { GPG });
+        // A signature that didn't arrive intact or a verifier that can't run says nothing about the
+        // archive, so it is kept for the next try; a genuine signature from another key refuses it.
+        match case {
+            0 | 3 | 5 | 6 | 7 | 9 => assert!(matches!(result, Err(PrepareError::Unavailable(_))), "case {case}"),
+            1 | 2 => assert!(matches!(result, Err(PrepareError::Refused(_))), "case {case}"),
+            _ => assert!(result.is_err(), "case {case}"),
+        }
         assert_eq!(std::fs::read(&initial.path).unwrap(), before);
         assert_eq!(std::fs::metadata(&initial.path).unwrap().modified().unwrap(), modified);
         assert_eq!(std::fs::read(&personal).unwrap(), b"preserved personal data");
@@ -176,7 +181,7 @@ fn signed_archive_test_key_passes_exact_bytes_and_bad_missing_wrong_key_tool_fai
     let mut changed = asset.clone();
     changed.size += 1;
     changed.sha256 = Some(crate::http::sha256_file(&file).unwrap());
-    assert!(prepare_with(&file, &changed, &signature, &bytes, &paths, &trusted, GPG).is_err());
+    assert!(matches!(prepare_with(&file, &changed, &signature, &bytes, &paths, &trusted, GPG), Err(PrepareError::Refused(_))));
     // The authenticated private copy survives later mutation of the download, but any mutation
     // of that private copy is detected before extraction/replacement by the transaction digest.
     std::fs::write(&verified.file, b"changed after verification").unwrap();
@@ -241,6 +246,18 @@ fn machine_status_never_accepts_error_multiple_signer_or_expiry_even_with_valids
     }
     assert!(status(&crate::process::RunOutput::success(format!("{valid}{valid}")), &pin, crate::now()).is_err());
     assert!(status(&crate::process::RunOutput::exit(1, &valid, "failure"), &pin, crate::now()).is_err());
+    // A signature by a key other than the pinned one (the only key imported) says so plainly.
+    let unknown = "[GNUPG:] NEWSIG\n[GNUPG:] ERRSIG 0123456789ABCDEF 22 8 00 1795280000 9 -\n[GNUPG:] NO_PUBKEY 0123456789ABCDEF\n";
+    assert_eq!(status(&crate::process::RunOutput::exit(2, unknown, ""), &pin, crate::now()).unwrap_err(), refused(NOT_SIGNED_BY_ARTCRAFT));
+    // A bad signature refuses the archive; a verifier that fails without a verdict doesn't.
+    let bad = "[GNUPG:] NEWSIG\n[GNUPG:] BADSIG 0123456789ABCDEF test\n";
+    assert!(matches!(status(&crate::process::RunOutput::exit(1, bad, ""), &pin, crate::now()), Err(PrepareError::Refused(message)) if message != NOT_SIGNED_BY_ARTCRAFT));
+    assert!(matches!(status(&crate::process::RunOutput::exit(2, "", "gpg: fatal"), &pin, crate::now()), Err(PrepareError::Unavailable(_))));
+    // An algorithm this gpg can't do is the system's limit, not another signer.
+    let unsupported = "[GNUPG:] NEWSIG\n[GNUPG:] ERRSIG 0123456789ABCDEF 22 8 00 1795280000 4 -\n";
+    assert!(matches!(status(&crate::process::RunOutput::exit(2, unsupported, ""), &pin, crate::now()), Err(PrepareError::Unavailable(message)) if message != NOT_SIGNED_BY_ARTCRAFT));
+    let missing_key_only = "[GNUPG:] NEWSIG\n[GNUPG:] ERRSIG 0123456789ABCDEF 22 8 00 1795280000 9 -\n";
+    assert_eq!(status(&crate::process::RunOutput::exit(2, missing_key_only, ""), &pin, crate::now()).unwrap_err(), refused(NOT_SIGNED_BY_ARTCRAFT));
     assert!(status(&crate::process::RunOutput::success(&valid), &"B".repeat(40), crate::now()).is_err());
 }
 
@@ -316,4 +333,19 @@ fn configured_signer_accepts_a_real_release_signature_only_for_its_exact_bytes_a
     let subkey_pin = LinuxSigner { public_key: signer.public_key, primary_fingerprint: subkey };
     let (asset, signature, file) = release_fixture(root.path(), "release-subkey-pin", RELEASE_SIGNED);
     assert!(prepare_with(&file, &asset, &signature, RELEASE_SIGNATURE, &paths, &subkey_pin, GPG).is_err());
+}
+
+/// Only an archive that is actually different is refused (and later removed from the downloads);
+/// one whose private copy couldn't be hashed is kept for the next try.
+#[test]
+fn an_archive_that_cannot_be_hashed_is_kept_and_only_a_different_one_is_refused() {
+    let digest = "ab".repeat(32);
+    let asset = Asset { name: "photocraft.tar.gz".into(), size: 3, sha256: Some(digest.clone()), ..Asset::default() };
+    let snapshot = Path::new("unread-snapshot.tar.gz");
+    assert_eq!(archive_matches(snapshot, &asset, 3, |_| Ok(digest.to_uppercase())), Ok(()));
+    assert!(matches!(archive_matches(snapshot, &asset, 3, |_| Err("couldn't read it".into())), Err(PrepareError::Unavailable(_))));
+    assert!(matches!(archive_matches(snapshot, &asset, 3, |_| Ok("cd".repeat(32))), Err(PrepareError::Refused(_))));
+    assert!(matches!(archive_matches(snapshot, &asset, 4, |_| Ok(digest.clone())), Err(PrepareError::Refused(_))));
+    let unchecked = Asset { sha256: None, ..asset };
+    assert!(matches!(archive_matches(snapshot, &unchecked, 3, |_| Ok(digest.clone())), Err(PrepareError::Refused(_))));
 }
