@@ -318,13 +318,16 @@ fn link(paths: &Paths, name: &str, target: &Path) -> Result<(PathBuf, bool), Str
     // new name is made with `symlink`, which never overwrites, so a file that appears after this check stops the install.
     match link_is_ours(paths, &link) {
         Some(true) => {
-            let staged = dir.join(format!(".{name}.artcraft-launcher-new"));
-            let _ = std::fs::remove_file(&staged);
+            // The new link is made inside a folder of its own, created here with a name nobody else holds, and only that
+            // link is renamed over ours: a file of the user's that happens to sit beside the link is never touched.
+            // Dropping the folder takes away what is left of it, whether or not the rename went through.
+            let stage = tempfile::Builder::new()
+                .prefix(".artcraft-launcher-link-")
+                .tempdir_in(&dir)
+                .map_err(|e| format!("couldn't link {} ({e})", link.display()))?;
+            let staged = stage.path().join(name);
             std::os::unix::fs::symlink(target, &staged).map_err(|e| format!("couldn't link {} ({e})", link.display()))?;
-            if let Err(e) = std::fs::rename(&staged, &link) {
-                let _ = std::fs::remove_file(&staged);
-                return Err(format!("couldn't replace {} ({e})", link.display()));
-            }
+            std::fs::rename(&staged, &link).map_err(|e| format!("couldn't replace {} ({e})", link.display()))?;
             Ok((link, false))
         }
         Some(false) => {
@@ -574,6 +577,27 @@ mod tests {
         assert!(err.contains("wasn't made by ArtCraft Launcher"), "{err}");
         assert_eq!(std::fs::read_to_string(old.folder.join("pdfcraft-cli")).unwrap(), "old", "the old tool is still there");
         assert_eq!(std::fs::read_to_string(&old.link).unwrap(), "mine");
+    }
+
+    #[test]
+    fn an_update_leaves_an_unrelated_file_at_the_old_staging_name_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let calls = RefCell::new(Vec::new());
+        let zip = Path::new("/x/z.zip");
+        let old = place(app(), "0.19.0", zip, "DJ6XS33FX8", &paths, None, &mut runner(&calls, &[("pdfcraft-cli", "old")], &[])).unwrap();
+        // A file of the user's at the name an earlier version of the launcher staged its new link under.
+        let bin = old.link.parent().unwrap().to_path_buf();
+        let theirs = bin.join(".pdfcraft-cli.artcraft-launcher-new");
+        std::fs::write(&theirs, "mine").unwrap();
+        let new = place(app(), "0.20.0", zip, "DJ6XS33FX8", &paths, Some(&old), &mut runner(&calls, &[("pdfcraft-cli", "new")], &[])).unwrap();
+        assert_eq!(std::fs::read_to_string(&theirs).unwrap(), "mine", "the user's file survived the update");
+        assert!(std::fs::read_link(&new.link).unwrap().starts_with(&new.folder), "the link points at the new tool");
+        assert_eq!(
+            names(&bin),
+            vec![".pdfcraft-cli.artcraft-launcher-new".to_string(), "pdfcraft-cli".to_string()],
+            "no staging folder is left behind"
+        );
     }
 
     #[test]
