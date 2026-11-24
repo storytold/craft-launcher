@@ -2141,6 +2141,13 @@ fn latest_for(
     if due {
         let query = ReleaseQuery::for_app(app, repo).with_priority(github_priority(app, &VersionTrack::Stable, shared, force));
         let answer = source.latest(&query, pre);
+        // GitHub couldn't answer (its limit, the launcher's budget, the network) and nothing was
+        // saved: a stable release the feed lists stands rather than an error.
+        if matches!(answer.latest, LatestRelease::Failed(_))
+            && let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| f.answer(app, now))
+        {
+            return (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed));
+        }
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
     } else {
         let cached = source.cached(&ReleaseQuery::for_app(app, repo), pre);
@@ -3449,6 +3456,30 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(*ages.0.lock().unwrap(), vec![Some(crate::source::CHOOSER_FRESH)]);
+    }
+
+    /// With pre-releases on, GitHub's turn refused (by the budget, say) with nothing saved leaves
+    /// the feed's stable release standing, not an error.
+    #[test]
+    fn a_refused_github_turn_falls_back_to_the_feeds_release() {
+        struct Refused;
+        impl ReleaseSource for Refused {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::Failed("held back".into()), source: Source::GitHubApi }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let plan = remote_plan(true, (None, LOADED)).1;
+        let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Refused, &shared(), true, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.6.0"), "{latest:?}");
+        assert_eq!(used, Some(Source::Feed));
     }
 
     /// A check pressed again within the reuse window keeps the newer release the forced check
