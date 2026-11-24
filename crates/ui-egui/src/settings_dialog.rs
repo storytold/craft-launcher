@@ -104,6 +104,9 @@ impl LauncherUi {
     }
 
     fn settings_contents(&mut self, ui: &mut Ui, host: &mut dyn Host, wide: bool) {
+        // The right column holds install, fonts and background settings, which need app
+        // management: without it (the web build) it would be empty, so one column is drawn.
+        let wide = wide && self.caps.manage_apps;
         // The columns are drawn from two closures that both need `self` and `host`: the pieces
         // are drawn one after the other, through a cell, never at the same time (were they ever,
         // the second would be skipped rather than panic).
@@ -117,12 +120,13 @@ impl LauncherUi {
                     return;
                 };
                 let (this, _) = &mut *state;
+                // Fonts makes the right column long, so the left also takes Community and the
+                // nightly opt-in, which keeps the two columns about the same height.
                 this.settings_language(ui);
                 this.settings_updates(ui);
-                if !wide {
-                    this.settings_nightly(ui);
-                }
                 this.settings_appearance(ui);
+                this.settings_nightly(ui);
+                this.settings_community(ui);
                 this.settings_agents(ui);
             },
             |ui| {
@@ -134,10 +138,6 @@ impl LauncherUi {
                 #[cfg(not(target_arch = "wasm32"))]
                 this.settings_fonts(ui);
                 this.settings_background(ui, &mut **host);
-                this.settings_community(ui);
-                if wide {
-                    this.settings_nightly(ui);
-                }
             },
         );
     }
