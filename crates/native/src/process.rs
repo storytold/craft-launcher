@@ -103,9 +103,35 @@ fn output_result(program: &str, output: RunOutput) -> Result<String, String> {
     Err(if reason.is_empty() { format!("{program} failed ({})", output.status) } else { reason.to_string() })
 }
 
-pub(crate) fn run_command_with_output(mut cmd: Command, program: &str, timeout: Duration) -> Result<RunOutput, String> {
-    let mut child =
-        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("couldn't start {program} ({e})"))?;
+pub(crate) fn run_command_with_output(cmd: Command, program: &str, timeout: Duration) -> Result<RunOutput, String> {
+    run_command_bounded(cmd, program, timeout).map_err(String::from)
+}
+
+/// Why a bounded helper gave no output to judge.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RunError {
+    /// It, or the capture of its output, ran past the deadline and was stopped.
+    TimedOut(String),
+    /// It couldn't be started.
+    Failed(String),
+}
+
+impl From<RunError> for String {
+    fn from(error: RunError) -> Self {
+        match error {
+            RunError::TimedOut(message) | RunError::Failed(message) => message,
+        }
+    }
+}
+
+/// [`run_command_with_output`], saying whether a failure was the deadline.
+pub(crate) fn run_command_bounded(mut cmd: Command, program: &str, timeout: Duration) -> Result<RunOutput, RunError> {
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| RunError::Failed(format!("couldn't start {program} ({e})")))?;
     // Read both pipes while it runs, so a chatty helper can't block on a full one.
     let (stdout, stderr) = (read_all(child.stdout.take()), read_all(child.stderr.take()));
     let start = Instant::now();
@@ -116,7 +142,7 @@ pub(crate) fn run_command_with_output(mut cmd: Command, program: &str, timeout: 
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(format!("{program} didn't finish within {} seconds", timeout.as_secs()));
+                return Err(RunError::TimedOut(format!("{program} didn't finish within {} seconds", timeout.as_secs())));
             }
         }
     };
@@ -125,7 +151,10 @@ pub(crate) fn run_command_with_output(mut cmd: Command, program: &str, timeout: 
     // Say which deadline expired: the child's own, or the readers' after the child exited.
     while !stdout.is_finished() || !stderr.is_finished() {
         if start.elapsed() >= timeout {
-            return Err(format!("{program} exited, but its output was still being captured at the {} second deadline", timeout.as_secs()));
+            return Err(RunError::TimedOut(format!(
+                "{program} exited, but its output was still being captured at the {} second deadline",
+                timeout.as_secs()
+            )));
         }
         std::thread::sleep(Duration::from_millis(15));
     }
@@ -944,6 +973,16 @@ mod run_tests {
         let err = run("yes", &[], Duration::from_millis(100)).unwrap_err();
         assert!(err.contains("didn't finish within"), "{err}");
         assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_timeout_is_told_apart_from_a_helper_that_cannot_start() {
+        let mut slow = command("sleep");
+        slow.arg("5");
+        assert!(matches!(run_command_bounded(slow, "sleep", Duration::from_millis(100)), Err(RunError::TimedOut(_))));
+        let missing = command("/nonexistent/craft-helper");
+        assert!(matches!(run_command_bounded(missing, "helper", Duration::from_secs(5)), Err(RunError::Failed(_))));
     }
 
     #[test]

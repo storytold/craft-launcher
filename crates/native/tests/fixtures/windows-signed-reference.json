@@ -19,9 +19,10 @@
     "root": "CN=Microsoft Root Certificate Authority 2011, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
     "ekus": [
       "1.3.6.1.5.5.7.3.3"
-    ]
+    ],
+    "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
   },
-  "provenance": "Independent read-only binding of official original archive size/hash, streamed root entry hash, and native Valid embedded Authenticode/timestamp/full subject observation. The reference is copied as test data, never executed or installed. Its embedded chain (read with osslsigncode and openssl from the same pwsh.exe, sha256 above): leaf issued by Microsoft Code Signing PCA 2024, which chains to Microsoft Root Certificate Authority 2011; the leaf's key usages include Code Signing.",
+  "provenance": "Independent read-only binding of official original archive size/hash, streamed root entry hash, and native Valid embedded Authenticode/timestamp/full subject observation. The reference is copied as test data, never executed or installed. Its embedded chain (read with osslsigncode and openssl from the same pwsh.exe, sha256 above): leaf issued by Microsoft Code Signing PCA 2024, which chains to Microsoft Root Certificate Authority 2011; the leaf's key usages include Code Signing. The root's SHA-256 is that of Microsoft's published MicRooCerAut2011_2011_03_22.crt (http://www.microsoft.com/pki/certs/).",
   "notices": [
     "LICENSE.txt",
     "ThirdPartyNotices.txt"

@@ -12,6 +12,7 @@ mod linux {
     use artcraft_launcher_core::nightly::{Download, MAX_SIGNATURE_BYTES};
 
     const GPG: &str = "/usr/bin/gpg";
+    const NOT_SIGNED_BY_ARTCRAFT: &str = "This Nightly download isn't signed by ArtCraft's release key, so it wasn't installed.";
     const MAX_PUBLIC_KEY: usize = 128 * 1024;
     const MAX_ARCHIVE: u64 = 4 * 1024 * 1024 * 1024;
 
@@ -37,18 +38,68 @@ mod linux {
         Ok(())
     }
 
+    /// Why a Nightly archive wasn't authenticated.
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) enum PrepareError {
+        /// The archive itself is refused: its bytes don't match the release, or its genuine
+        /// published signature doesn't verify it from the pinned key. It can never install.
+        Refused(String),
+        /// It couldn't be checked this time: the signature didn't arrive intact, the verifier or
+        /// storage failed, or trust isn't configured. The download may still be good.
+        Unavailable(String),
+    }
+
+    impl From<PrepareError> for String {
+        fn from(error: PrepareError) -> Self {
+            match error {
+                PrepareError::Refused(message) | PrepareError::Unavailable(message) => message,
+            }
+        }
+    }
+
+    fn unavailable(error: impl ToString) -> PrepareError {
+        PrepareError::Unavailable(error.to_string())
+    }
+
+    fn refused(message: &str) -> PrepareError {
+        PrepareError::Refused(message.into())
+    }
+
     // Parse the documented --status-fd protocol, not OpenPGP packets or human-readable output.
     // GnuPG checks crypto/key validity; we independently require one exact primary identity,
     // a binary detached signature, a strong digest, and no revocation/expiry/error status.
-    fn status(output: &crate::process::RunOutput, expected: &str, now: i64) -> Result<(), String> {
-        if !output.success || output.stdout.len() > 64 * 1024 {
-            return Err("The Nightly OpenPGP verifier failed or returned excessive status output.".into());
+    fn status(output: &crate::process::RunOutput, expected: &str, now: i64) -> Result<(), PrepareError> {
+        if output.stdout.len() > 64 * 1024 {
+            return Err(refused("The Nightly OpenPGP verifier returned excessive status output."));
+        }
+        if !output.success {
+            let statuses: Vec<Vec<&str>> =
+                output.stdout.lines().filter_map(|line| line.strip_prefix("[GNUPG:] ")).map(|line| line.split_whitespace().collect()).collect();
+            let reported = |kind: &str| statuses.iter().any(|fields| fields.first() == Some(&kind));
+            // ERRSIG <keyid> <pkalgo> <hashalgo> <class> <time> <rc>: rc 9 is a missing public key.
+            let errsig = |rc: &str| statuses.iter().any(|fields| fields.first() == Some(&"ERRSIG") && fields.get(6) == Some(&rc));
+            // Only the pinned key is imported, so a signature by any other key can't be checked:
+            // say so plainly rather than as a verifier failure.
+            if reported("NO_PUBKEY") || errsig("9") {
+                return Err(refused(NOT_SIGNED_BY_ARTCRAFT));
+            }
+            if reported("BADSIG") {
+                return Err(refused("This Nightly download doesn't match ArtCraft's signature for it, so it wasn't installed."));
+            }
+            // rc 4 is an algorithm this system's gpg doesn't support (an old gpg without EdDSA, say):
+            // the system's limit, not a verdict on the archive or its signer.
+            if errsig("4") {
+                return Err(unavailable("This system's gpg can't check the Nightly signature's algorithm; update GnuPG and try again."));
+            }
+            // Anything else is the verifier's own trouble, not a verdict on the archive.
+            return Err(unavailable("The Nightly OpenPGP verifier failed."));
         }
         let mut valid = 0;
         let mut good = 0;
         let mut started = 0;
         for line in output.stdout.lines() {
-            let fields: Vec<_> = line.strip_prefix("[GNUPG:] ").ok_or("Unexpected Nightly OpenPGP status output.")?.split_whitespace().collect();
+            let fields: Vec<_> =
+                line.strip_prefix("[GNUPG:] ").ok_or_else(|| refused("Unexpected Nightly OpenPGP status output."))?.split_whitespace().collect();
             match fields.first().copied() {
                 Some("NEWSIG") => started += 1,
                 Some("GOODSIG") => good += 1,
@@ -60,7 +111,7 @@ mod linux {
                         || fields[9] != "00"
                         || fields[4].parse::<i64>().map_or(true, |expiry| expiry != 0 && expiry <= now)
                     {
-                        return Err("The Nightly detached signature does not have the pinned primary identity and validity.".into());
+                        return Err(refused("The Nightly detached signature does not have the pinned primary identity and validity."));
                     }
                     valid += 1;
                 }
@@ -73,11 +124,11 @@ mod linux {
                     | "TRUST_ULTIMATE"
                     | "VERIFICATION_COMPLIANCE_MODE",
                 ) => {}
-                _ => return Err("The Nightly OpenPGP verifier reported an unsupported, expired, revoked or error status.".into()),
+                _ => return Err(refused("The Nightly OpenPGP verifier reported an unsupported, expired, revoked or error status.")),
             }
         }
         if valid != 1 || good != 1 || started != 1 {
-            return Err("The Nightly archive requires exactly one valid signature from the pinned signer.".into());
+            return Err(refused("The Nightly archive requires exactly one valid signature from the pinned signer."));
         }
         Ok(())
     }
@@ -107,17 +158,32 @@ mod linux {
         crate::process::run_command_with_output(command, program, Duration::from_secs(30))
     }
 
+    /// Whether the private copy is exactly the release's archive. A copy that couldn't be hashed
+    /// says nothing about the download, so only an actual difference refuses it.
+    fn archive_matches(snapshot: &Path, asset: &Asset, copied: u64, sha256: impl Fn(&Path) -> Result<String, String>) -> Result<(), PrepareError> {
+        const MISMATCH: &str = "The exact Nightly archive bytes do not match the verified release.";
+        let expected = asset.sha256.as_ref().ok_or_else(|| refused(MISMATCH))?;
+        if copied != asset.size {
+            return Err(refused(MISMATCH));
+        }
+        let actual = sha256(snapshot).map_err(unavailable)?;
+        if actual.eq_ignore_ascii_case(expected) { Ok(()) } else { Err(refused(MISMATCH)) }
+    }
+
     pub(crate) fn prepare(
         file: &Path,
         asset: &Asset,
         signature: &Download,
         http: &crate::http::Http,
         paths: &Paths,
-    ) -> Result<VerifiedArchive, String> {
-        let signer = crate::nightly_trust::LINUX_SIGNER
-            .as_ref()
-            .ok_or("No independently trusted Linux Nightly signer is configured; the installed copy and data were left unchanged.")?;
-        let bytes = http.get_bytes(&signature.url, MAX_SIGNATURE_BYTES)?.ok_or("The Nightly archive signature is missing.")?;
+    ) -> Result<VerifiedArchive, PrepareError> {
+        let signer = crate::nightly_trust::LINUX_SIGNER.as_ref().ok_or_else(|| {
+            unavailable("No independently trusted Linux Nightly signer is configured; the installed copy and data were left unchanged.")
+        })?;
+        let bytes = http
+            .get_bytes(&signature.url, MAX_SIGNATURE_BYTES)
+            .map_err(unavailable)?
+            .ok_or_else(|| unavailable("The Nightly archive signature is missing."))?;
         prepare_with(file, asset, signature, &bytes, paths, signer, GPG)
     }
 
@@ -129,41 +195,38 @@ mod linux {
         paths: &Paths,
         signer: &LinuxSigner<'_>,
         program: &str,
-    ) -> Result<VerifiedArchive, String> {
+    ) -> Result<VerifiedArchive, PrepareError> {
         use sha2::{Digest, Sha256};
         if !fingerprint(signer.primary_fingerprint) {
-            return Err("The pinned Linux Nightly primary fingerprint is unavailable or malformed.".into());
+            return Err(unavailable("The pinned Linux Nightly primary fingerprint is unavailable or malformed."));
         }
-        armor(signer.public_key.as_bytes(), "PUBLIC KEY BLOCK", MAX_PUBLIC_KEY)?;
-        armor(bytes, "SIGNATURE", MAX_SIGNATURE_BYTES)?;
+        armor(signer.public_key.as_bytes(), "PUBLIC KEY BLOCK", MAX_PUBLIC_KEY).map_err(unavailable)?;
+        // A signature that didn't arrive intact says nothing about the archive.
+        armor(bytes, "SIGNATURE", MAX_SIGNATURE_BYTES).map_err(unavailable)?;
         if bytes.len() as u64 != signature.size || !format!("{:x}", Sha256::digest(bytes)).eq_ignore_ascii_case(&signature.sha256) {
-            return Err("The Nightly detached signature does not match its published size and checksum.".into());
+            return Err(unavailable("The Nightly detached signature does not match its published size and checksum."));
         }
-        crate::nightly_profile::validate_paths(paths)?;
-        std::fs::create_dir_all(&paths.cache).map_err(|error| error.to_string())?;
-        let home = tempfile::Builder::new().prefix("nightly-auth-").tempdir_in(&paths.cache).map_err(|error| error.to_string())?;
+        crate::nightly_profile::validate_paths(paths).map_err(unavailable)?;
+        std::fs::create_dir_all(&paths.cache).map_err(unavailable)?;
+        let home = tempfile::Builder::new().prefix("nightly-auth-").tempdir_in(&paths.cache).map_err(unavailable)?;
         let snapshot = home.path().join("archive.tar.gz");
-        let mut input = std::fs::File::open(file).map_err(|error| error.to_string())?.take(asset.size.saturating_add(1));
+        let mut input = std::fs::File::open(file).map_err(unavailable)?.take(asset.size.saturating_add(1));
         if asset.size == 0 || asset.size > MAX_ARCHIVE {
-            return Err("The Nightly archive exceeds its authentication limit.".into());
+            return Err(refused("The Nightly archive exceeds its authentication limit."));
         }
-        let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(&snapshot).map_err(|error| error.to_string())?;
-        let copied = std::io::copy(&mut input, &mut out).map_err(|error| error.to_string())?;
-        if copied != asset.size
-            || asset.sha256.as_ref().is_none_or(|hash| crate::http::sha256_file(&snapshot).map_or(true, |actual| !actual.eq_ignore_ascii_case(hash)))
-        {
-            return Err("The exact Nightly archive bytes do not match the verified release.".into());
-        }
+        let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(&snapshot).map_err(unavailable)?;
+        let copied = std::io::copy(&mut input, &mut out).map_err(unavailable)?;
         drop(out);
+        archive_matches(&snapshot, asset, copied, crate::http::sha256_file)?;
         let public_key = home.path().join("pinned-public.asc");
         let detached = home.path().join("archive.tar.gz.asc");
-        std::fs::write(&public_key, signer.public_key).map_err(|error| error.to_string())?;
-        std::fs::write(&detached, bytes).map_err(|error| error.to_string())?;
-        let imported = gpg(home.path(), &["--import".as_ref(), public_key.as_os_str()], program)?;
+        std::fs::write(&public_key, signer.public_key).map_err(unavailable)?;
+        std::fs::write(&detached, bytes).map_err(unavailable)?;
+        let imported = gpg(home.path(), &["--import".as_ref(), public_key.as_os_str()], program).map_err(unavailable)?;
         if !imported.success {
-            return Err("The pinned Linux Nightly public key could not be imported.".into());
+            return Err(unavailable("The pinned Linux Nightly public key could not be imported."));
         }
-        let verified = gpg(home.path(), &["--verify".as_ref(), detached.as_os_str(), snapshot.as_os_str()], program)?;
+        let verified = gpg(home.path(), &["--verify".as_ref(), detached.as_os_str(), snapshot.as_os_str()], program).map_err(unavailable)?;
         status(&verified, signer.primary_fingerprint, crate::now())?;
         Ok(VerifiedArchive { _home: home, file: snapshot })
     }
@@ -176,7 +239,7 @@ mod linux {
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) use linux::prepare as prepare_linux;
+pub(crate) use linux::{PrepareError as LinuxPrepareError, prepare as prepare_linux};
 
 #[cfg(any(windows, test))]
 #[derive(serde::Deserialize)]
@@ -191,6 +254,8 @@ struct WindowsEvidence {
     chained: bool,
     /// That chain's root Subject.
     root: String,
+    /// The SHA-256 of that root certificate.
+    root_sha256: String,
     /// The signer certificate's enhanced key usages.
     ekus: Vec<String>,
 }
@@ -200,7 +265,14 @@ use crate::nightly_trust::WindowsPublisher;
 
 #[cfg(any(windows, test))]
 fn configured<'a>(publisher: Option<&'a WindowsPublisher<'a>>) -> Option<&'a WindowsPublisher<'a>> {
-    publisher.filter(|p| !p.subject.is_empty() && !p.root.is_empty() && !p.ekus.is_empty() && p.ekus.iter().all(|eku| !eku.is_empty()))
+    publisher.filter(|p| {
+        !p.subject.is_empty() && !p.root.is_empty() && sha256_hex(p.root_sha256) && !p.ekus.is_empty() && p.ekus.iter().all(|eku| !eku.is_empty())
+    })
+}
+
+#[cfg(any(windows, test))]
+fn sha256_hex(text: &str) -> bool {
+    text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[cfg(any(windows, test))]
@@ -212,9 +284,9 @@ fn match_windows(evidence: &WindowsEvidence, publisher: Option<&WindowsPublisher
         && evidence.subject == publisher.subject
         && evidence.chained
         && evidence.root == publisher.root
+        && evidence.root_sha256.eq_ignore_ascii_case(publisher.root_sha256)
         && publisher.ekus.iter().all(|eku| evidence.ekus.iter().any(|seen| seen == eku))
-        && native_thumbprint.len() == 64
-        && native_thumbprint.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && sha256_hex(native_thumbprint)
         && evidence.thumbprint.eq_ignore_ascii_case(native_thumbprint)
     {
         Ok(())
@@ -267,7 +339,14 @@ try {
   $chain.ChainPolicy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::IgnoreNotTimeValid
   $chained = $chain.Build($s.SignerCertificate)
   $count = $chain.ChainElements.Count
-  $root = if ($count -gt 1) { $chain.ChainElements[$count - 1].Certificate.Subject } else { '' }
+  $root = ''; $rootsha = ''
+  if ($count -gt 1) {
+    $rootcert = $chain.ChainElements[$count - 1].Certificate
+    $root = $rootcert.Subject
+    $hash = [System.Security.Cryptography.SHA256]::Create()
+    try { $rootsha = [BitConverter]::ToString($hash.ComputeHash($rootcert.RawData)).Replace('-', '').ToLowerInvariant() }
+    finally { $hash.Dispose() }
+  }
 } finally { $chain.Reset() }
 $ekus = @()
 foreach ($extension in $s.SignerCertificate.Extensions) {
@@ -277,7 +356,7 @@ foreach ($extension in $s.SignerCertificate.Extensions) {
 }
 @{ subject = $s.SignerCertificate.Subject; valid = ($s.Status.ToString() -ceq 'Valid');
    timestamp = ($null -ne $s.TimeStamperCertificate); embedded = ($s.SignatureType.ToString() -ceq 'Authenticode');
-   thumbprint = $thumb; chained = $chained; root = $root; ekus = [object[]]$ekus } | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress
+   thumbprint = $thumb; chained = $chained; root = $root; root_sha256 = $rootsha; ekus = [object[]]$ekus } | Microsoft.PowerShell.Utility\ConvertTo-Json -Compress
 "#;
 
 #[cfg(any(windows, test))]
@@ -350,21 +429,26 @@ fn authenticate_windows_as(root: &std::path::Path, files: &[std::path::PathBuf],
     Ok(held)
 }
 
-/// A cold Windows PowerShell start plus hashing a large signed executable took 81 seconds on a
-/// busy Windows 11 machine, so a genuinely signed build must not be refused for being slow.
+/// The slowest run seen: a cold Windows PowerShell start plus hashing a large signed executable
+/// on a busy Windows 11 machine. A genuinely signed build must not be refused for being slow.
+#[cfg(test)]
+const SLOWEST_METADATA_QUERY: std::time::Duration = std::time::Duration::from_secs(81);
+
+/// The same bound serves installs and Open, which checks the installed copy again: the query
+/// costs the same either way, and a shorter wait would refuse a good build on a slow machine.
 #[cfg(any(windows, test))]
 const WINDOWS_METADATA_DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
 
-/// A query that ran out of time says so, distinctly from a signature refusal.
+/// A query that ran out of time says so, distinctly from a signature refusal. The wording fits
+/// both an install and an Open, and changes nothing either way.
 #[cfg(any(windows, test))]
-fn metadata_query_error(error: String) -> String {
-    if error.contains("didn't finish within") {
-        format!(
-            "The Nightly signature check timed out after {} seconds; nothing was replaced. This is not a signature refusal, so try again.",
+fn metadata_query_error(error: crate::process::RunError) -> String {
+    match error {
+        crate::process::RunError::TimedOut(_) => format!(
+            "The Nightly signature check took longer than {} seconds and was stopped. This is not a signature refusal; try again.",
             WINDOWS_METADATA_DEADLINE.as_secs()
-        )
-    } else {
-        error
+        ),
+        crate::process::RunError::Failed(error) => error,
     }
 }
 
@@ -372,7 +456,7 @@ fn metadata_query_error(error: String) -> String {
 fn read_windows_metadata(path: &std::path::Path) -> Result<String, String> {
     let command = windows_command(path, || winsafe::GetSystemDirectory().map(std::path::PathBuf::from).map_err(|error| error.to_string()))?;
     let output =
-        crate::process::run_command_with_output(command, "Nightly Authenticode metadata", WINDOWS_METADATA_DEADLINE).map_err(metadata_query_error)?;
+        crate::process::run_command_bounded(command, "Nightly Authenticode metadata", WINDOWS_METADATA_DEADLINE).map_err(metadata_query_error)?;
     if !output.success || !output.stderr.trim().is_empty() {
         return Err("The native Nightly Authenticode metadata query failed.".into());
     }
@@ -390,10 +474,16 @@ mod tests {
         let expected = "CN=Test Publisher, O=Disposable Test, L=Test City, C=US";
         let root = "CN=Test Root, O=Disposable Test, C=US";
         let identity = "1.3.6.1.4.1.311.97.1.2.3";
-        let publisher = WindowsPublisher { subject: expected, root, ekus: &[crate::nightly_trust::CODE_SIGNING_EKU, "1.3.6.1.4.1.311.97.1.2.3"] };
+        let root_sha256 = "d".repeat(64);
+        let publisher = WindowsPublisher {
+            subject: expected,
+            root,
+            root_sha256: &root_sha256,
+            ekus: &[crate::nightly_trust::CODE_SIGNING_EKU, "1.3.6.1.4.1.311.97.1.2.3"],
+        };
         let native = "a".repeat(64);
         let evidence = json!({"subject":expected,"valid":true,"timestamp":true,"embedded":true,"thumbprint":native,
-            "chained":true,"root":root,"ekus":["1.3.6.1.5.5.7.3.3","1.3.6.1.4.1.311.97.1.0",identity]});
+            "chained":true,"root":root,"root_sha256":root_sha256,"ekus":["1.3.6.1.5.5.7.3.3","1.3.6.1.4.1.311.97.1.0",identity]});
         let path = Path::new("owned-photocraft.exe");
         let check = |value: &serde_json::Value, pin: Option<&str>| {
             let pinned = pin.map(|subject| WindowsPublisher { subject, ..publisher });
@@ -430,54 +520,71 @@ mod tests {
     }
 
     #[test]
-    fn a_slow_signature_query_gets_three_minutes_and_says_it_timed_out() {
-        assert_eq!(WINDOWS_METADATA_DEADLINE, std::time::Duration::from_secs(180));
-        let timed_out = metadata_query_error("Nightly Authenticode metadata didn't finish within 180 seconds".into());
-        assert!(timed_out.contains("timed out after 180 seconds") && timed_out.contains("not a signature refusal"), "{timed_out}");
-        assert_eq!(
-            metadata_query_error("couldn't start Nightly Authenticode metadata (denied)".into()),
-            "couldn't start Nightly Authenticode metadata (denied)"
-        );
+    fn a_slow_signature_query_outlasts_the_slowest_seen_and_says_it_timed_out() {
+        assert!(WINDOWS_METADATA_DEADLINE > SLOWEST_METADATA_QUERY * 2, "room beyond the slowest cold run seen");
+        let timed_out = metadata_query_error(crate::process::RunError::TimedOut("helper didn't finish".into()));
+        assert!(timed_out.contains("was stopped") && timed_out.contains("not a signature refusal"), "{timed_out}");
+        assert!(!timed_out.contains("replaced"), "the same text serves an Open, which replaces nothing");
+        let failed = "couldn't start Nightly Authenticode metadata (denied)";
+        assert_eq!(metadata_query_error(crate::process::RunError::Failed(failed.into())), failed);
     }
 
-    /// Azure Trusted Signing renews the leaf and its issuing CA, so neither is pinned: what must
-    /// hold is the publisher's subject, its identity EKU and the chain's root.
+    /// The production pin, checked on every platform's CI. Azure Trusted Signing renews the leaf
+    /// and its issuing CA, so neither is pinned: what must hold is the publisher's subject, its
+    /// identity EKU and the chain's root, by name and certificate hash.
     #[test]
-    fn windows_requires_the_pinned_root_and_identity_key_usage_not_a_leaf_or_issuer() {
-        let subject = "CN=Learning Machines Inc, O=Learning Machines Inc, L=Atlanta, S=Georgia, C=US";
-        let root = "CN=Microsoft Identity Verification Root Certificate Authority 2020, O=Microsoft Corporation, C=US";
+    fn the_production_windows_pin_requires_its_root_and_identity_key_usage_not_a_leaf_or_issuer() {
+        let publisher = crate::nightly_trust::WINDOWS_PUBLISHER.as_ref().expect("the reviewed publisher is pinned");
+        let (subject, root, root_sha256) = (publisher.subject, publisher.root, publisher.root_sha256);
         let identity = "1.3.6.1.4.1.311.97.627281783.214399755.66947568.492752054";
-        let publisher = WindowsPublisher { subject, root, ekus: &[crate::nightly_trust::CODE_SIGNING_EKU, identity] };
+        assert!(publisher.ekus.contains(&identity) && publisher.ekus.contains(&crate::nightly_trust::CODE_SIGNING_EKU));
         let path = Path::new("owned-photocraft.exe");
-        let evidence = |thumbprint: &str, subject: &str, chained: bool, root: &str, ekus: &[&str]| {
+        let evidence = |thumbprint: &str, subject: &str, chained: bool, root: &str, root_sha256: &str, ekus: &[&str]| {
             json!({"subject":subject,"valid":true,"timestamp":true,"embedded":true,"thumbprint":thumbprint,
-                "chained":chained,"root":root,"ekus":ekus})
+                "chained":chained,"root":root,"root_sha256":root_sha256,"ekus":ekus})
         };
-        let check = |value: serde_json::Value, native: &str| windows_metadata_with(path, Some(&publisher), native, |_| Ok(value.to_string()));
-        let all = ["1.3.6.1.5.5.7.3.3", "1.3.6.1.4.1.311.97.1.0", identity];
+        let check = |value: serde_json::Value, native: &str| windows_metadata_with(path, Some(publisher), native, |_| Ok(value.to_string()));
+        // PhotoCraft v0.23.1's photocraft.exe as a Windows 11 guest read it.
+        let all = ["1.3.6.1.4.1.311.97.1.0", "1.3.6.1.5.5.7.3.3", identity];
         // Each signing run has a new leaf: any thumbprint is accepted while it is WinVerifyTrust's own.
         for leaf in ["a", "b"] {
             let native = leaf.repeat(64);
-            assert!(check(evidence(&native, subject, true, root, &all), &native).is_ok());
+            assert!(check(evidence(&native, subject, true, root, root_sha256, &all), &native).is_ok());
+            assert!(check(evidence(&native, subject, true, root, &root_sha256.to_uppercase(), &all), &native).is_ok());
         }
         let native = "c".repeat(64);
-        // The same subject under another root, a broken chain, or the root's name in another case.
+        // The same subject under another root, a broken chain, the root's name in another case,
+        // or a root with the right name but another certificate.
         for (chained, other_root) in [(true, "CN=Attacker Root, O=Learning Machines Inc, C=US"), (false, root), (true, "")] {
-            assert!(check(evidence(&native, subject, chained, other_root, &all), &native).is_err());
+            assert!(check(evidence(&native, subject, chained, other_root, root_sha256, &all), &native).is_err());
         }
-        assert!(check(evidence(&native, subject, true, &root.to_lowercase(), &all), &native).is_err());
+        assert!(check(evidence(&native, subject, true, &root.to_lowercase(), root_sha256, &all), &native).is_err());
+        assert!(check(evidence(&native, subject, true, root, &"e".repeat(64), &all), &native).is_err());
         // The identity EKU or code signing missing, even with every other usage present.
-        assert!(check(evidence(&native, subject, true, root, &["1.3.6.1.5.5.7.3.3", "1.3.6.1.4.1.311.97.1.0"]), &native).is_err());
-        assert!(check(evidence(&native, subject, true, root, &[identity]), &native).is_err());
-        assert!(check(evidence(&native, subject, true, root, &[]), &native).is_err());
+        assert!(check(evidence(&native, subject, true, root, root_sha256, &["1.3.6.1.5.5.7.3.3", "1.3.6.1.4.1.311.97.1.0"]), &native).is_err());
+        assert!(check(evidence(&native, subject, true, root, root_sha256, &[identity]), &native).is_err());
+        assert!(check(evidence(&native, subject, true, root, root_sha256, &[]), &native).is_err());
         // Another subject, even with this identity's EKU and root.
         for other in ["CN=Learning Machines Inc", "CN=Learning Machines Inc, O=Learning Machines Inc, L=Atlanta, ST=Georgia, C=US"] {
-            assert!(check(evidence(&native, other, true, root, &all), &native).is_err());
+            assert!(check(evidence(&native, other, true, root, root_sha256, &all), &native).is_err());
         }
+        // A validly signed Microsoft executable (the CI reference pwsh.exe) is refused by the pin.
+        let fixture: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/windows-signed-reference.json")).unwrap();
+        let pwsh = &fixture["artifact"];
+        let ekus: Vec<&str> = pwsh["ekus"].as_array().unwrap().iter().map(|eku| eku.as_str().unwrap()).collect();
+        let foreign =
+            evidence(&native, pwsh["subject"].as_str().unwrap(), true, pwsh["root"].as_str().unwrap(), pwsh["root_sha256"].as_str().unwrap(), &ekus);
+        assert_eq!(
+            check(foreign, &native).unwrap_err(),
+            "The Nightly executable requires a valid timestamped signature from the exact pinned publisher, chain root and key usage."
+        );
         // A publisher missing any part is not configured, so nothing is queried.
-        for incomplete in
-            [WindowsPublisher { root: "", ..publisher }, WindowsPublisher { ekus: &[], ..publisher }, WindowsPublisher { ekus: &[""], ..publisher }]
-        {
+        for incomplete in [
+            WindowsPublisher { root: "", ..*publisher },
+            WindowsPublisher { root_sha256: "not-a-hash", ..*publisher },
+            WindowsPublisher { ekus: &[], ..*publisher },
+            WindowsPublisher { ekus: &[""], ..*publisher },
+        ] {
             assert!(windows_metadata_with(path, Some(&incomplete), &native, |_| panic!("queried without a configured publisher")).is_err());
         }
     }
@@ -632,7 +739,12 @@ mod tests {
         let fixture: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/windows-signed-reference.json")).unwrap();
         let artifact = &fixture["artifact"];
         let ekus: Vec<&str> = artifact["ekus"].as_array().unwrap().iter().map(|eku| eku.as_str().unwrap()).collect();
-        let publisher = WindowsPublisher { subject: artifact["subject"].as_str().unwrap(), root: artifact["root"].as_str().unwrap(), ekus: &ekus };
+        let publisher = WindowsPublisher {
+            subject: artifact["subject"].as_str().unwrap(),
+            root: artifact["root"].as_str().unwrap(),
+            root_sha256: artifact["root_sha256"].as_str().unwrap(),
+            ekus: &ekus,
+        };
         let _held_reference =
             std::fs::OpenOptions::new().read(true).share_mode(1).open(&reference).expect("configured fixture must be readable and stable");
         assert_eq!(
