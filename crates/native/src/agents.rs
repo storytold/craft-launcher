@@ -17,7 +17,6 @@ use serde_json::{Map, Value, json};
 
 use artcraft_launcher_core::CraftApp;
 
-
 /// The key our entry has in a client's `mcpServers`.
 pub use artcraft_launcher_core::mcp_config::SERVER_KEY;
 /// The app list and its folder override, from `craft-ai-agents` (the one place that reads and

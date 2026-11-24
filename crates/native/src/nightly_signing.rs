@@ -73,7 +73,8 @@ mod linux {
             return Err(refused("The Nightly OpenPGP verifier returned excessive status output."));
         }
         if !output.success {
-            let statuses: Vec<Vec<&str>> = output.stdout.lines().filter_map(|line| line.strip_prefix("[GNUPG:] ")).map(|line| line.split_whitespace().collect()).collect();
+            let statuses: Vec<Vec<&str>> =
+                output.stdout.lines().filter_map(|line| line.strip_prefix("[GNUPG:] ")).map(|line| line.split_whitespace().collect()).collect();
             let reported = |kind: &str| statuses.iter().any(|fields| fields.first() == Some(&kind));
             // ERRSIG <keyid> <pkalgo> <hashalgo> <class> <time> <rc>: rc 9 is a missing public key.
             let errsig = |rc: &str| statuses.iter().any(|fields| fields.first() == Some(&"ERRSIG") && fields.get(6) == Some(&rc));
