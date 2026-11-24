@@ -114,6 +114,8 @@ pub struct Settings {
     /// Show a system notification when an installed app has an update.
     pub notify: bool,
     pub prereleases: bool,
+    /// Explicit one-time consent for independent nightly copies. Disabling never removes data.
+    pub nightly_enabled: bool,
     /// Version track per app. Missing entries follow stable releases.
     pub versions: BTreeMap<String, artcraft_launcher_core::protocol::VersionTrack>,
     pub launcher_version: artcraft_launcher_core::protocol::VersionTrack,
@@ -123,6 +125,8 @@ pub struct Settings {
     pub preferred_kinds: Vec<PackageKind>,
     /// Announcements and alerts from the release feed the user dismissed (by notice id).
     pub dismissed_notices: std::collections::BTreeSet<String>,
+    /// Announcements the user has seen in the bell (by notice id); the rest count as unread.
+    pub read_notices: std::collections::BTreeSet<String>,
     /// Updates already announced, so each version is announced once: app id → version.
     pub notified: BTreeMap<String, String>,
     /// Unix seconds of the last finished check.
@@ -140,11 +144,43 @@ pub struct Settings {
     /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
     /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
     pub launch_flags: BTreeMap<String, String>,
+    /// The Fonts page's sample text and size.
+    pub fonts: FontSettings,
+}
+
+/// What the Fonts page keeps between runs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FontSettings {
+    /// The sample text; empty for the preset.
+    pub sample: String,
+    /// `sentence`, `alphabet` or `numerals`.
+    pub preset: String,
+    pub size: u16,
+    /// The note that font downloads are off was closed.
+    pub hide_download_note: bool,
+}
+
+impl Default for FontSettings {
+    fn default() -> Self {
+        FontSettings { sample: String::new(), preset: "sentence".into(), size: 36, hide_download_note: false }
+    }
 }
 
 impl Settings {
     /// Machine-readable code for "follow the system language".
     pub const LANGUAGE_AUTO: &str = "auto";
+
+    /// Forgets read and dismissed notice ids the feed no longer sends, so neither set grows
+    /// forever. A feed with no notices at all forgets nothing: an empty answer (a glitch, or
+    /// nothing to say today) must not bring every old notice back as unread.
+    pub fn forget_notices_not_in(&mut self, current: &std::collections::BTreeSet<&str>) {
+        if current.is_empty() {
+            return;
+        }
+        self.read_notices.retain(|id| current.contains(id.as_str()));
+        self.dismissed_notices.retain(|id| current.contains(id.as_str()));
+    }
 
     /// Whether "Update all" and auto-update install together behind one permission prompt.
     /// Always on Linux, where the batch is one `pkexec` call; elsewhere the opt-in setting,
@@ -153,10 +189,17 @@ impl Settings {
         cfg!(target_os = "linux") || self.batch_updates
     }
 
-    /// Clear saved catalog filters whose controls were removed from the toolbar.
+    /// Reconcile removed controls and ordinary tracks now owned by a separate channel.
+    /// This changes no consent, installed copies, profiles, data, or legacy app/Launcher choices.
     pub fn migrate(&mut self) {
         if !matches!(self.filter, Filter::All | Filter::Hidden) {
             self.filter = Filter::All;
+        }
+        self.versions.retain(|id, track| {
+            artcraft_launcher_core::CraftApp::by_id(id).is_none_or(|app| artcraft_launcher_core::release::ordinary_track_allowed(app, track))
+        });
+        if !artcraft_launcher_core::release::ordinary_track_allowed(&artcraft_launcher_core::catalog::LAUNCHER, &self.launcher_version) {
+            self.launcher_version = artcraft_launcher_core::protocol::VersionTrack::Stable;
         }
     }
 
@@ -215,7 +258,9 @@ impl Settings {
     /// [`Lang::from_pref`](crate::i18n::Lang::from_pref).
     pub fn language_label(code: &str, installed: Option<crate::i18n::Lang>) -> String {
         match crate::i18n::Lang::from_code(code) {
-            Some(lang) if lang.needs_cjk_font() && installed == Some(lang) => format!("{} ({})", lang.english_name(), lang.name()),
+            Some(lang) if lang.needs_cjk_font() && installed == Some(lang) => {
+                format!("{} ({})", lang.english_name(), lang.name())
+            }
             Some(lang) if lang.needs_cjk_font() => lang.english_name().to_string(),
             Some(lang) => lang.name().to_string(),
             None => t("Auto").to_string(),
@@ -273,11 +318,13 @@ impl Default for Settings {
             batch_updates: false,
             notify: true,
             prereleases: false,
+            nightly_enabled: false,
             versions: BTreeMap::new(),
             launcher_version: Default::default(),
             simultaneous_downloads: 1,
             preferred_kinds: default_preferred_kinds(),
             dismissed_notices: std::collections::BTreeSet::new(),
+            read_notices: std::collections::BTreeSet::new(),
             notified: BTreeMap::new(),
             last_check: None,
             hide_community_apps: false,
@@ -286,6 +333,7 @@ impl Default for Settings {
             launches: BTreeMap::new(),
             pinned: Vec::new(),
             launch_flags: BTreeMap::new(),
+            fonts: FontSettings::default(),
         }
     }
 }
@@ -293,6 +341,18 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notices_the_feed_dropped_are_forgotten_but_an_empty_feed_forgets_nothing() {
+        let ids = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<std::collections::BTreeSet<_>>();
+        let mut s = Settings { read_notices: ids(&["a", "old"]), dismissed_notices: ids(&["b", "gone"]), ..Settings::default() };
+        s.forget_notices_not_in(&std::collections::BTreeSet::new());
+        assert_eq!(s.read_notices.len(), 2);
+        assert_eq!(s.dismissed_notices.len(), 2);
+        s.forget_notices_not_in(&["a", "b", "new"].into_iter().collect());
+        assert_eq!(s.read_notices, ids(&["a"]));
+        assert_eq!(s.dismissed_notices, ids(&["b"]));
+    }
 
     #[test]
     fn linux_batches_updates_even_with_the_setting_off() {
@@ -358,5 +418,31 @@ mod tests {
         let live = |id: &str| id != "gone";
         assert_eq!(s.pinned_neighbor("a", 1, live), Some(2));
         assert_eq!(s.pinned_neighbor("b", -1, live), Some(0));
+    }
+    #[test]
+    fn shared_selection_saved_tracks_migrate_only_separate_channel_apps() {
+        use artcraft_launcher_core::protocol::VersionTrack;
+        for photo in [VersionTrack::Nightly, VersionTrack::Pinned("v1.0.0-dev.nightly.1".into())] {
+            for legacy in [VersionTrack::Nightly, VersionTrack::Pinned("v1.0.0-dev.nightly.1".into())] {
+                let mut original = Settings { nightly_enabled: false, prereleases: true, launcher_version: legacy.clone(), ..Default::default() };
+                original.versions.insert("photocraft".into(), photo.clone());
+                original.versions.insert("solidcraft".into(), legacy.clone());
+                original.versions.insert("filmcraft".into(), legacy.clone());
+                original.versions.insert("pdfcraft".into(), VersionTrack::Pinned("v0.7.0".into()));
+                original.launch_flags.insert("photocraft".into(), "--user-owned-flags".into());
+                let saved = serde_json::to_vec(&original).unwrap();
+                let mut loaded: Settings = serde_json::from_slice(&saved).unwrap();
+                loaded.migrate();
+                let mut expected = original.clone();
+                expected.versions.remove("photocraft");
+                assert_eq!(
+                    loaded, expected,
+                    "only invalid ordinary PhotoCraft tracks migrate; consent, Launcher, third parties, stable pins and unrelated settings survive"
+                );
+                let once = loaded.clone();
+                loaded.migrate();
+                assert_eq!(loaded, once);
+            }
+        }
     }
 }
