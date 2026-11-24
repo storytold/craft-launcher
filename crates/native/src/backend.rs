@@ -2184,13 +2184,22 @@ fn track_answer(
     now: i64,
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
     let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
-    if *track == VersionTrack::Nightly && !force {
+    if *track == VersionTrack::Nightly {
+        // Its own record, apart from the stable track's: asking about one doesn't stand in for
+        // the other when the app switches tracks.
+        let key = format!("{}@nightly", app.id);
         let mut asked = shared.github_asked.lock().unwrap_or_else(PoisonError::into_inner);
-        let due = asked.get(app.id).is_none_or(|t| now - t >= NIGHTLY_TRACK_EVERY);
+        let due = force || asked.get(&key).is_none_or(|t| now - t >= NIGHTLY_TRACK_EVERY);
         if !due && let Some(saved) = source.saved_choice(&query, track) {
             return (Some(saved), Origin::GitHub, None);
         }
-        asked.insert(app.id.to_string(), now);
+        asked.insert(key, now);
+        drop(asked);
+        if force {
+            // A pressed check asks GitHub now, past the saved version list however recent.
+            let answer = source.chosen_within(&query, track, 0);
+            return (Some(answer.latest), Origin::GitHub, Some(answer.source));
+        }
     }
     let answer = source.chosen(&query, track);
     (Some(answer.latest), Origin::GitHub, Some(answer.source))
@@ -2511,7 +2520,11 @@ impl Backend for NativeBackend {
                 let shared = self.shared.clone();
                 let query = release_query(load_feed(&self.paths).as_ref(), def);
                 std::thread::spawn(move || {
-                    let result = source.ok_or("secure connections aren't available on this system".to_string()).and_then(|s| s.versions(&query));
+                    // Opening Choose version is the user's own look: a list saved more than
+                    // CHOOSER_FRESH ago is asked for again, as before the list moved to disk.
+                    let result = source
+                        .ok_or("secure connections aren't available on this system".to_string())
+                        .and_then(|s| s.versions_within(&query, crate::source::CHOOSER_FRESH));
                     shared.emit(Event::Versions { app, result });
                 });
             }
@@ -3333,6 +3346,99 @@ mod tests {
         assert_eq!(asked(NOW + 60 * 60, false), 1, "the saved list answers within the three hours");
         assert_eq!(asked(NOW + NIGHTLY_TRACK_EVERY, false), 2);
         assert_eq!(asked(NOW + NIGHTLY_TRACK_EVERY + 60, true), 3, "a pressed check asks at once");
+    }
+
+    /// A pressed check on the Nightly track asks GitHub now, past a version list saved a minute
+    /// ago; without it, that list stands in (#713). The budget of 0 refuses any request, so a
+    /// failure here means GitHub was asked.
+    #[test]
+    fn a_pressed_nightly_check_asks_github_past_a_recent_saved_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("releases.json");
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        let list = vec![Release { tag: "nightly-2026-11-23".into(), prerelease: true, ..Default::default() }];
+        let cache = serde_json::json!({ "entries": {}, "versions": { word.repo: [crate::now() - 60, list] } });
+        std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+        let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0));
+        let source = crate::source::GitHubSource::new(http, path);
+        let shared = shared();
+        let (latest, _, _) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, false, NOW);
+        assert!(!matches!(latest, Some(LatestRelease::Failed(_))), "the recent list stands in: {latest:?}");
+        let (latest, _, used) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, true, NOW + 60);
+        assert!(matches!(latest, Some(LatestRelease::Failed(_))), "a pressed check asked GitHub: {latest:?}");
+        assert_eq!(used, Some(Source::GitHubApi));
+    }
+
+    /// The stable and Nightly tracks keep separate records of when GitHub was asked: asking about
+    /// an app's stable release doesn't put off asking about its nightly after a track switch.
+    #[test]
+    fn the_stable_and_nightly_tracks_keep_their_own_github_pace() {
+        #[derive(Default)]
+        struct Lists(AtomicUsize);
+        impl ReleaseSource for Lists {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+            }
+            fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(Vec::new())
+            }
+            fn saved_choice(&self, _query: &ReleaseQuery, _track: &VersionTrack) -> Option<LatestRelease> {
+                Some(LatestRelease::None)
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let (github, shared) = (Lists::default(), shared());
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        latest_for(word, None, Fallback { trust_feed: false, ..LOADED }, &github, &shared, false, false, NOW);
+        track_answer(word, &VersionTrack::Nightly, None, &github, &shared, false, NOW + 60);
+        assert_eq!(github.0.load(Ordering::SeqCst), 1, "the nightly is asked about though the stable track just was");
+    }
+
+    /// Opening Choose version asks for a list saved more than 15 minutes ago again, though the
+    /// background tracks let one stand for an hour (#713).
+    #[test]
+    fn choose_version_asks_for_a_list_older_than_a_quarter_hour() {
+        struct Ages(Mutex<Vec<Option<i64>>>);
+        impl ReleaseSource for Ages {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+            }
+            fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                self.0.lock().unwrap().push(None);
+                Ok(Vec::new())
+            }
+            fn versions_within(&self, _query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+                self.0.lock().unwrap().push(Some(max_age));
+                Ok(Vec::new())
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let Some(platform) = native_platform() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let ages = Arc::new(Ages(Mutex::new(Vec::new())));
+        let mut backend = backend(dir.path(), platform, Some(ages.clone()));
+        backend.send(Command::ListVersions { app: "wordcraft".into() });
+        let started = Instant::now();
+        while !backend.poll().iter().any(|e| matches!(e, Event::Versions { .. })) {
+            assert!(started.elapsed() < Duration::from_secs(20), "no version list");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(*ages.0.lock().unwrap(), vec![Some(crate::source::CHOOSER_FRESH)]);
     }
 
     /// Refresh looks past a feed that is behind GitHub (#91).
