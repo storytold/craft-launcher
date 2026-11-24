@@ -374,8 +374,19 @@ fn resolve(
     }
 }
 
-impl ReleaseSource for GitHubSource {
-    fn versions(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+/// Asks `query`'s repo, and its former repo when that has no release: `UCSLabs/mailcraft` doesn't
+/// exist until the owner's rename, and afterwards the former name only redirects
+/// (storytold/craft-launcher#1593). An error is never retried under the other name.
+fn with_former<T>(query: &ReleaseQuery, ask: impl Fn(&ReleaseQuery) -> T, no_release: impl Fn(&T) -> bool) -> T {
+    let answer = ask(query);
+    match query.former() {
+        Some(former) if no_release(&answer) => ask(&former),
+        _ => answer,
+    }
+}
+
+impl GitHubSource {
+    fn versions_in(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
         if let Some((at, list)) = self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).get(&query.repo)
             && crate::now().saturating_sub(*at) < 15 * 60
         {
@@ -389,19 +400,34 @@ impl ReleaseSource for GitHubSource {
         Ok(list)
     }
 
-    fn latest(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
+    fn latest_in(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
         resolve(
             &query.repo,
             prereleases,
             self.limited(),
             || self.ask_api(query, prereleases),
             || self.ask_pages(query),
+            // Offline, a release saved under the other name still stands in.
             || self.cached(query, prereleases),
         )
     }
 
-    fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease> {
+    fn cached_in(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease> {
         self.entry(query, prereleases).map(|e| e.release.map_or(LatestRelease::None, LatestRelease::Found))
+    }
+}
+
+impl ReleaseSource for GitHubSource {
+    fn versions(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+        with_former(query, |q| self.versions_in(q), |list| list.as_ref().is_ok_and(Vec::is_empty))
+    }
+
+    fn latest(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
+        with_former(query, |q| self.latest_in(q, prereleases), |a| a.latest == LatestRelease::None)
+    }
+
+    fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease> {
+        with_former(query, |q| self.cached_in(q, prereleases), |c| matches!(c, None | Some(LatestRelease::None)))
     }
 
     fn newest_tag(&self, repo: &str) -> Option<String> {
@@ -442,7 +468,7 @@ mod tests {
 
     /// PhotoCraft's own repo has the separate channel; any other repo in these tests does not.
     fn q(repo: &str) -> ReleaseQuery {
-        ReleaseQuery { repo: repo.into(), separate_nightly: repo == REPO }
+        ReleaseQuery { repo: repo.into(), separate_nightly: repo == REPO, former_repo: None }
     }
 
     const REPO: &str = "storytold/photocraft";
@@ -793,5 +819,65 @@ mod tests {
             .unwrap();
         assert_eq!(sent_etag, None, "the saved nightly's ETag is not revalidated");
         assert_eq!(tag_of(&answer), Some("v1.0.0-beta.1"));
+    }
+
+    #[test]
+    fn an_app_with_a_former_repo_is_found_under_either_name() {
+        // MailCraft moved from `UCS-Care-Group` to `UCSLabs` (#1593). Before the rename the new name
+        // is a 404, after it the new name answers: either way the release is found once, and its
+        // downloads belong to the repo that answered.
+        let app = artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
+        let query = ReleaseQuery::for_app(app, app.repo);
+        let former = app.former_repo.unwrap();
+        let (_temp, source) = fresh_source();
+        for live in [former, app.repo] {
+            let asked = std::cell::RefCell::new(Vec::new());
+            let answer = with_former(
+                &query,
+                |q| {
+                    asked.borrow_mut().push(q.repo.clone());
+                    let body = |repo: &str| {
+                        let url = format!("{}v0.15.0/mailcraft-0.15.0-x.msi", release::download_prefix(repo));
+                        serde_json::json!({"tag_name": "v0.15.0", "assets": [{"name": "mailcraft-0.15.0-x.msi", "size": 1, "browser_download_url": url}]}).to_string()
+                    };
+                    source
+                        .ask_api_with(q, false, |_, _| {
+                            Ok(if q.repo == live { Fetched::Body { text: body(live), etag: None } } else { Fetched::NotFound })
+                        })
+                        .unwrap()
+                        .unwrap()
+                },
+                |a| a.latest == LatestRelease::None,
+            );
+            let LatestRelease::Found(r) = answer.latest else { panic!("{live}: {:?}", answer.latest) };
+            assert!(r.assets.iter().all(|a| a.url.starts_with(&release::download_prefix(live))) && !r.assets.is_empty(), "{live}");
+            assert_eq!(asked.borrow().first(), Some(&app.repo.to_string()), "the current name is asked first");
+            assert_eq!(asked.borrow().len(), if live == app.repo { 1 } else { 2 }, "{live}");
+        }
+    }
+
+    #[test]
+    fn a_release_saved_under_the_former_name_still_stands_in() {
+        // Checked before the rename, opened offline after it: nothing is saved under the new name.
+        let app = artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
+        let (_temp, source, release) = shared_selection_saved_source(app.former_repo.unwrap(), "v0.15.0");
+        assert_eq!(source.cached(&ReleaseQuery::for_app(app, app.repo), true), Some(LatestRelease::Found(release)));
+    }
+
+    #[test]
+    fn a_failed_lookup_is_not_retried_under_the_former_name() {
+        // A rate limit or network error says nothing about which name holds the release.
+        let app = artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
+        let asked = Cell::new(0);
+        let answer = with_former(
+            &ReleaseQuery::for_app(app, app.repo),
+            |_| {
+                asked.set(asked.get() + 1);
+                Answer { latest: LatestRelease::Failed(NO_API.into()), source: Source::GitHubApi }
+            },
+            |a| a.latest == LatestRelease::None,
+        );
+        assert!(matches!(answer.latest, LatestRelease::Failed(_)));
+        assert_eq!(asked.get(), 1);
     }
 }

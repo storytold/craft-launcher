@@ -265,11 +265,19 @@ pub fn ranked_nightly_candidates<'a>(releases: impl IntoIterator<Item = &'a Rele
 pub struct ReleaseQuery {
     pub repo: String,
     pub separate_nightly: bool,
+    /// The app's [`former_repo`](crate::CraftApp::former_repo), asked when `repo` has no release.
+    pub former_repo: Option<String>,
 }
 
 impl ReleaseQuery {
     pub fn for_app(app: &crate::CraftApp, repo: impl Into<String>) -> Self {
-        Self { repo: repo.into(), separate_nightly: app.has_separate_nightly_channel() }
+        Self { repo: repo.into(), separate_nightly: app.has_separate_nightly_channel(), former_repo: app.former_repo.map(str::to_string) }
+    }
+
+    /// The same question about the former repo, when there is one. Its answer's downloads must be
+    /// under the former repo, as for any repo asked.
+    pub fn former(&self) -> Option<Self> {
+        self.former_repo.clone().map(|repo| Self { repo, separate_nightly: self.separate_nightly, former_repo: None })
     }
 }
 
