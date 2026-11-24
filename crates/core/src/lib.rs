@@ -18,6 +18,7 @@ pub mod notices;
 pub mod platform;
 pub mod protocol;
 pub mod release;
+pub mod rollback;
 pub mod status;
 pub mod time;
 pub mod version;

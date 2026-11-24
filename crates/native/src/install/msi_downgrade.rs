@@ -5,7 +5,9 @@
 //! gone. The person asked for this version by name; going back is never offered on its own.
 //!
 //! Before anything changes, both packages are downloaded and checked against their published
-//! checksums: the chosen one, and the installed version's own, to put back. Then:
+//! checksums: the chosen one, and the installed version's own, to put back (or, for a copy whose
+//! version has no release of its own, the pre-release with its numbers that the person agreed to).
+//! Then:
 //! 1. The installed copy is removed. If that fails, nothing has changed.
 //! 2. The chosen version is installed in the same folder and context. If that fails, the
 //!    installed version goes back in from its package.

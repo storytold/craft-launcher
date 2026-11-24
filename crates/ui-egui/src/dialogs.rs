@@ -43,6 +43,9 @@ impl LauncherUi {
             Dialog::UnlockVersion { app, tag } => modal.show(ctx, |ui| close = self.unlock_version_dialog(ui, app, tag)),
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
+            Dialog::GoBackFallback { app, installed, chosen, fallback } => {
+                modal.show(ctx, |ui| close = self.go_back_fallback_dialog(ui, app, installed, chosen, fallback))
+            }
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
             Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
@@ -298,6 +301,41 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::button(ui, tl!("Replace"), Kind::Danger, 110.0).clicked() {
                     self.act_command(Command::Replace { app: id.to_string(), path: path.to_string() });
+                    close = true;
+                }
+                if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
+    }
+
+    /// Says that going back from `installed` to `chosen` can only put the pre-release `fallback`
+    /// back if it fails, and asks whether to go ahead. Returns `true` when the dialog should
+    /// close, including when the app entry is gone. Going ahead is queued at the action boundary.
+    fn go_back_fallback_dialog(&mut self, ui: &mut egui::Ui, id: &str, installed: &str, chosen: &str, fallback: &str) -> bool {
+        let Some(app) = self.entry(id).map(|e| e.app) else { return true };
+        let t = Tokens::get(ui.ctx());
+        let shown = |tag: &str| artcraft_launcher_core::version::parse(tag).map_or_else(|| tag.to_string(), |v| v.to_string());
+        ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, crate::icons::app(id), &fmt(tl!("Go back to {version}?"), &[("version", &shown(chosen))]), "");
+        ui.add(
+            egui::Label::new(
+                RichText::new(fmt(
+                    tl!("{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have."),
+                    &[("app", app.name), ("installed", installed), ("chosen", &shown(chosen)), ("fallback", &shown(fallback))],
+                ))
+                .color(t.muted),
+            )
+            .wrap(),
+        );
+        ui.add_space(20.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::button(ui, tl!("Go back"), Kind::Primary, 110.0).clicked() {
+                    self.act_command(Command::InstallChosen { app: id.to_string(), tag: chosen.to_string(), fallback: Some(fallback.to_string()) });
                     close = true;
                 }
                 if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {

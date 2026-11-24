@@ -100,7 +100,18 @@ impl HostDetection {
         match self {
             Self::System => crate::detect::detect(app, manifest, snapshot),
             #[cfg(test)]
-            Self::Stub(host) => crate::detect::from_manifest(app, manifest).or_else(|| host(app)),
+            Self::Stub(host) => crate::detect::from_manifest(app, manifest)
+                .or_else(|| host(app).map(|found| crate::detect::with_recorded_release(found, manifest.releases.get(app.id)))),
+        }
+    }
+
+    /// What the system itself has registered of `app`, leaving out the launcher's own records: the
+    /// copy a Windows Installer package just put in.
+    fn registered(&self, app: &CraftApp) -> Option<Installed> {
+        match self {
+            Self::System => crate::detect::detect(app, &Manifest::default(), &self.snapshot()),
+            #[cfg(test)]
+            Self::Stub(host) => host(app),
         }
     }
 }
@@ -896,7 +907,7 @@ impl NativeBackend {
                     }
                     Ok(())
                 }
-                Work::Replace(_) | Work::Install(Some(_)) => {
+                Work::Replace(_) | Work::Install(Some(_)) | Work::Chosen(_) => {
                     Err("Nightly cannot replace a Stable/custom path or join a shared installer batch.".into())
                 }
             }
@@ -989,7 +1000,8 @@ impl NativeBackend {
                     match &existing {
                         Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
                             let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                            if m.apps.remove(app.id).is_some() {
+                            let released = m.releases.remove(app.id).is_some();
+                            if m.apps.remove(app.id).is_some() || released {
                                 let _ = m.save(&paths.manifest());
                             }
                             format!("{} was removed", app.name)
@@ -1000,7 +1012,11 @@ impl NativeBackend {
                     let (approved, batch) = match &work {
                         Work::Replace(path) => (Some(path.as_str()), None),
                         Work::Install(batch) => (None, batch.clone()),
-                        Work::Uninstall | Work::Launch(_) => (None, None),
+                        Work::Uninstall | Work::Launch(_) | Work::Chosen(_) => (None, None),
+                    };
+                    let by_name = match &work {
+                        Work::Chosen(chosen) => Some(chosen),
+                        _ => None,
                     };
                     let r = run_install(
                         app,
@@ -1016,6 +1032,7 @@ impl NativeBackend {
                         source.as_deref(),
                         batch,
                         place,
+                        by_name,
                     );
                     // Stopped by the connection rather than by the user: say so, and how to go on.
                     match r {
@@ -1199,6 +1216,16 @@ enum Work {
     Replace(String),
     Uninstall,
     Launch(Vec<String>),
+    /// Install the release the person picked by name (see [`Command::InstallChosen`]).
+    Chosen(Chosen),
+}
+
+/// The release the person picked by name in the version dialog, and the release they agreed may be
+/// put back instead of the installed version if going back fails ([`Event::GoBackFallback`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Chosen {
+    tag: String,
+    fallback: Option<String>,
 }
 
 fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
@@ -1212,35 +1239,59 @@ fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack
     }
 }
 
-/// Whether `chosen` is a version picked by name that is older than the installed copy.
-fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>) -> bool {
-    let VersionTrack::Pinned(tag) = track else {
-        return false;
-    };
+/// Whether `chosen` is a version picked by name that is older than the installed copy: the pinned
+/// version, or the release `by_name` says the person picked in the version dialog
+/// ([`Command::InstallChosen`]), on any track. A release a check found on its own (the latest one)
+/// never is, so a feed can't send an app back to an older build.
+fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>, by_name: Option<&Chosen>) -> bool {
+    let named = by_name.is_some_and(|c| c.tag == chosen.tag) || matches!(track, VersionTrack::Pinned(tag) if chosen.tag == *tag);
     let (Some(chosen_v), Some(installed_v)) = (chosen.version.as_ref(), existing.and_then(|i| i.version.as_ref())) else {
         return false;
     };
-    chosen.tag == *tag && version::is_newer(installed_v, chosen_v)
+    named && version::is_newer(installed_v, chosen_v)
 }
 
-/// For a version chosen by name that is older than the installed copy: the installed version's own
-/// published release, to put back if the downgrade fails. `None` for anything else, without
-/// asking `list`. An error means the downgrade can't be made safe, so it must not start.
+/// Why going back can't start yet.
+#[derive(Debug, PartialEq, Eq)]
+enum NoWayBack {
+    /// Nothing changed, and nothing will until something else does.
+    Refused(String),
+    /// Only the release with this tag can be put back
+    /// ([`RestorePoint::SameNumbers`](artcraft_launcher_core::rollback::RestorePoint::SameNumbers)): the person decides.
+    Ask(String),
+}
+
+/// For a version chosen by name that is older than the installed copy: the release to put back if
+/// the downgrade fails ([`artcraft_launcher_core::rollback::restore_point`]), the installed
+/// version's own or, once the person agreed to it (`by_name`'s `fallback`), a pre-release with its
+/// numbers. `None` for anything else, without asking `list`.
 fn downgrade_previous(
     app: &CraftApp,
     track: &VersionTrack,
     chosen: &Release,
     existing: Option<&Installed>,
+    by_name: Option<&Chosen>,
     list: impl FnOnce() -> Result<Vec<Release>, String>,
-) -> Result<Option<Release>, String> {
-    let Some(installed_v) = existing.and_then(|i| i.version.as_ref()).filter(|_| is_chosen_downgrade(track, chosen, existing)) else {
+) -> Result<Option<Release>, NoWayBack> {
+    use artcraft_launcher_core::rollback::{RestorePoint, restore_point};
+    let Some(installed) = existing.filter(|_| is_chosen_downgrade(track, chosen, existing, by_name)) else {
         return Ok(None);
     };
-    let releases =
-        list().map_err(|e| format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))?;
-    releases.into_iter().find(|r| r.version.as_ref() == Some(installed_v)).map(Some).ok_or_else(|| {
-        format!("{} {installed_v} isn't published any more, so it couldn't be put back if going back fails. Nothing was changed.", app.name)
-    })
+    let installed_v = installed.version.as_ref().map(ToString::to_string).unwrap_or_default();
+    let releases = list().map_err(|e| {
+        NoWayBack::Refused(format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))
+    })?;
+    match restore_point(&releases, installed, chosen) {
+        RestorePoint::Exact(previous) => Ok(Some(previous.clone())),
+        RestorePoint::SameNumbers(fallback) if by_name.and_then(|c| c.fallback.as_deref()) == Some(fallback.tag.as_str()) => {
+            Ok(Some(fallback.clone()))
+        }
+        RestorePoint::SameNumbers(fallback) => Err(NoWayBack::Ask(fallback.tag.clone())),
+        RestorePoint::None => Err(NoWayBack::Refused(format!(
+            "{} {installed_v} isn't published any more, so it couldn't be put back if going back fails. Nothing was changed.",
+            app.name
+        ))),
+    }
 }
 
 /// What an install does with a Flatpak its repository updates: `flatpak update`, on Linux, and
@@ -1485,9 +1536,10 @@ fn run_install(
     source: Option<&dyn ReleaseSource>,
     batch: Option<crate::queue::Gather>,
     place: Option<crate::downloads::Place<'static>>,
+    by_name: Option<&Chosen>,
 ) -> Result<String, String> {
     if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
-        if approved.is_some() || batch.is_some() {
+        if approved.is_some() || batch.is_some() || by_name.is_some() {
             return Err("Nightly cannot use Stable replacement or shared installer-batch permission.".into());
         }
         let locations = Default::default();
@@ -1555,6 +1607,10 @@ fn run_install(
     }
     let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
     let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
+    // The person picked a release by name: install that one, or nothing.
+    if let Some(chosen) = by_name.filter(|c| c.tag != release.tag) {
+        return Err(format!("{} {} isn't the version to install any more, so nothing was changed. Choose the version again.", app.name, chosen.tag));
+    }
     let http = http.ok_or("secure connections aren't available on this system")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
     // Going back to a version chosen by name. A macOS bundle, a launcher AppImage or Flatpak keeps the old
@@ -1564,11 +1620,21 @@ fn run_install(
     let previous = if keeps_old_copy {
         None
     } else {
-        downgrade_previous(app, track, &release, existing, || {
+        let previous = downgrade_previous(app, track, &release, existing, by_name, || {
             source
                 .ok_or_else(|| "secure connections aren't available on this system".to_string())?
                 .versions(&release_query(load_feed(paths).as_ref(), app))
-        })?
+        });
+        match previous {
+            Ok(previous) => previous,
+            Err(NoWayBack::Refused(why)) => return Err(why),
+            // Asked first, like an overwrite: the UI's question answers it.
+            Err(NoWayBack::Ask(fallback)) => {
+                let installed = existing.and_then(|i| i.version.as_ref()).map(ToString::to_string).unwrap_or_default();
+                shared.emit(Event::GoBackFallback { app: app.id.to_string(), installed: installed.clone(), chosen: release.tag.clone(), fallback });
+                return Err(format!("{} {installed} isn't published, so going back waits for your answer. Nothing was changed.", app.name));
+            }
+        }
     };
     let previous_asset = match &previous {
         Some(p) => Some(
@@ -1580,7 +1646,7 @@ fn run_install(
         None => None,
     };
     let downgrade = if keeps_old_copy {
-        is_chosen_downgrade(track, &release, existing).then_some(install::Downgrade::KeepOldCopy)
+        is_chosen_downgrade(track, &release, existing, by_name).then_some(install::Downgrade::KeepOldCopy)
     } else {
         previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade::Reinstall { previous, asset })
     };
@@ -1623,7 +1689,21 @@ fn run_install(
         *manifest = updated;
         Ok(())
     };
-    let new_record = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record))?;
+    let new_record = match install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record)) {
+        Ok(new_record) => new_record,
+        Err(e) => {
+            // A failed Windows Installer downgrade can have put `previous` back as a new registration.
+            if kind == PackageKind::Msi
+                && let Some(previous) = &previous
+            {
+                remember_put_back(app, shared, paths, previous, existing);
+            }
+            return Err(e);
+        }
+    };
+    // Windows Installer keeps only the numbers of the version: remember which release this was.
+    let released =
+        if new_record.is_none() && kind == PackageKind::Msi { installed_release(&release, shared.host.registered(app).as_ref()) } else { None };
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let changed = match new_record {
@@ -1634,11 +1714,46 @@ fn run_install(
             // Installed the platform's own way: any old launcher record is stale.
             None => m.apps.remove(app.id).is_some(),
         };
-        if changed && let Err(e) = m.save(&paths.manifest()) {
+        let release_changed = match released {
+            Some(r) => m.releases.insert(app.id.to_string(), r.clone()).as_ref() != Some(&r),
+            None => m.releases.remove(app.id).is_some(),
+        };
+        if (changed || release_changed)
+            && let Err(e) = m.save(&paths.manifest())
+        {
             log::warn!("couldn't save the install record: {e}");
         }
     }
     Ok(installed_text(app, existing.is_some(), &release))
+}
+
+/// What the launcher keeps of the Windows Installer copy it just installed from `release` (see
+/// [`InstalledRelease`](crate::manifest::InstalledRelease)): the release, tied to the registration
+/// `found` that is there now, when that copy has the release's numbers. `None` when the system
+/// shows no such copy, so nothing unverified is ever recorded.
+fn installed_release(release: &Release, found: Option<&Installed>) -> Option<crate::manifest::InstalledRelease> {
+    let found = found.filter(|f| f.source == artcraft_launcher_core::InstallSource::Msi)?;
+    let (seen, full) = (found.version.as_ref()?, release.version.as_ref()?);
+    let package = found.package.clone().filter(|code| !code.is_empty())?;
+    ((seen.major, seen.minor, seen.patch) == (full.major, full.minor, full.patch) && (seen.pre.is_empty() || seen == full))
+        .then(|| crate::manifest::InstalledRelease { tag: release.tag.clone(), version: full.to_string(), package })
+}
+
+/// After a Windows Installer downgrade that failed: when a registration that wasn't there before
+/// has the numbers of `previous`, the checked package of `previous` put it there, so that release
+/// is recorded for it. The copy that was there before (`existing`) is never recorded this way:
+/// whatever it was, its own registration is unchanged.
+fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &Release, existing: Option<&Installed>) {
+    let found = shared.host.registered(app);
+    let before = existing.and_then(|i| i.package.as_deref());
+    let new_registration = found.as_ref().and_then(|f| f.package.as_deref()).is_some_and(|code| before.is_none_or(|b| !b.eq_ignore_ascii_case(code)));
+    let Some(put_back) = installed_release(previous, found.as_ref()).filter(|_| new_registration) else { return };
+    let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+    m.apps.remove(app.id);
+    m.releases.insert(app.id.to_string(), put_back);
+    if let Err(e) = m.save(&paths.manifest()) {
+        log::warn!("couldn't save the install record: {e}");
+    }
 }
 
 /// Whether an install may write over what is at its destination.
@@ -2459,6 +2574,9 @@ impl Backend for NativeBackend {
             Command::Replace { app, path } => {
                 self.start_job(&app, Work::Replace(path));
             }
+            Command::InstallChosen { app, tag, fallback } => {
+                self.start_job(&app, Work::Chosen(Chosen { tag, fallback }));
+            }
             Command::Uninstall { app } => {
                 self.start_job(&app, Work::Uninstall);
             }
@@ -2765,6 +2883,7 @@ mod tests {
             None,
             Some(gather.clone()),
             None,
+            None,
         );
         assert_eq!(result, Err(artcraft_launcher_core::protocol::CANCELLED.into()));
         let seen = seen.lock().unwrap();
@@ -2801,11 +2920,15 @@ mod tests {
             installation: None,
         };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
-        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None));
+        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None, None));
+        // The latest release, picked by name in the version dialog, goes back; found by a check, it doesn't.
+        let picked = Chosen { tag: "v0.13.0".into(), fallback: None };
+        assert!(is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), Some(&picked)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.12.0"), Some(&installed), Some(&picked)));
     }
 
     #[test]
@@ -2823,18 +2946,94 @@ mod tests {
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
         // An update, the latest release, nothing installed, or a stale release: no downgrade.
-        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), never), Ok(None));
-        assert_eq!(downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), never), Ok(None));
-        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, never), Ok(None));
-        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), never), Ok(None));
+        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), None, never), Ok(None));
         // Going back finds the installed version's own release.
-        let found = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
+        let found = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), None, || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
         assert_eq!(found.unwrap().map(|r| r.tag), Some("v0.14.0".to_string()));
         // Without it, or without the list, the downgrade doesn't start.
-        let gone = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Ok(vec![tagged("0.13.0")])).unwrap_err();
+        let refused = |result: Result<Option<Release>, NoWayBack>| match result {
+            Err(NoWayBack::Refused(why)) => why,
+            other => panic!("not refused: {other:?}"),
+        };
+        let gone = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), None, || Ok(vec![tagged("0.13.0")])));
         assert!(gone.contains("FilmCraft 0.14.0 isn't published any more") && gone.contains("Nothing was changed"), "{gone}");
-        let offline = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Err("offline".into())).unwrap_err();
+        let offline = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), None, || Err("offline".into())));
         assert!(offline.contains("(offline)") && offline.contains("nothing was changed"), "{offline}");
+    }
+
+    fn msi_copy(v: &str) -> Installed {
+        Installed {
+            version: version::parse(v),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: Some("{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
+    }
+
+    fn published() -> Vec<Release> {
+        let rc = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        vec![rc, tagged("0.23.1"), tagged("0.23.0")]
+    }
+
+    /// The release candidate the launcher installed reads back as itself (see
+    /// `detect::with_recorded_release`), so going back from it to the latest release finds the
+    /// candidate to put back, whether the latest release was picked in the dialog or pinned.
+    #[test]
+    fn going_back_from_an_installed_release_candidate_puts_the_candidate_back() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let rc = msi_copy("0.24.0-rc.1");
+        let picked = Chosen { tag: "v0.23.1".into(), fallback: None };
+        let back = downgrade_previous(app, &VersionTrack::Stable, &tagged("0.23.1"), Some(&rc), Some(&picked), || Ok(published()));
+        assert_eq!(back.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        let pinned = VersionTrack::Pinned("v0.23.0".into());
+        let back = downgrade_previous(app, &pinned, &tagged("0.23.0"), Some(&rc), None, || Ok(published()));
+        assert_eq!(back.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        // The candidate itself, chosen again, is the installed version: nothing to go back to.
+        let same = VersionTrack::Pinned("v0.24.0-rc.1".into());
+        let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
+        assert_eq!(downgrade_previous(app, &same, &published()[0], Some(&rc), None, never), Ok(None));
+    }
+
+    /// A copy Windows registered as 0.24.0, with no release of that version and no record of what
+    /// was installed: going back to the latest release asks first, then puts back the candidate
+    /// with those numbers if it fails. An answer about another release asks again, and going back
+    /// to anything but the latest release stays refused.
+    #[test]
+    fn a_stuck_installer_copy_goes_back_to_the_latest_release_only_once_the_person_agrees() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let stuck = msi_copy("0.24.0");
+        let latest = tagged("0.23.1");
+        let picked = |fallback: Option<&str>| Chosen { tag: "v0.23.1".into(), fallback: fallback.map(String::from) };
+        let ask = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), Some(&picked(None)), || Ok(published()));
+        assert_eq!(ask, Err(NoWayBack::Ask("v0.24.0-rc.1".into())));
+        let agreed = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), Some(&picked(Some("v0.24.0-rc.1"))), || Ok(published()));
+        assert_eq!(agreed.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        // An answer about another release isn't an answer about this one.
+        let other = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), Some(&picked(Some("v0.23.0"))), || Ok(published()));
+        assert!(matches!(other, Err(NoWayBack::Ask(_))), "{other:?}");
+        // Not the latest release: refused as before.
+        let older = downgrade_previous(app, &VersionTrack::Pinned("v0.23.0".into()), &tagged("0.23.0"), Some(&stuck), None, || Ok(published()));
+        assert!(matches!(older, Err(NoWayBack::Refused(_))), "{older:?}");
+    }
+
+    /// What the launcher records after a Windows Installer install: the release it checked, tied to
+    /// the registration that install left, and nothing when the system shows no copy with its numbers.
+    #[test]
+    fn an_installer_install_records_its_release_only_for_the_copy_it_left() {
+        let rc = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        let recorded = installed_release(&rc, Some(&msi_copy("0.24.0"))).unwrap();
+        assert_eq!((recorded.tag.as_str(), recorded.version.as_str()), ("v0.24.0-rc.1", "0.24.0-rc.1"));
+        assert_eq!(Some(recorded.package), msi_copy("0.24.0").package);
+        assert_eq!(installed_release(&rc, Some(&msi_copy("0.23.1"))), None, "another version is there");
+        assert_eq!(installed_release(&rc, Some(&Installed { package: None, ..msi_copy("0.24.0") })), None, "no registration to tie it to");
+        assert_eq!(installed_release(&rc, Some(&Installed { source: InstallSource::Launcher, ..msi_copy("0.24.0") })), None);
+        assert_eq!(installed_release(&rc, None), None);
     }
 
     /// Going back is a conscious choice: a check for a pinned app reports the pinned release, so

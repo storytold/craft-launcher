@@ -123,13 +123,33 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
-    UnlockVersion { app: String, tag: String },
-    Install { app: String, folder: String },
-    Replace { app: String, path: String },
+    UnlockVersion {
+        app: String,
+        tag: String,
+    },
+    Install {
+        app: String,
+        folder: String,
+    },
+    Replace {
+        app: String,
+        path: String,
+    },
+    /// Going back to `chosen` can only put `fallback` back if it fails (see
+    /// [`Event::GoBackFallback`](artcraft_launcher_core::protocol::Event::GoBackFallback)).
+    GoBackFallback {
+        app: String,
+        installed: String,
+        chosen: String,
+        fallback: String,
+    },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
-    LaunchFlags { app: String, flags: String },
+    LaunchFlags {
+        app: String,
+        flags: String,
+    },
 }
 
 impl Dialog {
@@ -142,6 +162,7 @@ impl Dialog {
             Dialog::UnlockVersion { app, .. } => ("unlock-version", app),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
+            Dialog::GoBackFallback { app, .. } => ("go-back-fallback", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
             Dialog::Versions(id) => ("versions", id),
@@ -690,6 +711,10 @@ impl LauncherUi {
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
             }
+            Event::GoBackFallback { app, installed, chosen, fallback } => {
+                self.dialog = Some(Dialog::GoBackFallback { app, installed, chosen, fallback });
+                false
+            }
             Event::JobFinished { app, result } => {
                 self.on_job_finished(app, result);
                 true
@@ -770,8 +795,8 @@ impl LauncherUi {
                 self.toast(tl!("Install cancelled. The download is kept for the next try."), false);
             }
             Err(e) if e == INSTALL_CANCELLED => self.toast(tl!("Install cancelled"), false),
-            // The Replace dialog says it all.
-            Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. }) if *a == app) => {}
+            // The Replace dialog, or the question about going back, says it all.
+            Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. } | Dialog::GoBackFallback { app: a, .. }) if *a == app) => {}
             Err(e) => self.toast(e, true),
         }
     }

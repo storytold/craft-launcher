@@ -42,6 +42,17 @@ pub enum Command {
         app: String,
         path: String,
     },
+    /// `Install`, for the release `tag` the person picked by name in the version dialog. When it is
+    /// older than the installed copy, the install goes back to it the way it goes back to a pinned
+    /// version, also when `tag` is the latest release, whose track then goes on following new
+    /// releases. Nothing is installed when the release to install is no longer `tag`. `fallback` is
+    /// the release the person agreed may be put back if going back fails
+    /// ([`Event::GoBackFallback`]). A backend that can't go back refuses it.
+    InstallChosen {
+        app: String,
+        tag: String,
+        fallback: Option<String>,
+    },
     Uninstall {
         app: String,
     },
@@ -305,6 +316,16 @@ pub enum Event {
     Occupied {
         app: String,
         path: String,
+    },
+    /// Going back from the installed `installed` (a version with no release of its own) to
+    /// `chosen` stopped before changing anything: if it fails, only `fallback`, a published
+    /// pre-release with the installed numbers, can be put back. `Command::InstallChosen` with
+    /// `fallback` goes ahead once the person agrees.
+    GoBackFallback {
+        app: String,
+        installed: String,
+        chosen: String,
+        fallback: String,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
     /// Clears the app's in-progress job phase in the UI.
