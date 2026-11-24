@@ -24,7 +24,7 @@ use crate::manifest::Manifest;
 pub use artcraft_launcher_core::mcp_config::SERVER_KEY;
 /// The app list and its folder override, from `craft-ai-agents` (the one place that reads and
 /// writes them, for the launcher, the gateway and every app).
-pub use craft_ai_agents::{APPS_FILE, DIR_ENV};
+pub use craft_ai_agents::{APPS_FILE, AppEntry, DIR_ENV};
 /// Largest client configuration read; anything bigger is not a configuration file.
 const MAX_CONFIG_BYTES: u64 = 64 << 20;
 
@@ -34,27 +34,14 @@ pub fn mcp_dir() -> Option<PathBuf> {
     craft_ai_agents::agents_dir()
 }
 
-/// The app list for `services`: each app with a CLI, started as plain `<cli> mcp`. By the suite's
-/// rule that command works in the app's open window when the app runs and accepts agents, and
-/// headless otherwise, so no app needs other arguments. Apps without a CLI beside them are left out.
-pub fn app_entries(services: &[InstalledApp]) -> Vec<craft_ai_agents::AppEntry> {
-    services
-        .iter()
-        .filter_map(|s| {
-            let cli = s.cli_path.as_ref().filter(|p| p.is_absolute())?;
-            Some(craft_ai_agents::AppEntry { id: s.id.clone(), name: s.name.clone(), command: cli.clone(), args: vec!["mcp".to_string()] })
-        })
-        .collect()
-}
-
 /// Whether agents are on: the app list exists in `dir`.
 pub fn enabled(dir: &Path) -> bool {
     craft_ai_agents::switched_on_in(dir)
 }
 
 /// Write (or refresh) the app list in `dir`.
-pub fn write_apps(dir: &Path, services: &[InstalledApp]) -> Result<(), String> {
-    craft_ai_agents::write(dir, &app_entries(services))
+pub fn write_apps(dir: &Path, services: &[AppEntry]) -> Result<(), String> {
+    craft_ai_agents::write(dir, services)
 }
 
 /// Remove the app list in `dir`. A missing list is fine.
@@ -210,34 +197,47 @@ pub fn unregister(config: &Path, gateway: &Path) -> Result<(), String> {
     crate::paths::write_atomic(config, text.as_bytes())
 }
 
-/// An installed Craft app, with the CLI beside it that serves MCP (`<app>-cli mcp`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InstalledApp {
-    /// The app id (`wordcraft`), stable across versions.
-    pub id: String,
-    /// Display name (`WordCraft`).
-    pub name: String,
-    /// The detected main executable; the CLI lives beside it.
-    pub location: String,
-    /// The `-cli` binary. `None` when detection found the app but no CLI beside it.
-    pub cli_path: Option<PathBuf>,
-}
-
-/// Every installed Craft app, in suite order. Detection decides what is installed; this adds the
-/// CLI each app serves MCP from.
-pub fn installed_apps(manifest: &Manifest, snapshot: &detect::Snapshot) -> Vec<InstalledApp> {
+/// Every installed Craft app with a usable MCP command, in suite order.
+pub fn installed_apps(manifest: &Manifest, snapshot: &detect::Snapshot) -> Vec<AppEntry> {
     artcraft_launcher_core::SUITE
         .iter()
         .filter_map(|app| {
             let installed = detect::detect(app, manifest, snapshot)?;
-            Some(InstalledApp {
-                id: app.id.to_string(),
-                name: app.name.to_string(),
-                location: installed.location.clone(),
-                cli_path: cli_path_for(&installed.location, app),
-            })
+            #[cfg(target_os = "linux")]
+            if installed.source == artcraft_launcher_core::InstallSource::Flatpak {
+                // The MCP gateway starts on the host and needs an absolute host path.
+                if crate::process::in_sandbox() {
+                    return None;
+                }
+                return flatpak_entry(app, &installed, crate::process::which("flatpak")?);
+            }
+            native_entry(app, &installed.location)
         })
         .collect()
+}
+
+fn native_entry(app: &CraftApp, location: &str) -> Option<AppEntry> {
+    let command = cli_path_for(location, app).filter(|path| path.is_absolute())?;
+    Some(AppEntry { id: app.id.into(), name: app.name.into(), command, args: vec!["mcp".into()] })
+}
+
+#[cfg(target_os = "linux")]
+fn flatpak_entry(app: &CraftApp, installed: &artcraft_launcher_core::Installed, flatpak: PathBuf) -> Option<AppEntry> {
+    let id = installed.package.as_deref()?;
+    let scope = crate::packages::flatpak_scope(installed.installation.as_deref());
+    let mut info = crate::process::command(&flatpak);
+    info.args(["info", &scope, "--show-location", id]);
+    let location = crate::process::run_command(info, "flatpak", std::time::Duration::from_secs(3)).ok()?;
+    let deployment = Path::new(location.trim());
+    if !deployment.is_absolute() {
+        return None;
+    }
+    // Inspect the deployment to confirm the CLI ships with this app, but run it through Flatpak
+    // so it gets the runtime and permissions of the installed package.
+    let bin = deployment.join("files/bin");
+    let cli = app.stems().map(|stem| format!("{stem}-cli")).find(|name| bin.join(name).is_file())?;
+    let args = vec!["run".into(), scope, format!("--command={cli}"), id.into(), "mcp".into()];
+    Some(AppEntry { id: app.id.into(), name: app.name.into(), command: flatpak, args })
 }
 
 /// The `-cli` binary beside a detected main executable, under any name the app has shipped as
@@ -332,7 +332,7 @@ fn lock() -> MutexGuard<'static, ()> {
 /// What Settings shows. While agents are on, the app list and the gateway copy are refreshed
 /// first, so an app installed (or a gateway updated) since then is used too; a failed refresh
 /// keeps the previous ones.
-pub fn state(services: &[InstalledApp]) -> McpAgents {
+pub fn state(services: &[AppEntry]) -> McpAgents {
     let flag_on = flag_on();
     let dir = mcp_dir();
     let on = {
@@ -360,14 +360,7 @@ pub fn state(services: &[InstalledApp]) -> McpAgents {
         })
         .collect();
     let gateway = dir.as_deref().filter(|_| on).map(gateway_copy).filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned());
-    McpAgents {
-        flag_on,
-        gateway_found: locate_gateway().is_some(),
-        enabled: on,
-        gateway,
-        apps: services.iter().filter(|s| s.cli_path.as_ref().is_some_and(|p| p.is_absolute())).count(),
-        clients,
-    }
+    McpAgents { flag_on, gateway_found: locate_gateway().is_some(), enabled: on, gateway, apps: services.len(), clients }
 }
 
 /// Whether the `AI-MCP` feature flag is on (`ArtCraft/flags.toml`, `CRAFT_FLAGS`).
@@ -381,7 +374,7 @@ const NO_GATEWAY: &str = "the Craft gateway (craft-ai-mcp) is not installed besi
 
 /// Turn agents on (copy the gateway, write the app list) or off (remove the list, every client
 /// entry this module added, and the copy). All clients are tried; the first error is returned.
-pub fn set_enabled(on: bool, services: &[InstalledApp]) -> Result<(), String> {
+pub fn set_enabled(on: bool, services: &[AppEntry]) -> Result<(), String> {
     let dir = mcp_dir().ok_or("couldn't find the per-user configuration folder")?;
     let _guard = lock();
     if on {

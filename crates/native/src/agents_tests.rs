@@ -1,11 +1,9 @@
-use std::path::PathBuf;
-
 use serde_json::{Value, json};
 
 use super::*;
 
-fn service(id: &str, name: &str, cli: Option<PathBuf>) -> InstalledApp {
-    InstalledApp { id: id.into(), name: name.into(), location: String::new(), cli_path: cli }
+fn app(id: &str) -> &'static CraftApp {
+    artcraft_launcher_core::SUITE.iter().find(|app| app.id == id).unwrap()
 }
 
 fn read(p: &Path) -> Value {
@@ -16,26 +14,70 @@ fn read(p: &Path) -> Value {
 fn the_app_list_has_every_app_with_a_cli_started_as_plain_mcp() {
     let dir = tempfile::tempdir().unwrap();
     let cli = |name: &str| dir.path().join(name);
-    let services = [
-        service("photocraft", "PhotoCraft", Some(cli("photocraft-cli.exe"))),
-        service("vectorcraft", "VectorCraft", Some(cli("vectorcraft-cli.exe"))),
-        service("wordcraft", "WordCraft", None),
-        service("relcraft", "RelCraft", Some(PathBuf::from("relative/cli"))),
-    ];
-    let apps = app_entries(&services);
-    assert_eq!(apps.len(), 2, "apps without an absolute CLI are left out");
+    std::fs::write(cli("photocraft-cli.exe"), []).unwrap();
+    std::fs::write(cli("vectorcraft-cli.exe"), []).unwrap();
+    let apps: Vec<_> =
+        ["photocraft", "vectorcraft", "wordcraft"].into_iter().filter_map(|id| native_entry(app(id), cli(id).to_str().unwrap())).collect();
+    assert_eq!(apps.len(), 2, "apps without a CLI are left out");
     assert_eq!((apps[0].id.as_str(), apps[0].name.as_str()), ("photocraft", "PhotoCraft"));
     assert_eq!(apps[0].command, cli("photocraft-cli.exe"));
     // Every app's plain `mcp` works in its open window when it may: no per-app arguments.
     assert!(apps.iter().all(|a| a.args == ["mcp"]), "{apps:?}");
     // Written in the gateway's format, which the gateway reads back the same.
     let list = dir.path().join("list");
-    write_apps(&list, &services).unwrap();
+    write_apps(&list, &apps).unwrap();
     let (back, skipped) = craft_ai_agents::load(&list).unwrap().unwrap();
     assert!(skipped.is_empty(), "{skipped:?}");
     assert_eq!(back, apps);
     let v = read(&list.join(APPS_FILE));
     assert_eq!(v["version"], 1);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn flatpak_apps_use_the_bundled_cli_in_the_detected_installation() {
+    use artcraft_launcher_core::{InstallSource, Installed};
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let flatpak = dir.path().join("flatpak");
+    std::fs::write(
+        &flatpak,
+        r#"#!/bin/sh
+if [ "$*" = 'info --installation=extra --show-location ai.storyteller.photocraft' ]; then
+    printf '%s\n' "${0%/*}/deployed app"
+else
+    exit 1
+fi
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&flatpak, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let bin = dir.path().join("deployed app/files/bin");
+    std::fs::create_dir_all(&bin).unwrap();
+
+    let app = app("photocraft");
+    let installed = Installed {
+        version: None,
+        source: InstallSource::Flatpak,
+        location: "ai.storyteller.photocraft".into(),
+        package: Some("ai.storyteller.photocraft".into()),
+        externally_managed: false,
+        origin: None,
+        installation: Some("extra".into()),
+    };
+    assert!(flatpak_entry(app, &installed, flatpak.clone()).is_none(), "a GUI-only package is left out");
+
+    std::fs::write(bin.join("photocraft-cli"), []).unwrap();
+    let entry = flatpak_entry(app, &installed, flatpak.clone()).unwrap();
+    let list = dir.path().join("list");
+    write_apps(&list, &[entry]).unwrap();
+    let (apps, skipped) = craft_ai_agents::load(&list).unwrap().unwrap();
+    assert!(skipped.is_empty());
+    let entry = &apps[0];
+    assert_eq!(entry.id, "photocraft");
+    assert_eq!(entry.command, flatpak);
+    assert_eq!(entry.args, ["run", "--installation=extra", "--command=photocraft-cli", "ai.storyteller.photocraft", "mcp"]);
 }
 
 #[test]
