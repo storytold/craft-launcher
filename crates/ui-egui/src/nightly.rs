@@ -557,7 +557,7 @@ impl LauncherUi {
                         self.act(UiAction::NightlyCommand(Command::Reveal { app: entry.app.id.into() }));
                     }
                     // Removal needs its own confirmation, independent of opt-in or stable records.
-                    let uninstall = ui.button(tl!("Uninstall pre-release…"));
+                    let uninstall = ui.button(tl!("Uninstall developer build…"));
                     if uninstall.clicked() {
                         self.nightly_uninstall_prompt(entry.app.id, uninstall.id);
                     }
@@ -602,7 +602,7 @@ impl LauncherUi {
             let mut cancel = false;
             let response = egui::Modal::new(egui::Id::unique("nightly-uninstall-v1")).frame(frame).show(ctx, |ui| {
                 ui.set_width(440.0_f32.min(ctx.content_rect().width() - 80.0).max(100.0));
-                ui.label(crate::widgets::heading(tl!("Uninstall pre-release?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
+                ui.label(crate::widgets::heading(tl!("Uninstall developer build?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
                 ui.add_space(8.0);
                 ui.add(egui::Label::new(tl!("Only this developer build will be removed. Stable copies and user data are kept.")).wrap());
                 ui.add_space(16.0);
@@ -613,7 +613,7 @@ impl LauncherUi {
                         self.nightly.uninstall_focus = false;
                     }
                     cancel = no.clicked();
-                    remove = ui.button(tl!("Uninstall pre-release")).clicked();
+                    remove = ui.button(tl!("Uninstall developer build")).clicked();
                 });
             });
             if remove {
@@ -1451,7 +1451,7 @@ mod polish_tests {
                     if card.installed.is_some() {
                         harness.get_by_label("Open");
                         harness.get_by_label("Show installed copy");
-                        harness.get_by_label("Uninstall pre-release…");
+                        harness.get_by_label("Uninstall developer build…");
                     }
                 }
             }
@@ -1472,10 +1472,10 @@ mod polish_tests {
                     let sent = Rc::new(RefCell::new(Vec::new()));
                     let mut harness = page(width, theme, Card { enabled, ..current() }, sent.clone());
                     for cancel_key in [egui::Key::Escape, egui::Key::Enter] {
-                        harness.get_by_label("Uninstall pre-release…").focus();
+                        harness.get_by_label("Uninstall developer build…").focus();
                         harness.key_press(egui::Key::Enter);
                         harness.run_steps(3);
-                        let title = harness.get_by_label("Uninstall pre-release?").rect();
+                        let title = harness.get_by_label("Uninstall developer build?").rect();
                         let body = harness.get_by_label("Only this developer build will be removed. Stable copies and user data are kept.").rect();
                         let cancel = harness.get_by_label("Cancel");
                         let frame = harness.ctx.memory(|memory| memory.area_rect(egui::Id::unique("nightly-uninstall-v1"))).unwrap();
@@ -1490,16 +1490,16 @@ mod polish_tests {
                         harness.key_press(cancel_key);
                         harness.run_steps(3);
                         assert!(harness.state().as_ref().unwrap().nightly.uninstall.is_none());
-                        assert!(harness.get_by_label("Uninstall pre-release…").accesskit_node().is_focused());
+                        assert!(harness.get_by_label("Uninstall developer build…").accesskit_node().is_focused());
                         assert!(!sent.borrow().iter().any(|cmd| matches!(cmd, Command::Uninstall { .. })));
                         assert!(harness.state().as_ref().unwrap().nightly.entries.iter().any(|entry| entry.installed.is_some()));
                     }
-                    harness.get_by_label("Uninstall pre-release…").focus();
+                    harness.get_by_label("Uninstall developer build…").focus();
                     harness.key_press(egui::Key::Enter);
                     harness.run_steps(3);
                     harness.key_press(egui::Key::Tab);
                     harness.run_steps(2);
-                    assert!(harness.get_by_label("Uninstall pre-release").accesskit_node().is_focused());
+                    assert!(harness.get_by_label("Uninstall developer build").accesskit_node().is_focused());
                     harness.key_press(egui::Key::Enter);
                     harness.run_steps(3);
                     assert_eq!(sent.borrow().iter().filter(|cmd| matches!(cmd, Command::Uninstall { app } if app == "photocraft")).count(), 1);
@@ -1636,7 +1636,7 @@ mod trust_gate_tests {
         state.logic(&settings);
         assert!(state.entries[0].latest.is_none(), "no discovery is shown");
         assert_eq!(state.entries[0].installable, Some(false));
-        assert!(!state.destination_visible(true), "no Pre-Release page without a copy to manage");
+        assert!(!state.destination_visible(true), "no Developer Builds page without a copy to manage");
         state.entries[0].installed = Some(installed_copy());
         assert!(state.destination_visible(true) && state.destination_visible(false), "a retained copy keeps its page");
         sent.borrow_mut().clear();
@@ -1734,7 +1734,7 @@ mod trust_gate_tests {
         harness.run_steps(3);
         let state = harness.state().as_ref().unwrap();
         assert!(!state.settings.nightly_enabled && !state.nightly.consent_open);
-        assert!(harness.query_by_label("Developer Builds").is_none(), "no Pre-Release destination");
+        assert!(harness.query_by_label("Developer Builds").is_none(), "no Developer Builds destination");
     }
 
     #[test]

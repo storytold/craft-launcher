@@ -475,9 +475,9 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
 	Try nightly builds	Try nightly builds
 	Turn off developer builds	Turn off developer builds
-	Uninstall pre-release	Uninstall pre-release
-	Uninstall pre-release?	Uninstall pre-release?
-	Uninstall pre-release…	Uninstall pre-release…
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
 
 # Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
 	Developer builds are off.	Developer builds are off.
