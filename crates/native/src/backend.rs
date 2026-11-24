@@ -2126,6 +2126,11 @@ fn latest_for(
             {
                 (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed))
             }
+            // Nothing saved from GitHub for this track yet (pre-releases just turned on): the
+            // feed's stable release stands until GitHub's turn.
+            (Some(FeedAnswer::Fresh(Some(stable))), None | Some(LatestRelease::None)) => {
+                (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed))
+            }
             _ => (cached, Origin::GitHub, None),
         }
     }
@@ -3111,14 +3116,14 @@ mod tests {
     #[test]
     fn with_pre_releases_github_keeps_to_its_pace_and_the_feed_fills_in_newer_stables() {
         /// GitHub, counting asks, whose last answer for the app is `saved`.
-        struct SavedRc(AtomicUsize, Mutex<&'static str>);
+        struct SavedRc(AtomicUsize, Mutex<Option<&'static str>>);
         impl ReleaseSource for SavedRc {
             fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
                 self.0.fetch_add(1, Ordering::SeqCst);
-                Answer { latest: self.cached(_query, true).unwrap(), source: Source::GitHubApi }
+                Answer { latest: self.cached(_query, true).unwrap_or(LatestRelease::None), source: Source::GitHubApi }
             }
             fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
-                let tag = *self.1.lock().unwrap();
+                let tag = (*self.1.lock().unwrap())?;
                 Some(LatestRelease::Found(Release { tag: tag.into(), version: version::parse(tag), ..Default::default() }))
             }
             fn rate_limited_until(&self) -> Option<i64> {
@@ -3129,7 +3134,7 @@ mod tests {
         let photo = CraftApp::by_id("photocraft").unwrap();
         let (feed, shared) = (feed(), shared());
         let pre = Fallback { trust_feed: false, ..LOADED };
-        let github = SavedRc(AtomicUsize::new(0), Mutex::new("v0.6.0-rc.1"));
+        let github = SavedRc(AtomicUsize::new(0), Mutex::new(Some("v0.6.0-rc.1")));
         let tag = |answer: Option<LatestRelease>| match answer {
             Some(LatestRelease::Found(r)) => r.tag,
             other => panic!("{other:?}"),
@@ -3141,12 +3146,16 @@ mod tests {
         let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + 30 * 60);
         assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
         // A saved RC newer than the feed's stable stays.
-        *github.1.lock().unwrap() = "v0.7.0-rc.1";
+        *github.1.lock().unwrap() = Some("v0.7.0-rc.1");
         let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + 40 * 60);
         assert_eq!((tag(latest), used), ("v0.7.0-rc.1".to_string(), None));
         assert_eq!(github.0.load(Ordering::SeqCst), 1, "one GitHub ask in the hour");
         latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
         assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+        // Nothing saved from GitHub for this track (pre-releases just turned on): the feed's stable.
+        *github.1.lock().unwrap() = None;
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY + 10 * 60);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
     }
 
     /// Refresh looks past a feed that is behind GitHub (#91).
