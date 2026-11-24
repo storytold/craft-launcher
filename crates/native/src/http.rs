@@ -40,6 +40,14 @@ pub struct Http {
     direct: ureq::Agent,
     direct_download: ureq::Agent,
     token: Option<String>,
+    nightly_mirror: Option<NightlyMirror>,
+}
+
+/// An indeterminate Nightly lookup; a server-supplied backoff applies to every resource kind.
+#[derive(Debug)]
+pub(crate) struct NightlyHttpError {
+    pub why: String,
+    pub retry_at: Option<i64>,
 }
 
 /// Why ArtCraft's release feed couldn't be read.
@@ -59,6 +67,60 @@ pub fn is_loopback(url: &str) -> bool {
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     let Some((host, port)) = authority.rsplit_once(':') else { return false };
     matches!(host, "127.0.0.1" | "localhost" | "[::1]") && !port.is_empty() && port.parse::<u16>().is_ok()
+}
+
+/// Only a debug build explicitly enabling `local-mirror` constructs this transport. Logical
+/// GitHub URLs stay intact for descriptor checks; physical requests go to this one-app fixture.
+#[derive(Clone)]
+struct NightlyMirror {
+    base: String,
+    agent: ureq::Agent,
+}
+
+impl NightlyMirror {
+    fn new(base: &str) -> Result<Self, String> {
+        let base = base.trim();
+        if !is_loopback(base) || base.contains(['?', '#', '%', '\\']) || base.split('/').any(|part| matches!(part, "." | "..")) {
+            return Err("The nightly test mirror must be an explicit loopback HTTP base.".into());
+        }
+        let agent = ureq::Agent::config_builder()
+            .proxy(None)
+            .timeout_connect(Some(Duration::from_secs(5)))
+            .timeout_recv_response(Some(Duration::from_secs(20)))
+            .timeout_recv_body(Some(ATTEMPT_BODY_TIME))
+            .max_redirects(0)
+            .max_redirects_will_error(false)
+            .http_status_as_error(false)
+            .user_agent(USER_AGENT)
+            .build()
+            .new_agent();
+        Ok(Self { base: format!("{}/", base.trim_end_matches('/')), agent })
+    }
+
+    fn request_url(&self, logical: &str) -> Result<String, String> {
+        if logical == "https://api.github.com/repos/storytold/photocraft/releases?per_page=100" {
+            return Ok(format!("{}nightly/photocraft/releases.json", self.base));
+        }
+        for page in 2..=5 {
+            if logical == format!("https://api.github.com/repos/storytold/photocraft/releases?per_page=100&page={page}") {
+                return Ok(format!("{}nightly/photocraft/releases-page-{page}.json", self.base));
+            }
+        }
+        let suffix = logical
+            .strip_prefix("https://github.com/storytold/photocraft/releases/download/")
+            .ok_or("The nightly test transport refuses requests outside the fixed PhotoCraft release.")?;
+        let parts: Vec<_> = suffix.split('/').collect();
+        if parts.len() != 2
+            || parts.iter().any(|part| {
+                part.is_empty()
+                    || matches!(*part, "." | "..")
+                    || !part.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+            })
+        {
+            return Err("The nightly test transport refuses an unsafe tag or asset path.".into());
+        }
+        Ok(format!("{}nightly/photocraft/assets/{suffix}", self.base))
+    }
 }
 
 impl Http {
@@ -129,7 +191,25 @@ impl Http {
         // An optional token raises GitHub's limit from 60 to 5000 requests an hour. Only ever sent
         // to api.github.com.
         let token = std::env::var("ARTCRAFT_LAUNCHER_GITHUB_TOKEN").ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-        Ok(Self { small, feed, no_redirect, download, direct, direct_download, token })
+        Ok(Self { small, feed, no_redirect, download, direct, direct_download, token, nightly_mirror: None })
+    }
+
+    /// Production/default builds ignore the staging environment, including malformed values.
+    /// This is used only by the immutable Nightly backend, never by stable requests.
+    pub(crate) fn with_nightly_test_transport(mut self) -> Result<Self, String> {
+        if cfg!(all(feature = "local-mirror", debug_assertions))
+            && let Ok(base) = std::env::var("ARTCRAFT_LAUNCHER_DOWNLOAD_BASE")
+        {
+            self.nightly_mirror = Some(NightlyMirror::new(&base)?);
+        }
+        Ok(self)
+    }
+
+    fn request<'a>(&'a self, logical: &'a str, default: &'a ureq::Agent) -> Result<(std::borrow::Cow<'a, str>, &'a ureq::Agent), String> {
+        match &self.nightly_mirror {
+            Some(mirror) => Ok((std::borrow::Cow::Owned(mirror.request_url(logical)?), &mirror.agent)),
+            None => Ok((std::borrow::Cow::Borrowed(logical), default)),
+        }
     }
 
     /// GET a GitHub API resource, revalidating with `etag` when given.
@@ -137,11 +217,13 @@ impl Http {
         // A request carrying the token must not follow a redirect: a cross-origin `Location`
         // could otherwise forward the bearer token. Requests without one keep the old behaviour.
         let agent = if self.token.is_some() && url.starts_with("https://api.github.com/") { &self.no_redirect } else { &self.small };
-        let mut req = agent.get(url).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
+        let (physical, agent) = self.request(url, agent)?;
+        let mut req = agent.get(physical.as_ref()).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
         if let Some(tag) = etag {
             req = req.header("If-None-Match", tag);
         }
         if let Some(token) = &self.token
+            && physical == url
             && url.starts_with("https://api.github.com/")
         {
             req = req.header("Authorization", &format!("Bearer {token}"));
@@ -187,7 +269,8 @@ impl Http {
     /// GET a small text file (following redirects).
     pub fn get_text(&self, url: &str) -> Result<Option<String>, String> {
         let agent = if is_loopback(url) { &self.direct } else { &self.small };
-        let mut resp = agent.get(url).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
+        let (physical, agent) = self.request(url, agent)?;
+        let mut resp = agent.get(physical.as_ref()).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => read_text_capped(&mut resp, MAX_SMALL).map(Some).map_err(|e| format!("unreadable answer ({e})")),
             404 => Ok(None),
@@ -200,7 +283,93 @@ impl Http {
     /// on the body when the length wasn't announced or was wrong.
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let agent = if is_loopback(url) { &self.direct } else { &self.small };
-        Self::get_bytes_with(agent, url, max)
+        let (physical, agent) = self.request(url, agent)?;
+        Self::get_bytes_with(agent, physical.as_ref(), max)
+    }
+
+    /// Nightly-only transport: one bounded decoded body and one elapsed-time budget, including
+    /// redirects and body reads. Callers own logical URLs and the overall discovery budget;
+    /// this method owns transport failure/backoff, not authoritative absence (except HTTP 404).
+    /// Stable's helpers deliberately keep their existing policies.
+    pub(crate) fn nightly_get(&self, url: &str, max: usize, timeout: Duration, _lookup_now: i64) -> Result<Option<Vec<u8>>, NightlyHttpError> {
+        // The lookup timestamp predates admission/queueing and network I/O. It cannot anchor
+        // a server's relative wait. Sample the wall clock only after receiving its response.
+        self.nightly_get_with_receipt_clock(url, max, timeout, crate::now)
+    }
+
+    fn nightly_get_with_receipt_clock(
+        &self,
+        url: &str,
+        max: usize,
+        timeout: Duration,
+        receipt_now: impl Fn() -> i64,
+    ) -> Result<Option<Vec<u8>>, NightlyHttpError> {
+        let started = std::time::Instant::now();
+        let failed = |why: String| NightlyHttpError { why, retry_at: None };
+        let api = url.starts_with("https://api.github.com/");
+        let default = if is_loopback(url) { &self.direct } else { &self.small };
+        let (physical, agent) = self.request(url, default).map_err(failed)?;
+        let mut current = physical.to_string();
+        for redirects in 0..=3 {
+            // ureq derives Basic auth from URL userinfo, so reject it on every hop, too.
+            nightly_safe_url(&current).map_err(failed)?;
+            let remaining =
+                timeout.checked_sub(started.elapsed()).filter(|d| !d.is_zero()).ok_or_else(|| failed("Nightly request timed out".into()))?;
+            let mut req = agent.get(&current).config().timeout_global(Some(remaining)).max_redirects(0).build();
+            if api {
+                req = req.header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
+                if physical == url
+                    && current == url
+                    && let Some(token) = &self.token
+                {
+                    req = req.header("Authorization", &format!("Bearer {token}"));
+                }
+            }
+            let mut resp = req.call().map_err(|e| failed(format!("{UNREACHABLE} Nightly resource ({e})")))?;
+            let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok());
+            match resp.status().as_u16() {
+                200 => {
+                    let announced = header("content-length").and_then(|v| v.parse::<u64>().ok());
+                    if announced.is_some_and(|n| n > max as u64) {
+                        return Err(failed(format!("Nightly resource sent more than {max} bytes")));
+                    }
+                    let bytes = read_bytes_capped(&mut resp, max).map_err(|e| failed(format!("unreadable Nightly answer ({e})")))?;
+                    if started.elapsed() >= timeout {
+                        return Err(failed("Nightly request timed out".into()));
+                    }
+                    return Ok(Some(bytes));
+                }
+                404 => return Ok(None),
+                status @ (403 | 429) => {
+                    let now = receipt_now();
+                    let retry = header("retry-after").and_then(|v| nightly_retry_after(v, now));
+                    let reset = header("x-ratelimit-reset").and_then(|v| v.trim().parse::<i64>().ok());
+                    let empty = header("x-ratelimit-remaining").map(str::trim) == Some("0");
+                    let retry_at = if empty {
+                        reset.max(retry).or(Some(now.saturating_add(60)))
+                    } else {
+                        retry.or_else(|| (status == 429).then(|| now.saturating_add(60)))
+                    };
+                    return Err(NightlyHttpError { why: format!("Nightly resource answered HTTP {status}"), retry_at });
+                }
+                status @ (301 | 302 | 303 | 307 | 308) => {
+                    // API redirects are refused even without a token. The fixed debug mirror
+                    // also cannot widen its allowlist through a physical Location response.
+                    if api || self.nightly_mirror.is_some() || redirects == 3 {
+                        return Err(failed(format!("Nightly resource refused redirect (HTTP {status})")));
+                    }
+                    let target = header("location").ok_or_else(|| failed("Nightly redirect has no Location".into()))?;
+                    let next = nightly_redirect(&current, target).map_err(failed)?;
+                    // Production assets stay on TLS; a test fixture may redirect only to loopback HTTP.
+                    if !next.starts_with("https://") && !(is_loopback(&current) && is_loopback(&next)) {
+                        return Err(failed("Nightly redirect must retain HTTPS".into()));
+                    }
+                    current = next;
+                }
+                status => return Err(failed(format!("Nightly resource answered HTTP {status}"))),
+            }
+        }
+        Err(failed("Nightly redirect budget exhausted".into()))
     }
 
     /// Catalog resources remain on the pinned HTTPS website; redirect responses are refused.
@@ -335,7 +504,8 @@ impl Http {
         let retry = |error: String, progressed: bool| AttemptError::Retry { error, progressed };
         // Binaries are already compressed; ask for the bytes exactly as published.
         let agent = if is_loopback(url) { &self.direct_download } else { &self.download };
-        let mut req = agent.get(url).header("Accept-Encoding", "identity");
+        let (physical, agent) = self.request(url, agent).map_err(AttemptError::Fatal)?;
+        let mut req = agent.get(physical.as_ref()).header("Accept-Encoding", "identity");
         if have > 0 {
             req = req.header("Range", &format!("bytes={have}-"));
         }
@@ -530,7 +700,7 @@ enum AttemptError {
 }
 
 /// `<dest>.<size>.part`: where an unfinished download of `dest` is kept.
-fn part_path(dest: &Path, size: u64) -> std::path::PathBuf {
+pub(crate) fn part_path(dest: &Path, size: u64) -> std::path::PathBuf {
     let tag = size.to_string();
     let mut name = dest.file_name().map(std::ffi::OsStr::to_os_string).unwrap_or_default();
     name.push(format!(".{tag}.part"));
@@ -579,6 +749,73 @@ fn refused_until(status: u16, remaining: Option<&str>, reset: Option<i64>, retry
         return Some(retry);
     }
     (status == 429).then_some(Some(now.saturating_add(60)))
+}
+
+/// Reject implicit credentials and non-HTTP transports before ureq sees a URL.
+fn nightly_safe_url(url: &str) -> Result<(), String> {
+    let uri = url.parse::<ureq::http::Uri>().map_err(|_| "Invalid Nightly resource URL")?;
+    if !matches!(uri.scheme_str(), Some("https")) && !is_loopback(url) {
+        return Err("Nightly resources must use HTTPS or an explicit loopback fixture".into());
+    }
+    if uri.authority().is_none_or(|a| a.as_str().contains('@')) {
+        return Err("Nightly resource URLs must not contain credentials".into());
+    }
+    Ok(())
+}
+
+/// GitHub uses absolute asset redirects. Also support ordinary relative fixture Locations;
+/// every resulting URL is validated before a request and never inherits an Authorization header.
+fn nightly_redirect(current: &str, target: &str) -> Result<String, String> {
+    if target.contains(['\\', '#']) || target.is_empty() {
+        return Err("Invalid Nightly redirect URL".into());
+    }
+    let uri = current.parse::<ureq::http::Uri>().map_err(|_| "Invalid Nightly resource URL")?;
+    let scheme = uri.scheme_str().ok_or("Invalid Nightly resource scheme")?;
+    let authority = uri.authority().ok_or("Invalid Nightly resource authority")?;
+    if target.starts_with("//") {
+        return Ok(format!("{scheme}:{target}"));
+    }
+    if target.contains("://") {
+        return Ok(target.to_string());
+    }
+    if target.starts_with('/') {
+        return Ok(format!("{scheme}://{authority}{target}"));
+    }
+    if target.starts_with('?') {
+        return Ok(format!("{scheme}://{authority}{}{target}", uri.path()));
+    }
+    let (parent, _) = uri.path().rsplit_once('/').unwrap_or(("", ""));
+    Ok(format!("{scheme}://{authority}{parent}/{target}"))
+}
+
+/// Retry-After accepts seconds or the current HTTP-date format. Calendar conversion stays in
+/// core's existing jiff-backed UTC parser; no new native dependency or calendar arithmetic.
+fn nightly_retry_after(value: &str, now: i64) -> Option<i64> {
+    let value = value.trim();
+    if value.bytes().all(|b| b.is_ascii_digit())
+        && let Ok(seconds) = value.parse::<i64>()
+    {
+        return Some(now.saturating_add(seconds));
+    }
+    let parts: Vec<_> = value.split_ascii_whitespace().collect();
+    let [weekday, day, month, year, clock, "GMT"] = parts.as_slice() else { return None };
+    if !matches!(*weekday, "Mon," | "Tue," | "Wed," | "Thu," | "Fri," | "Sat," | "Sun,")
+        || day.len() != 2
+        || year.len() != 4
+        || clock.len() != 8
+        || clock.as_bytes().get(2) != Some(&b':')
+        || clock.as_bytes().get(5) != Some(&b':')
+    {
+        return None;
+    }
+    let month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].iter().position(|m| m == month)? + 1;
+    let text = format!("{year}-{month:02}-{day}T{clock}Z");
+    let seconds = artcraft_launcher_core::time::parse_rfc3339(&text)?;
+    let (actual_year, actual_month, actual_day) = artcraft_launcher_core::time::civil_from_unix(seconds);
+    if actual_year != year.parse::<i64>().ok()? || actual_month as usize != month || actual_day != day.parse::<u32>().ok()? {
+        return None;
+    }
+    Some(seconds.max(now))
 }
 
 /// The host of `url` for error messages, or all of it when it has no scheme.
@@ -631,6 +868,371 @@ fn read_bytes_capped(resp: &mut ureq::http::Response<ureq::Body>, max: usize) ->
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn nightly_test_mirror_rejects_raw_and_encoded_dot_base_paths() {
+        assert!(NightlyMirror::new("http://127.0.0.1:1/fixtures").is_ok());
+        for base in ["http://127.0.0.1:1/a/../", "http://127.0.0.1:1/a/./", "http://127.0.0.1:1/%2e%2e/", "http://127.0.0.1:1/a%2fb/"] {
+            assert!(NightlyMirror::new(base).is_err(), "{base}");
+        }
+    }
+
+    #[test]
+    fn nightly_test_transport_cannot_change_the_logical_repository_or_escape_its_asset_path() {
+        let mirror = NightlyMirror::new("http://127.0.0.1:9021/fixture").unwrap();
+        assert_eq!(
+            mirror.request_url("https://api.github.com/repos/storytold/photocraft/releases?per_page=100").unwrap(),
+            "http://127.0.0.1:9021/fixture/nightly/photocraft/releases.json"
+        );
+        assert_eq!(
+            mirror.request_url("https://github.com/storytold/photocraft/releases/download/v1.0.0-nightly.1/NIGHTLY.json").unwrap(),
+            "http://127.0.0.1:9021/fixture/nightly/photocraft/assets/v1.0.0-nightly.1/NIGHTLY.json"
+        );
+        for logical in [
+            "https://api.github.com/repos/storytold/filmcraft/releases?per_page=100",
+            "https://github.com/storytold/photocraft/releases/download/../NIGHTLY.json",
+            "https://github.com/storytold/photocraft/releases/download/v1/%2e%2e",
+            "https://github.com/storytold/photocraft/releases/download/v1/a/b.zip",
+            "https://github.com/storytold/photocraft/releases/download/v1/a.zip?redirect=1",
+            "http://127.0.0.1:9021/direct.zip",
+        ] {
+            assert!(mirror.request_url(logical).is_err(), "{logical}");
+        }
+        for base in ["https://github.com/", "http://127.0.0.1.evil:9021/", "http://user@localhost:9021/", "http://localhost:9021/#fragment"] {
+            assert!(NightlyMirror::new(base).is_err(), "{base}");
+        }
+    }
+
+    #[test]
+    fn nightly_mirror_api_requests_never_forward_a_github_token_or_follow_redirects() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (send, receive) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut captured = String::new();
+            for line in std::io::BufRead::lines(std::io::BufReader::new(&stream)) {
+                let line = line.unwrap();
+                if line.is_empty() {
+                    break;
+                }
+                captured.push_str(&line);
+                captured.push('\n');
+            }
+            send.send(captured).unwrap();
+            stream
+                .write_all(b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:9/not-followed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .unwrap();
+        });
+        let mut http = Http::new().unwrap();
+        http.token = Some("test-only-not-a-real-token".into());
+        http.nightly_mirror = Some(NightlyMirror::new(&base).unwrap());
+        let error = http.get_api("https://api.github.com/repos/storytold/photocraft/releases?per_page=100", None).unwrap_err();
+        assert!(error.contains("HTTP 302"), "{error}");
+        let request = receive.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(request.starts_with("GET /nightly/photocraft/releases.json "));
+        assert!(!request.to_ascii_lowercase().contains("authorization:"));
+        assert!(!request.contains("test-only-not-a-real-token"));
+    }
+
+    // These synthetic HTTP responses and payloads are authored here, not copied from a feed.
+    // Each fixture accepts exactly its scripted requests; no external host is contacted.
+    fn nightly_fixture(responses: Vec<(Duration, Vec<u8>)>) -> (String, std::sync::mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
+        nightly_fixture_before_response(responses, || {})
+    }
+
+    fn nightly_fixture_before_response(
+        responses: Vec<(Duration, Vec<u8>)>,
+        mut before_response: impl FnMut() + Send + 'static,
+    ) -> (String, std::sync::mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (send, receive) = std::sync::mpsc::channel();
+        listener.set_nonblocking(true).unwrap();
+        let worker = std::thread::spawn(move || {
+            for (delay, response) in responses {
+                let until = std::time::Instant::now() + Duration::from_secs(3);
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && std::time::Instant::now() < until => {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(e) => panic!("Nightly fixture did not receive its scripted request: {e}"),
+                    }
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+                let mut captured = String::new();
+                for line in std::io::BufRead::lines(std::io::BufReader::new(&stream)) {
+                    let line = line.unwrap();
+                    if line.is_empty() {
+                        break;
+                    }
+                    captured.push_str(&line);
+                    captured.push('\n');
+                }
+                send.send(captured).unwrap();
+                std::thread::sleep(delay);
+                before_response();
+                let _ = stream.write_all(&response);
+            }
+        });
+        (base, receive, worker)
+    }
+
+    fn nightly_response(status: &str, headers: &str, body: &[u8]) -> Vec<u8> {
+        let mut response = format!("HTTP/1.1 {status}\r\n{headers}Connection: close\r\n\r\n").into_bytes();
+        response.extend_from_slice(body);
+        response
+    }
+
+    #[test]
+    fn nightly_fixture_accepts_delayed_request_bytes_after_connect() {
+        let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, nightly_response("200 OK", "Content-Length: 2\r\n", b"ok"))]);
+        let mut client = std::net::TcpStream::connect(base.strip_prefix("http://").unwrap()).unwrap();
+        client.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        // Let the fixture accept before the first byte arrives. Windows accepts inherit
+        // the listener's nonblocking mode unless the fixture explicitly clears it.
+        std::thread::sleep(Duration::from_secs(1));
+        client.write_all(b"GET /delayed HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").unwrap();
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).unwrap();
+        assert!(response.ends_with(b"ok"));
+        assert!(seen.recv_timeout(Duration::from_secs(2)).unwrap().starts_with("GET /delayed HTTP/1.1"));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn nightly_get_distinguishes_missing_from_indeterminate_and_preserves_backoff() {
+        let now = 1_800_000_000;
+        for (status, headers, expected) in [
+            ("403 Forbidden", "Retry-After: 90\r\nX-RateLimit-Remaining: 7\r\nX-RateLimit-Reset: 1800000900\r\n", Some(now + 90)),
+            ("403 Forbidden", "Retry-After: 90\r\nX-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1800000900\r\n", Some(now + 900)),
+            ("403 Forbidden", "X-RateLimit-Remaining: 0\r\n", Some(now + 60)),
+            ("429 Too Many Requests", "", Some(now + 60)),
+            ("403 Forbidden", "Retry-After: invalid\r\n", None),
+            ("500 Server Error", "Retry-After: 90\r\n", None),
+        ] {
+            let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, nightly_response(status, headers, b""))]);
+            let error = Http::new().unwrap().nightly_get_with_receipt_clock(&base, 8, Duration::from_secs(2), || now).unwrap_err();
+            assert!(error.why.contains(status.split_whitespace().next().unwrap()), "{}", error.why);
+            assert_eq!(error.retry_at, expected);
+            assert!(seen.recv_timeout(Duration::from_secs(2)).unwrap().starts_with("GET / "));
+            worker.join().unwrap();
+        }
+        let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, nightly_response("404 Not Found", "", b""))]);
+        assert!(Http::new().unwrap().nightly_get(&base, 8, Duration::from_secs(2), now).unwrap().is_none());
+        seen.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn nightly_backoff_uses_final_response_receipt_after_queue_and_redirect_delays() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicI64, Ordering};
+
+        let lookup_at = artcraft_launcher_core::time::parse_rfc3339("2026-11-21T00:00:00Z").unwrap();
+        let queued_seconds = 90;
+        let hop_seconds = 37;
+        let received_at = lookup_at + queued_seconds + 2 * hop_seconds;
+        for (status, headers, expected) in [
+            ("403 Forbidden", "Retry-After: 120\r\n", received_at + 120),
+            ("429 Too Many Requests", "Retry-After: 120\r\n", received_at + 120),
+            ("429 Too Many Requests", "", received_at + 60),
+            ("429 Too Many Requests", "Retry-After: invalid\r\n", received_at + 60),
+            ("403 Forbidden", "X-RateLimit-Remaining: 0\r\nRetry-After: invalid\r\n", received_at + 60),
+            ("429 Too Many Requests", "Retry-After: Sat, 21 Nov 2026 00:10:00 GMT\r\n", lookup_at + 600),
+            ("403 Forbidden", "X-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1\r\n", 1),
+            ("403 Forbidden", "X-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1\r\nRetry-After: 120\r\n", received_at + 120),
+        ] {
+            // The lookup baseline is already stale before transport starts. Advance the injected
+            // wall clock only after each real request arrives and before releasing its response.
+            // Exact assertions use that clock, never the scheduler's observed sleep duration.
+            let clock = Arc::new(AtomicI64::new(lookup_at + queued_seconds));
+            let server_clock = clock.clone();
+            let (base, seen, worker) = nightly_fixture_before_response(
+                vec![
+                    (Duration::from_millis(10), nightly_response("302 Found", "Location: /limited\r\nContent-Length: 0\r\n", b"")),
+                    (Duration::from_millis(10), nightly_response(status, headers, b"")),
+                ],
+                move || {
+                    server_clock.fetch_add(hop_seconds, Ordering::SeqCst);
+                },
+            );
+            let samples = std::cell::Cell::new(0);
+            let error = Http::new()
+                .unwrap()
+                .nightly_get_with_receipt_clock(&base, 8, Duration::from_secs(2), || {
+                    samples.set(samples.get() + 1);
+                    clock.load(Ordering::SeqCst)
+                })
+                .unwrap_err();
+            assert_eq!(error.retry_at, Some(expected), "{status}: {headers}");
+            assert_eq!(samples.get(), 1, "sample only the throttling response, not admission or redirects");
+            assert!(seen.recv_timeout(Duration::from_secs(2)).unwrap().starts_with("GET / "));
+            assert!(seen.recv_timeout(Duration::from_secs(2)).unwrap().starts_with("GET /limited "));
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn nightly_backoff_default_clock_ignores_stale_lookup_timestamp() {
+        let (base, seen, worker) = nightly_fixture(vec![(Duration::from_millis(10), nightly_response("429 Too Many Requests", "", b""))]);
+        let before = crate::now();
+        let error = Http::new().unwrap().nightly_get(&base, 8, Duration::from_secs(2), 0).unwrap_err();
+        let after = crate::now();
+        let retry_at = error.retry_at.unwrap();
+        assert!((before.saturating_add(60)..=after.saturating_add(60)).contains(&retry_at));
+        seen.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn nightly_get_caps_announced_unannounced_and_decoded_bodies() {
+        let mut compressed = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        compressed.write_all(&[b'A'; 4096]).unwrap();
+        let gzip = compressed.finish().unwrap();
+        for response in [
+            nightly_response("200 OK", "Content-Length: 101\r\n", &[b'A'; 101]),
+            nightly_response("200 OK", "", &[b'A'; 101]),
+            nightly_response("200 OK", "Content-Encoding: gzip\r\n", &gzip),
+        ] {
+            let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, response)]);
+            let error = Http::new().unwrap().nightly_get(&base, 100, Duration::from_secs(2), 0).unwrap_err();
+            assert!(error.why.contains("bytes"), "{}", error.why);
+            assert!(error.retry_at.is_none());
+            seen.recv_timeout(Duration::from_secs(2)).unwrap();
+            worker.join().unwrap();
+        }
+        for body in [b"".as_slice(), b"abcd".as_slice()] {
+            let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, nightly_response("200 OK", "", body))]);
+            assert_eq!(Http::new().unwrap().nightly_get(&base, body.len(), Duration::from_secs(2), 0).unwrap(), Some(body.to_vec()));
+            seen.recv_timeout(Duration::from_secs(2)).unwrap();
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn nightly_get_stops_redirects_after_three_and_never_attaches_asset_credentials() {
+        let redirect = nightly_response("302 Found", "Location: /again\r\nContent-Length: 0\r\n", b"");
+        let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, redirect); 4]);
+        let mut http = Http::new().unwrap();
+        http.token = Some("test-only-not-a-real-token".into());
+        let error = http.nightly_get(&base, 8, Duration::from_secs(2), 0).unwrap_err();
+        assert!(error.why.contains("refused redirect"), "{}", error.why);
+        for _ in 0..4 {
+            let request = seen.recv_timeout(Duration::from_secs(2)).unwrap().to_ascii_lowercase();
+            assert!(!request.contains("authorization:"));
+            assert!(!request.contains("test-only-not-a-real-token"));
+        }
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn nightly_mirror_api_redirects_are_refused_with_or_without_a_token() {
+        for token in [None, Some("test-only-not-a-real-token".to_string())] {
+            let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, nightly_response("302 Found", "Location: /unexpected\r\n", b""))]);
+            let mut http = Http::new().unwrap();
+            http.token = token;
+            http.nightly_mirror = Some(NightlyMirror::new(&base).unwrap());
+            let error = http
+                .nightly_get("https://api.github.com/repos/storytold/photocraft/releases?per_page=100", 8, Duration::from_secs(2), 0)
+                .unwrap_err();
+            assert!(error.why.contains("refused redirect"), "{}", error.why);
+            let request = seen.recv_timeout(Duration::from_secs(2)).unwrap();
+            assert!(request.starts_with("GET /nightly/photocraft/releases.json "));
+            assert!(!request.to_ascii_lowercase().contains("authorization:"));
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn nightly_mirror_pagination_stays_in_the_fixed_fixture_allowlist() {
+        let mirror = NightlyMirror::new("http://127.0.0.1:9021/fixture").unwrap();
+        for page in 2..=5 {
+            assert_eq!(
+                mirror.request_url(&format!("https://api.github.com/repos/storytold/photocraft/releases?per_page=100&page={page}")).unwrap(),
+                format!("http://127.0.0.1:9021/fixture/nightly/photocraft/releases-page-{page}.json")
+            );
+        }
+        for query in ["per_page=100&page=1", "per_page=100&page=6", "per_page=100&page=02", "page=2&per_page=100", "per_page=100&page=2&extra=1"] {
+            assert!(mirror.request_url(&format!("https://api.github.com/repos/storytold/photocraft/releases?{query}")).is_err());
+        }
+    }
+
+    #[test]
+    fn nightly_get_redirects_can_succeed_but_userinfo_is_never_sent() {
+        let (base, seen, worker) = nightly_fixture(vec![
+            (Duration::ZERO, nightly_response("302 Found", "Location: /body\r\nContent-Length: 0\r\n", b"")),
+            (Duration::ZERO, nightly_response("200 OK", "Content-Length: 2\r\n", b"ok")),
+        ]);
+        assert_eq!(Http::new().unwrap().nightly_get(&base, 8, Duration::from_secs(2), 0).unwrap(), Some(b"ok".to_vec()));
+        seen.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(seen.recv_timeout(Duration::from_secs(2)).unwrap().starts_with("GET /body "));
+        worker.join().unwrap();
+        let (base, seen, worker) =
+            nightly_fixture(vec![(Duration::ZERO, nightly_response("302 Found", "Location: http://user:secret@127.0.0.1:9/refused\r\n", b""))]);
+        let error = Http::new().unwrap().nightly_get(&base, 8, Duration::from_secs(2), 0).unwrap_err();
+        assert!(error.retry_at.is_none());
+        seen.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
+        assert!(nightly_safe_url("https://user:secret@github.com/file").is_err());
+    }
+
+    #[test]
+    fn nightly_request_timeout_includes_redirect_elapsed_time() {
+        // Each hop alone fits the budget and the two together exceed it. The fixture's sleeps and
+        // accept polling run late on a loaded Mac (a 5 ms poll took up to 25 ms, an 80 ms sleep up
+        // to 153 ms), so the first hop gets 400 ms of room. Sleeps never return early, so the two
+        // hops always exceed the budget by at least 200 ms.
+        let delay = Duration::from_millis(600);
+        let (base, seen, worker) = nightly_fixture(vec![
+            (delay, nightly_response("302 Found", "Location: /slow\r\nContent-Length: 0\r\n", b"")),
+            (delay, nightly_response("200 OK", "Content-Length: 2\r\n", b"ok")),
+        ]);
+        let error = Http::new().unwrap().nightly_get(&base, 8, Duration::from_millis(1000), 0).unwrap_err();
+        assert!(error.retry_at.is_none());
+        seen.recv_timeout(Duration::from_secs(2)).unwrap();
+        seen.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
+        // A spent budget cannot send even the first request.
+        assert!(Http::new().unwrap().nightly_get("http://127.0.0.1:9/unused", 8, Duration::ZERO, 0).unwrap_err().why.contains("timed out"));
+    }
+
+    #[test]
+    fn nightly_request_timeout_also_bounds_a_stalled_response_body() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let worker = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            for line in std::io::BufRead::lines(std::io::BufReader::new(&stream)) {
+                if line.unwrap().is_empty() {
+                    break;
+                }
+            }
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\no").unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+            let _ = stream.write_all(b"k");
+        });
+        let error = Http::new().unwrap().nightly_get(&base, 8, Duration::from_millis(80), 0).unwrap_err();
+        assert!(error.retry_at.is_none());
+        assert!(error.why.contains("unreadable") || error.why.contains("couldn't reach"), "{}", error.why);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn nightly_retry_after_handles_seconds_dates_and_invalid_calendar_values() {
+        let now = artcraft_launcher_core::time::parse_rfc3339("2026-11-21T00:00:00Z").unwrap();
+        assert_eq!(nightly_retry_after("120", now), Some(now + 120));
+        assert_eq!(nightly_retry_after("Sat, 21 Nov 2026 00:02:00 GMT", now), Some(now + 120));
+        assert_eq!(nightly_retry_after("Sat, 21 Nov 2026 00:00:00 GMT", now + 1), Some(now + 1));
+        for value in ["-1", "tomorrow", "Sat, 31 Feb 2026 00:00:00 GMT", "Sat, 21 Nov 2026 25:00:00 GMT"] {
+            assert!(nightly_retry_after(value, now).is_none(), "{value}");
+        }
+    }
 
     const DAYS_30: Duration = Duration::from_secs(30 * 86_400);
     const DAYS_7: Duration = Duration::from_secs(7 * 86_400);

@@ -1,0 +1,870 @@
+{
+  "selection": "Deep muted background only; foreground unchanged; no crescent/N/badge; explicit Pre-Release text remains.",
+  "official_catalog_sha256": "ac4e8466d426649e07ad7589746414a76c4dd1b98b5b050a913362ef0df099f9",
+  "official_app_ids": [
+    "photocraft",
+    "vectorcraft",
+    "filmcraft",
+    "lightcraft",
+    "pdfcraft",
+    "effectcraft",
+    "anicraft",
+    "designcraft",
+    "figcraft",
+    "soundcraft",
+    "wordcraft",
+    "deckcraft",
+    "cadcraft",
+    "gridcraft",
+    "texturecraft",
+    "materialcraft",
+    "craft-anything",
+    "artcraft-launcher"
+  ],
+  "runtime_tint": false,
+  "assets": {
+    "photocraft": {
+      "output": "photocraft.png",
+      "output_sha256": "7a79aff027f9f95cef0edc0a84ce3791af302b6351ebca4d0e736477e3b3f031",
+      "repository": "storytold/photocraft",
+      "source_head": "a17acfa7a75e5481823199b8553d3dbd666faec9",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/photocraft/assets/app-icon/photocraft.svg",
+          "snapshot": "kits-work/inputs/photocraft/photocraft.svg",
+          "sha256": "a48333b7b794b70158da93a262d84fb82f5fbbf7442db60f235a0a69136a1ce2"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/photocraft/assets/app-icon/photocraft-1024.png",
+          "snapshot": "kits-work/inputs/photocraft/photocraft-1024.png",
+          "sha256": "00a39c5ccbcb2b5f144573b1cedb6c387c4416ad06fd1cf2865b0737458ee704"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/photocraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/photocraft/LICENSE.txt",
+          "sha256": "a5cf25f3f3c2fe2c6d294db04f1bfea7259ac21e8edde5c7fabaa4c379e94795"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/photocraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/photocraft/README.md",
+          "sha256": "b6a9355ee55ce7b14b1d29ec7ad995b0463594d9ba6493a8635d1694d0ec5ed0"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/photocraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/photocraft/ATTRIBUTION.md",
+          "sha256": "267a33c7336944ddd781f1fdb974c4cd21ac01f7d2a13c66100d27e812344af8"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/photocraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/photocraft/icons.sh",
+          "sha256": "fdd86fb17252ae9bbf6e84f2d95a583e93b598595536b9a67986c55b53e4ed34"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/photocraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/photocraft/LICENSE-brand.txt",
+          "sha256": "f0a582a0645a2ec9c979ac2619e9503315483a33f1bb39b56fe5b55632b0ca79"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration11-deep-icons/inputs/photocraft-own256.png",
+          "snapshot": "kits-work/inputs/photocraft/photocraft-own256.png",
+          "sha256": "efd02e0b8ea76c59fbc3a9692ddc21faae6064cc9f9492898df1facec3b5b57d"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration11-deep-icons/inputs/photocraft-mac1024.png",
+          "snapshot": "kits-work/inputs/photocraft/photocraft-mac1024.png",
+          "sha256": "00a39c5ccbcb2b5f144573b1cedb6c387c4416ad06fd1cf2865b0737458ee704"
+        }
+      ],
+      "background_original": "#2f7bf5",
+      "background_deep": "#22395d",
+      "transform": "Exact reuse of independently verified R11 Photo kit. Fitted raster background contribution only; neutral foreground and alpha preserved."
+    },
+    "vectorcraft": {
+      "output": "vectorcraft.png",
+      "output_sha256": "68d27c1793ab4c33bf8908856f7eaa95b5eaa115b38c45c0b7fb95959ea5f04a",
+      "repository": "storytold/vectorcraft",
+      "source_head": "c0893584d4e78ea16dcac2816bacd7b9326fb50c",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/vectorcraft/assets/app-icon/vectorcraft.svg",
+          "snapshot": "kits-work/inputs/vectorcraft/vectorcraft.svg",
+          "sha256": "7c1684f49e96ff34970f1d11a8e61bed142e1ef2afebd34fa3c99239c006d952"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/vectorcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/vectorcraft/LICENSE.txt",
+          "sha256": "7323e2ad58efcf69f0871f419531f707ae6bee61d00c7d84de6f8300d7ad19f7"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/vectorcraft/assets/app-icon/vectorcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/vectorcraft/vectorcraft-macos-512.png",
+          "sha256": "93d6e7857f08b40863762cef9aa28817b75ba124e2eecaca21f0eedc06a29387"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/vectorcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/vectorcraft/README.md",
+          "sha256": "f5e4e6fe5d955da4473cc7a934ec03facd87abb132eacabef94ecd9a49aef96e"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/vectorcraft/assets/app-icon/vectorcraft-1024.png",
+          "snapshot": "kits-work/inputs/vectorcraft/vectorcraft-1024.png",
+          "sha256": "cdf82551078c1c318edf84ae835417f5fe78f4ad785ad01d96d2ff1e66e34a7a"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/vectorcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/vectorcraft/ATTRIBUTION.md",
+          "sha256": "77291a19a68d955d26844343a67298cf2a7d3cbc8631f50b50b1ef3c16386c1d"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/vectorcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/vectorcraft/icons.sh",
+          "sha256": "6d6aaf1ade15ae7915afe4a5618fe839b12612611d21b464c854e8c0fbc07497"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/vectorcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/vectorcraft/LICENSE-brand.txt",
+          "sha256": "197b20a10ffd9474e63c08893440abb7724a410c975829d809390f2ce21fac1e"
+        }
+      ],
+      "background_original": "#e8573f",
+      "background_deep": "#582d26",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "filmcraft": {
+      "output": "filmcraft.png",
+      "output_sha256": "c7ce8e39916e52c8b9a69176d1ee36ce961616392eafd97e2bfd8294bd95f852",
+      "repository": "storytold/filmcraft",
+      "source_head": "72831a4dc2ad79f43235bf0c175c9a58afdd67f0",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/filmcraft/assets/app-icon/filmcraft.svg",
+          "snapshot": "kits-work/inputs/filmcraft/filmcraft.svg",
+          "sha256": "4ef415639646e17347f99fb46220a603d0247a98c5545bbc82d2f25325fe6b9e"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/filmcraft/assets/app-icon/filmcraft-1024.png",
+          "snapshot": "kits-work/inputs/filmcraft/filmcraft-1024.png",
+          "sha256": "c3c301e00618c2ae391815cfaf330488d45bcfc79584b9680c434e4cfb99e13f"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/filmcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/filmcraft/LICENSE.txt",
+          "sha256": "79d32f0c9576355f9eaedf8ba8727a149cf3e42ed753ff5d25ac882bf072e27a"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/filmcraft/assets/app-icon/filmcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/filmcraft/filmcraft-macos-512.png",
+          "sha256": "7c406fc67a309ad230b748b4e418ec973070572ec054acfd13d72b4a7e09fdb6"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/filmcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/filmcraft/README.md",
+          "sha256": "3d522d1f0f154a7419f5b81cbc41b1cfc76a14fda10a7f41cc2b31dd9bce3f81"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/filmcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/filmcraft/ATTRIBUTION.md",
+          "sha256": "76ceefe25b4150addda6e749a7544238a9c0a231ac18858602c67f51b5abe1dd"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/filmcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/filmcraft/icons.sh",
+          "sha256": "b6ecb7f9285c31131f201b235bd90db93aed9e715a8037a8b1c4605e0133f69e"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/filmcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/filmcraft/LICENSE-brand.txt",
+          "sha256": "d30f3aee39b72be3d1c1bdf994b75470ff53a354ca8ba6039c3a70a647b732fe"
+        }
+      ],
+      "background_original": "#8b5cf6",
+      "background_deep": "#3e305d",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "lightcraft": {
+      "output": "lightcraft.png",
+      "output_sha256": "4cbf4c1353702f5168a121040a448e8ff05bf2896c5ba4819ea64ddc805e0d82",
+      "repository": "storytold/lightcraft",
+      "source_head": "7e2b8a6b270b8cd7da71b1d2251afba07b64ddce",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/lightcraft/assets/app-icon/lightcraft.svg",
+          "snapshot": "kits-work/inputs/lightcraft/lightcraft.svg",
+          "sha256": "127858e594207046c7be9a65d1c420bbcd1522e8c068fecdc31008f923dc9c6d"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/lightcraft/assets/app-icon/lightcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/lightcraft/lightcraft-macos-512.png",
+          "sha256": "650dfc3a821e70e47d806e9eb4a4065de46bb518d78052708b4ed9722307151e"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/lightcraft/assets/app-icon/lightcraft-1024.png",
+          "snapshot": "kits-work/inputs/lightcraft/lightcraft-1024.png",
+          "sha256": "75c6c4019851f04be8328da9f24557954fc03a302e7da203c229a4c39dbff0ce"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/lightcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/lightcraft/LICENSE.txt",
+          "sha256": "6426c23f529938deddfbaed543e7135e08b514fa6a75b330734331d877c78faf"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/lightcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/lightcraft/README.md",
+          "sha256": "a64e9aeacd2b180f194b9a64756cf55d9ceab76426a12ae0d3a2f61ae2fecc97"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/lightcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/lightcraft/icons.sh",
+          "sha256": "7fd0e4af4ff036395427a74e36da3e82aa0b77e1b5aa5a9b655a65832893042f"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/lightcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/lightcraft/LICENSE-brand.txt",
+          "sha256": "d516dfeae4a19d636c0d16f389d0a8593efd9dd259b8832bb06722a3dc09e0ce"
+        }
+      ],
+      "background_original": "#f2a516",
+      "background_deep": "#5c451b",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "pdfcraft": {
+      "output": "pdfcraft.png",
+      "output_sha256": "17917f9944c59d1e99a1f3adc70c631ea60b518342630431d37f2e621ab040b7",
+      "repository": "storytold/pdfcraft",
+      "source_head": "43f24aa1692c7ee39ae8117482896f5264ad994a",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/pdfcraft/assets/app-icon/pdfcraft.svg",
+          "snapshot": "kits-work/inputs/pdfcraft/pdfcraft.svg",
+          "sha256": "27745c021830f82c033b0f15f2d8d9f8e099138743297887ff7e2c9e7ed069da"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/pdfcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/pdfcraft/LICENSE.txt",
+          "sha256": "b768acafe6cbad8247eedf86b5b5381feefcd4ee0f8c7808b86811bc687cf37b"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/pdfcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/pdfcraft/README.md",
+          "sha256": "b8876253a447e09f192f3739e30cf1ae86d8353b8c0dbff83167cf411850a1b2"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/pdfcraft/assets/app-icon/pdfcraft-1024.png",
+          "snapshot": "kits-work/inputs/pdfcraft/pdfcraft-1024.png",
+          "sha256": "68ac6730b8990d07503351d32eacea81e9ec171a7a6f09daf52d6555d8245c8a"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/pdfcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/pdfcraft/ATTRIBUTION.md",
+          "sha256": "2c45b11b6e0e239180b1e16e9a33645d627d2c877400e70b20e74b6f355a2a0d"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/pdfcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/pdfcraft/icons.sh",
+          "sha256": "17d109cc9616f17e70911a66fe6a1cf90cada2139a991b542e2a95b48aa30d6c"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/pdfcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/pdfcraft/LICENSE-brand.txt",
+          "sha256": "0f33f48e7a96cd359d4e4e5b11424b13cebeb59cc70c77928186695e4173585c"
+        }
+      ],
+      "background_original": "#b70228",
+      "background_deep": "#46101b",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "effectcraft": {
+      "output": "effectcraft.png",
+      "output_sha256": "5757169f851ac1c5ac18f33c1307284a3bb4ad122b204569f92c2ac1232bac2d",
+      "repository": "storytold/effectcraft",
+      "source_head": "a41ff5015c6687db15a6f074a47b870b8f09fece",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/effectcraft/assets/app-icon/effectcraft.svg",
+          "snapshot": "kits-work/inputs/effectcraft/effectcraft.svg",
+          "sha256": "cc723cd8894f2346ece281aab192de33cb92a442dd6466b957fc0dbc539df3f0"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/effectcraft/assets/app-icon/effectcraft-1024.png",
+          "snapshot": "kits-work/inputs/effectcraft/effectcraft-1024.png",
+          "sha256": "2f1eec28b8b2ae8397a5c3517a74d1771fdd521fdc9d673918be35834fd935ae"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/effectcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/effectcraft/LICENSE.txt",
+          "sha256": "6f7a100b47da67df0c9e8e06397a7222766932c36cdebeff2e89cb2cd2917b85"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/effectcraft/assets/app-icon/effectcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/effectcraft/effectcraft-macos-512.png",
+          "sha256": "e121c1c2d9a811a95f20d1f6a296c9df77c67fd8f3ff9263415bb890b0795fcd"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/effectcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/effectcraft/README.md",
+          "sha256": "76fc7a37190d4fe425692c9b0b23fd7d2cca965598eab0cbf36a72b78b2da984"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/effectcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/effectcraft/ATTRIBUTION.md",
+          "sha256": "d25d9a2fc5a9f35ccf6819541e04110f6329e5640806e08a25ce2ffbb14d6cae"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/effectcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/effectcraft/icons.sh",
+          "sha256": "bc180ea7913f8a1fb1ee459f810f856a7ea42deb176c26797f9f9b2f05f069b8"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/effectcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/effectcraft/LICENSE-brand.txt",
+          "sha256": "7ee27fdb49f96a969ab80d5f800d8422aa17cb39d1cca286d18aa6227d8c7628"
+        }
+      ],
+      "background_original": "#e0368f",
+      "background_deep": "#55233d",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "anicraft": {
+      "output": "anicraft.png",
+      "output_sha256": "e46eb655eb78eac679d0fc022a71da8d9c75929fba24bfef15ed3c8df77aac5c",
+      "repository": "storytold/anicraft",
+      "source_head": "1762633919c1350795ed3d0fe2b89edbf2047693",
+      "sources": [
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/assets/app-icon/anicraft.svg",
+          "snapshot": "kits-work/inputs/anicraft/anicraft.svg",
+          "sha256": "8cc494d58e5927c86001b70d914e3d77cc8bbb96df4fb9c6006bffb7b6aacd21"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/anicraft/LICENSE.txt",
+          "sha256": "a40d58c7b5bcc7cccba74ec4e1f9eda4ea31d9be4f39e973e8ecb8e10bbbb6b7"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/anicraft/README.md",
+          "sha256": "15f12f27bde0dfbd6d6e28a6ad9147f59f518d48bd0d7be3d2edccaa34b1a16f"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/assets/app-icon/anicraft-macos-512.png",
+          "snapshot": "kits-work/inputs/anicraft/anicraft-macos-512.png",
+          "sha256": "efca6e8edd4a6f03b96295849cce29f76b2138ebf36cb41ff4e8e9d9e346a675"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/assets/app-icon/anicraft-padded-1024.png",
+          "snapshot": "kits-work/inputs/anicraft/anicraft-padded-1024.png",
+          "sha256": "0fecc6e74052136de33d88964e26cae3b36adfdc0df2648f0572e02919c28153"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/assets/app-icon/anicraft-1024.png",
+          "snapshot": "kits-work/inputs/anicraft/anicraft-1024.png",
+          "sha256": "ff38327d88607517a5c8d83d52762bad3d6d096096b6e2239e729d8855b3b442"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/anicraft/ATTRIBUTION.md",
+          "sha256": "d96b159b4659b06982548b0d36985b600bfa74b13cc3b42e0dbcf50ac4ccb36a"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/anicraft/LICENSE-brand.txt",
+          "sha256": "39c9562ae4f24b30b1632d4c2b922f7998539d410adf98560f6a17b1fb5f934c"
+        },
+        {
+          "path": "/home/codex/work/ssd2/task-evidence/launcher-nightly-ux-render-20261120/iteration12-suite-icons/kits-work/anicraft-source/scripts/icons.sh",
+          "snapshot": "kits-work/inputs/anicraft/scripts-icons.sh",
+          "sha256": "703e841d249740ea747f5de6a810d73795bdfee6418a44c00345340ada3851dd"
+        }
+      ],
+      "background_original": "#dac604",
+      "background_deep": "#534d13",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "designcraft": {
+      "output": "designcraft.png",
+      "output_sha256": "1097f4b6db9e405d4e53e68f2c14c08bf3a25e12b726608450320c6f8027be26",
+      "repository": "storytold/designcraft",
+      "source_head": "b0c3f85cc89c9cbfb10dbac9c2c29bb179ec31d5",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/designcraft/assets/app-icon/designcraft.svg",
+          "snapshot": "kits-work/inputs/designcraft/designcraft.svg",
+          "sha256": "c254b7601c730cc0b0a02fb44bbad681e49dc89f2f84aced0c7ea9c4d4e61cbc"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/designcraft/assets/app-icon/designcraft-1024.png",
+          "snapshot": "kits-work/inputs/designcraft/designcraft-1024.png",
+          "sha256": "5cf554e4ac5b9b02a5e3ef7f9491c421ac7cbdf902eb93834586eaacd3d0feca"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/designcraft/assets/app-icon/designcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/designcraft/designcraft-macos-512.png",
+          "sha256": "62f7ca3170d26378a3a88f56853f16cb8f06ccd3d0aa4d5892537bac64e3dddd"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/designcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/designcraft/LICENSE.txt",
+          "sha256": "eb3f3cfc6437fd370e31ca8449c7312314c191d15347bd70934d9ce2df5331bd"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/designcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/designcraft/README.md",
+          "sha256": "064273e017f7cbe4aafd61e470772fbe9649cb81f01efa75fa011ee73c0bd18a"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/designcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/designcraft/icons.sh",
+          "sha256": "2518b861afe9dffe6439c73f39038b4a9e09569ed8aeee6531e73e3f9ef92de5"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/designcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/designcraft/LICENSE-brand.txt",
+          "sha256": "68fb0e786130f8ead0350a352f66d7027d0f8a8ebebcf30d51de9146405f670e"
+        }
+      ],
+      "background_original": "#7bb51c",
+      "background_deep": "#344517",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "figcraft": {
+      "output": "figcraft.png",
+      "output_sha256": "608a1f6a1ccc692462ed7c7bbe83a2a1f046687f3c81e8ee4a1b964fa27481dd",
+      "repository": "storytold/figcraft",
+      "source_head": "8a7ebc2484a6d64d80a13c19c18ffb814325e347",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/figcraft/assets/app-icon/figcraft.svg",
+          "snapshot": "kits-work/inputs/figcraft/figcraft.svg",
+          "sha256": "610c3af194d6a08fddaa3f156937dfb50ab06c9feb65862cb7ebb114465a3243"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/figcraft/assets/app-icon/figcraft-1024.png",
+          "snapshot": "kits-work/inputs/figcraft/figcraft-1024.png",
+          "sha256": "e10adf0347b54ff05fce3baa707b7ca36e6d6cd47a35aa46a1f1c9c01390c598"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/figcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/figcraft/LICENSE.txt",
+          "sha256": "9a58cbf7d438bb0fadc981423002adccd267aab21d0ab1c1e5c43d998b7702d2"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/figcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/figcraft/README.md",
+          "sha256": "d9cd53ef43dbc8d2d1e3c08d9bfabdbebc6190727063e214d36ea18885173dc4"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/figcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/figcraft/ATTRIBUTION.md",
+          "sha256": "3eb47f685d9e45faaf2b0b366a8d5752c3e89e6ab24732e4c90617fa8bae3f66"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/figcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/figcraft/LICENSE-brand.txt",
+          "sha256": "904f8307a25cbb220f949846d84561aee9bf8f0cdd64380362f07ee674d80323"
+        }
+      ],
+      "background_original": "#02da96",
+      "background_deep": "#13533f",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "soundcraft": {
+      "output": "soundcraft.png",
+      "output_sha256": "ca83c788d997cbacda7cda918c40038a3009bc75752cc346293897f7fbbecd02",
+      "repository": "storytold/soundcraft",
+      "source_head": "ddeb7e791faa33db05277f3347ed9b91928b7733",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/soundcraft/assets/app-icon/icon.svg",
+          "snapshot": "kits-work/inputs/soundcraft/icon.svg",
+          "sha256": "34dc19422bf33dc57239ecec01804bf6ea0851389317be6fe9b20d12176e3c12"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/soundcraft/assets/app-icon/soundcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/soundcraft/soundcraft-macos-512.png",
+          "sha256": "0cbbc7cfac4d0f9aaf1411aa0cd0dacbdadc26415c7a787f8c18cf781061a04e"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/soundcraft/assets/app-icon/soundcraft-1024.png",
+          "snapshot": "kits-work/inputs/soundcraft/soundcraft-1024.png",
+          "sha256": "3e772da3c651f4fe9ca19ad82478e40516a82c950ff06f5f6d01e42eeec5bd39"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/soundcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/soundcraft/README.md",
+          "sha256": "5f6845e148405232e35f68c2a6a08cd91fdd9e61bf7572212debf57193925a39"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/soundcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/soundcraft/ATTRIBUTION.md",
+          "sha256": "397abf92f0385fc9d37b286bc41a7ba5384bb628d1f140e0b9d4bbbfde7e6f35"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/soundcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/soundcraft/icons.sh",
+          "sha256": "ad90b98120c92930bbf20cbbf0f1a270d3ec175edf79b6edcd85192b9356532c"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/soundcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/soundcraft/LICENSE-brand.txt",
+          "sha256": "dbd6e8555a7f6d393f89a47cd44773e1f1f415c22551a78449bd4b43bec49903"
+        }
+      ],
+      "background_original": "#14a9c4",
+      "background_deep": "#16424a",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "wordcraft": {
+      "output": "wordcraft.png",
+      "output_sha256": "aee81c23c72532b8c410118975ee86997457c255207544f983aad7407b907cd6",
+      "repository": "storytold/wordcraft",
+      "source_head": "4b0d39959968a34e462cb53099e76fb108d0e96f",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/wordcraft/assets/app-icon/wordcraft.svg",
+          "snapshot": "kits-work/inputs/wordcraft/wordcraft.svg",
+          "sha256": "9a68cb7f7d11df7e5001125d3bd7fad2f5cc4dcdb1df66006cbcfae887e61b46"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/wordcraft/assets/app-icon/wordcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/wordcraft/wordcraft-macos-512.png",
+          "sha256": "5a8a4476c1fb67123f803a8ab7a7a0dbd9912675ae54d695c17e74454913ceae"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/wordcraft/assets/app-icon/wordcraft-1024.png",
+          "snapshot": "kits-work/inputs/wordcraft/wordcraft-1024.png",
+          "sha256": "9525114a2a5e7fc84584b0438a2011ca33f4a30884e40561a1715fbbe7b0c647"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/wordcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/wordcraft/ATTRIBUTION.md",
+          "sha256": "3fc09b7189d078901db77a477bc2dc2007d9a139d59057c67cd5d46e8491d435"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/wordcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/wordcraft/icons.sh",
+          "sha256": "5ad31f95b50a73b2246d94f60201f5532c4f9753f6d0f4b3409336854c85311d"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/wordcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/wordcraft/LICENSE-brand.txt",
+          "sha256": "ed4475eacf972c9584aa335001c59dfa646eb222549b928ffd6aefd4c805b41a"
+        }
+      ],
+      "background_original": "#3B5BDB",
+      "background_deep": "#242d53",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "deckcraft": {
+      "output": "deckcraft.png",
+      "output_sha256": "d761b7edf348e1bcdaf09499258301f19b70a0d7f67ef7adb646a8ac6871929c",
+      "repository": "storytold/deckcraft",
+      "source_head": "48e22031239338adc7b9c5a48206f06f5dc07839",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/deckcraft/assets/app-icon/hicolor/scalable/apps/ai.storyteller.deckcraft.svg",
+          "snapshot": "kits-work/inputs/deckcraft/ai.storyteller.deckcraft.svg",
+          "sha256": "23eedc47e14cea6f4cc6724b13aec3e668e4e0177f6cee1f072f428385e0e6dd"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/deckcraft/assets/app-icon/deckcraft-1024.png",
+          "snapshot": "kits-work/inputs/deckcraft/deckcraft-1024.png",
+          "sha256": "457cb046a1a4f2e13f06cf7e2e071cb48f6011633ed629b99ff348be4ca91ce0"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/deckcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/deckcraft/ATTRIBUTION.md",
+          "sha256": "3e0b490182f29522d002af0b4f0f46ab44ab8863bfe5e4e50c65a84d2d18c076"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/deckcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/deckcraft/icons.sh",
+          "sha256": "0bb08c2faa132772578f63a49317f146574a4166cc3aae9aa907eccf62a4bb02"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/deckcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/deckcraft/LICENSE-brand.txt",
+          "sha256": "c5ad8e77d0dd8939161b4c4eca7aaba2437d6340c29e7809fa4679f0f2a82f62"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/deckcraft/assets/app-icon/icon-source.deckcraft",
+          "snapshot": "kits-work/inputs/deckcraft/icon-source.deckcraft",
+          "sha256": "9e02b7ec36072b6c974d84b2aea65911334576850be9f719bc22197fc1ae4345"
+        }
+      ],
+      "background_original": "#f26b1d",
+      "background_deep": "#5c341d",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "cadcraft": {
+      "output": "cadcraft.png",
+      "output_sha256": "f641c389f20ca341ed2c2b02b8734cd387a04fcf7c4a14eecb7ea7355dca2022",
+      "repository": "storytold/cadcraft",
+      "source_head": "67514021aedfcc3aef2ed462493eda368cf07463",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/cadcraft/assets/app-icon/cadcraft-1024.png",
+          "snapshot": "kits-work/inputs/cadcraft/cadcraft-1024.png",
+          "sha256": "47b76c0e717d835c79d9ec751c4e8ce5e984aace11d554873209b4fc230819e4"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/cadcraft/assets/app-icon/cadcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/cadcraft/cadcraft-macos-512.png",
+          "sha256": "59e107c4cdca40920323842fa087f3c402e8830b94d0aeb1d3ba80b22645b154"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/cadcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/cadcraft/ATTRIBUTION.md",
+          "sha256": "755164fd7c8861260982aec18937d667efa6198aa66b13fd8c54f7fc46a57626"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/cadcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/cadcraft/icons.sh",
+          "sha256": "bc36c2317945ded0e2a7785d34533d9195ed8e634ba6cf5eb8e0cc4b91f8a537"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/cadcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/cadcraft/LICENSE-brand.txt",
+          "sha256": "382b7443d4346ba31115a9d7a1f3fcfc16e44c39c94654b01998e09cef8a2679"
+        }
+      ],
+      "background_original": "#14a3c7",
+      "background_deep": "#17414c",
+      "transform": "R11 palette contribution model applied to own rasters. Exact neutral foreground, transparent RGBA and alpha preserved."
+    },
+    "gridcraft": {
+      "output": "gridcraft.png",
+      "output_sha256": "bbcfc7457771f8b81b30209c14ef2488dc96dea8eea9e68164293850ce894dde",
+      "repository": "storytold/gridcraft",
+      "source_head": "2c58c769141f1d735623671c223548731669aa43",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/gridcraft/assets/app-icon/gridcraft.svg",
+          "snapshot": "kits-work/inputs/gridcraft/gridcraft.svg",
+          "sha256": "a4c55f2f52893b319862b610c006af83da9f097a4112b5a982b8ba95f43d2850"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/gridcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/gridcraft/LICENSE.txt",
+          "sha256": "9596de48b5e42fbf727c924bb3863f0e28fcd9e38c47cca284e1174bd06481ce"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/gridcraft/assets/app-icon/gridcraft-macos-512.png",
+          "snapshot": "kits-work/inputs/gridcraft/gridcraft-macos-512.png",
+          "sha256": "66ab22c4150ec2572f248434af266c256e007ab867b6b40b7a4fc8a11082f631"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/gridcraft/assets/app-icon/gridcraft-1024.png",
+          "snapshot": "kits-work/inputs/gridcraft/gridcraft-1024.png",
+          "sha256": "4a0be45716f47412b5855045bb894fdc43b11e9f25041ebcb5ae4be8182abe44"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/gridcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/gridcraft/README.md",
+          "sha256": "2dce540ab3c996e4757fadc7ae4b43e63b3cb028ad90eeb0f1b94a3ecdd195fa"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/gridcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/gridcraft/ATTRIBUTION.md",
+          "sha256": "1c78f894b54a4f778757d3c3323678c613d08825c9c46b26ca1d4d74565965f7"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/gridcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/gridcraft/icons.sh",
+          "sha256": "cdf369e48e5208a7a790396f4f9c9adf8675501986f0de9f511e8a65e6fe982c"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/gridcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/gridcraft/LICENSE-brand.txt",
+          "sha256": "d60f1608b31dde193c34e4afb5d922d2c700ead06c4bb3735959334a09b1ff2c"
+        }
+      ],
+      "background_original": "#1f9d55",
+      "background_deep": "#163c26",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "texturecraft": {
+      "output": "texturecraft.png",
+      "output_sha256": "3c94c9cb7aba962e418794c713b220628697b552f18eef6137c46f620d93942d",
+      "repository": "storytold/texturecraft",
+      "source_head": "4be75a2b11f129aacdd3adb8c99055f0d9be7b0f",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/texturecraft/assets/app-icon/texturecraft.svg",
+          "snapshot": "kits-work/inputs/texturecraft/texturecraft.svg",
+          "sha256": "19b9682ee42cfafb06e681feb208837eb0b9d3fa07708ce3a69512b945c16b00"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/texturecraft/assets/app-icon/texturecraft-1024.png",
+          "snapshot": "kits-work/inputs/texturecraft/texturecraft-1024.png",
+          "sha256": "8451f91be8c1bc9c2e1a594e193ae5d1793d2d12f26a8bc64d2bd83fe4b789e4"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/texturecraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/texturecraft/LICENSE.txt",
+          "sha256": "8859d884d8eb52ce4e531deef7056dd9c1adda757b663aff7d8d51df8d15d382"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/texturecraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/texturecraft/README.md",
+          "sha256": "50b73d4e44046572676561fe9d45348ac47fd28554a6f5abb72f23d9bf939408"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/texturecraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/texturecraft/ATTRIBUTION.md",
+          "sha256": "6ee6a03342d1918d95c4a8f43eb167576c6b340e5072412bf0907302a963874e"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/texturecraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/texturecraft/icons.sh",
+          "sha256": "84beab89b4e278609b47f38779ed735b97efc1baf3ce64a35889231443c1c26a"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/texturecraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/texturecraft/LICENSE-brand.txt",
+          "sha256": "668059b53d5304094f57a013086e10c116d290b32705874a5a637ef31d149c19"
+        }
+      ],
+      "background_original": "#c2672b",
+      "background_deep": "#4a2f1d",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "materialcraft": {
+      "output": "materialcraft.png",
+      "output_sha256": "875afae930a2bb0eac8d55fb427d11b8031ca79650d4b8a8d861e9cd45dec34e",
+      "repository": "storytold/materialcraft",
+      "source_head": "767dd658170b78059c195d3fb6f75b869e016cfd",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/materialcraft/assets/app-icon/materialcraft.svg",
+          "snapshot": "kits-work/inputs/materialcraft/materialcraft.svg",
+          "sha256": "bd8e0566197091a71f1381d576eee5fd5855b6832a06c6e291440d12a1b7110d"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/materialcraft/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/materialcraft/LICENSE.txt",
+          "sha256": "0db0407ab008cd8853281c34fcb7192d09754f411636aff89fb5223806c5e62d"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/materialcraft/assets/app-icon/materialcraft-1024.png",
+          "snapshot": "kits-work/inputs/materialcraft/materialcraft-1024.png",
+          "sha256": "27733f8d0eb938eaebb34411080e30ea942804c89db51f766c9fb12bf20f140b"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/materialcraft/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/materialcraft/README.md",
+          "sha256": "f5d5857de7201d167fd2a7153a2d0f78fc73875c1bf67583b8ddfda6e8790cfe"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/materialcraft/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/materialcraft/ATTRIBUTION.md",
+          "sha256": "2d149a93bc34c27bf42555cfb4450908db77541a98425f1928502ad398afd7f8"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/materialcraft/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/materialcraft/icons.sh",
+          "sha256": "86583a329fd9ca1aef0b471d1cc4b14618c153194d0aa112ee092c2e24c5af5d"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/materialcraft/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/materialcraft/LICENSE-brand.txt",
+          "sha256": "5cb5472d549fee78153345582f66b6098c2e8e1ba3f4d335ae8f62c0f52ed654"
+        }
+      ],
+      "background_original": "#178a9c",
+      "background_deep": "#14363b",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "craft-anything": {
+      "output": "craft-anything.png",
+      "output_sha256": "779d6098244ba0e51cdf2f1edced7f48fb5562c82b28e16f0c608acb4fdfee2d",
+      "repository": "storytold/craft-anything",
+      "source_head": "0326b4de8051f85a0f3139cd82f88f76911e6a35",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/craft-anything/assets/app-icon/craft-anything.svg",
+          "snapshot": "kits-work/inputs/craft-anything/craft-anything.svg",
+          "sha256": "8c44c58fa2bb9f46afdfea04fe15e09820db325748a8f87c8c3f98de667e746b"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-anything/assets/app-icon/craft-anything-1024.png",
+          "snapshot": "kits-work/inputs/craft-anything/craft-anything-1024.png",
+          "sha256": "fee0f409a9f73640ac42f28b3b0402898e968140a769183101ba759c709ff828"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-anything/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/craft-anything/LICENSE.txt",
+          "sha256": "6b70e3a1b32d1eb5b875eaafec793b8dbf4ba096b8e6b9ab2ae4a2552720eab3"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-anything/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/craft-anything/README.md",
+          "sha256": "e6b003f5b652ec2ee7f350f16ab42700e6e510d69b71d233595976027f1eaa05"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-anything/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/craft-anything/ATTRIBUTION.md",
+          "sha256": "277ac4c86c7889bfe5dab9a7321954de1e7ace36311c4bd36008dd25cc4b0265"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-anything/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/craft-anything/icons.sh",
+          "sha256": "c054bf176b0c390fd65b63c4bc2fe13121102b1c2d56701b586b99f089d4f647"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-anything/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/craft-anything/LICENSE-brand.txt",
+          "sha256": "9053effe807a57db75acb29c5bb9c78233c1ca4e740ec8be2b424c3672a6ec7f"
+        }
+      ],
+      "background_original": "#4e7bfb",
+      "background_deep": "#2c395f",
+      "transform": "Only the first background rect fill changes; all foreground element bytes and accent colors remain unchanged. HSV saturation \u00d7 0.78 and value \u00d7 0.38, with approved Light/Design overrides."
+    },
+    "artcraft-launcher": {
+      "output": "artcraft-launcher.png",
+      "output_sha256": "9f3dba0f4418398bf9a32f6c4bc7ba9a7b668054ddfbcdc5f1acdaeed5c6b8c5",
+      "repository": "storytold/craft-launcher",
+      "source_head": "74f265a34961c7c9fa8ae45dbaf5553e8b7da6df",
+      "sources": [
+        {
+          "path": "/home/codex/Artcraft/repos/craft-launcher/assets/app-icon/artcraft-launcher.svg",
+          "snapshot": "kits-work/inputs/launcher/artcraft-launcher.svg",
+          "sha256": "f87af81b6fa411da8820eed2bfdcc54c0ee9cd453b4e868c64f56c69db142d0e"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-launcher/assets/app-icon/artcraft-launcher-1024.png",
+          "snapshot": "kits-work/inputs/launcher/artcraft-launcher-1024.png",
+          "sha256": "4c6e156d7a80383c8a066b6fc8611c97669bf9408997376a6bff9aee399e0278"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-launcher/assets/app-icon/LICENSE.txt",
+          "snapshot": "kits-work/inputs/launcher/LICENSE.txt",
+          "sha256": "b386df1f201699fdf980d8cf4b4e4e704a56fe59967337205fb72d617055a6dd"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-launcher/assets/app-icon/README.md",
+          "snapshot": "kits-work/inputs/launcher/README.md",
+          "sha256": "79a2b3c7a2324aba189ddc81d497e25bcf4a6d9cde6079d98cfafd914c392302"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-launcher/ATTRIBUTION.md",
+          "snapshot": "kits-work/inputs/launcher/ATTRIBUTION.md",
+          "sha256": "aefdf15fe1de0f41190a615cc1725f734f335b9c59e68f3532a08e1de09988ba"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-launcher/packaging/icons.sh",
+          "snapshot": "kits-work/inputs/launcher/icons.sh",
+          "sha256": "98afec2f70c0ed44431cb55c869514518894c39d55a76d66c1766f5b9a52d620"
+        },
+        {
+          "path": "/home/codex/Artcraft/repos/craft-launcher/docs/brand/LICENSE-brand.txt",
+          "snapshot": "kits-work/inputs/launcher/LICENSE-brand.txt",
+          "sha256": "f30eefd1d7c2c950c89b8e426febd33b5b08908dc5090fd75e45ad993977a691"
+        }
+      ],
+      "background_original": null,
+      "background_deep": "#1c243c",
+      "transform": "Reuse approved R9 deep vector: navy rounded backplate behind unchanged blue A path. No badge."
+    }
+  }
+}

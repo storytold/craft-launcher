@@ -14,7 +14,7 @@ const CODESIGN: &str = "/usr/bin/codesign";
 const SPCTL: &str = "/usr/sbin/spctl";
 const TIMEOUT: Duration = Duration::from_secs(60);
 
-pub(super) fn verify_with(
+pub(crate) fn verify_with(
     app: &CraftApp,
     bundle: &Path,
     team: &str,

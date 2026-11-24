@@ -483,3 +483,75 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Like {name}	Как {name}
 	Website (coming soon)	Веб-сайт (скоро)
 @id	sort.inspired	По мотивам
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Шрифты
+	Allow font downloads	Разрешить загрузку шрифтов
+	Couldn't change the font download setting: {e}	Не удалось изменить параметр загрузки шрифтов: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Шрифты загружаются из их источников, только когда вы устанавливаете шрифт. У предпросмотра шрифтов есть отдельный параметр ниже. Этот параметр общий для всех приложений Craft.
+	Sources	Источники
+	Apps	Приложения
+	Fonts for every Craft app	Шрифты для всех приложений Craft
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Показывать предпросмотр шрифтов
+	Font preview server	Сервер предпросмотра шрифтов
+	Couldn't use this server: {e}	Не удалось использовать этот сервер: {e}
+	Couldn't change the font previews setting: {e}	Не удалось изменить параметр предпросмотра шрифтов: {e}
+	Set by {name} in the environment.	Задано переменной {name} в окружении.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Неустановленные шрифты показывают предпросмотр с этого сервера, и установка сначала пробует его. Пустое поле — сервер по умолчанию.
+
+# Pre-release page, consent and actions.
+	Enable pre-release builds	Включить предварительные версии
+	Enable pre-release builds?	Включить предварительные версии?
+	Install pre-release	Установить предварительную версию
+	New builds as the apps evolve. Stable copies stay separate.	Новые сборки по мере развития приложений. Стабильные копии остаются отдельно.
+	No pre-release build is available yet.	Предварительной версии пока нет.
+	Only this pre-release copy will be removed. Stable copies and user data are kept.	Будет удалена только эта предварительная копия. Стабильные копии и данные пользователя сохраняются.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Установить можно только проверенные изолированные сборки. Выключение никогда не удаляет установленные копии и их данные.
+	Open stable	Открыть стабильную версию
+	Pre-Release	Предварительная
+	Pre-release builds are off. Installed copies and their data are kept.	Предварительные версии выключены. Установленные копии и их данные сохраняются.
+	Pre-release installation is unavailable on this platform.	Установка предварительных версий недоступна на этой платформе.
+	Show installed copy	Показать установленную копию
+	Stable	Стабильная
+	These are pre-release builds. They will have issues and may lose work.	Это предварительные версии. В них будут ошибки, и возможна потеря работы.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	Они устанавливаются отдельно, со своими настройками. Храните резервные копии: файлы, сохранённые более новой сборкой, могут не открываться в стабильных версиях.
+	Try nightly builds	Попробовать ночные сборки
+	Turn off pre-release builds	Отключить предварительные версии
+	Uninstall pre-release	Удалить предварительную версию
+	Uninstall pre-release?	Удалить предварительную версию?
+	Uninstall pre-release…	Удалить предварительную версию…
+
+# Nightly page when discovery is off, and the version-dialog note.
+	Pre-release builds are off.	Предварительные версии выключены.
+	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Установленные копии и их данные сохраняются. Чтобы искать новые сборки, включите предварительные версии в настройках.
+	Installed pre-release copy	Установленная предварительная копия
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Ночные сборки ставятся отдельно и со своими настройками. Обновления стабильной версии не меняются.
+
+# When the pre-release page cannot list builds.
+	Could not check for pre-release builds.	Не удалось проверить предварительные версии.
+	No pre-release builds are available yet.	Предварительных версий пока нет.
+	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Канал предварительных версий автоматически обновляется каждую ночь самым свежим кодом. В нём могут быть ошибки, проблемы с производительностью и стабильностью, а также незавершённые функции. Для важной работы используйте стабильный канал.
+
+# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
+	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	Предварительные версии позволяют раньше попробовать новые возможности, но в них будут ошибки и возможна потеря несохранённой работы.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	Они устанавливаются рядом со стабильными приложениями и используют собственные настройки и данные, не меняя ваше стабильное окружение. Всегда создавайте резервные копии важных файлов перед открытием в предварительной версии: файлы, сохранённые в более новых версиях, могут не открываться в стабильных.
+	You can turn this off at any time without deleting your installed pre-release apps or their data.	Вы можете отключить эту возможность в любой момент, не удаляя установленные предварительные версии приложений и их данные.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{day}.{month}.{year}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	Ночные сборки
+	Discover nightly builds (Pre-Release page)	Искать ночные сборки (страница Предварительная)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Отдельные установки, настройки и данные. При отключении установленные копии и их данные сохраняются.
+	Pre-release builds aren't available on this platform yet.	Предварительные версии на этой платформе пока недоступны.
+	Betas and release candidates can replace your stable installation.	Бета-версии и кандидаты в релиз могут заменить стабильную установку.
+
+# Nightly check status.
+	Previous verified result is stale. Check again before installing.	Результат прошлой проверки устарел. Проверьте ещё раз перед установкой.
+	Last verified: {ago}	Последняя проверка: {ago}
+	Last attempt: {ago}	Последняя попытка: {ago}
+	Retry available in {minutes} min	Повтор будет доступен через {minutes} мин
+	Announcements	Объявления
+	No announcements	Нет объявлений
+@plural	Announcements, {n} unread|Announcements, {n} unread	Объявления, {n} непрочитанное|Объявления, {n} непрочитанных|Объявления, {n} непрочитанных

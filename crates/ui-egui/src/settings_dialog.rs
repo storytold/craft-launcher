@@ -113,19 +113,31 @@ impl LauncherUi {
             wide,
             theme::COLUMN_GAP,
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, _) = &mut *state;
                 this.settings_language(ui);
                 this.settings_updates(ui);
+                if !wide {
+                    this.settings_nightly(ui);
+                }
                 this.settings_appearance(ui);
                 this.settings_agents(ui);
             },
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
+                #[cfg(not(target_arch = "wasm32"))]
+                this.settings_fonts(ui);
                 this.settings_background(ui, &mut **host);
                 this.settings_community(ui);
+                if wide {
+                    this.settings_nightly(ui);
+                }
             },
         );
     }
@@ -218,11 +230,37 @@ impl LauncherUi {
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            note(ui, tl!("Betas and release candidates can replace your stable installation."));
             row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
                 self.version_lock(ui, launcher_id);
             });
             self.launcher_version_notes(ui);
+        });
+    }
+
+    /// Independent nightly discovery; the ordinary beta/RC filter stays in Updates.
+    fn settings_nightly(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Nightly builds"), |ui| {
+            let mut enabled = self.settings.nightly_enabled;
+            // Where builds can't be verified yet, nothing is offered to download; a choice
+            // already on can still be turned off.
+            let available = self.nightly.available();
+            let interactive = available || enabled;
+            let checkbox = egui::Checkbox::new(&mut enabled, tl!("Discover nightly builds (Pre-Release page)"));
+            let response = ui.add_enabled(interactive, checkbox);
+            if !available {
+                note(ui, tl!("Pre-release builds aren't available on this platform yet."));
+            }
+            if response.changed() {
+                if enabled {
+                    self.open_nightly_consent(response.id);
+                    self.dialog = None;
+                } else {
+                    self.act(crate::app::UiAction::NightlyConsent(false));
+                }
+            }
+            note(ui, tl!("Separate installs, settings and data. Turning this off keeps installed copies and their data."));
         });
     }
 
@@ -324,6 +362,34 @@ impl LauncherUi {
             });
             self.settings.preferred_kinds = choice.into_iter().collect();
             note(ui, tl!("Updates always use the format an app was installed with."));
+        });
+    }
+
+    /// The font store's download consent, preview settings and font sources, which every Craft app
+    /// shares.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn settings_fonts(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Fonts"), |ui| {
+            let now = ui.input(|i| i.time);
+            let mut allowed = self.fonts.downloads_allowed(now);
+            if ui.checkbox(&mut allowed, tl!("Allow font downloads")).changed()
+                && let Err(e) = self.fonts.set_downloads_allowed(allowed)
+            {
+                self.toast_from_ui(fmt(tl!("Couldn't change the font download setting: {e}"), &[("e", &e)]), true);
+            }
+            note(
+                ui,
+                tl!(
+                    "Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting."
+                ),
+            );
+            ui.add_space(10.0);
+            self.fonts.preview_settings_ui(ui);
+            ui.add_space(10.0);
+            widgets::hud(ui, tl!("Sources"), Tokens::get(ui.ctx()).faint);
+            ui.add_space(2.0);
+            let lang = crate::app::drawable_lang(&self.settings.language, self.cjk_font);
+            self.fonts.sources_ui(ui, &self.settings.fonts, lang.code());
         });
     }
 

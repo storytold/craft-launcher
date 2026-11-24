@@ -2804,16 +2804,17 @@ fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
 }
 
 #[test]
-/// A feed alert is acknowledged only by OK (persisted), while an inline announcement stays until
-/// its own Dismiss is clicked.
+/// A feed alert is acknowledged only by OK (persisted). An announcement waits in the header's bell,
+/// counted as unread until the bell is opened, and stays listed until its own Dismiss is clicked.
 fn feed_announcements_and_alerts_show_until_dismissed() {
-    use artcraft_launcher_core::feed::Notice;
+    use artcraft_launcher_core::notices::Notice;
     let notice = |id: &str, title: &str, link: Option<&str>| Notice {
         id: id.into(),
         title: title.into(),
         body: format!("{title} body"),
         link: link.map(str::to_string),
         created_at: None,
+        expires: None,
     };
     let sent = Rc::new(RefCell::new(Vec::new()));
     let mut evs = events();
@@ -2852,13 +2853,24 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
     h.run_steps(4);
     assert!(h.query_by_label("Security update").is_none());
     assert!(h.state().as_ref().unwrap().settings.dismissed_notices.contains("x1"));
-    // The announcement stays inline until dismissed.
+    // The announcement is not drawn over the apps: only the bell says it is there.
+    assert!(h.query_by_label("CADCraft 1.0 is out").is_none());
+    h.get_by_label("Announcements, 1 unread").click();
+    h.run_steps(4);
     h.get_by_label("CADCraft 1.0 is out");
     h.get_by_label("Learn more");
+    // Opening the bell read it: the count is gone, and stays gone after closing.
+    assert!(h.query_by_label("Announcements, 1 unread").is_none());
+    assert!(h.state().as_ref().unwrap().settings.read_notices.contains("a1"));
     h.get_all_by_label("Dismiss").next().unwrap().click();
     h.run_steps(4);
     assert!(h.query_by_label("CADCraft 1.0 is out").is_none());
     assert!(h.state().as_ref().unwrap().settings.dismissed_notices.contains("a1"));
+    h.get_by_label("No announcements");
+    h.key_press(egui::Key::Escape);
+    h.run_steps(4);
+    assert!(h.query_by_label("No announcements").is_none());
+    assert!(h.query_by_label("Announcements, 1 unread").is_none());
 }
 
 #[test]
@@ -3778,11 +3790,26 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
 }
 
 #[test]
-/// At 720–1180 px refresh, search, sort and view share one unclipped toolbar row without
-/// overlaps.
+/// From 880 px refresh, search, sort and view share one unclipped toolbar row without overlaps;
+/// narrower, beside the page toggle, the sort picker moves to a second row under them.
 fn toolbar_keeps_navigation_refresh_search_and_view_on_one_unclipped_row() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    for width in [720.0, 800.0, 1180.0] {
+    for width in [720.0, 800.0] {
+        h.set_size(egui::vec2(width, 900.0));
+        h.run_steps(6);
+        let refresh = h.get_by_label("Check for updates").rect();
+        let search = h.query_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().rect();
+        let view = h.get_by_label("Show apps as cards").rect();
+        let sort = h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Sort").rect();
+        assert!(refresh.top() > 48.0, "{width}: refresh belongs in the toolbar, not the header: {refresh:?}");
+        assert!((refresh.center().y - search.center().y).abs() < 2.0, "{width}: refresh and search must share a row");
+        assert!(refresh.right() <= search.left() + 1.0, "{width}: refresh overlaps search: {refresh:?}, {search:?}");
+        assert!(search.right() <= view.left() + 1.0 && view.right() <= width, "{width}: search overlaps view or view is clipped");
+        assert!(sort.top() >= search.bottom(), "{width}: sort belongs on the second row: {sort:?}, {search:?}");
+        assert!(sort.left() >= 0.0 && sort.right() <= width, "{width}: sort is outside the window: {sort:?}");
+        h.check_accessibility();
+    }
+    for width in [880.0, 1180.0] {
         h.set_size(egui::vec2(width, 900.0));
         h.run_steps(6);
         let refresh = h.get_by_label("Check for updates").rect();
@@ -4634,12 +4661,13 @@ fn ai_agents_switch_and_client_buttons_send_their_commands() {
     // Other clients: the configuration in each format, copied with a note saying so.
     for label in ["Copy JSON", "Copy for VS Code", "Copy for Codex (TOML)"] {
         h.get_by_label(label).scroll_to_me();
-        h.run_steps(2);
+        h.run_steps(8);
         h.get_by_label(label).click();
         h.run_steps(3);
         assert!(h.query_all_by_label("Configuration copied.").next().is_some(), "{label}");
     }
-    h.get_by_label("Add").click();
+    // The font sources' "Add" button comes last in the tree: it sits in the other column.
+    h.get_all_by_label("Add").next().expect("client Add button").click();
     h.run_steps(3);
     h.get_by_label("Remove").click();
     h.run_steps(3);
@@ -4678,6 +4706,7 @@ fn ai_agents_offer_to_restart_a_client_right_after_adding_it() {
     h.get_by_label("Quick install").scroll_to_me();
     h.run_steps(4);
     assert!(h.query_by_label("Restart Claude Desktop").is_none(), "nothing to restart before adding");
+    // The font sources' "Add" button comes last in the tree: it sits in the other column.
     let adds: Vec<_> = h.get_all_by_label("Add").collect();
     adds[0].click();
     adds[1].click();
@@ -4729,7 +4758,8 @@ fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
     h.run_steps(4);
     h.get_by_label("Apps agents can reach: 2").scroll_to_me();
     h.run_steps(6);
-    assert!(h.query_by_label("Add").is_none(), "nothing to add without the gateway");
+    // Only the font sources' "Add" remains.
+    assert_eq!(h.query_all_by_label("Add").count(), 1, "nothing to add without the gateway");
     h.get_by_label("Remove").click();
     h.run_steps(3);
     h.get_by_label("Let AI agents use Craft apps").click();
@@ -4753,4 +4783,58 @@ fn ai_agents_stay_hidden_until_their_flag_is_on() {
     assert!(h.query_by_label("Let AI agents use Craft apps").is_none(), "no agents box without the flag");
     assert!(h.query_by_label("Experimental features").is_none(), "flags have no switches in Settings");
     assert!(h.query_by_label("AI agents (MCP)").is_none());
+}
+
+#[test]
+/// The header holds the Settings gear, the announcements bell and the Stable/Pre-Release switch
+/// side by side at a wide width, a narrow one and one that needs the compact logo, in both
+/// themes, without overlap or clipping.
+fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
+    use artcraft_launcher_core::notices::Notice;
+    use egui_kittest::kittest::Queryable;
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        // 440 is narrow enough that the wordmark gives way to the compact ArtCraft mark.
+        for width in [1180.0_f32, 560.0, 440.0] {
+            let mut evs = events();
+            evs.push(Event::Notices {
+                announcements: vec![Notice {
+                    id: "a1".into(),
+                    title: "CADCraft 1.0 is out".into(),
+                    body: "CADCraft 1.0 is out body".into(),
+                    link: None,
+                    created_at: None,
+                    expires: None,
+                }],
+                alerts: vec![],
+            });
+            let (mut h, _) = harness_with(evs, ViewMode::Grid, theme, true, 1.0);
+            h.set_size(egui::vec2(width, 800.0));
+            h.run_steps(2);
+            h.state_mut().as_mut().unwrap().settings.nightly_enabled = true;
+            h.run_steps(6);
+            let top = |h: &Harness<'static, Option<LauncherUi>>, label: &str| {
+                h.query_all_by_label(label)
+                    .map(|node| node.rect())
+                    .min_by(|a, b| a.top().total_cmp(&b.top()))
+                    .unwrap_or_else(|| panic!("{label} missing at {width}"))
+            };
+            let controls = [
+                ("Settings", top(&h, "Settings")),
+                ("bell", top(&h, "Announcements, 1 unread")),
+                ("Stable", top(&h, "Stable")),
+                ("Pre-Release", top(&h, "Pre-Release")),
+            ];
+            for (name, rect) in &controls {
+                assert!(rect.left() >= 0.0 && rect.right() <= width + 0.5, "{name} is clipped at {width}: {rect:?}");
+                assert!(rect.width() > 1.0, "{name} has no room at {width}: {rect:?}");
+            }
+            for (i, (a, ra)) in controls.iter().enumerate() {
+                for (b, rb) in &controls[i + 1..] {
+                    assert!(!ra.shrink(0.5).intersects(rb.shrink(0.5)), "{a} overlaps {b} at {width}: {ra:?} {rb:?}");
+                }
+            }
+            let name = format!("header-{}-{}", if theme == egui::Theme::Dark { "dark" } else { "light" }, width as u32);
+            snapshot(&mut h, &name);
+        }
+    }
 }
