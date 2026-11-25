@@ -1,6 +1,15 @@
 //! Synthetic fixtures generated here, not copied from an app or an external archive.
 use super::*;
 use artcraft_launcher_core::nightly::InstallChannel;
+use artcraft_launcher_core::{Arch, CraftApp, Platform};
+
+fn adapter(app: &str, os: Os, arch: Arch) -> Adapter {
+    crate::nightly_profile::for_app(CraftApp::by_id(app).unwrap(), Platform { os, arch }).unwrap()
+}
+
+fn cadcraft_linux() -> Adapter {
+    adapter("cadcraft", Os::Linux, Arch::X64)
+}
 fn same_directory(path: &Path, identity: &std::fs::Metadata) -> bool {
     std::fs::symlink_metadata(path)
         .is_ok_and(|meta| meta.is_dir() && !meta.file_type().is_symlink() && meta.dev() == identity.dev() && meta.ino() == identity.ino())
@@ -53,7 +62,7 @@ pub(crate) fn archive(path: &Path, entries: &[(&str, &[u8], u32)]) {
     }
     tar.into_inner().unwrap().finish().unwrap();
 }
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 pub(crate) fn program() -> Vec<u8> {
     // ELF64 little-endian x86_64 executable header; never executed by a test.
     let mut bytes = vec![0; 64];
@@ -489,7 +498,7 @@ fn a_custom_stable_install_record_is_a_read_only_fence_before_nightly_extraction
     );
     manifest.save(&stable_manifest).unwrap();
     let bytes = std::fs::read(&stable_manifest).unwrap();
-    assert!(validate_namespaces(&paths).is_err());
+    assert!(validate_namespaces(Adapter::PhotoCraftLinuxV1, &paths).is_err());
     assert_eq!(std::fs::read(stable_manifest).unwrap(), bytes);
     assert!(!paths.apps().exists());
 }
@@ -570,7 +579,7 @@ fn mac_nightly_requires_the_pinned_team_its_own_identifier_and_notarization() {
         <key>assessment:authority</key><dict><key>assessment:authority:source</key><string>Notarized Developer ID</string></dict>\
         <key>assessment:verdict</key><true/></dict></plist>";
     let mut calls = Vec::new();
-    verify_mac_signature(bundle, |program, args, _| {
+    verify_mac_signature(Adapter::PhotoCraftMacV1, bundle, |program, args, _| {
         calls.push(args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
         Ok(crate::process::RunOutput::success(match args {
             ["--status"] => "assessments enabled",
@@ -585,7 +594,7 @@ fn mac_nightly_requires_the_pinned_team_its_own_identifier_and_notarization() {
     assert!(!identity.contains("identifier \"ai.storyteller.photocraft\""), "the stable identifier cannot stand in for the Nightly");
     assert!(calls.iter().any(|args| args.iter().any(|arg| arg == "--check-notarization")));
     assert!(calls.iter().any(|args| args.iter().any(|arg| arg == "--assess")));
-    let refused = verify_mac_signature(bundle, |_, args, _| {
+    let refused = verify_mac_signature(Adapter::PhotoCraftMacV1, bundle, |_, args, _| {
         Ok(if args.contains(&"--check-notarization") {
             crate::process::RunOutput::exit(3, "", "not notarized")
         } else {
@@ -593,6 +602,182 @@ fn mac_nightly_requires_the_pinned_team_its_own_identifier_and_notarization() {
         })
     });
     assert!(refused.unwrap_err().contains("not notarized"));
+}
+
+/// cadcraft's Linux flavor is its launcher script, the program beside it, its badge and notices:
+/// every required file is required, nothing else may join them, and PhotoCraft's badge is not its own.
+#[test]
+fn cadcraft_linux_layout_requires_its_script_and_binary_and_refuses_other_content() {
+    let cadcraft = cadcraft_linux();
+    let files = |extra: &[&str]| {
+        let mut files = vec![PathBuf::from("cadcraft"), PathBuf::from("cadcraft-bin")];
+        files.extend(cadcraft.badge().map(Path::to_path_buf));
+        files.push(PathBuf::from("LICENSE"));
+        files.extend(extra.iter().map(PathBuf::from));
+        files
+    };
+    assert_eq!(validate_layout(cadcraft, &files(&[])), Ok(()));
+    let missing = |drop: &str| {
+        let kept: Vec<PathBuf> = files(&[]).into_iter().filter(|file| file != Path::new(drop)).collect();
+        validate_layout(cadcraft, &kept)
+    };
+    assert!(missing("cadcraft-bin").is_err(), "missing the program the launcher script starts");
+    assert!(missing("cadcraft").is_err(), "missing the entrypoint the Launcher opens");
+    if let Some(badge) = cadcraft.badge() {
+        assert!(files(&[]).iter().any(|file| file == badge));
+        assert!(missing(badge.to_str().unwrap()).is_err(), "missing the declared badge");
+    }
+    for unwanted in ["helper", "sub/cadcraft", "photocraft-nightly.png", "portable.txt"] {
+        assert!(!files(&[]).iter().any(|file| file == Path::new(unwanted)), "{unwanted} is not this row's own content");
+        assert!(validate_layout(cadcraft, &files(&[unwanted])).is_err(), "{unwanted}");
+    }
+    assert!(
+        layout(cadcraft, &files(&[]), &[PathBuf::from("bin"), PathBuf::from("bin/cadcraft")]).is_err(),
+        "a nested directory entry is not this flat flavor"
+    );
+    // PhotoCraft keeps its own badge, and the Windows row is still not a Unix flavor.
+    assert!(validate_layout(Adapter::PhotoCraftLinuxV1, &[PathBuf::from("photocraft")]).is_err());
+    assert!(layout(Adapter::PhotoCraftLinuxV1, &["photocraft".into(), "photocraft-nightly.png".into()], &[]).is_ok());
+    assert!(validate_layout(Adapter::PhotoCraftWindowsV1, &[PathBuf::from("photocraft.exe")]).is_err());
+}
+
+/// Only the entrypoint and the row's binary may be executable in another app's program folder.
+#[test]
+fn cadcraft_linux_content_refuses_a_second_executable() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let cadcraft = cadcraft_linux();
+    for (name, mode) in [("cadcraft", 0o755), ("cadcraft-bin", 0o755), ("cadcraft-nightly.png", 0o644), ("LICENSE", 0o644)] {
+        std::fs::write(root.join(name), b"fixture").unwrap();
+        std::fs::set_permissions(root.join(name), std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+    let files: Vec<PathBuf> = ["cadcraft", "cadcraft-bin", "cadcraft-nightly.png", "LICENSE"].iter().map(PathBuf::from).collect();
+    assert_eq!(verify_content(cadcraft, &root, &files), Ok(()));
+    std::fs::set_permissions(root.join("LICENSE"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(verify_content(cadcraft, &root, &files).is_err());
+}
+
+/// A row with its own binary ships a launcher script: it starts the x86_64 ELF beside it and is
+/// itself an ELF or a `#!` program. Anything else refuses, and PhotoCraft still needs its ELF.
+#[test]
+fn cadcraft_linux_structure_accepts_a_shebang_script_beside_its_elf_and_refuses_anything_else() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let cadcraft = cadcraft_linux();
+    let script = root.join("cadcraft");
+    let binary = root.join("cadcraft-bin");
+    let elf = |path: &Path| {
+        std::fs::write(path, program()).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    elf(&binary);
+    std::fs::write(&script, b"exec ./cadcraft-bin \"$@\"\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(verify_linux_structure(cadcraft, &root, &script).is_err(), "a launcher script without a shebang");
+    std::fs::write(&script, b"#!/bin/sh\nexec \"$(dirname \"$0\")/cadcraft-bin\" \"$@\"\n").unwrap();
+    assert_eq!(verify_linux_structure(cadcraft, &root, &script), Ok(()));
+    elf(&script);
+    assert_eq!(verify_linux_structure(cadcraft, &root, &script), Ok(()), "an ELF entrypoint is also a launcher");
+    std::fs::write(&binary, b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(verify_linux_structure(cadcraft, &root, &script).is_err(), "the binary must be an x86_64 ELF");
+    elf(&binary);
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(verify_linux_structure(cadcraft, &root, &script).is_err(), "a non-executable binary");
+    std::fs::remove_file(&binary).unwrap();
+    assert!(verify_linux_structure(cadcraft, &root, &script).is_err(), "a missing binary");
+}
+
+/// The os() dispatch keeps PhotoCraft's Linux entrypoint an ELF and routes cadcraft's script row
+/// to the same Linux check on this platform.
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_dispatch_keeps_photocrafts_elf_entrypoint_and_accepts_cadcrafts_script_row() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let entrypoint = root.join("photocraft");
+    std::fs::write(&entrypoint, b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&entrypoint, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(verify_structure(Adapter::PhotoCraftLinuxV1, &root, VERSION).is_err(), "PhotoCraft has no script in between");
+    std::fs::write(&entrypoint, program()).unwrap();
+    assert_eq!(verify_structure(Adapter::PhotoCraftLinuxV1, &root, VERSION), Ok(()));
+    let cadcraft = cadcraft_linux();
+    std::fs::write(root.join("cadcraft"), b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(root.join("cadcraft"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(root.join("cadcraft-bin"), program()).unwrap();
+    std::fs::set_permissions(root.join("cadcraft-bin"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(verify_structure(cadcraft, &root, VERSION), Ok(()));
+}
+
+/// The Linux fence names the row's own app: the XDG roots and system install paths for it, so a
+/// Nightly folder inside the stable app's config refuses while a launcher-private one passes.
+#[test]
+fn linux_stable_fence_uses_the_rows_app_and_refuses_overlapping_nightly_data() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().canonicalize().unwrap();
+    let cadcraft = cadcraft_linux();
+    let config = home.join("config");
+    std::fs::create_dir_all(config.join("cadcraft")).unwrap();
+    let protected = linux_stable_paths(cadcraft, &home, [Some(config.clone().into_os_string()), None, None, None]).unwrap();
+    for expected in [config.join("cadcraft"), home.join(".local/share/cadcraft"), home.join(".cache/cadcraft"), home.join(".local/state/cadcraft")] {
+        assert!(protected.contains(&expected), "{expected:?}");
+    }
+    for system in ["/usr/bin/cadcraft", "/usr/local/bin/cadcraft", "/opt/cadcraft"] {
+        assert!(protected.contains(&PathBuf::from(system)), "{system}");
+    }
+    assert!(!protected.iter().any(|path| path.to_string_lossy().contains("photocraft")));
+    let inside = config.join("cadcraft/nightly");
+    std::fs::create_dir_all(&inside).unwrap();
+    assert!(disjoint(std::slice::from_ref(&inside), &protected).is_err());
+    let elsewhere = home.join(".local/share/artcraft-launcher/pre-release/v1/data");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    assert!(disjoint(&[elsewhere], &protected).is_ok());
+}
+
+/// The macOS fence keeps every path main already protected for PhotoCraft, and another app's
+/// names come from its own row (`CADCraft`, `Cadcraft`, `ai.storyteller.cadcraft`), never borrowed.
+#[test]
+fn mac_stable_fence_keeps_photo_crafts_old_list_and_uses_each_apps_own_names() {
+    let home = Path::new("/Users/someone");
+    let photo = mac_stable_paths(Adapter::PhotoCraftMacV1, home);
+    for old in [
+        "Library/Application Support/Photocraft",
+        "Library/Application Support/PhotoCraft",
+        "Library/Caches/Photocraft",
+        "Library/Caches/ai.storyteller.photocraft",
+        "Library/Caches/PhotoCraft",
+        "Library/Preferences/Photocraft",
+        "Library/Preferences/ai.storyteller.photocraft.plist",
+        "Library/Saved Application State/ai.storyteller.photocraft.savedState",
+        "Library/WebKit/ai.storyteller.photocraft",
+        "Library/HTTPStorages/ai.storyteller.photocraft",
+        "Applications/PhotoCraft.app",
+    ] {
+        assert!(photo.contains(&home.join(old)), "{old}");
+    }
+    assert!(photo.contains(&PathBuf::from("/Applications/PhotoCraft.app")));
+    let cadcraft = mac_stable_paths_for("cadcraft", "CADCraft", "ai.storyteller.cadcraft", home);
+    for expected in [
+        "Library/Application Support/CADCraft",
+        "Library/Application Support/Cadcraft",
+        "Library/Caches/Cadcraft",
+        "Library/Caches/ai.storyteller.cadcraft",
+        "Library/Preferences/Cadcraft",
+        "Library/Preferences/ai.storyteller.cadcraft.plist",
+        "Library/Saved Application State/ai.storyteller.cadcraft.savedState",
+        "Library/WebKit/ai.storyteller.cadcraft",
+        "Library/HTTPStorages/ai.storyteller.cadcraft",
+        "Applications/CADCraft.app",
+    ] {
+        assert!(cadcraft.contains(&home.join(expected)), "{expected}");
+    }
+    assert!(cadcraft.contains(&PathBuf::from("/Applications/CADCraft.app")));
+    assert!(!cadcraft.iter().any(|path| path.to_string_lossy().contains("hotocraft")));
+    // Without its own row the app has no macOS Nightly at all, and the plist key stays derived
+    // from the row's display name rather than guessed per app.
+    assert!(crate::nightly_profile::for_app(CraftApp::by_id("cadcraft").unwrap(), Platform { os: Os::MacOs, arch: Arch::Arm64 }).is_err());
+    assert_eq!(mac_version_key("PhotoCraft"), "PhotoCraftVersion");
+    assert_eq!(mac_version_key("CADCraft"), "CADCraftVersion");
 }
 
 #[test]
