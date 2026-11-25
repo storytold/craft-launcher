@@ -22,7 +22,9 @@ impl LauncherUi {
 
     /// A lock beside a version opens a confirmation; clicking it never changes the saved choice.
     pub(crate) fn version_lock(&mut self, ui: &mut Ui, id: &str) {
-        let Some(tag) = self.pinned_version(id).map(str::to_string) else { return };
+        let Some(tag) = self.pinned_version(id).map(str::to_string) else {
+            return;
+        };
         let tip = crate::fmt(tl!("Version pinned to {version}. Click to unlock."), &[("version", &tag)]);
         if widgets::inline_glyph_button(ui, widgets::Glyph::Lock, &tip).clicked() {
             self.dialog = Some(crate::app::Dialog::UnlockVersion { app: id.to_string(), tag });
@@ -76,7 +78,9 @@ impl LauncherUi {
 
     /// The per-app selector stays in its dialog. The launcher's selector is drawn in Settings.
     pub(crate) fn version_dialog(&mut self, ui: &mut Ui, id: &str) -> bool {
-        let Some(app) = CraftApp::by_id(id) else { return true };
+        let Some(app) = CraftApp::by_id(id) else {
+            return true;
+        };
         let t = Tokens::get(ui.ctx());
         ui.set_width(480.0f32.min((ui.ctx().content_rect().width() - 80.0).max(240.0)));
         ui.heading(format!("{} · {}", app.name, tl!("Choose version")));
@@ -86,7 +90,13 @@ impl LauncherUi {
         self.version_combo(ui, id, app, 440.0, label.id);
         ui.add_space(10.0);
         ui.label(RichText::new(tl!("Your files may not open in older versions.")).color(t.muted));
-        ui.label(RichText::new(tl!("Enable automatic installs in Settings to follow new nightly builds.")).color(t.muted));
+        let nightly_note = if app.has_separate_nightly_channel() {
+            // Its nightlies are not in this picker: they install separately on the Pre-Release page.
+            tl!("Nightly builds use a separate install and settings. Stable updates stay unchanged.")
+        } else {
+            tl!("Enable automatic installs in Settings to follow new nightly builds.")
+        };
+        ui.label(RichText::new(nightly_note).color(t.muted));
         ui.add_space(12.0);
         let (mut close, mut install) = (false, false);
         ui.horizontal(|ui| {
@@ -115,7 +125,9 @@ impl LauncherUi {
     /// The dialog closed without installing: the choice made in it was only a draft, so put the
     /// one it had before back, and check again so the card shows that release (Open, not Install).
     pub(crate) fn revert_version_choice(&mut self) {
-        let Some((id, before)) = self.version_before.take() else { return };
+        let Some((id, before)) = self.version_before.take() else {
+            return;
+        };
         if self.settings.versions.get(&id).cloned().unwrap_or_default() == before {
             return;
         }
@@ -196,8 +208,8 @@ impl LauncherUi {
             .width(width)
             .height(390.0)
             .show_ui(ui, |ui| {
-                // The combo already scrolls its entire menu. Keep every option, including
-                // Nightly, in that one scroll region. Rows touch: with a gap, the selected row's
+                // The combo already scrolls its entire menu. Keep every ordinary choice
+                // in that one scroll region. Rows touch: with a gap, the selected row's
                 // highlight covers only part of its slot and the spacing looks uneven around it.
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let option_size = egui::vec2(ui.available_width(), 42.0);
@@ -206,14 +218,15 @@ impl LauncherUi {
                 {
                     picked = Some(VersionTrack::Stable);
                 }
-                let nightly = list
-                    .as_ref()
-                    .and_then(|r| r.as_ref().ok())
-                    .is_some_and(|rs| rs.iter().any(|r| is_nightly(r) && self.has_version_download(app, r)));
-                // Without a build, the reason rides in the disabled row itself, not a line of its own.
-                let label = if nightly { tl!("Nightly") } else { tl!("Nightly (none published yet)") };
-                if ui.add_enabled(nightly, egui::Button::selectable(choice == VersionTrack::Nightly, label).min_size(option_size)).clicked() {
-                    picked = Some(VersionTrack::Nightly);
+                if !app.has_separate_nightly_channel() {
+                    let nightly = list
+                        .as_ref()
+                        .and_then(|result| result.as_ref().ok())
+                        .is_some_and(|releases| releases.iter().any(|release| is_nightly(release) && self.has_version_download(app, release)));
+                    let label = if nightly { tl!("Nightly") } else { tl!("Nightly (none published yet)") };
+                    if ui.add_enabled(nightly, egui::Button::selectable(choice == VersionTrack::Nightly, label).min_size(option_size)).clicked() {
+                        picked = Some(VersionTrack::Nightly);
+                    }
                 }
                 match &list {
                     None => {
@@ -228,7 +241,9 @@ impl LauncherUi {
                             ui.label(tl!("No release published yet"));
                         }
                         for r in releases {
-                            if !self.has_version_download(app, r) {
+                            if (app.has_separate_nightly_channel() && artcraft_launcher_core::release::separate_channel_nightly(r))
+                                || !self.has_version_download(app, r)
+                            {
                                 continue;
                             }
                             let pin = VersionTrack::Pinned(r.tag.clone());
@@ -330,7 +345,9 @@ impl LauncherUi {
     }
 
     fn has_version_download(&self, app: &CraftApp, r: &Release) -> bool {
-        let Some(platform) = self.platform else { return false };
+        let Some(platform) = self.platform else {
+            return false;
+        };
         let stems: Vec<&str> = app.stems().collect();
         pick_asset(r, &stems, platform, platform.download_kinds()).is_some_and(|(asset, _)| asset.sha256.is_some() || r.sums_asset().is_some())
     }
@@ -421,5 +438,99 @@ mod tests {
         // Following the latest release or nightly is not keeping a version.
         assert_eq!(behind(&VersionTrack::Stable, &installed("0.16.0"), &releases), None);
         assert_eq!(behind(&VersionTrack::Nightly, &installed("0.16.0"), &releases), None);
+    }
+    #[derive(Clone)]
+    struct PickerRecorder(std::rc::Rc<std::cell::RefCell<Vec<artcraft_launcher_core::protocol::Command>>>);
+    impl artcraft_launcher_core::protocol::Backend for PickerRecorder {
+        fn send(&mut self, command: artcraft_launcher_core::protocol::Command) {
+            self.0.borrow_mut().push(command);
+        }
+        fn poll(&mut self) -> Vec<artcraft_launcher_core::protocol::Event> {
+            Vec::new()
+        }
+        fn capabilities(&self) -> artcraft_launcher_core::protocol::Capabilities {
+            artcraft_launcher_core::protocol::Capabilities { manage_apps: true, reveal_label: "Show", self_update: false, desktop_shortcuts: false }
+        }
+        fn platform(&self) -> Option<artcraft_launcher_core::Platform> {
+            Some(artcraft_launcher_core::Platform { os: artcraft_launcher_core::Os::Windows, arch: artcraft_launcher_core::Arch::X64 })
+        }
+        fn now(&self) -> i64 {
+            1000
+        }
+    }
+    fn picker_release(app: &CraftApp, tag: &str, nightly: bool) -> Release {
+        let parsed = version::parse(tag).unwrap();
+        let name = format!("{}-{parsed}-windows-x64-portable.zip", app.id);
+        let prefix = format!("https://github.com/{}/releases/download/{tag}/", app.repo);
+        artcraft_launcher_core::release::parse_github_release(
+            &serde_json::json!({"tag_name":tag,"prerelease":nightly,"assets":[
+                {"name":name,"size":123,"browser_download_url":format!("{prefix}{name}")},
+                {"name":"SHA256SUMS.txt","size":100,"browser_download_url":format!("{prefix}SHA256SUMS.txt")}
+            ]})
+            .to_string(),
+            app.repo,
+        )
+        .unwrap()
+    }
+    fn picker(id: &'static str, saved: VersionTrack) -> (egui_kittest::Harness<'static, Option<LauncherUi>>, PickerRecorder) {
+        let sent = PickerRecorder(Default::default());
+        let recorder = sent.clone();
+        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(700.0, 700.0)).build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                let launcher = state.get_or_insert_with(|| {
+                    let mut settings = crate::settings::Settings { language: "en".into(), notify: false, ..Default::default() };
+                    settings.versions.insert(id.into(), saved.clone());
+                    let mut launcher = LauncherUi::new(ui.ctx(), Box::new(recorder.clone()), settings);
+                    let app = CraftApp::by_id(id).unwrap();
+                    launcher
+                        .version_lists
+                        .insert(id.into(), Ok(vec![picker_release(app, "v1.0.0-dev.nightly.1", true), picker_release(app, "v0.9.0", false)]));
+                    launcher
+                });
+                let label = ui.label("Version").id;
+                launcher.version_combo(ui, id, CraftApp::by_id(id).unwrap(), 500.0, label);
+            },
+            None,
+        );
+        harness.run_steps(3);
+        (harness, sent)
+    }
+    #[test]
+    fn shared_selection_legacy_picker_really_follows_and_pins_main_supported_nightlies() {
+        use egui_kittest::kittest::Queryable;
+        for id in ["solidcraft", "filmcraft"] {
+            let (mut harness, sent) = picker(id, VersionTrack::Stable);
+            harness.get_by_value("v0.9.0 (latest release)").click();
+            harness.run_steps(3);
+            harness.get_by_label("Nightly").click();
+            harness.run_steps(3);
+            assert_eq!(harness.state().as_ref().unwrap().settings.versions.get(id), Some(&VersionTrack::Nightly));
+            assert!(sent.0.borrow().iter().any(|c|matches!(c,artcraft_launcher_core::protocol::Command::Configure(options) if options.versions.get(id)==Some(&VersionTrack::Nightly))));
+            harness.get_by_value("Nightly").click();
+            harness.run_steps(3);
+            harness.get_by_label("v1.0.0-dev.nightly.1").click();
+            harness.run_steps(3);
+            let pin = VersionTrack::Pinned("v1.0.0-dev.nightly.1".into());
+            assert_eq!(harness.state().as_ref().unwrap().settings.versions.get(id), Some(&pin));
+            assert!(
+                sent.0
+                    .borrow()
+                    .iter()
+                    .any(|c| matches!(c,artcraft_launcher_core::protocol::Command::Configure(options) if options.versions.get(id)==Some(&pin)))
+            );
+        }
+    }
+    #[test]
+    fn shared_selection_saved_photo_nightly_is_reconciled_before_the_ordinary_picker_draws() {
+        use egui_kittest::kittest::Queryable;
+        for saved in [VersionTrack::Nightly, VersionTrack::Pinned("v1.0.0-dev.nightly.1".into())] {
+            let (mut harness, _) = picker("photocraft", saved);
+            assert!(!harness.state().as_ref().unwrap().settings.versions.contains_key("photocraft"));
+            harness.get_by_value("v0.9.0 (latest release)").click();
+            harness.run_steps(3);
+            assert!(harness.query_by_label("Nightly").is_none());
+            assert!(harness.query_by_label("v1.0.0-dev.nightly.1").is_none());
+            assert!(harness.query_by_label("v0.9.0 (latest release)").is_some());
+        }
     }
 }

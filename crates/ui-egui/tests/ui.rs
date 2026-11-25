@@ -95,7 +95,7 @@ impl Backend for Fake {
         out
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage }
+        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
@@ -475,7 +475,7 @@ impl Backend for VersionsFake {
         self.launcher_kind
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true }
+        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(self.platform)
@@ -1182,14 +1182,10 @@ fn a_narrow_settings_row_keeps_its_control_clear_of_its_label() {
     h.get_by_role_and_label(egui::accesskit::Role::Label, "Install new apps as").scroll_to_me();
     h.run_steps(3);
     let label = h.get_by_role_and_label(egui::accesskit::Role::Label, "Install new apps as").rect();
-    // Several combo boxes are on the settings page; the format chooser is the one nearest the
-    // label, whichever column the dialog's size puts it in.
+    // Several combo boxes are on the settings page; the format chooser is the one with this label.
     let combo = h
         .query_all_by_role(egui::accesskit::Role::ComboBox)
-        .min_by_key(|node| {
-            let r = node.rect();
-            ((r.center().x - label.center().x).abs() + (r.center().y - label.center().y).abs()) as i32
-        })
+        .find(|node| node.accesskit_node().label().as_deref() == Some("Install new apps as"))
         .expect("the install-format chooser is on screen")
         .rect();
     assert!(!label.intersects(combo), "the label {label:?} overlaps its combo box {combo:?}");
@@ -1209,7 +1205,7 @@ fn drive_launcher(launcher: &mut LauncherUi, ctx: &egui::Context, events: Vec<eg
         events,
         ..Default::default()
     };
-    let _ = ctx.run_ui(input, |root| {
+    let mut out = ctx.run_ui(input, |root| {
         if first {
             first = false;
             root.ctx().request_discard("test: force a second pass");
@@ -1217,6 +1213,8 @@ fn drive_launcher(launcher: &mut LauncherUi, ctx: &egui::Context, events: Vec<eg
         launcher.logic(&root.ctx().clone(), &mut NoHost);
         launcher.ui(root, &mut NoHost);
     });
+    // Headless: no renderer consumes texture deltas (pin icons, fonts). Clear before drop.
+    out.textures_delta.clear();
 }
 
 /// Drives one pointer gesture as move, press and release over separate frames, optionally
@@ -1268,7 +1266,8 @@ fn drive_accesskit_click(
     two_passes: bool,
 ) {
     let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1180.0, 1200.0));
-    let _ = ctx.run_ui(egui::RawInput { screen_rect: Some(screen_rect), time: Some(time), ..Default::default() }, |_| {});
+    let mut priming = ctx.run_ui(egui::RawInput { screen_rect: Some(screen_rect), time: Some(time), ..Default::default() }, |_| {});
+    priming.textures_delta.clear();
     let passes = if two_passes { 2 } else { 1 };
     for pass in 0..passes {
         ctx.begin_pass(egui::RawInput {
@@ -1290,7 +1289,8 @@ fn drive_accesskit_click(
                 });
             });
         });
-        let _ = ctx.end_pass();
+        let mut out = ctx.end_pass();
+        out.textures_delta.clear();
     }
 }
 
@@ -1369,11 +1369,19 @@ fn the_actual_open_button_launches_once_across_a_discarded_pass() {
 /// What the Open half beside PhotoCraft's update reads out (0.4.1 installed, 0.5.0 out).
 const KEEP_PHOTOCRAFT: &str = "Open 0.4.1 without updating. 0.5.0 stays available.";
 
-/// The commands `sent` holds for `app`: how many launches and how many installs.
+/// The commands `sent` holds for `app`: how many launches and how many installs, counting a
+/// batched `InstallAll` (always used on Linux) that includes it.
 fn launches_and_installs(sent: &RefCell<Vec<Command>>, app: &str) -> (usize, usize) {
     let sent = sent.borrow();
     let launches = sent.iter().filter(|c| matches!(c, Command::Launch { app: a, .. } if a == app)).count();
-    let installs = sent.iter().filter(|c| matches!(c, Command::Install { app: a } if a == app)).count();
+    let installs = sent
+        .iter()
+        .filter(|c| match c {
+            Command::Install { app: a } => a == app,
+            Command::InstallAll { apps } => apps.iter().any(|a| a == app),
+            _ => false,
+        })
+        .count();
     (launches, installs)
 }
 
@@ -1762,9 +1770,25 @@ fn grid_shows_every_status_and_installs_on_click() {
     h.get_by_label_contains("48 MB of 131 MB");
     h.get_by_label("Update all (2)").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
-    assert_eq!(installs.len(), 2, "{installs:?}");
-    assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+    assert_update_commands(&sent, &["photocraft", "effectcraft"]);
+}
+
+/// With `batch_updates` off (the default): one `InstallAll` for `apps` on Linux, where updates
+/// are always batched, and one `Install` per app elsewhere.
+fn assert_update_commands(sent: &RefCell<Vec<Command>>, apps: &[&str]) {
+    let mut installs: Vec<Command> =
+        sent.borrow().iter().filter(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. })).cloned().collect();
+    for c in &mut installs {
+        if let Command::InstallAll { apps } = c {
+            apps.sort();
+        }
+    }
+    installs.sort_by_key(|c| format!("{c:?}"));
+    let mut apps: Vec<String> = apps.iter().map(|a| a.to_string()).collect();
+    apps.sort();
+    let expected =
+        if cfg!(target_os = "linux") { vec![Command::InstallAll { apps }] } else { apps.into_iter().map(|app| Command::Install { app }).collect() };
+    assert_eq!(installs, expected);
 }
 
 #[test]
@@ -1991,9 +2015,8 @@ fn pinning_an_app_keeps_it_on_top_until_unpinned() {
     h.state_mut().as_mut().unwrap().settings.sort = artcraft_launcher_ui_egui::settings::SortKey::Name;
     h.state_mut().as_mut().unwrap().settings.sort_descending = false;
     h.run_steps(2);
-    h.get_by_label("More actions for PhotoCraft").click();
-    h.run_steps(3);
-    h.get_by_label("Pin to top").click();
+    // Card/row pin button (menu Pin to top is covered by pinned_app_menu_offers_unpin).
+    h.get_by_label("Pin PhotoCraft to top").click();
     h.run_steps(4);
     assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
     let ids = h.state().as_ref().unwrap().visible_ids_for_test();
@@ -2182,6 +2205,38 @@ fn pin_drag_accepts_the_table_grip_column() {
     h.run_steps(2);
     assert_eq!(h.state().as_ref().unwrap().settings.pinned, ["lightcraft", "wordcraft", "photocraft"]);
     assert!(!h.state().as_ref().unwrap().pin_dragging_for_test());
+}
+
+#[test]
+/// The card pin button pins without opening the … menu, then offers Unpin {name}.
+fn pin_toggle_button_pins_and_unpins() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Pin PhotoCraft to top").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
+    h.get_by_label("Pinned · 1");
+    assert!(h.query_by_label("Pin PhotoCraft to top").is_none());
+    h.get_by_label("Unpin PhotoCraft").click();
+    h.run_steps(4);
+    assert!(h.state().as_ref().unwrap().settings.pinned.is_empty());
+    h.get_by_label("Pin PhotoCraft to top");
+}
+
+#[test]
+/// Hidden apps do not show a pin toggle (Pin to top stays out of their menu too).
+fn hidden_app_has_no_pin_toggle_button() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.hidden.insert("photocraft".into());
+    h.state_mut().as_mut().unwrap().settings.filter = artcraft_launcher_ui_egui::settings::Filter::Hidden;
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::Label, "PhotoCraft");
+    assert!(h.query_by_label("Pin PhotoCraft to top").is_none());
+    assert!(h.query_by_label("Unpin PhotoCraft").is_none());
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Pin to top").is_none());
 }
 
 #[test]
@@ -2759,16 +2814,17 @@ fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
 }
 
 #[test]
-/// A feed alert is acknowledged only by OK (persisted), while an inline announcement stays until
-/// its own Dismiss is clicked.
+/// A feed alert is acknowledged only by OK (persisted). An announcement waits in the header's bell,
+/// counted as unread until the bell is opened, and stays listed until its own Dismiss is clicked.
 fn feed_announcements_and_alerts_show_until_dismissed() {
-    use artcraft_launcher_core::feed::Notice;
+    use artcraft_launcher_core::notices::Notice;
     let notice = |id: &str, title: &str, link: Option<&str>| Notice {
         id: id.into(),
         title: title.into(),
         body: format!("{title} body"),
         link: link.map(str::to_string),
         created_at: None,
+        expires: None,
     };
     let sent = Rc::new(RefCell::new(Vec::new()));
     let mut evs = events();
@@ -2807,13 +2863,24 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
     h.run_steps(4);
     assert!(h.query_by_label("Security update").is_none());
     assert!(h.state().as_ref().unwrap().settings.dismissed_notices.contains("x1"));
-    // The announcement stays inline until dismissed.
+    // The announcement is not drawn over the apps: only the bell says it is there.
+    assert!(h.query_by_label("CADCraft 1.0 is out").is_none());
+    h.get_by_label("Announcements, 1 unread").click();
+    h.run_steps(4);
     h.get_by_label("CADCraft 1.0 is out");
     h.get_by_label("Learn more");
+    // Opening the bell read it: the count is gone, and stays gone after closing.
+    assert!(h.query_by_label("Announcements, 1 unread").is_none());
+    assert!(h.state().as_ref().unwrap().settings.read_notices.contains("a1"));
     h.get_all_by_label("Dismiss").next().unwrap().click();
     h.run_steps(4);
     assert!(h.query_by_label("CADCraft 1.0 is out").is_none());
     assert!(h.state().as_ref().unwrap().settings.dismissed_notices.contains("a1"));
+    h.get_by_label("No announcements");
+    h.key_press(egui::Key::Escape);
+    h.run_steps(4);
+    assert!(h.query_by_label("No announcements").is_none());
+    assert!(h.query_by_label("Announcements, 1 unread").is_none());
 }
 
 #[test]
@@ -2857,9 +2924,8 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
         None,
     );
     h.run_steps(4);
+    assert_update_commands(&sent, &["photocraft", "effectcraft"]);
     let commands = sent.borrow().clone();
-    assert!(commands.contains(&Command::Install { app: "photocraft".into() }), "outdated photocraft should be queued for install: {commands:?}");
-    assert!(commands.contains(&Command::Install { app: "effectcraft".into() }), "outdated effectcraft should be queued for install: {commands:?}");
     assert!(commands.contains(&Command::UpdateLauncher), "launcher update should be queued: {commands:?}");
 }
 
@@ -3118,6 +3184,105 @@ fn custom_title_bar_has_window_buttons() {
     assert!(closes, "the close button asks the window to close (the shell decides whether that hides it to the tray)");
 }
 
+/// With a dialog open, one click on the custom title bar's Close closes the window: the caption
+/// buttons sit above the dialog's backdrop, as a system title bar does, so the click isn't spent
+/// dismissing the dialog first (#853). The header's own controls beside them still take clicks.
+#[test]
+fn close_button_closes_with_a_dialog_open() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(2);
+    h.get_by_label("Done");
+    h.get_by_label("Close").click();
+    h.step();
+    let closes = h.output().viewport_output.values().any(|v| v.commands.contains(&egui::ViewportCommand::Close));
+    assert!(closes, "the first click on Close closes the window");
+    h.run_steps(2);
+    h.get_by_label("Done");
+}
+
+/// Presses and releases at `pos`, and returns what the window was asked to do.
+fn click_at(h: &mut Harness<'_, Option<LauncherUi>>, pos: egui::Pos2) -> Vec<egui::ViewportCommand> {
+    let mut asked = Vec::new();
+    for pressed in [true, false] {
+        let input = h.input_mut();
+        input.events.push(egui::Event::PointerMoved(pos));
+        input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        h.step();
+        asked.extend(h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()));
+    }
+    h.run_steps(2);
+    asked
+}
+
+/// Above a dialog the caption buttons are for the pointer alone: Tab stays in the dialog, and a
+/// click just beside them is still the backdrop's (#853).
+#[test]
+fn the_lifted_caption_buttons_leave_tab_and_the_backdrop_to_the_dialog() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(6);
+    let tab = |h: &mut Harness<'_, Option<LauncherUi>>| -> String {
+        h.key_press(egui::Key::Tab);
+        h.run_steps(2);
+        let focused = h.root().query_all(egui_kittest::kittest::by()).find(|n| n.accesskit_node().is_focused());
+        focused.map_or(String::new(), |n| n.accesskit_node().label().unwrap_or_default().to_string())
+    };
+    let caption = ["Minimize", "Maximize", "Close"];
+    let reached: Vec<String> = (0..4).map(|_| tab(&mut h)).filter(|l| caption.contains(&l.as_str())).collect();
+    assert_eq!(reached, caption, "without a dialog Tab reaches them in the order they're drawn");
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    assert_eq!(tab(&mut h), "Language", "the first Tab goes to the dialog");
+    for _ in 0..40 {
+        let focused = tab(&mut h);
+        assert!(!caption.contains(&focused.as_str()), "Tab left the dialog for {focused}");
+    }
+    let close = h.get_by_label("Close").rect();
+    let asked = click_at(&mut h, egui::pos2(close.center().x, close.bottom() + 3.0));
+    assert!(asked.is_empty(), "below Close: {asked:?}");
+    assert!(h.query_by_label("Done").is_none(), "a click below Close dismisses the dialog");
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    let minimize = h.get_by_label("Minimize").rect();
+    let asked = click_at(&mut h, egui::pos2(minimize.left() - 3.0, minimize.center().y));
+    assert!(asked.is_empty(), "left of Minimize: {asked:?}");
+    assert!(h.query_by_label("Done").is_none(), "a click left of Minimize dismisses the dialog");
+}
+
+/// The details drawer covers the header, and the window's Close stays under it.
+#[test]
+fn the_details_drawer_keeps_the_caption_buttons_under_it() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(8);
+    let close = h.get_by_label("Close").rect().center();
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    let asked = click_at(&mut h, close);
+    assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
+}
+
+/// The enlarged picture's own Close sits under the custom title bar's Close. With no dialog open
+/// the caption buttons stay in the header, under the picture, so that click closes the picture
+/// and not the window.
+#[test]
+fn the_enlarged_pictures_close_closes_the_picture_not_the_window() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    h.get_by_label("Enlarge picture").click();
+    h.run_steps(4);
+    // The drawer's Close is lower down; the picture's is at the top right, under the title bar.
+    let picture = h.query_all_by_label("Close (Esc)").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).unwrap();
+    let spot = picture.intersect(h.get_by_label("Close").rect());
+    assert!(spot.is_positive(), "the two buttons don't overlap: {picture:?}");
+    let asked = click_at(&mut h, spot.center());
+    assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
+    h.run_steps(4);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1, "the enlarged picture is still open");
+}
+
 /// Maximized, the window's top-right pixel is the screen's corner: there is no resize band there,
 /// so it belongs to the close button, as it does with Windows' own caption buttons (#374).
 #[test]
@@ -3262,6 +3427,45 @@ fn a_press_on_the_window_edge_only_resizes() {
     let asked = press(&mut h, egui::pos2(590.0, 1198.0));
     assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{asked:?}");
     assert!(settings_open(&h), "the dialog closed on a resize");
+    // Above the dialog the caption buttons have a layer of their own (#853); the band over them still only resizes.
+    for label in ["Minimize", "Maximize", "Close"] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 2.0));
+        assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label} over the dialog: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label} over the dialog: {asked:?}");
+    }
+    for label in ["Minimize", "Restore", "Close"] {
+        let asked = press_on_restore(&mut h, label, 4.5);
+        assert!(
+            !asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)),
+            "{label} restored over the dialog: {asked:?}"
+        );
+    }
+    assert!(settings_open(&h), "the dialog closed on a resize");
+}
+
+#[test]
+/// Details reuses the action row but must not show a reorder grip — there are no sibling pins to
+/// drop onto in the drawer (pin toggle still appears).
+fn details_drawer_hides_reorder_grip_for_pinned_apps() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(4);
+    h.get_all_by_label_contains("Reorder PhotoCraft").next().expect("grid card still has a reorder grip");
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    // Exactly one Reorder control remains (the grid card behind the drawer), not a second in details.
+    assert_eq!(h.query_all_by_label_contains("Reorder PhotoCraft").count(), 1, "details must not add a reorder grip");
+    // Pin toggle still appears in both the card and the drawer.
+    assert!(h.query_all_by_label("Unpin PhotoCraft").count() >= 2);
+    // Prefer the details … control (last in the tree) over the grid card's.
+    h.get_all_by_label("More actions for PhotoCraft").last().expect("details more menu").click();
+    h.run_steps(3);
+    // Details … menu can Unpin, but Move up/down belong only on the list.
+    h.get_by_label("Unpin");
+    assert!(h.query_by_label("Move up").is_none());
+    assert!(h.query_by_label("Move down").is_none());
 }
 
 #[test]
@@ -3577,7 +3781,7 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
         h.run_steps(6);
         snapshot(&mut h, &format!("footer-rate-limited-{width}"));
         // Full or short, the notice says when GitHub can be asked again.
-        let notice = h.get_by_label_contains("in 30 min").rect();
+        let notice = h.get_by_label_contains("check at").rect();
         let checked = h.get_by_label_contains("Checked ").rect();
         // Cut short in a narrow window, but enough of it left to read.
         assert!(notice.width() >= 120.0 && notice.right() <= width, "{width}: notice {notice:?}");
@@ -3602,11 +3806,26 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
 }
 
 #[test]
-/// At 720–1180 px refresh, search, sort and view share one unclipped toolbar row without
-/// overlaps.
+/// From 880 px refresh, search, sort and view share one unclipped toolbar row without overlaps;
+/// narrower, beside the page toggle, the sort picker moves to a second row under them.
 fn toolbar_keeps_navigation_refresh_search_and_view_on_one_unclipped_row() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    for width in [720.0, 800.0, 1180.0] {
+    for width in [720.0, 800.0] {
+        h.set_size(egui::vec2(width, 900.0));
+        h.run_steps(6);
+        let refresh = h.get_by_label("Check for updates").rect();
+        let search = h.query_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().rect();
+        let view = h.get_by_label("Show apps as cards").rect();
+        let sort = h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Sort").rect();
+        assert!(refresh.top() > 48.0, "{width}: refresh belongs in the toolbar, not the header: {refresh:?}");
+        assert!((refresh.center().y - search.center().y).abs() < 2.0, "{width}: refresh and search must share a row");
+        assert!(refresh.right() <= search.left() + 1.0, "{width}: refresh overlaps search: {refresh:?}, {search:?}");
+        assert!(search.right() <= view.left() + 1.0 && view.right() <= width, "{width}: search overlaps view or view is clipped");
+        assert!(sort.top() >= search.bottom(), "{width}: sort belongs on the second row: {sort:?}, {search:?}");
+        assert!(sort.left() >= 0.0 && sort.right() <= width, "{width}: sort is outside the window: {sort:?}");
+        h.check_accessibility();
+    }
+    for width in [880.0, 1180.0] {
         h.set_size(egui::vec2(width, 900.0));
         h.run_steps(6);
         let refresh = h.get_by_label("Check for updates").rect();
@@ -4426,4 +4645,261 @@ fn launcher_version_padlock_confirms_and_returns_to_settings() {
     assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Stable);
     h.get_by_label("Launcher version");
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if options.launcher_version == VersionTrack::Stable)));
+}
+
+/// Settings › AI agents: the switch, and Add / Remove per MCP client, each sending one command.
+#[test]
+fn ai_agents_switch_and_client_buttons_send_their_commands() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let client = |client, name: &str, installed, added| McpClientState { client, name: name.into(), installed, added, restartable: false };
+    let mut evs = events();
+    evs.push(Event::Mcp {
+        agents: McpAgents {
+            flag_on: true,
+            gateway_found: true,
+            enabled: true,
+            apps: 3,
+            clients: vec![
+                client(McpClient::ClaudeDesktop, "Claude Desktop", true, false),
+                client(McpClient::Cursor, "Cursor", true, true),
+                client(McpClient::LmStudio, "LM Studio", false, false),
+            ],
+            gateway: Some("C:/gw/craft-ai-mcp.exe".into()),
+        },
+    });
+    let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Apps agents can reach: 3").scroll_to_me();
+    h.run_steps(6);
+    snapshot(&mut h, "settings-ai-agents");
+    // Other clients: the configuration in each format, copied with a note saying so.
+    for label in ["Copy JSON", "Copy for VS Code", "Copy for Codex (TOML)"] {
+        h.get_by_label(label).scroll_to_me();
+        h.run_steps(8);
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Configuration copied.").next().is_some(), "{label}");
+    }
+    // The font sources' "Add" button comes last in the tree: it sits in the other column.
+    h.get_all_by_label("Add").next().expect("client Add button").click();
+    h.run_steps(3);
+    h.get_by_label("Remove").click();
+    h.run_steps(3);
+    h.get_by_label("Let AI agents use Craft apps").click();
+    h.run_steps(2);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::ClaudeDesktop, added: true })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::Cursor, added: false })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetAgents { enabled: false })));
+    assert!(
+        !sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::LmStudio, .. })),
+        "a client that isn't installed has no button"
+    );
+}
+
+/// Adding Claude Desktop says why it must restart and offers to do it; the button sends the
+/// restart and goes away. Clients the launcher can't restart get no such offer.
+#[test]
+fn ai_agents_offer_to_restart_a_client_right_after_adding_it() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let agents = |added| McpAgents {
+        flag_on: true,
+        gateway_found: true,
+        enabled: true,
+        apps: 3,
+        clients: vec![
+            McpClientState { client: McpClient::ClaudeDesktop, name: "Claude Desktop".into(), installed: true, added, restartable: true },
+            McpClientState { client: McpClient::ClaudeCode, name: "Claude Code".into(), installed: true, added, restartable: false },
+        ],
+        gateway: Some("C:/gw/craft-ai-mcp.exe".into()),
+    };
+    let machine = Machine { more: vec![Event::Mcp { agents: agents(false) }], ..Default::default() };
+    let (mut h, sent, queue) = versions_harness(machine, None, vec![]);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Quick install").scroll_to_me();
+    h.run_steps(4);
+    assert!(h.query_by_label("Restart Claude Desktop").is_none(), "nothing to restart before adding");
+    // The font sources' "Add" button comes last in the tree: it sits in the other column.
+    let adds: Vec<_> = h.get_all_by_label("Add").collect();
+    adds[0].click();
+    adds[1].click();
+    h.run_steps(2);
+    queue.borrow_mut().push(Event::Mcp { agents: agents(true) });
+    h.run_steps(4);
+    h.get_by_label_contains("loads its MCP servers only when it starts");
+    assert!(h.query_by_label("Restart Claude Code").is_none(), "the launcher can't restart Claude Code");
+    h.get_by_label("Restart Claude Desktop").click();
+    h.run_steps(4);
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::McpRestartClient { client: McpClient::ClaudeDesktop })));
+    assert!(h.query_by_label("Restart Claude Desktop").is_none(), "offered once");
+    assert!(h.query_all_by_label("Restarting Claude Desktop…").next().is_some(), "a note says it is happening");
+}
+
+/// Without the gateway beside the launcher, Settings says so and offers no switch.
+#[test]
+fn ai_agents_without_the_gateway_offer_no_switch() {
+    let mut evs = events();
+    evs.push(Event::Mcp { agents: artcraft_launcher_core::protocol::McpAgents { flag_on: true, ..Default::default() } });
+    let (mut h, _sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.");
+    assert!(h.query_by_label("Let AI agents use Craft apps").is_none());
+}
+
+/// When the gateway went away while agents were on, they can still be turned off and the entries
+/// removed; only adding is gone.
+#[test]
+fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let client = |client, name: &str, added| McpClientState { client, name: name.into(), installed: true, added, restartable: false };
+    let mut evs = events();
+    evs.push(Event::Mcp {
+        agents: McpAgents {
+            flag_on: true,
+            gateway_found: false,
+            enabled: true,
+            apps: 2,
+            clients: vec![client(McpClient::ClaudeDesktop, "Claude Desktop", false), client(McpClient::Cursor, "Cursor", true)],
+            gateway: None,
+        },
+    });
+    let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Apps agents can reach: 2").scroll_to_me();
+    h.run_steps(6);
+    // Only the font sources' "Add" remains.
+    assert_eq!(h.query_all_by_label("Add").count(), 1, "nothing to add without the gateway");
+    h.get_by_label("Remove").click();
+    h.run_steps(3);
+    h.get_by_label("Let AI agents use Craft apps").click();
+    h.run_steps(3);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::Cursor, added: false })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetAgents { enabled: false })));
+}
+
+/// With the `AI-MCP` flag off, Settings shows nothing about agents, and nothing to switch flags:
+/// they are set in `ArtCraft/flags.toml` or `CRAFT_FLAGS` only.
+#[test]
+fn ai_agents_stay_hidden_until_their_flag_is_on() {
+    use artcraft_launcher_core::protocol::McpAgents;
+    let mut evs = events();
+    evs.push(Event::Mcp { agents: McpAgents { flag_on: false, gateway_found: true, enabled: true, apps: 3, clients: vec![], gateway: None } });
+    let (mut h, _sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(h.query_by_label("Let AI agents use Craft apps").is_none(), "no agents box without the flag");
+    assert!(h.query_by_label("Experimental features").is_none(), "flags have no switches in Settings");
+    assert!(h.query_by_label("AI agents (MCP)").is_none());
+}
+
+#[test]
+/// The header holds the Settings gear, the announcements bell and the Stable/Pre-Release switch
+/// side by side at a wide width, a narrow one and one that needs the compact logo, in both
+/// themes, without overlap or clipping.
+fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
+    use artcraft_launcher_core::notices::Notice;
+    use egui_kittest::kittest::Queryable;
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        // 440 is narrow enough that the wordmark gives way to the compact ArtCraft mark.
+        for width in [1180.0_f32, 560.0, 440.0] {
+            let mut evs = events();
+            evs.push(Event::Notices {
+                announcements: vec![Notice {
+                    id: "a1".into(),
+                    title: "CADCraft 1.0 is out".into(),
+                    body: "CADCraft 1.0 is out body".into(),
+                    link: None,
+                    created_at: None,
+                    expires: None,
+                }],
+                alerts: vec![],
+            });
+            let (mut h, _) = harness_with(evs, ViewMode::Grid, theme, true, 1.0);
+            h.set_size(egui::vec2(width, 800.0));
+            h.run_steps(2);
+            h.state_mut().as_mut().unwrap().settings.nightly_enabled = true;
+            h.run_steps(6);
+            let top = |h: &Harness<'static, Option<LauncherUi>>, label: &str| {
+                h.query_all_by_label(label)
+                    .map(|node| node.rect())
+                    .min_by(|a, b| a.top().total_cmp(&b.top()))
+                    .unwrap_or_else(|| panic!("{label} missing at {width}"))
+            };
+            let controls = [
+                ("Settings", top(&h, "Settings")),
+                ("bell", top(&h, "Announcements, 1 unread")),
+                ("Stable", top(&h, "Stable")),
+                ("Developer Builds", top(&h, "Developer Builds")),
+            ];
+            for (name, rect) in &controls {
+                assert!(rect.left() >= 0.0 && rect.right() <= width + 0.5, "{name} is clipped at {width}: {rect:?}");
+                assert!(rect.width() > 1.0, "{name} has no room at {width}: {rect:?}");
+            }
+            for (i, (a, ra)) in controls.iter().enumerate() {
+                for (b, rb) in &controls[i + 1..] {
+                    assert!(!ra.shrink(0.5).intersects(rb.shrink(0.5)), "{a} overlaps {b} at {width}: {ra:?} {rb:?}");
+                }
+            }
+            let name = format!("header-{}-{}", if theme == egui::Theme::Dark { "dark" } else { "light" }, width as u32);
+            snapshot(&mut h, &name);
+        }
+    }
+}
+
+/// Wide Settings is two columns that scroll together: neither may run far past the other, or one
+/// side scrolls through empty space (Fonts once left the right column twice the left's height).
+#[test]
+fn wide_settings_columns_are_about_the_same_height() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.set_size(egui::vec2(1180.0, 4000.0));
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(8);
+    let top = h.get_by_label("Language").accesskit_node().bounding_box().unwrap().y0 - 40.0;
+    let split = h.get_by_label("Install folder").accesskit_node().bounding_box().unwrap().x0 - 20.0;
+    let (mut left, mut right) = (top, top);
+    for node in h.root().children_recursive() {
+        let node = node.accesskit_node();
+        let mut ancestor = node.parent();
+        let mut in_dialog = false;
+        while let Some(parent) = ancestor {
+            in_dialog |= parent.role() == egui::accesskit::Role::Dialog;
+            ancestor = parent.parent();
+        }
+        let footer = matches!(node.label().as_deref(), Some("Quit ArtCraft Launcher" | "Done"));
+        let Some(rect) = node.bounding_box().filter(|rect| in_dialog && !footer && rect.y0 >= top) else { continue };
+        let column = if rect.x0 < split { &mut left } else { &mut right };
+        *column = column.max(rect.y1);
+    }
+    let (left, right) = (left - top, right - top);
+    assert!(left.max(right) < 1.5 * left.min(right), "left column {left:.0}px, right {right:.0}px");
+    snapshot(&mut h, "settings-wide-columns");
+}
+
+/// Without app management (the web build) the right column would have nothing in it, so wide
+/// Settings is one column: every checkbox starts at the same left edge.
+#[test]
+fn settings_without_app_management_is_one_column() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, false);
+    h.set_size(egui::vec2(1180.0, 4000.0));
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(8);
+    let mut edges: Vec<i64> = h
+        .root()
+        .children_recursive()
+        .filter(|node| node.accesskit_node().role() == egui::accesskit::Role::CheckBox)
+        .filter_map(|node| node.accesskit_node().bounding_box().map(|rect| rect.x0.round() as i64))
+        .collect();
+    edges.dedup();
+    assert!(!edges.is_empty() && edges.iter().all(|x| *x == edges[0]), "checkboxes start at {edges:?}");
 }

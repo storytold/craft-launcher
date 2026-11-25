@@ -16,9 +16,16 @@ impl LauncherUi {
     /// a click outside) discards the dialog.
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         let Some(mut dialog) = self.dialog.clone() else {
+            // No dialog on screen: next time settings opens we want fresh MCP state.
+            self.mcp_requested = false;
             self.alert_popup(ctx);
             return;
         };
+        // Opening the settings dialog (fresh): ask for current local-service state.
+        if matches!(dialog, Dialog::Settings) && !self.mcp_requested {
+            self.act_command(Command::McpState);
+            self.mcp_requested = true;
+        }
         let t = Tokens::get(ctx);
         // An area is laid out in the size it had last frame, so dialogs can't share one id: the
         // uninstall prompt would open as tall as Settings and never shrink (#88).
@@ -45,7 +52,7 @@ impl LauncherUi {
             // A control inside a dialog opened a different one; don't restore the old dialog.
             return;
         }
-        if close || response.should_close() {
+        if close || response.should_close() || self.nightly.consent_open {
             self.dialog = if matches!(&dialog, Dialog::UnlockVersion { app, .. } if app == artcraft_launcher_core::catalog::LAUNCHER_ID) {
                 Some(Dialog::Settings)
             } else {
@@ -60,9 +67,10 @@ impl LauncherUi {
         }
     }
 
-    /// The first alert from the release feed the user hasn't acknowledged, as a popup.
+    /// The first current alert the user hasn't acknowledged, as a popup.
     fn alert_popup(&mut self, ctx: &egui::Context) {
-        let Some(alert) = self.alerts.iter().find(|a| !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
+        let now = self.backend.now();
+        let Some(alert) = self.alerts.iter().find(|a| a.current(now) && !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
         let t = Tokens::get(ctx);
         let modal = egui::Modal::new(egui::Id::unique("feed_alert").with(&alert.id)).frame(
             egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(theme::PAD as i8),

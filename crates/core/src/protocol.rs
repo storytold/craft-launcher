@@ -54,6 +54,10 @@ pub enum Command {
     Reveal {
         app: String,
     },
+    /// Create a desktop shortcut for an installed app (Windows).
+    CreateDesktopShortcut {
+        app: String,
+    },
     /// Pause a running download, keeping what's downloaded so far (`Install` resumes it).
     Pause {
         app: String,
@@ -72,6 +76,26 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+    /// The app ids in the order they are on screen. Downloads run one at a time, and those
+    /// waiting go in this order.
+    DownloadOrder(Vec<String>),
+
+    /// Ask for the AI agents state (the gateway, the switch, the MCP clients).
+    McpState,
+    /// Let AI agents use the Craft apps (writes the gateway's app list), or stop them (removes the
+    /// list and the client entries the launcher added).
+    McpSetAgents {
+        enabled: bool,
+    },
+    /// Add the one gateway entry to an MCP client's configuration, or remove it.
+    McpSetClient {
+        client: McpClient,
+        added: bool,
+    },
+    /// Quit an MCP client and start it again, so it loads the entry just added.
+    McpRestartClient {
+        client: McpClient,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -110,6 +134,10 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Consent for the separate nightly context; never switches the stable install channel.
+    pub nightly_enabled: bool,
+    /// Downloads that may run at once (1 to 4; 0 for no limit).
+    pub simultaneous_downloads: u8,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -120,6 +148,17 @@ pub enum LatestRelease {
     None,
     /// Couldn't find out (offline, rate-limited, unreadable answer).
     Failed(String),
+}
+
+/// Nightly-only scheduling metadata. A previous success is not advanced by an offline,
+/// budget-limited or server-limited attempt. This contains no install capability or body cache.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NightlyStatus {
+    pub attempted_at: Option<i64>,
+    pub verified_at: Option<i64>,
+    pub retry_at: Option<i64>,
+    pub stale: bool,
+    pub message: Option<String>,
 }
 
 /// What a running job is doing.
@@ -135,6 +174,8 @@ pub enum JobPhase {
         total: u64,
     },
     Verifying,
+    /// Another app is downloading; this one's download starts when its turn comes.
+    Queued,
     /// The system's installer is busy with another app; this one goes next.
     Waiting,
     /// Waiting on the OS installer (MSI) or copying files.
@@ -223,8 +264,8 @@ pub enum Event {
     LauncherRestarting,
     /// News and alerts from ArtCraft's release feed (replaces any earlier set).
     Notices {
-        announcements: Vec<crate::feed::Notice>,
-        alerts: Vec<crate::feed::Notice>,
+        announcements: Vec<crate::notices::Notice>,
+        alerts: Vec<crate::notices::Notice>,
     },
     Detected {
         app: String,
@@ -266,7 +307,14 @@ pub enum Event {
         path: String,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
+    /// Clears the app's in-progress job phase in the UI.
     JobFinished {
+        app: String,
+        result: Result<String, String>,
+    },
+    /// A short status toast that is not tied to an install/uninstall job phase
+    /// (e.g. creating a desktop shortcut). Does not clear `Progress` state.
+    Notice {
         app: String,
         result: Result<String, String>,
     },
@@ -277,6 +325,10 @@ pub enum Event {
         key: String,
         result: Result<Vec<u8>, String>,
     },
+    NightlyStatus {
+        app: String,
+        status: NightlyStatus,
+    },
     CheckStarted,
     CheckFinished {
         /// Unix seconds.
@@ -285,6 +337,52 @@ pub enum Event {
         /// GitHub refused more API calls until this time (Unix seconds).
         rate_limited_until: Option<i64>,
     },
+
+    /// The AI agents state: the gateway, the switch and the MCP clients. Sent when Settings asks,
+    /// after detection and after any change.
+    Mcp {
+        agents: McpAgents,
+    },
+    /// An AI agents operation failed (e.g. writing a client configuration). Carries a short, user-facing
+    /// message; the UI shows it as an error toast so a failed toggle is never silent.
+    McpError {
+        message: String,
+    },
+}
+
+/// An MCP client the launcher can add the gateway entry to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum McpClient {
+    ClaudeDesktop,
+    ClaudeCode,
+    Cursor,
+    LmStudio,
+}
+
+/// One MCP client on this machine: whether it looks installed, and whether our entry is in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct McpClientState {
+    pub client: McpClient,
+    pub name: String,
+    pub installed: bool,
+    pub added: bool,
+    /// The launcher can quit and start it again ([`Command::McpRestartClient`]).
+    pub restartable: bool,
+}
+
+/// AI agents and the Craft apps: the `craft-ai-mcp` gateway (found beside the launcher?), the
+/// switch, and the MCP clients.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct McpAgents {
+    /// The `AI-MCP` feature flag: without it Settings shows nothing about agents.
+    pub flag_on: bool,
+    pub gateway_found: bool,
+    pub enabled: bool,
+    /// How many installed apps agents can reach (those with a CLI).
+    pub apps: usize,
+    pub clients: Vec<McpClientState>,
+    /// The gateway clients start, while agents are on: what Copy puts in a configuration.
+    pub gateway: Option<String>,
 }
 
 /// What a backend can do on this platform.
@@ -300,10 +398,30 @@ pub struct Capabilities {
     /// once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
+    /// Offer "Add desktop shortcut" for installed apps (Windows desktop only).
+    pub desktop_shortcuts: bool,
 }
 
 /// The UI's view of a backend.
 pub trait Backend {
+    /// Admitted mutation/Open jobs, including the gap before their first progress event.
+    /// Must be a cheap in-memory query; metadata discovery is not an active job.
+    fn has_active_jobs(&self) -> bool {
+        false
+    }
+
+    /// Create an independent context using the same backend implementation.
+    fn nightly_context(&self) -> Option<Box<dyn Backend>> {
+        None
+    }
+
+    /// Whether this (nightly) context can discover and install new pre-release builds: the
+    /// platform's Nightly signing trust is configured. Without it the UI offers neither, while
+    /// copies already installed stay manageable. Backends with no signing trust of their own
+    /// (test doubles) can install whatever they are asked to.
+    fn nightly_available(&self) -> bool {
+        true
+    }
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;
