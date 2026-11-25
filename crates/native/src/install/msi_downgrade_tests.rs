@@ -139,30 +139,44 @@ fn each_outcome_tells_the_person_what_is_installed_now() {
     assert!(!odd.put_back);
 }
 
-/// The registration a put-back made is the one the installer's own log names for the package it
-/// ran: its product code, never a registry row that matches the previous version's numbers.
+/// The registration a put-back created: the one code Windows Installer did not list before the
+/// downgrade started, with the previous release's numbers. A same-numbered registration that was
+/// already there is never it, and several new ones or none prove nothing.
 #[test]
-fn the_installed_packages_log_names_the_registration_it_created() {
-    const CODE: &str = "{3D425FF2-3EB2-4950-9833-95B01B102845}";
-    let log = format!(
-        "=== Verbose logging started: 11/25/2026  10:00:00  Build type: SHIP UNICODE 5.00.10011.00\r\n\
-         MSI (c) (A4:1C) [10:00:00:001]: Resetting cached policy values\r\n\
-         MSI (c) (A4:1C) [10:00:00:002]: PROPERTY CHANGE: Adding ProductCode property. Its value is '{CODE}'.\r\n\
-         MSI (c) (A4:1C) [10:00:00:003]: PROPERTY CHANGE: Adding UpgradeCode property. Its value is '{{11111111-2222-3333-4444-555555555555}}'.\r\n"
+fn only_one_new_registration_with_the_previous_numbers_can_be_the_put_back() {
+    let previous = super::super::version::parse("0.24.0-rc.1").unwrap();
+    let install = |code: &str, v: &str| (code.to_string(), super::super::version::parse(v));
+    let (old, created, leftover) = (
+        "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".to_string(),
+        "{3D425FF2-3EB2-4950-9833-95B01B102845}".to_string(),
+        "{11111111-2222-3333-4444-555555555555}".to_string(),
     );
-    assert_eq!(product_code_in(&log).as_deref(), Some(CODE), "the product code, not the upgrade code");
-    // The property dump form Windows Installer also logs.
-    assert_eq!(product_code_in(&format!("ProductCode = {CODE}\r\n")).as_deref(), Some(CODE));
-    // A log that names no valid product code records nothing.
-    assert_eq!(product_code_in("no properties here\r\n"), None);
-    assert_eq!(product_code_in("ProductCode = {not-a-code}\r\n"), None);
-    // Read from beside the package itself.
-    let dir = tempfile::tempdir().unwrap();
-    let msi = std::fs::canonicalize(dir.path()).unwrap().join("filmcraft-0.14.0.msi");
-    std::fs::write(&msi, b"package").unwrap();
-    assert_eq!(registered_product_code(&msi), None, "no log yet");
-    std::fs::write(super::super::msi_log(&msi), &log).unwrap();
-    assert_eq!(registered_product_code(&msi).as_deref(), Some(CODE));
+    let before = [old.clone()];
+    // The put-back created one registration, and Windows registers it with the numbers only.
+    assert_eq!(put_back_registration(&before, &[install(&old, "0.24.0"), install(&created, "0.24.0")], Some(&previous)), Some(created.clone()));
+    // A same-numbered registration that was there before is in the snapshot: it is never the one
+    // the put-back made, and when nothing else appeared nothing is recorded.
+    assert_eq!(put_back_registration(std::slice::from_ref(&leftover), &[install(&leftover, "0.24.0")], Some(&previous)), None);
+    assert_eq!(
+        put_back_registration(std::slice::from_ref(&leftover), &[install(&leftover, "0.24.0"), install(&created, "0.24.0")], Some(&previous)),
+        Some(created.clone())
+    );
+    // Two new registrations, none at all, or one with other numbers: nothing is recorded.
+    let other = "{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}".to_string();
+    assert_eq!(
+        put_back_registration(&before, &[install(&old, "0.24.0"), install(&created, "0.24.0"), install(&other, "0.24.0")], Some(&previous)),
+        None
+    );
+    assert_eq!(put_back_registration(&before, &[install(&old, "0.24.0")], Some(&previous)), None);
+    assert_eq!(put_back_registration(&before, &[install(&old, "0.24.0"), install(&created, "0.23.1")], Some(&previous)), None);
+    // Without the previous release's version there is nothing to match it against.
+    assert_eq!(put_back_registration(&before, &[install(&old, "0.24.0"), install(&created, "0.24.0")], None), None);
+    // Codes are compared as Windows reports them, which does not keep their case.
+    assert_eq!(
+        put_back_registration(&[old.to_lowercase()], &[install(&old.to_lowercase(), "0.24.0")], Some(&previous)),
+        None,
+        "the existing registration is still the one in the snapshot"
+    );
 }
 
 /// An all-users downgrade with no elevated session stops before removing anything, and says so.

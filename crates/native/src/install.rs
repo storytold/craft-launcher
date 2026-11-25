@@ -91,10 +91,11 @@ pub enum Downgrade<'a> {
 }
 
 /// A failed Windows Installer downgrade that put the previous package back: the product code of
-/// the registration the put-back install created, as Windows Installer's own log names it (see
-/// `msi_downgrade::registered_product_code`). Every package build gets a new product code, so this
-/// names exactly the registration that put-back made — never a leftover one with the same numbers,
-/// which is why the backend records the release from this report rather than by comparing rows.
+/// the registration the put-back install created, from the ones Windows Installer listed before
+/// the downgrade and after it (see `msi_downgrade::put_back_registration`). Every package build
+/// gets a new product code, so this names exactly the registration that put-back made — never a
+/// registration that was already on the machine, which is why the backend records the release from
+/// this report rather than by comparing rows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PutBack {
     pub product_code: String,
@@ -2551,6 +2552,11 @@ pub mod windows {
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), super::Failure> {
+        // Which registrations exist before the downgrade changes anything: a put-back is only the
+        // one registration that is new afterwards (see [`reported`]), so a registration that was
+        // already on the machine can never be taken for the restore.
+        let before = registrations(app);
+        let previous_numbers = super::version::parse(previous.version);
         if scope == Some(MsiScope::PerMachine) {
             let mut elevated = None;
             let started = in_turn(stop, phase, JobPhase::Installing, || {
@@ -2562,9 +2568,8 @@ pub mod windows {
             }
             // Separate prompts are no fallback: refusing a later one would leave no app at all.
             return match elevated {
-                Some(ended) => {
-                    msi_downgrade::report(ended, app.name, chosen.version, previous.version).map_err(|failed| reported(app, failed, &previous))
-                }
+                Some(ended) => msi_downgrade::report(ended, app.name, chosen.version, previous.version)
+                    .map_err(|failed| reported(app, failed, &before, previous_numbers.as_ref())),
                 None => Err(super::Failure { error: msi_downgrade::no_session(app.name, chosen.version), put_back: None }),
             };
         }
@@ -2588,23 +2593,27 @@ pub mod windows {
             })
         });
         if let Some(failed) = failed {
-            return Err(reported(app, failed, &previous));
+            return Err(reported(app, failed, &before, previous_numbers.as_ref()));
         }
         started.map_err(|error| super::Failure { error, put_back: None })
     }
 
+    /// The product codes Windows Installer lists for `app` right now.
+    fn registrations(app: &CraftApp) -> Vec<String> {
+        crate::detect::windows::msi_installs(app).into_iter().map(|m| m.product_code).collect()
+    }
+
     /// What a failed downgrade reports: its message, and — only when the installer says it put the
-    /// previous package back — the product code of the registration that put-back created. That
-    /// code is the one the installer's own log names for the package it ran, and only when Windows
-    /// Installer now lists a registration under it: nothing is inferred from the registry, and a
-    /// code no registration carries records nothing.
-    fn reported(app: &CraftApp, failed: msi_downgrade::Failed, previous: &Package<'_>) -> super::Failure {
+    /// previous package back — the registration that put-back created, by product code. It is the
+    /// single code Windows Installer lists now that `before` (taken before the downgrade started)
+    /// did not, with `previous`'s numbers ([`msi_downgrade::put_back_registration`]): a registration
+    /// that was already on the machine is never taken for the restore, and several new ones or none
+    /// record nothing.
+    fn reported(app: &CraftApp, failed: msi_downgrade::Failed, before: &[String], previous: Option<&super::version::Version>) -> super::Failure {
         let mut put_back = None;
-        if failed.put_back
-            && let Some(code) = msi_downgrade::registered_product_code(previous.file)
-            && crate::detect::windows::msi_installs(app).iter().any(|m| m.product_code.eq_ignore_ascii_case(&code))
-        {
-            put_back = Some(super::PutBack { product_code: code });
+        if failed.put_back {
+            let after: Vec<_> = crate::detect::windows::msi_installs(app).into_iter().map(|m| (m.product_code, m.version)).collect();
+            put_back = msi_downgrade::put_back_registration(before, &after, previous).map(|product_code| super::PutBack { product_code });
         }
         super::Failure { error: failed.error, put_back }
     }

@@ -27,9 +27,6 @@
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
-use std::io::Read;
-use std::path::Path;
-
 use artcraft_launcher_core::protocol::CANCELLED;
 
 use super::msi_batch::{self, DECLINED, LAUNCH_FAILED};
@@ -54,8 +51,8 @@ pub(super) struct Removal {
 }
 
 /// A downgrade that didn't finish: what to tell the person, and whether the previous package was
-/// put back. The registration that put-back created is read from the installer's own log by the
-/// caller ([`registered_product_code`]), which knows which package ran.
+/// put back. Which registration that put-back created is worked out by the caller from the ones
+/// Windows Installer listed before the downgrade started ([`put_back_registration`]).
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Failed {
     pub error: String,
@@ -246,29 +243,25 @@ pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> R
     }
 }
 
-/// The product code Windows Installer registered for the package it ran from `msi`: the installer's
-/// own `/l*v` log beside the package (see [`super::msi_log`]) names it. `None` when the log is
-/// there but names no valid code, so nothing is ever recorded from a guess.
-pub(super) fn registered_product_code(msi: &Path) -> Option<String> {
-    /// The code is resolved near the top of the log; a package's log can grow to megabytes.
-    const HEAD: u64 = 4 << 20;
-    // The same path the installer was given, so the log beside the package is the one it wrote.
-    let msi = super::msi_path(msi).ok()?;
-    let log = std::fs::File::open(super::msi_log(&msi)).ok()?;
-    let mut head = Vec::new();
-    log.take(HEAD).read_to_end(&mut head).ok()?;
-    product_code_in(&String::from_utf8_lossy(&head))
-}
-
-/// The first product code a Windows Installer log names (`ProductCode = {…}` and
-/// `PROPERTY CHANGE: Adding ProductCode property. Its value is '{…}'` are both logged).
-fn product_code_in(log: &str) -> Option<String> {
-    log.lines().filter(|line| line.contains("ProductCode")).find_map(|line| {
-        let start = line.find('{')?;
-        let end = start + line[start..].find('}')?;
-        let code = line.get(start..=end)?;
-        crate::msi_context::valid_product_code(code).then(|| code.to_string())
-    })
+/// The registration a put-back created, from the product codes Windows Installer listed before the
+/// downgrade started (`before`) and the registrations it lists now, each with the version it
+/// reports: the single code that is new there, when its numbers are `previous`'s (Windows Installer
+/// keeps only the numbers). `None` when no code is new, several are, or the new one carries other
+/// numbers — so a registration that was already on the machine is never taken for the restore, and
+/// nothing is ever guessed from rows.
+pub(super) fn put_back_registration(
+    before: &[String],
+    after: &[(String, Option<super::version::Version>)],
+    previous: Option<&super::version::Version>,
+) -> Option<String> {
+    let previous = previous?;
+    let mut created = after.iter().filter(|(code, _)| !before.iter().any(|old| old.eq_ignore_ascii_case(code)));
+    let (code, numbers) = created.next()?;
+    if created.next().is_some() {
+        return None;
+    }
+    let numbers = numbers.as_ref()?;
+    ((numbers.major, numbers.minor, numbers.patch) == (previous.major, previous.minor, previous.patch)).then(|| code.clone())
 }
 
 /// The `msiexec` arguments that remove one registration. Product codes come from the registry, so

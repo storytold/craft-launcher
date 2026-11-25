@@ -1650,6 +1650,10 @@ fn run_install(
     } else {
         // The launcher's own record of which release this registration is (see
         // `detect::with_recorded_release`): such a copy is never taken for a pre-release.
+        // `existing` is the copy after detection, so a release candidate the launcher recorded
+        // already reads as that candidate; `record_describes` matches the numbers-only version
+        // Windows reports and is then false. That is harmless: `restore_point` finds the published
+        // candidate itself as the exact release and never needs the same-numbers fallback.
         let recorded = {
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
             recorded_copy(&manifest, app, existing)
