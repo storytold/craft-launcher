@@ -369,19 +369,32 @@ impl GitHubSource {
             // confident "Coming soon" on every card, so let the saved answer stand in instead.
             return Err("the latest-release redirect went somewhere that isn't github.com's".into());
         };
-        if let Some(e) = self.entry(query, false)
-            && let Some(r) = e.release.as_ref().filter(|r| r.tag == tag)
-        {
+        let cached = self.entry(query, false).and_then(|e| e.release).filter(|r| r.tag == tag);
+        if let Some(r) = cached.as_ref().filter(|r| !r.notes.is_empty()) {
             return Ok(Answer { latest: LatestRelease::Found(r.clone()), source: Source::GitHubPages });
         }
-        let sums_url = format!("{}{tag}/SHA256SUMS.txt", release::download_prefix(repo));
-        // Not `note_pages_error`: this one redirects to GitHub's asset CDN, so its failure says
-        // nothing about whether github.com itself can be reached for the next app.
-        let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
-        let r = release::release_from_sums(repo, &tag, &sums);
+        let notes_url = format!("https://github.com/{repo}/releases.atom");
+        let notes = match self.http.get_text(&notes_url) {
+            Ok(Some(atom)) => release::notes_from_atom(&atom, repo, &tag),
+            Ok(None) => None,
+            Err(e) => {
+                log::debug!("{repo}: release notes feed: {e}");
+                None
+            }
+        };
+        let mut r = if let Some(r) = cached {
+            r
+        } else {
+            let sums_url = format!("{}{tag}/SHA256SUMS.txt", release::download_prefix(repo));
+            // Not `note_pages_error`: this one redirects to GitHub's asset CDN, so its failure says
+            // nothing about whether github.com itself can be reached for the next app.
+            let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
+            release::release_from_sums(repo, &tag, &sums)
+        };
         if !release::ordinary_release_allowed(query.separate_nightly, &r) {
             return Err("The latest release is a Nightly of the separate developer channel, not an ordinary release.".into());
         }
+        r.notes = notes.unwrap_or_default();
         self.store(repo, Entry { etag: None, release: Some(r.clone()), prereleases: false, fetched_at: crate::now() });
         Ok(Answer { latest: LatestRelease::Found(r), source: Source::GitHubPages })
     }
