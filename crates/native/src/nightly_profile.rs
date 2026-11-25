@@ -612,7 +612,7 @@ impl Adapter {
     pub(crate) fn validate_profile(self, paths: &Paths) -> Result<(), String> {
         validate_paths(paths)?;
         #[cfg(unix)]
-        crate::nightly_unix::validate_namespaces(paths)?;
+        crate::nightly_unix::validate_namespaces(self, paths)?;
         validate_tree(&paths.data, &self.profile_root(paths)?)
     }
 

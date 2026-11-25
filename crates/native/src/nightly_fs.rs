@@ -525,6 +525,9 @@ mod unsupported_platform_tests {
         let temp = tempfile::tempdir().unwrap();
         let paths =
             crate::paths::Paths::under(&temp.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
-        assert_eq!(crate::nightly_unix::validate_namespaces(&paths).unwrap_err(), "No nightly isolation contract is staged for this Unix platform.");
+        assert_eq!(
+            crate::nightly_unix::validate_namespaces(crate::nightly_profile::Adapter::PhotoCraftLinuxV1, &paths).unwrap_err(),
+            "No nightly isolation contract is staged for this Unix platform."
+        );
     }
 }
