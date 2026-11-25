@@ -59,16 +59,20 @@ pub(super) struct Failed {
     pub put_back: PutBack,
 }
 
-/// Whether a failed downgrade put the previous package back, and how much of the app was removed
-/// before that: the two decide which registration may be recorded as the restore.
+/// Whether a failed downgrade put the previous package back, and whether the removal step got
+/// through every registration it covers before that: the two decide which registration may be
+/// recorded as the restore.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PutBack {
     /// The previous package was not put back (nothing needed it, or putting it back failed too),
     /// so no registration was created that could be recorded.
     Not,
-    /// The installed copy was removed in full, and the checked previous package then went back in.
-    /// Windows Installer gives the same package the same product code every time, so the restore
-    /// can carry a code the machine already listed before the downgrade.
+    /// The removal step removed every registration it covers, and the checked previous package
+    /// then went back in. Windows Installer gives a package the same product code every time, so
+    /// the restore can carry a code the machine already listed before the downgrade. What the step
+    /// covers depends on the route: an all-users downgrade removes the machine-wide records and
+    /// deliberately leaves the account's own per-user record out, so that one can sit beside the
+    /// restore.
     AfterRemoval,
     /// A removal failed after another registration was already gone, so the app was only partly
     /// removed: a registration that was there before is never the restore.
@@ -80,8 +84,8 @@ impl Failed {
         Self { error, put_back: PutBack::Not }
     }
 
-    /// The previous package is back after the installed copy was removed in full.
-    fn complete_removal_put_back(error: String) -> Self {
+    /// The previous package is back after the removal step removed every registration it covers.
+    fn completed_removal_put_back(error: String) -> Self {
         Self { error, put_back: PutBack::AfterRemoval }
     }
 
@@ -111,7 +115,7 @@ pub(super) fn run(steps: Steps<'_>) -> Result<(), Failed> {
         Err(e) => reason(&e),
     };
     match reinstall_previous() {
-        Ok(()) => Err(Failed::complete_removal_put_back(put_back(app, chosen, previous, &why))),
+        Ok(()) => Err(Failed::completed_removal_put_back(put_back(app, chosen, previous, &why))),
         Err(again) => Err(Failed::without_put_back(not_put_back(app, chosen, previous, &why, &reason(&again)))),
     }
 }
@@ -244,7 +248,7 @@ pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> R
         Ended::RemovalFailed(code) => {
             Err(Failed::without_put_back(format!("{app} {previous} couldn't be removed ({}), so nothing was changed.", msiexec(code))))
         }
-        Ended::PutBack(code) => Err(Failed::complete_removal_put_back(put_back(app, chosen, previous, &msiexec(code)))),
+        Ended::PutBack(code) => Err(Failed::completed_removal_put_back(put_back(app, chosen, previous, &msiexec(code)))),
         Ended::NotPutBack { install, back } => Err(Failed::without_put_back(not_put_back(app, chosen, previous, &msiexec(install), &msiexec(back)))),
         Ended::PartlyRemovedPutBack(code) => Err(Failed::partial_removal_put_back(partly_removed_put_back(app, previous, &msiexec(code)))),
         Ended::PartlyRemovedNotPutBack { removal, back } => {
@@ -267,9 +271,11 @@ pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> R
 /// and what the downgrade said about the removal ([`PutBack`]). Windows Installer keeps only the
 /// numbers, so they are compared without any pre-release part.
 ///
-/// The same build always installs under the same product code, so after a complete removal
-/// ([`PutBack::AfterRemoval`]) the restore is simply the one registration that carries `previous`'s
-/// numbers — whether or not that code was listed before the downgrade.
+/// The same build always installs under the same product code, so once the removal step removed
+/// every registration it covers ([`PutBack::AfterRemoval`]) the restore is simply the one
+/// registration that carries `previous`'s numbers — whether or not that code was listed before the
+/// downgrade, and even when a registration the step never covered (such as an account's own
+/// per-user record) sits beside it with other numbers.
 ///
 /// A partial removal ([`PutBack::AfterPartialRemoval`]) leaves part of the app behind, so a
 /// registration that was already there is never the restore: it is the single code that is new
@@ -289,8 +295,9 @@ pub(super) fn put_back_registration(
     };
     match put_back {
         PutBack::Not => None,
-        // The installed copy is gone, so nothing of it is left to mistake for the restore: the one
-        // registration with the previous release's numbers is the package that just went back in.
+        // Everything the removal step covers is gone, so nothing of it is left to mistake for the
+        // restore: the one registration with the previous release's numbers is the package that
+        // just went back in.
         PutBack::AfterRemoval => {
             let mut restored = after.iter().filter(|(_, numbers)| same_numbers(numbers));
             let (code, _) = restored.next()?;

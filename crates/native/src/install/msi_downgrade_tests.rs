@@ -66,7 +66,7 @@ fn a_failed_install_puts_the_previous_version_back_and_says_so() {
     let message = &failed.error;
     assert!(message.contains("FilmCraft 0.13.0 couldn't be installed"), "{message}");
     assert!(message.contains("FilmCraft 0.14.0 was put back"), "{message}");
-    assert_eq!(failed.put_back, PutBack::AfterRemoval, "the copy was removed in full, so a same-code restore is recorded too");
+    assert_eq!(failed.put_back, PutBack::AfterRemoval, "every registration the removal step covers is gone, so a same-code restore is recorded too");
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn each_outcome_tells_the_person_what_is_installed_now() {
     assert_eq!(removal.put_back, PutBack::Not);
     let back = report(Ended::PutBack(1603)).unwrap_err();
     assert!(back.error.contains("FilmCraft 0.14.0 was put back"), "{}", back.error);
-    assert_eq!(back.put_back, PutBack::AfterRemoval, "the copy was removed in full, so its registration is reported");
+    assert_eq!(back.put_back, PutBack::AfterRemoval, "every registration the removal step covers is gone, so its registration is reported");
     let lost = report(Ended::NotPutBack { install: 1603, back: 1603 }).unwrap_err();
     assert!(lost.error.contains("Install FilmCraft again from the launcher"), "{}", lost.error);
     assert_eq!(lost.put_back, PutBack::Not);
@@ -139,11 +139,12 @@ fn each_outcome_tells_the_person_what_is_installed_now() {
     assert_eq!(odd.put_back, PutBack::Not);
 }
 
-/// After a complete removal the checked previous package goes back in, and Windows Installer gives
-/// it the same product code the removed copy had: that same code is the restore, as the one
-/// registration carrying the previous release's numbers. Anything but exactly one proves nothing.
+/// Once the removal step removed every registration it covers, the checked previous package goes
+/// back in, and Windows Installer gives it the same product code the removed copy had: that same
+/// code is the restore, as the one registration carrying the previous release's numbers. Anything
+/// but exactly one such registration proves nothing.
 #[test]
-fn a_same_code_restore_after_a_complete_removal_is_the_put_back() {
+fn a_same_code_restore_after_a_completed_removal_is_the_put_back() {
     let previous = super::super::version::parse("0.25.0-rc.1").unwrap();
     let install = |code: &str, v: &str| (code.to_string(), super::super::version::parse(v));
     let (rc, second, other) = (
@@ -151,9 +152,21 @@ fn a_same_code_restore_after_a_complete_removal_is_the_put_back() {
         "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".to_string(),
         "{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}".to_string(),
     );
-    // An unrecorded RC removed in full and put back from its own package: Windows Installer
-    // reinstalled it under the very product code the snapshot already listed.
+    // An unrecorded RC whose registrations the removal step covered, put back from its own
+    // package: Windows Installer reinstalled it under the very product code the snapshot already
+    // listed.
     assert_eq!(put_back_registration(PutBack::AfterRemoval, std::slice::from_ref(&rc), &[install(&rc, "0.25.0")], Some(&previous)), Some(rc.clone()));
+    // A registration the removal step never covered — an account's own per-user record, say —
+    // sits beside the restore without becoming a second candidate of its own.
+    assert_eq!(
+        put_back_registration(
+            PutBack::AfterRemoval,
+            std::slice::from_ref(&rc),
+            &[install(&rc, "0.25.0"), install(&other, "0.24.0")],
+            Some(&previous)
+        ),
+        Some(rc.clone())
+    );
     // Two registrations with the previous numbers record nothing, even beside one with other
     // numbers; nor does none at all, or one carrying other numbers.
     assert_eq!(

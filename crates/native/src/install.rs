@@ -93,10 +93,10 @@ pub enum Downgrade<'a> {
 /// A failed Windows Installer downgrade that put the previous package back: the product code of
 /// the registration that package is in now, worked out from the ones Windows Installer listed
 /// before the downgrade and after it (see `msi_downgrade::put_back_registration`). The same package
-/// always installs under the same product code, so after a complete removal this is the one
-/// registration carrying the previous release's numbers, even when the machine listed that code
-/// before; after a partial removal only a code that is new since then can be it. The backend
-/// records the release from this report rather than by comparing rows.
+/// always installs under the same product code, so once the removal step removed every registration
+/// it covers this is the one registration carrying the previous release's numbers, even when the
+/// machine listed that code before; after a partial removal only a code that is new since then can
+/// be it. The backend records the release from this report rather than by comparing rows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PutBack {
     pub product_code: String,
@@ -2606,11 +2606,11 @@ pub mod windows {
 
     /// What a failed downgrade reports: its message, and — only when the installer says it put the
     /// previous package back — the registration that package is in now, by product code
-    /// ([`msi_downgrade::put_back_registration`]). After a complete removal that is the single
-    /// registration carrying `previous`'s numbers, even when Windows Installer already listed its
-    /// code before the downgrade (the same package installs under the same code); after a partial
-    /// removal it is the single code that is new since `before`. Several such registrations or none
-    /// record nothing.
+    /// ([`msi_downgrade::put_back_registration`]). Once the removal step removed every registration
+    /// it covers, that is the single registration carrying `previous`'s numbers, even when Windows
+    /// Installer already listed its code before the downgrade (the same package installs under the
+    /// same code); after a partial removal it is the single code that is new since `before`.
+    /// Several such registrations or none record nothing.
     fn reported(app: &CraftApp, failed: msi_downgrade::Failed, before: &[String], previous: Option<&super::version::Version>) -> super::Failure {
         let mut put_back = None;
         if failed.put_back != msi_downgrade::PutBack::Not {
