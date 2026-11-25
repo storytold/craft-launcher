@@ -171,7 +171,7 @@ fn main() -> ExitCode {
                     "ArtCraft Launcher",
                     native_options(hidden, attempt),
                     Box::new(move |cc| {
-                        launcher.open(cc, &waker);
+                        launcher.open(cc, &waker)?;
                         Ok(Box::new(Shell::new(cc, launcher, hidden)))
                     }),
                 )
@@ -828,12 +828,14 @@ impl Launcher {
 
     /// Readies the launcher for a new window. Unless the launcher started in the tray, the first
     /// one brings the saved settings and the tray icon.
-    fn open(&mut self, cc: &eframe::CreationContext<'_>, waker: &Arc<Waker>) {
+    fn open(&mut self, cc: &eframe::CreationContext<'_>, waker: &Arc<Waker>) -> Result<(), String> {
+        artcraft_launcher_ui_egui::framework::install(&cc.egui_ctx, APP_ID)?;
         waker.set_window(Some(cc.egui_ctx.clone()));
         if !self.started {
             self.start(cc.storage.and_then(|s| eframe::get_value(s, SETTINGS_KEY)), waker);
         }
         self.ui.attach(&cc.egui_ctx);
+        Ok(())
     }
 
     /// Shows or hides the menu-bar icon on macOS, logging platform errors without stopping the app.
@@ -1119,10 +1121,11 @@ impl eframe::App for Shell<'_> {
                 OnClose::Quit => {}
             }
         }
-        craft_quit::on_close_request(ctx);
+        artcraft_launcher_ui_egui::framework::close_path(ctx);
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        artcraft_launcher_ui_egui::framework::before_ui(ui.ctx(), frame);
         self.launcher.ui.ui(ui, &mut self.launcher.host);
         ui.ctx().output_mut(|o| {
             o.commands.retain(|cmd| {

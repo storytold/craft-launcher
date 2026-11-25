@@ -26,6 +26,8 @@ mod details;
 mod dialogs;
 #[cfg(not(target_arch = "wasm32"))]
 mod fonts;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod framework;
 pub mod i18n;
 pub mod icons;
 mod install_target;

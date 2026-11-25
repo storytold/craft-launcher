@@ -762,21 +762,25 @@ mod keyboard_tests {
     fn consent_has_real_keyboard_focus_escape_cancels_and_confirm_is_explicit() {
         let sent = Rc::new(RefCell::new(Vec::new()));
         let mut backend = Some(super::tests::Recorder(sent));
-        let mut harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                if state.is_none()
-                    && let Some(backend) = backend.take()
-                {
-                    *state =
-                        Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { language: "en".into(), notify: false, ..Default::default() }));
-                }
-                if let Some(launcher) = state {
-                    launcher.logic(&ui.ctx().clone(), &mut Host);
-                    launcher.ui(ui, &mut Host);
-                }
-            },
-            None,
-        );
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    if state.is_none()
+                        && let Some(backend) = backend.take()
+                    {
+                        *state = Some(LauncherUi::new(
+                            ui.ctx(),
+                            Box::new(backend),
+                            Settings { language: "en".into(), notify: false, ..Default::default() },
+                        ));
+                    }
+                    if let Some(launcher) = state {
+                        launcher.logic(&ui.ctx().clone(), &mut Host);
+                        launcher.ui(ui, &mut Host);
+                    }
+                },
+                None,
+            );
         harness.run_steps(5);
         assert!(harness.query_by_label("Try nightly builds").is_none());
         assert!(harness.query_by_label("Developer Builds").is_none(), "no first-run OFF destination");
@@ -1031,27 +1035,29 @@ mod layout_tests {
     impl crate::Host for Host {}
 
     fn page(width: f32) -> Harness<'static, Option<LauncherUi>> {
-        let mut harness = Harness::builder().with_size(egui::vec2(width, 900.0)).build_ui_state(
-            |ui, state: &mut Option<LauncherUi>| {
-                if state.is_none() {
-                    let backend = super::tests::Recorder(Rc::new(RefCell::new(Vec::new())));
-                    let mut launcher = LauncherUi::new(
-                        ui.ctx(),
-                        Box::new(backend),
-                        Settings { language: "en".into(), notify: false, nightly_enabled: true, ..Default::default() },
-                    );
-                    launcher.nightly.active = true;
-                    let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
-                    photo.latest = Some(LatestRelease::Found(artcraft_launcher_core::Release { tag: format!("v{VERSION}"), ..Default::default() }));
-                    *state = Some(launcher);
-                }
-                if let Some(launcher) = state {
-                    launcher.logic(&ui.ctx().clone(), &mut Host);
-                    launcher.ui(ui, &mut Host);
-                }
-            },
-            None,
-        );
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(width, 900.0)).build_ui_state(
+                |ui, state: &mut Option<LauncherUi>| {
+                    if state.is_none() {
+                        let backend = super::tests::Recorder(Rc::new(RefCell::new(Vec::new())));
+                        let mut launcher = LauncherUi::new(
+                            ui.ctx(),
+                            Box::new(backend),
+                            Settings { language: "en".into(), notify: false, nightly_enabled: true, ..Default::default() },
+                        );
+                        launcher.nightly.active = true;
+                        let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
+                        photo.latest =
+                            Some(LatestRelease::Found(artcraft_launcher_core::Release { tag: format!("v{VERSION}"), ..Default::default() }));
+                        *state = Some(launcher);
+                    }
+                    if let Some(launcher) = state {
+                        launcher.logic(&ui.ctx().clone(), &mut Host);
+                        launcher.ui(ui, &mut Host);
+                    }
+                },
+                None,
+            );
         harness.run_steps(5);
         harness
     }
@@ -1430,40 +1436,41 @@ mod polish_tests {
         }
     }
     fn page(width: f32, theme: ThemeChoice, card: Card, sent: Commands) -> Harness<'static, Option<LauncherUi>> {
-        let mut harness = Harness::builder().with_size(egui::vec2(width, 900.0)).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                let launcher = state.get_or_insert_with(|| {
-                    let stable = super::tests::Recorder(Rc::new(RefCell::new(Vec::new())));
-                    let mut launcher = LauncherUi::new(
-                        ui.ctx(),
-                        Box::new(stable),
-                        Settings { language: "en".into(), notify: false, theme, nightly_enabled: card.enabled, ..Default::default() },
-                    );
-                    launcher.nightly.backend = Some(Box::new(super::tests::Recorder(sent.clone())));
-                    launcher.nightly.active = true;
-                    if let Some(status) = &card.status {
-                        launcher.nightly.statuses.insert("photocraft".into(), status.clone());
-                    }
-                    let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
-                    photo.detected = true;
-                    photo.latest = card.latest.clone();
-                    photo.installable = card.installable;
-                    photo.installed = card.installed.map(|version| artcraft_launcher_core::Installed {
-                        version: version.and_then(artcraft_launcher_core::version::parse),
-                        source: artcraft_launcher_core::InstallSource::Launcher,
-                        location: "/apps/PhotoCraft Nightly".into(),
-                        package: None,
-                        externally_managed: false,
-                        origin: None,
-                        installation: None,
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(width, 900.0)).build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    let launcher = state.get_or_insert_with(|| {
+                        let stable = super::tests::Recorder(Rc::new(RefCell::new(Vec::new())));
+                        let mut launcher = LauncherUi::new(
+                            ui.ctx(),
+                            Box::new(stable),
+                            Settings { language: "en".into(), notify: false, theme, nightly_enabled: card.enabled, ..Default::default() },
+                        );
+                        launcher.nightly.backend = Some(Box::new(super::tests::Recorder(sent.clone())));
+                        launcher.nightly.active = true;
+                        if let Some(status) = &card.status {
+                            launcher.nightly.statuses.insert("photocraft".into(), status.clone());
+                        }
+                        let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
+                        photo.detected = true;
+                        photo.latest = card.latest.clone();
+                        photo.installable = card.installable;
+                        photo.installed = card.installed.map(|version| artcraft_launcher_core::Installed {
+                            version: version.and_then(artcraft_launcher_core::version::parse),
+                            source: artcraft_launcher_core::InstallSource::Launcher,
+                            location: "/apps/PhotoCraft Nightly".into(),
+                            package: None,
+                            externally_managed: false,
+                            origin: None,
+                            installation: None,
+                        });
+                        launcher
                     });
-                    launcher
-                });
-                launcher.logic(&ui.ctx().clone(), &mut Host);
-                launcher.ui(ui, &mut Host);
-            },
-            None,
-        );
+                    launcher.logic(&ui.ctx().clone(), &mut Host);
+                    launcher.ui(ui, &mut Host);
+                },
+                None,
+            );
         harness.run_steps(5);
         harness
     }
@@ -1766,21 +1773,22 @@ mod trust_gate_tests {
 
     fn settings_open(available: bool, nightly_enabled: bool) -> Harness<'static, Option<LauncherUi>> {
         let mut backend = Some(Stable(available));
-        let mut harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                if state.is_none()
-                    && let Some(backend) = backend.take()
-                {
-                    let settings = Settings { language: "en".into(), notify: false, nightly_enabled, ..Default::default() };
-                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings));
-                }
-                if let Some(launcher) = state {
-                    launcher.logic(&ui.ctx().clone(), &mut Host);
-                    launcher.ui(ui, &mut Host);
-                }
-            },
-            None,
-        );
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    if state.is_none()
+                        && let Some(backend) = backend.take()
+                    {
+                        let settings = Settings { language: "en".into(), notify: false, nightly_enabled, ..Default::default() };
+                        *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings));
+                    }
+                    if let Some(launcher) = state {
+                        launcher.logic(&ui.ctx().clone(), &mut Host);
+                        launcher.ui(ui, &mut Host);
+                    }
+                },
+                None,
+            );
         harness.run_steps(5);
         harness.get_by_label("Settings").focus();
         harness.key_press(egui::Key::Enter);
