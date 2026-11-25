@@ -909,6 +909,28 @@ fn the_version_menu_keeps_an_installed_or_chosen_release_candidate() {
     assert!(!version_row_shown(&h, "v0.6.0-rc.2"), "a candidate left behind isn't offered again");
 }
 
+/// When nothing stable downloads here but the pre-release setting hides a release candidate, the
+/// version menu says so, in an app's dialog and for the launcher in Settings.
+#[test]
+fn the_version_menu_says_when_only_hidden_pre_releases_are_available() {
+    const NOTE: &str = "Only pre-release versions are available. Turn on pre-releases in Settings to see them.";
+    let cases = [
+        (vec![photocraft_rc("0.6.0-rc.1")], false, true, "only a hidden candidate"),
+        (vec![photocraft_rc("0.6.0-rc.1")], true, false, "the candidate is listed"),
+        (vec![photocraft_rc("0.6.0-rc.1"), signed_photocraft("0.5.0")], false, false, "a stable release is listed"),
+    ];
+    for (answer, prereleases, shown, why) in cases {
+        let (mut h, _, _) = versions_harness(Machine::default(), Some(photocraft_rc("0.6.0-rc.1")), answer);
+        h.state_mut().as_mut().unwrap().settings.prereleases = prereleases;
+        open_photocraft_versions(&mut h);
+        assert_eq!(h.query_by_label(NOTE).is_some(), shown, "{why}");
+    }
+    let mut rc = release_with("artcraft-launcher", "1.0.0-rc.1", &[("macos-universal.dmg", 150)]);
+    rc.prerelease = true;
+    let (h, _, _) = launcher_menu_on(Machine::default(), vec![rc]);
+    assert!(h.query_by_label(NOTE).is_some(), "the launcher's own menu in Settings");
+}
+
 /// The Nightly row and the nightly builds are offered only with nightly builds turned on. A
 /// launcher already following nightlies keeps the row, and can move back to the latest release.
 #[test]

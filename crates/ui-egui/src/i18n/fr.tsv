@@ -553,3 +553,6 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Announcements	Annonces
 	No announcements	Aucune annonce
 @plural	Announcements, {n} unread|Announcements, {n} unread	Annonces, {n} non lue|Annonces, {n} non lues
+
+# Version menu note (English fallback; translations are supplied through craft-i18n).
+	Only pre-release versions are available. Turn on pre-releases in Settings to see them.	Only pre-release versions are available. Turn on pre-releases in Settings to see them.

@@ -88,6 +88,7 @@ impl LauncherUi {
         let label = ui.label(tl!("Version"));
         // A choice keeps the dialog open: the Install button below follows it.
         self.version_combo(ui, id, app, 440.0, label.id);
+        self.prerelease_only_note(ui, id, app);
         ui.add_space(10.0);
         ui.label(RichText::new(tl!("Your files may not open in older versions.")).color(t.muted));
         let nightly_note = if app.has_separate_nightly_channel() {
@@ -202,21 +203,6 @@ impl LauncherUi {
             .filter(|r| self.has_version_download(app, r))
             .map(|r| r.tag);
         let latest_label = |tag: &str| crate::fmt(tl!("{version} (latest release)"), &[("version", tag)]);
-        // Betas and release candidates are listed only with pre-releases on, nightlies only with
-        // nightly builds on. The installed or chosen one stays, so the user sees it and can leave it.
-        let installed = if id == LAUNCHER_ID {
-            version::parse(env!("CARGO_PKG_VERSION"))
-        } else {
-            self.entry(id).and_then(|entry| entry.installed.as_ref()?.version.clone())
-        };
-        let listed = |r: &Release| {
-            let wanted = if is_nightly(r) {
-                self.settings.nightly_enabled
-            } else {
-                self.settings.prereleases || (!r.prerelease && r.version.as_ref().is_some_and(version::is_stable))
-            };
-            wanted || choice == VersionTrack::Pinned(r.tag.clone()) || (installed.is_some() && r.version == installed)
-        };
         let summary = match &choice {
             VersionTrack::Stable => latest.as_deref().map_or_else(|| tl!("Latest release").to_string(), latest_label),
             VersionTrack::Nightly => tl!("Nightly").to_string(),
@@ -262,7 +248,7 @@ impl LauncherUi {
                         for r in releases {
                             if (app.has_separate_nightly_channel() && artcraft_launcher_core::release::separate_channel_nightly(r))
                                 || !self.has_version_download(app, r)
-                                || !listed(r)
+                                || !self.version_listed(id, &choice, r)
                             {
                                 continue;
                             }
@@ -297,9 +283,49 @@ impl LauncherUi {
         false
     }
 
+    /// Betas and release candidates are listed only with pre-releases on, nightlies only with
+    /// nightly builds on. The installed or chosen one stays, so the user sees it and can leave it.
+    fn version_listed(&self, id: &str, choice: &VersionTrack, r: &Release) -> bool {
+        let wanted = if is_nightly(r) {
+            self.settings.nightly_enabled
+        } else {
+            self.settings.prereleases || (!r.prerelease && r.version.as_ref().is_some_and(version::is_stable))
+        };
+        if wanted || *choice == VersionTrack::Pinned(r.tag.clone()) {
+            return true;
+        }
+        let installed = if id == LAUNCHER_ID {
+            version::parse(env!("CARGO_PKG_VERSION"))
+        } else {
+            self.entry(id).and_then(|entry| entry.installed.as_ref()?.version.clone())
+        };
+        installed.is_some() && r.version == installed
+    }
+
+    /// Under the version menu: when nothing stable downloads here but a beta or release candidate
+    /// the pre-release setting hides would, say so, rather than leave an empty-looking list.
+    pub(crate) fn prerelease_only_note(&self, ui: &mut Ui, id: &str, app: &CraftApp) {
+        let Some(Ok(releases)) = self.version_lists.get(id) else {
+            return;
+        };
+        let choice =
+            if id == LAUNCHER_ID { self.settings.launcher_version.clone() } else { self.settings.versions.get(id).cloned().unwrap_or_default() };
+        let downloads = |r: &&Release| self.has_version_download(app, r);
+        let stable = releases.iter().filter(downloads).any(|r| !r.prerelease && r.version.as_ref().is_some_and(version::is_stable));
+        let hidden = releases
+            .iter()
+            .filter(downloads)
+            .any(|r| !artcraft_launcher_core::release::separate_channel_nightly(r) && !self.version_listed(id, &choice, r));
+        if !stable && hidden {
+            let t = Tokens::get(ui.ctx());
+            ui.label(RichText::new(tl!("Only pre-release versions are available. Turn on pre-releases in Settings to see them.")).color(t.muted));
+        }
+    }
+
     /// Launcher downgrades are manual. Only offer the published release selected above.
     pub(crate) fn launcher_version_notes(&self, ui: &mut Ui) {
         let t = Tokens::get(ui.ctx());
+        self.prerelease_only_note(ui, LAUNCHER_ID, &LAUNCHER);
         if let VersionTrack::Pinned(tag) = &self.settings.launcher_version {
             if let Some(release) =
                 self.version_lists.get(LAUNCHER_ID).and_then(|r| r.as_ref().ok()).and_then(|releases| releases.iter().find(|r| &r.tag == tag))
