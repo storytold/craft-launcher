@@ -227,8 +227,8 @@ month	Oct	ოქტ
 month	Nov	ნოე
 month	Dec	დეკ
 	Not checked yet	ჯერ არ შემოწმებულა
-	GitHub's hourly limit was reached; full details return in {min} min	GitHub-ის საათობრივი ლიმიტი ამოიწურა; სრული ინფორმაცია {min} წუთში დაბრუნდება
-	GitHub limit hit; back in {min} min	GitHub-ის ლიმიტი ამოიწურა; {min} წუთში დაბრუნდება
+	Next GitHub check at {time}	GitHub-ის შემდეგი შემოწმება: {time}
+	Next check at {time}	შემდეგი შემოწმება: {time}
 	Installing for {platform}	ინსტალაცია პლატფორმისთვის: {platform}
 	Downloads for {platform}	ჩამოტვირთვები პლატფორმისთვის: {platform}
 	No downloads for this system	ამ სისტემისთვის ჩამოსატვირთი არაფერია
