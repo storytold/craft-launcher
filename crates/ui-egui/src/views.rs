@@ -456,10 +456,13 @@ impl LauncherUi {
             tl!("Not checked yet").to_string()
         };
         // The full notice, and a short one for a narrow window.
+        // Saved answers stand in until then, whether GitHub refused or the launcher's own budget
+        // held the request back (#713).
         let notice = self.rate_limited_until.filter(|u| *u > now).map(|until| {
-            let min = ((until - now) / 60).max(1).to_string();
-            let full = fmt(tl!("GitHub's hourly limit was reached; full details return in {min} min"), &[("min", &min)]);
-            let short = fmt(tl!("GitHub limit hit; back in {min} min"), &[("min", &min)]);
+            let (hour, minute) = crate::local_time::clock(until);
+            let time = format!("{hour:02}:{minute:02}");
+            let full = fmt(tl!("Next GitHub check at {time}"), &[("time", &time)]);
+            let short = fmt(tl!("Next check at {time}"), &[("time", &time)]);
             (format!("· {full}"), format!("· {short}"))
         });
         use artcraft_launcher_core::catalog::{GITHUB_URL, SOCIAL, WEBSITE_URL};

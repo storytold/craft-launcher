@@ -13,6 +13,7 @@ pub mod desktop_entry;
 pub mod detect;
 pub mod downloads;
 pub mod feed_throttle;
+mod github_budget;
 pub mod hosted_catalog;
 pub mod http;
 pub mod install;
