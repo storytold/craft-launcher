@@ -1797,8 +1797,9 @@ fn recorded_copy(manifest: &Manifest, app: &CraftApp, existing: Option<&Installe
 }
 
 /// After a Windows Installer downgrade that failed and put `previous` back: the install reports
-/// the registration that put-back created (the checked package's own product code, from the
-/// installer's log, see [`install::PutBack`]), and that release is recorded for exactly that
+/// the registration that put-back created (the one product code that appeared since just before
+/// the downgrade, with the previous release's numbers; see [`install::PutBack`]), and that release
+/// is recorded for exactly that
 /// registration. Nothing is read off the registry here: a leftover registration that happens to
 /// have the same numbers never gets the release, and the copy that was there before keeps its own.
 fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &Release, put_back: &install::PutBack) {
