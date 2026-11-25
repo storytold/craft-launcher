@@ -164,7 +164,7 @@ const TAGLINE_SIZE: f32 = 12.0;
 /// The card's top strip: number tab and links.
 const STRIP_H: f32 = 40.0;
 const CARD_PAD: f32 = 20.0;
-/// Room macOS's traffic lights take at the left of the header.
+/// Room macOS's traffic lights take at the left of the header, in screen points.
 const TRAFFIC_LIGHTS_W: f32 = 72.0;
 
 impl LauncherUi {
@@ -174,22 +174,19 @@ impl LauncherUi {
         let h = HEADER_H;
         let channel_width = self.channel_navigation_width(ui);
         let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
+        // macOS draws the traffic lights at the same size whatever the zoom, so their room in the zoom's points grows
+        // as it zooms out; else the wordmark slides under them.
+        let lights = if bar == TitleBar::MacOs { TRAFFIC_LIGHTS_W / ui.ctx().zoom_factor() } else { 0.0 };
         // The Settings gear and the announcements bell are each one h-wide cell.
-        let reserved = h
-            + h
-            + channel_width.unwrap_or(0.0)
-            + theme::PAD
-            + if bar == TitleBar::Custom { widgets::window_buttons_width() } else { 0.0 }
-            + if bar == TitleBar::MacOs { TRAFFIC_LIGHTS_W } else { 0.0 };
+        let reserved =
+            h + h + channel_width.unwrap_or(0.0) + theme::PAD + if bar == TitleBar::Custom { widgets::window_buttons_width() } else { 0.0 } + lights;
         let compact_brand = channel_width.is_some() && logo.x + 40.0 + reserved > ui.available_width();
         if bar != TitleBar::Native {
             widgets::title_bar_drag(ui);
         }
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            if bar == TitleBar::MacOs {
-                ui.add_space(TRAFFIC_LIGHTS_W);
-            }
+            ui.add_space(lights);
             // The ArtCraft wordmark exactly as supplied, in its own cell.
             let (cell, _) = ui.allocate_exact_size(vec2(if compact_brand { h } else { logo.x + 40.0 }, h), Sense::hover());
             if compact_brand {
