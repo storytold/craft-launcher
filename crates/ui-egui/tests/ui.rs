@@ -148,6 +148,7 @@ fn test_harness_builder<State>(theme: egui::Theme) -> egui_kittest::HarnessBuild
         .with_accessibility_check(true)
         .with_render_cursor(false)
         .with_context_setup(move |ctx| {
+            artcraft_launcher_ui_egui::framework::install_headless(ctx);
             artcraft_launcher_ui_egui::theme::install_fonts(ctx, None);
             egui_extras::install_image_loaders(ctx);
             artcraft_launcher_ui_egui::theme::apply(ctx, choice);
@@ -3979,8 +3980,9 @@ fn turn_wheel(h: &mut Harness<'_, Option<LauncherUi>>, lines: f32) {
         source: egui::MouseWheelSource::Wheel,
     };
     let mut raw = egui::RawInput { events: vec![wheel], ..Default::default() };
-    if let Some(l) = h.state() {
-        l.raw_input(&h.ctx, &mut raw);
+    let ctx = h.ctx.clone();
+    if let Some(l) = h.state_mut() {
+        l.raw_input(&ctx, &mut raw);
     }
     for event in raw.events {
         h.event(event);
@@ -4239,6 +4241,14 @@ fn web_download_actions_also_preview_known_sizes() {
     }
 }
 
+/// The shell's `raw_input_hook` of the next frame, which hands the runtime the launcher's zoom.
+fn next_frame_input(h: &mut Harness<'_, Option<LauncherUi>>) {
+    let ctx = h.ctx.clone();
+    if let Some(l) = h.state_mut().as_mut() {
+        l.raw_input(&ctx, &mut egui::RawInput::default());
+    }
+}
+
 #[test]
 /// Command-plus-wheel over the main UI raises the global zoom factor.
 fn control_wheel_zooms_the_main_ui() {
@@ -4253,6 +4263,7 @@ fn control_wheel_zooms_the_main_ui() {
         source: egui::MouseWheelSource::Unknown,
     });
     h.step();
+    next_frame_input(&mut h);
     h.run_steps(2);
     assert!(h.ctx.zoom_factor() > before);
 }
@@ -4310,6 +4321,8 @@ fn changelog_shortcuts_zoom_only_the_notes_text() {
     assert_eq!(h.ctx.zoom_factor(), global);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Equals);
     h.run_steps(3);
+    next_frame_input(&mut h);
+    h.run_steps(2);
     assert!(h.ctx.zoom_factor() > global, "main-UI keyboard zoom should still work after closing notes");
 }
 

@@ -17,8 +17,8 @@ use artcraft_launcher_core::{Os, Platform};
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Page, Settings};
 use craft_font_manager::craft_font_catalog::Os as FontOs;
 use craft_font_manager::index::Index;
-use craft_font_manager::store::FakeStore;
-use craft_font_manager::{Catalog, FontEnv, Options, Runner};
+use craft_font_manager::store::{FakeStore, PreviewStore};
+use craft_font_manager::{Catalog, FontEnv, Options};
 use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{By, Queryable};
@@ -90,7 +90,7 @@ fn store(dir: &Path, index: &Index) -> Arc<FakeStore> {
     Arc::new(FakeStore::new(dir, files).serving_index(USER_INDEX, user_index()))
 }
 
-fn launcher(name: &str, language: &str, runner: Runner) -> (Harness<'static, Option<LauncherUi>>, Arc<FakeStore>) {
+fn launcher(name: &str, language: &str) -> (Harness<'static, Option<LauncherUi>>, Arc<FakeStore>) {
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("fonts").join(name);
     let _ = std::fs::remove_dir_all(&root);
     system_fonts(&root.join("usr/share/fonts"));
@@ -102,10 +102,11 @@ fn launcher(name: &str, language: &str, runner: Runner) -> (Harness<'static, Opt
     let index = craft_font_manager::index::bundled().unwrap();
     let store = store(&store_dir, &index);
     let index = craft_font_manager::store::Installer::indexes(&*store).map_err(|e| e.0);
-    let mut options = Some(Options { catalog, installer: store.clone(), index, runner });
+    let mut options = Some(Options::new(catalog, store.clone(), index));
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let settings = Settings { notify: false, language: language.into(), ..Settings::default() };
     let harness = Harness::builder()
+        .with_context_setup(artcraft_launcher_ui_egui::framework::install_headless)
         .with_size(egui::vec2(1120.0, 760.0))
         .with_theme(egui::Theme::Dark)
         // The index's samples cover every script (Korean, Thai…), and the cards draw them before
@@ -133,6 +134,11 @@ fn launcher(name: &str, language: &str, runner: Runner) -> (Harness<'static, Opt
 }
 
 fn settle(h: &mut Harness<'_, Option<LauncherUi>>) {
+    // The shell's `raw_input_hook`, which gives the runtime the launcher's theme and host.
+    let ctx = h.ctx.clone();
+    if let Some(l) = h.state_mut().as_mut() {
+        l.raw_input(&ctx, &mut egui::RawInput::default());
+    }
     h.run_steps(6);
 }
 
@@ -154,7 +160,7 @@ fn results(h: &Harness<'_, Option<LauncherUi>>) -> Vec<String> {
 
 #[test]
 fn the_page_toggle_switches_between_apps_and_fonts() {
-    let (mut h, _) = launcher("page-toggle", "en", Runner::Inline);
+    let (mut h, _) = launcher("page-toggle", "en");
     assert_eq!(h.state().as_ref().map(LauncherUi::page), Some(Page::Apps));
     assert!(h.state().as_ref().and_then(|l| l.fonts_panel()).is_none(), "the panel is built when the page first shows");
     assert!(h.query_by_label("Show apps as cards").is_some());
@@ -162,15 +168,13 @@ fn the_page_toggle_switches_between_apps_and_fonts() {
     // The apps' controls give way to the panel's own.
     assert!(h.query_by_label("Show apps as cards").is_none());
     assert!(h.query_by_label("Check for updates").is_none());
-    // The page starts on sans-serif families in the system language: choosing all categories adds families.
-    let filtered = results(&h).len();
-    assert!(filtered > 100);
+    let all = results(&h).len();
+    assert!(all > 100);
+    click(&mut h, "Sans serif");
+    assert!(results(&h).len() < all, "{} vs {all}", results(&h).len());
     click(&mut h, "All categories");
-    assert!(results(&h).len() > filtered, "{} vs {filtered}", results(&h).len());
-    h.get_by_role_and_label(Role::TextInput, "Search").focus();
-    h.step();
-    h.get_by_role_and_label(Role::TextInput, "Search").type_text("noto sans jp");
-    settle(&mut h);
+    assert_eq!(results(&h).len(), all);
+    search(&mut h, "noto sans jp");
     assert_eq!(results(&h), ["Noto Sans JP"]);
 
     h.get_by_role_and_label(Role::Button, "Apps").click();
@@ -182,7 +186,7 @@ fn the_page_toggle_switches_between_apps_and_fonts() {
 
 #[test]
 fn font_downloads_are_switched_in_settings() {
-    let (mut h, store) = launcher("settings", "en", Runner::Inline);
+    let (mut h, store) = launcher("settings", "en");
     settle(&mut h);
     click(&mut h, "Settings");
     let switch = || "Allow font downloads";
@@ -195,7 +199,7 @@ fn font_downloads_are_switched_in_settings() {
 
 #[test]
 fn sources_are_added_in_settings() {
-    let (mut h, store) = launcher("sources", "en", Runner::Inline);
+    let (mut h, store) = launcher("sources", "en");
     craft_font_manager::store::Installer::allow_downloads(&*store, true).unwrap();
     fonts_page(&mut h);
     let before = results(&h).len();
@@ -207,8 +211,8 @@ fn sources_are_added_in_settings() {
 
 #[test]
 fn preview_settings_are_set_in_settings() {
-    let (mut h, store) = launcher("preview-server", "en", Runner::Inline);
-    let service = || craft_font_manager::store::Installer::preview_service(&*store);
+    let (mut h, store) = launcher("preview-server", "en");
+    let service = || store.preview_service();
     let refused = |h: &Harness<'_, Option<LauncherUi>>| {
         h.query_all(By::new().predicate(|n| n.value().or(n.label()).is_some_and(|l| l.contains("Couldn't use this server")))).next().is_some()
     };
@@ -243,7 +247,7 @@ fn preview_settings_are_set_in_settings() {
     assert!(!refused(&h));
 
     // Space toggles the focused switch: the Fonts box can be below the dialog's fold.
-    let enabled = || craft_font_manager::store::Installer::previews_enabled(&*store);
+    let enabled = || store.previews_enabled();
     assert!(enabled(), "previews are on by default");
     let switch = "Show font previews";
     h.get_by_role_and_label(Role::CheckBox, switch).focus();
@@ -279,6 +283,38 @@ fn wait_for_sources(h: &mut Harness<'_, Option<LauncherUi>>) {
     settle(h);
 }
 
+fn search(h: &mut Harness<'_, Option<LauncherUi>>, text: &str) {
+    h.get_by_role_and_label(Role::TextInput, "Search").focus();
+    h.step();
+    h.get_by_role_and_label(Role::TextInput, "Search").type_text(text);
+    settle(h);
+}
+
+fn install_abel(h: &mut Harness<'_, Option<LauncherUi>>) {
+    search(h, "abel");
+    click(h, "Install");
+}
+
+fn open_card(h: &mut Harness<'_, Option<LauncherUi>>, family: &str) {
+    let label = format!("{family}, ");
+    h.get_by(|n| n.role() == Role::ListItem && n.label().is_some_and(|l| l.starts_with(&label))).click();
+    settle(h);
+    h.key_press(egui::Key::Enter);
+    settle(h);
+}
+
+fn scroll_down(h: &mut Harness<'_, Option<LauncherUi>>, at: egui::Pos2, points: f32) {
+    h.event(egui::Event::PointerMoved(at));
+    h.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -points),
+        phase: egui::TouchPhase::Move,
+        modifiers: egui::Modifiers::NONE,
+        source: egui::MouseWheelSource::Wheel,
+    });
+    h.run_steps(20);
+}
+
 fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, dir: &std::ffi::OsStr, name: &str) {
     h.run_steps(12);
     let image = h.render().unwrap();
@@ -286,24 +322,13 @@ fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, dir: &std::ffi::OsStr, name
     image.save(Path::new(dir).join(format!("{name}.png"))).unwrap();
 }
 
-fn allow(h: &mut Harness<'_, Option<LauncherUi>>, store: &FakeStore) {
-    craft_font_manager::store::Installer::allow_downloads(store, true).unwrap();
-    // The page reads the setting again on the next look; settle past the recheck.
-    if let Some(l) = h.state_mut().as_mut() {
-        l.set_page(Page::Apps);
-    }
-    settle(h);
-    if let Some(l) = h.state_mut().as_mut() {
-        l.set_page(Page::Fonts);
-    }
-    settle(h);
-}
-
 #[test]
 fn screenshots() {
     let Some(dir) = std::env::var_os("ARTCRAFT_LAUNCHER_SNAPSHOTS") else { return };
     let shot = |name: &str, language: &str, f: &dyn Fn(&mut Harness<'_, Option<LauncherUi>>, &FakeStore)| {
-        let (mut h, store) = launcher(&format!("shot-{name}"), language, Runner::Thread);
+        let (mut h, store) = launcher(&format!("shot-{name}"), language);
+        // The panel reads the setting when it first shows.
+        craft_font_manager::store::Installer::allow_downloads(&*store, name != "fonts-downloads-off").unwrap();
         if language == "en" {
             fonts_page(&mut h);
         } else {
@@ -322,96 +347,62 @@ fn screenshots() {
         settle(h);
     });
     shot("fonts-downloads-off", "en", &|_, _| {});
-    shot("fonts-catalogue", "en", &|h, store| {
-        allow(h, store);
-    });
+    shot("fonts-catalogue", "en", &|_, _| {});
     shot("fonts-downloading", "en", &|h, store| {
-        allow(h, store);
         store.hold();
-        click(h, "Install Abel");
+        install_abel(h);
         h.run_steps(10);
     });
     shot("fonts-error", "en", &|h, store| {
-        allow(h, store);
         store.fail_next("couldn't reach cdn.jsdelivr.net or raw.githubusercontent.com");
-        click(h, "Install Abel");
+        install_abel(h);
         h.run_steps(30);
     });
     shot("fonts-empty-search", "en", &|h, _| {
-        h.get_by_role_and_label(Role::TextInput, "Search").focus();
-        h.step();
-        h.get_by_role_and_label(Role::TextInput, "Search").type_text("Garamondish");
-        settle(h);
+        search(h, "Garamondish");
     });
-    shot("fonts-installed", "en", &|h, store| {
-        allow(h, store);
-        click(h, "Install Abel");
+    shot("fonts-installed", "en", &|h, _| {
+        install_abel(h);
         h.run_steps(30);
-        h.get_by_role_and_label(Role::Tab, "Installed").click();
+        h.get_by(|n| n.role() == Role::Tab && n.label().is_some_and(|l| l.starts_with("Installed"))).click();
         settle(h);
     });
-    shot("fonts-details", "en", &|h, store| {
-        allow(h, store);
-        click(h, "ABeeZee");
+    shot("fonts-details", "en", &|h, _| {
+        open_card(h, "ABeeZee");
         h.run_steps(20);
     });
     shot("fonts-details-installed", "en", &|h, _| {
-        h.get_by_role_and_label(Role::TextInput, "Search").focus();
-        h.step();
-        h.get_by_role_and_label(Role::TextInput, "Search").type_text("inter");
-        settle(h);
-        click(h, "Inter");
+        search(h, "inter");
+        open_card(h, "Inter");
         h.run_steps(20);
-    });
-    shot("fonts-details-not-installed", "en", &|h, _| {
-        click(h, "ABeeZee");
-        h.run_steps(10);
     });
     // Without a Japanese face the launcher stays in English and the Japanese labels don't exist.
     if artcraft_launcher_ui_egui::theme::cjk_font_available(artcraft_launcher_ui_egui::i18n::Lang::JA) {
-        shot("fonts-japanese", "ja", &|h, store| {
-            allow(h, store);
-            h.get_by_role_and_label(Role::ComboBox, "言語").click();
-            settle(h);
-            h.get_by_role_and_label(Role::TextInput, "言語を検索").focus();
-            h.step();
-            h.get_by_role_and_label(Role::TextInput, "言語を検索").type_text("日本");
-            settle(h);
-            click(h, "Japanese · 日本語 (日本)");
+        shot("fonts-japanese", "ja", &|h, _| {
             h.run_steps(40);
         });
     }
     shot("fonts-settings", "en", &|h, store| {
-        allow(h, store);
         click(h, "Settings");
         add_source(h);
-        // The Fonts box is below the dialog's fold: scroll to it.
-        h.event(egui::Event::PointerMoved(egui::pos2(800.0, 500.0)));
-        let wheel = egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Point,
-            delta: egui::vec2(0.0, -470.0),
-            phase: egui::TouchPhase::Move,
-            modifiers: egui::Modifiers::NONE,
-            source: egui::MouseWheelSource::Wheel,
-        };
-        h.event(wheel);
-        h.run_steps(20);
+        // The Fonts box is below the dialog's fold.
+        scroll_down(h, egui::pos2(800.0, 500.0), 470.0);
         store.change_index(USER_INDEX);
         click(h, "Update sources");
         wait_for_sources(h);
     });
-    shot("fonts-not-curated", "en", &|h, store| {
-        allow(h, store);
+    shot("fonts-not-curated", "en", &|h, _| {
         click(h, "Settings");
         add_source(h);
         click(h, "Done");
-        h.get_by_role_and_label(Role::TextInput, "Search").focus();
-        h.step();
-        h.get_by_role_and_label(Role::TextInput, "Search").type_text("abel");
-        settle(h);
+        search(h, "abel");
         h.run_steps(30);
     });
     shot("fonts-sources-filter", "en", &|h, _| {
+        // Over the categories: the language list scrolls by itself.
+        scroll_down(h, egui::pos2(250.0, 300.0), 900.0);
+        h.get_by_role_and_label(Role::ComboBox, "Source").click();
+        settle(h);
         click(h, "Noto");
         h.run_steps(20);
     });
