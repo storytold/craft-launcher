@@ -203,7 +203,7 @@ fn german_switches_persists_and_keeps_install_actions() {
     let slot = retry.query_all_by_label("Installieren").next().unwrap().rect().width();
     for app in ["PhotoCraft", "VectorCraft"] {
         let menu = retry.get_by_label(&format!("Weitere Aktionen für {app}")).rect();
-        let main = main_button_in_line(&retry, menu, app);
+        let main = main_button_in_line(&retry, menu, false, app);
         assert!(main.right() > menu.left() - 20.0, "{app}: {main:?} isn't beside the menu {menu:?}");
         assert!(main.width() <= slot + 0.5, "{app}: {main:?} wider than Installieren ({slot})");
     }
@@ -269,13 +269,19 @@ const STACKED_OFFSET: f32 = 20.0;
 /// checking it is in line with the menu: centred on it, or, stacked over its twin (the button of
 /// the same width ending at the same place), the pair centred on it. Only a stacked pair may sit
 /// off the menu's middle.
-fn main_button_in_line(h: &Harness<'static, Option<LauncherUi>>, menu: egui::Rect, what: &str) -> egui::Rect {
+fn main_button_in_line(h: &Harness<'static, Option<LauncherUi>>, menu: egui::Rect, rtl_card: bool, what: &str) -> egui::Rect {
     let near: Vec<egui::Rect> = h
         .query_all_by_role(egui::accesskit::Role::Button)
         .map(|n| n.rect())
-        .filter(|r| (r.center().y - menu.center().y).abs() < STACKED_OFFSET && r.left() < menu.left() && r.height() < 40.0)
+        .filter(|r| {
+            let on_main_side =
+                if rtl_card { r.left() >= menu.right() && r.left() - menu.right() < 100.0 && r.width() > 40.0 } else { r.left() < menu.left() };
+            (r.center().y - menu.center().y).abs() < STACKED_OFFSET && on_main_side && r.height() < 40.0
+        })
         .collect();
-    let main = *near.iter().max_by(|a, b| a.right().total_cmp(&b.right())).unwrap_or_else(|| panic!("{what}: no main button by {menu:?}"));
+    let main =
+        *if rtl_card { near.iter().min_by(|a, b| a.left().total_cmp(&b.left())) } else { near.iter().max_by(|a, b| a.right().total_cmp(&b.right())) }
+            .unwrap_or_else(|| panic!("{what}: no main button by {menu:?}"));
     let column: Vec<&egui::Rect> = near.iter().filter(|r| (r.right() - main.right()).abs() < 0.5 && (r.left() - main.left()).abs() < 0.5).collect();
     let (top, bottom) = column.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(t, b), r| (t.min(r.top()), b.max(r.bottom())));
     let middle = (top + bottom) / 2.0;
@@ -286,20 +292,23 @@ fn main_button_in_line(h: &Harness<'static, Option<LauncherUi>>, menu: egui::Rec
 /// At the launcher's narrowest, no main button outgrows its slot or crowds out the `⋯` menu (#956):
 /// a kept update, a kept install and a plain update, in both views, whichever label `language` has.
 fn main_buttons_fit_the_narrowest_window(language: &str) {
-    use artcraft_launcher_ui_egui::i18n::{fmt, t};
+    use artcraft_launcher_ui_egui::i18n::{Lang, fmt, lang_from_tag, t};
+    let rtl = lang_from_tag(language).is_some_and(Lang::rtl);
     for view in [ViewMode::Table, ViewMode::Grid] {
         let kept = ["photocraft", "vectorcraft"].map(|app| Event::ReadyToInstall { app: app.into(), ready: true });
         let (mut h, _) = harness_language(view, egui::Theme::Dark, true, language, kept.into());
         h.set_size(egui::vec2(720.0, 1600.0));
         h.run_steps(8);
         let slot = h.query_all_by_label(t("Install")).next().unwrap().rect().width();
+        let rtl_card = rtl && view == ViewMode::Grid;
         for app in ["PhotoCraft", "VectorCraft", "EffectCraft"] {
             let menu = h.get_by_label(&fmt(t("More actions for {name}"), &[("name", app)])).rect();
-            let main = main_button_in_line(&h, menu, &format!("{language} {view:?} {app}"));
+            let main = main_button_in_line(&h, menu, rtl_card, &format!("{language} {view:?} {app}"));
             assert!(main.width() <= slot + 0.5, "{language} {view:?} {app}: {main:?} wider than Install ({slot})");
             assert!(!main.intersects(menu), "{language} {view:?} {app}: {main:?} overlaps the menu {menu:?}");
             // The table scrolls sideways, with a fixed slot; cards have to fit the window.
-            assert!(view == ViewMode::Table || menu.right() <= 720.0, "{language} {view:?} {app}: the menu left the window: {menu:?}");
+            let row_right = if rtl_card { main.right() } else { menu.right() };
+            assert!(view == ViewMode::Table || row_right <= 720.0, "{language} {view:?} {app}: the action row left the window: {menu:?} {main:?}");
         }
     }
 }

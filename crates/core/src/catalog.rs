@@ -30,6 +30,10 @@ pub struct CraftApp {
     pub ink_dark: [u8; 3],
     /// GitHub `owner/repo`.
     pub repo: &'static str,
+    /// The repo's `owner/repo` before its owner was renamed, asked whenever `repo` has no release, so
+    /// the launcher works on either side of the rename (MailCraft: `UCS-Care-Group` became `UCSLabs`).
+    // lean: one former name; drop it once the old name stops redirecting (storytold/craft-launcher#1593).
+    pub former_repo: Option<&'static str>,
     /// Older names its release assets may carry (`PdfCraft` shipped as `PrintCraft` until 0.2.1).
     pub former_ids: &'static [&'static str],
     /// Older display names its installers registered (`PdfCraft`'s MSI said `PrintCraft` until 0.2.1).
@@ -53,7 +57,16 @@ pub struct CraftApp {
     pub mac_team: Option<&'static str>,
 }
 
+/// Whether an app's ordinary version selection must leave Nightly copies to their own channel.
+/// This is a product roster, independent of host adapter availability or signing configuration.
+const SEPARATE_NIGHTLY_CHANNELS: &[(&str, &str)] = &[("photocraft", "storytold/photocraft")];
+
 impl CraftApp {
+    /// This app has a separate Nightly destination on every host, even where installation refuses.
+    pub fn has_separate_nightly_channel(&self) -> bool {
+        self.kind == AppKind::Official && SEPARATE_NIGHTLY_CHANNELS.iter().any(|(app, repository)| self.id == *app && self.repo == *repository)
+    }
+
     /// `ai.storyteller.<id>`: macOS bundle id, Flatpak id and Linux desktop-file id.
     pub fn bundle_id(&self) -> String {
         self.bundle.map_or_else(|| format!("ai.storyteller.{}", self.id), str::to_string)
@@ -133,6 +146,7 @@ const fn app(
         ink_light,
         ink_dark,
         repo,
+        former_repo: None,
         former_ids: &[],
         former_names: &[],
         mac_bundle_name: None,
@@ -271,7 +285,7 @@ mod tests {
     fn mailcraft_is_a_community_app_not_installed_on_mac() {
         let mc = CraftApp::by_id("mailcraft").unwrap();
         assert_eq!(mc.kind, AppKind::Community);
-        assert_eq!(mc.repo, "UCS-Care-Group/mailcraft");
+        assert_eq!((mc.repo, mc.former_repo), ("UCSLabs/mailcraft", Some("UCS-Care-Group/mailcraft")));
         assert_eq!(mc.bundle_id(), "io.github.billsecond.mailcraft");
         assert_eq!(mc.website(), "https://mailcraft.work");
         assert!(!mc.installs(crate::PackageKind::Dmg));

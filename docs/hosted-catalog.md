@@ -75,3 +75,6 @@ cargo test -p artcraft-launcher-native live_catalog_is_verified_cached_and_activ
 
 This opt-in network test uses temporary storage and checks the pinned signature,
 all accepted entries, activation and icon hashes. Normal CI stays offline.
+
+Announcements and alerts use the same key and checks from their own signed file: see
+[announcements.md](announcements.md).
