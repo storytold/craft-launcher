@@ -22,6 +22,31 @@ fn api(page: usize) -> String {
     }
 }
 
+/// `key()` is what the Nightly scheduling state is saved under, and it contains the adapter's
+/// Debug name. PhotoCraft's three keys read exactly as they did before the adapter became a table
+/// row; a changed Debug name would silently drop every existing user's saved scheduling state.
+#[test]
+fn persisted_scheduling_keys_keep_each_apps_existing_identity() {
+    assert_eq!(
+        key(app(), Platform { os: Os::Linux, arch: Arch::X64 }),
+        "craft-nightly/v1:storytold/photocraft:photocraft:Linux:X64:PhotoCraftLinuxV1"
+    );
+    assert_eq!(
+        key(app(), Platform { os: Os::Windows, arch: Arch::X64 }),
+        "craft-nightly/v1:storytold/photocraft:photocraft:Windows:X64:PhotoCraftWindowsV1"
+    );
+    assert_eq!(
+        key(app(), Platform { os: Os::MacOs, arch: Arch::Arm64 }),
+        "craft-nightly/v1:storytold/photocraft:photocraft:MacOs:Arm64:PhotoCraftMacV1"
+    );
+    let cad = CraftApp::by_id("cadcraft").unwrap();
+    assert_eq!(key(cad, Platform { os: Os::Linux, arch: Arch::X64 }), "craft-nightly/v1:storytold/cadcraft:cadcraft:Linux:X64:CADCraftLinuxV1");
+    assert_eq!(key(cad, Platform { os: Os::Windows, arch: Arch::X64 }), "craft-nightly/v1:storytold/cadcraft:cadcraft:Windows:X64:CADCraftWindowsV1");
+    // An app with no Nightly row keeps its one shared unsupported identity, as before the table.
+    let pdf = CraftApp::by_id("pdfcraft").unwrap();
+    assert_eq!(key(pdf, Platform { os: Os::Linux, arch: Arch::X64 }), "craft-nightly/v1:storytold/pdfcraft:pdfcraft:Linux:X64:unsupported");
+}
+
 /// Entirely synthetic metadata/body fixture; its payload is never downloaded or executed.
 pub(crate) fn candidate(tag: &str, linux: bool) -> (Value, String, Vec<u8>) {
     let version = version::parse(tag).unwrap();
