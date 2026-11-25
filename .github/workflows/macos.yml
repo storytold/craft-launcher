@@ -12,10 +12,12 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request branch cancels its older run. Adding any label but `full-ci` gets
-# a group of its own, so it neither runs anything nor cancels a run.
+# Only an event that will run the job (the same condition as its `if:`) joins the pull request's
+# group, so a newer labelled push cancels an older one. Any other event, such as a push whose
+# payload lacks the `full-ci` label or adding another label, gets a group of its own, so it
+# neither runs anything nor cancels a labelled run.
 concurrency:
-  group: macos-${{ (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && github.ref || github.run_id }}
+  group: macos-${{ (contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci')) && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
