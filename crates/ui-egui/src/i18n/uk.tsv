@@ -303,6 +303,7 @@ filter	Installed	Встановлені
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Не вдалося відкрити {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher не вдалося запустити вікно на {backend}: {e}
 @msg	Download cancelled	Завантаження скасовано
 @msg	{name} updated to {version}	Застосунок {name} оновлено до {version}
 @msg	{name} installed: {version}	Застосунок {name} встановлено: {version}
@@ -442,9 +443,14 @@ anicraft	Familiar by design	Звичний інтерфейс
 anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, інструменти, шкала часу, шари, ключові кадри, Властивості та Бібліотека розташовані там, де їх очікують аніматори, а шлейф кальки полегшує роботу з проміжними кадрами.
 anicraft	Tweens that ease	Плавні переходи
 anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Класичні переходи з вісьмома пресетами плавності та власними кривими, а також переходи, що перетворюють один векторний контур на інший.
+	Version pinned to {version}. Click to unlock.	Версію закріплено на {version}. Натисніть, щоб розблокувати.
+	Unlock version?	Розблокувати версію?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} закріплено на версії {version}. Перейти на найновіший випуск?
+	Unlock	Розблокувати
 
 # Agent integration and download scheduling.
 	AI agents	ШІ-агенти
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Коли це ввімкнено, ШІ-застосунки з підтримкою MCP, як-от Claude, Cursor чи LM Studio, можуть працювати з кожним встановленим застосунком Craft через один запис. Коли це вимкнено, жоден агент не має до них доступу, а додані тут записи видаляються.
 	Add	Додати
 	Added	Додано
 	Adds the Craft apps to that client. Restart the client afterwards.	Додає застосунки Craft до цього клієнта. Після цього перезапустіть клієнт.
@@ -460,6 +466,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Other clients	Інші клієнти
 	Quick install	Швидке встановлення
 	Remove	Видалити
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} завантажує сервери MCP лише під час запуску, тому застосунки Craft з’являться після перезапуску. Перезапуск закриє {client}, навіть якщо він ще пише відповідь.
 	Restart {client}	Перезапустити {client}
 	Restarting {client}…	Перезапуск {client}…
 	Simultaneous downloads	Одночасні завантаження
