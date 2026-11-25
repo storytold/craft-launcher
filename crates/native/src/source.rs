@@ -108,6 +108,12 @@ pub struct GitHubSource {
     pages_quiet_until: Mutex<Option<i64>>,
 }
 
+/// The cache key for `repo` under one pre-release setting. Stable keeps the repo as the key
+/// so files written before the two settings were stored separately still load.
+fn cache_key(repo: &str, prereleases: bool) -> String {
+    if prereleases { format!("{repo}+pre") } else { repo.to_string() }
+}
+
 impl GitHubSource {
     pub fn new(http: Http, cache_path: std::path::PathBuf) -> Self {
         let cache = std::fs::read(&cache_path).ok().and_then(|b| serde_json::from_slice::<CacheFile>(&b).ok()).unwrap_or_default();
@@ -123,18 +129,29 @@ impl GitHubSource {
 
     fn entry(&self, query: &ReleaseQuery, prereleases: bool) -> Option<Entry> {
         let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
-        cache
-            .entries
-            .get(&query.repo)
-            .filter(|entry| {
-                entry.prereleases == prereleases
-                    && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(query.separate_nightly, release))
-            })
-            .cloned()
+        // New files keep one row per setting (`repo` and `repo+pre`). Old files stored one
+        // row under `repo`, so that key is still read when it matches this setting.
+        let allowed = |entry: &Entry| {
+            entry.prereleases == prereleases
+                && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(query.separate_nightly, release))
+        };
+        cache.entries.get(&cache_key(&query.repo, prereleases)).or_else(|| cache.entries.get(&query.repo)).filter(|entry| allowed(entry)).cloned()
     }
 
     fn store(&self, repo: &str, entry: Entry) {
-        self.cache.lock().unwrap_or_else(PoisonError::into_inner).entries.insert(repo.to_string(), entry);
+        let key = cache_key(repo, entry.prereleases);
+        let mut cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        // An old file kept one row under `repo`. If that row is for the other setting, move it
+        // to that setting's key so this write cannot evict it.
+        if key == repo
+            && let Some(old) = cache.entries.get(repo).cloned().filter(|old| old.prereleases != entry.prereleases)
+        {
+            cache.entries.insert(cache_key(repo, old.prereleases), old);
+        }
+        if key != repo && cache.entries.get(repo).is_some_and(|old| old.prereleases == entry.prereleases) {
+            cache.entries.remove(repo);
+        }
+        cache.entries.insert(key, entry);
     }
 
     fn limited(&self) -> bool {
@@ -613,6 +630,34 @@ mod tests {
         assert_eq!(retry_at(Some(i64::MAX), 1_000), 1_000 + 60 * 60);
         assert_eq!(retry_at(Some(99_999_999_999), 1_000), 1_000 + 60 * 60);
     }
+    /// A stable-only save cannot evict the pre-release answer for the same repo, and a cache
+    /// file written when there was only one row per repo still loads under both settings.
+    #[test]
+    fn a_stable_save_keeps_the_saved_prerelease_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("releases.json");
+        let pre =
+            release::parse_github_release(&serde_json::json!({"tag_name":"v0.7.0-rc.1","prerelease":true,"assets":[]}).to_string(), REPO).unwrap();
+        let stable =
+            release::parse_github_release(&serde_json::json!({"tag_name":"v0.6.0","prerelease":false,"assets":[]}).to_string(), REPO).unwrap();
+        // An old file: one row under the repo, for pre-releases.
+        let cache = CacheFile { entries: [(REPO.into(), Entry { etag: None, release: Some(pre.clone()), prereleases: true, fetched_at: 1 })].into() };
+        std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), path);
+        let tag = |latest: Option<LatestRelease>| match latest {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => format!("{other:?}"),
+        };
+        assert_eq!(tag(source.cached(&q(REPO), true)), "v0.7.0-rc.1", "the old row still loads");
+        source.store(REPO, Entry { etag: None, release: Some(stable.clone()), prereleases: false, fetched_at: 2 });
+        assert_eq!(tag(source.cached(&q(REPO), true)), "v0.7.0-rc.1", "a stable save leaves the pre-release answer");
+        assert_eq!(tag(source.cached(&q(REPO), false)), "v0.6.0");
+        source.save();
+        let again = GitHubSource::new(Http::new().unwrap(), dir.path().join("releases.json"));
+        assert_eq!(tag(again.cached(&q(REPO), true)), "v0.7.0-rc.1", "both answers survive a restart");
+        assert_eq!(tag(again.cached(&q(REPO), false)), "v0.6.0");
+    }
+
     fn shared_selection_saved_source(repo: &str, tag: &str) -> (tempfile::TempDir, GitHubSource, Release) {
         let temp = tempfile::tempdir().unwrap();
         let release = release::parse_github_release(&serde_json::json!({"tag_name":tag,"prerelease":true,"assets":[]}).to_string(), repo).unwrap();

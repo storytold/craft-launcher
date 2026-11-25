@@ -1929,12 +1929,17 @@ fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, sh
     if let Some(base) = mirror {
         // A local mirror answers for everything: GitHub is never asked.
         (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
-    } else if pre {
-        // The feed serves stable releases only; with pre-releases on, GitHub decides.
-        (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY })
     } else {
-        feed_and_fallback(http, paths, shared)
+        remote_plan(pre, feed_and_fallback(http, paths, shared))
     }
+}
+
+/// [`check_plan`] without a local mirror, given what the feed said. The feed serves stable
+/// releases only, so with pre-releases on it can't settle an answer that may be a beta or RC. It
+/// still stands in between GitHub's asks, which keep to the feed's own pace (hourly per app once
+/// everything has loaded), not every check (#713).
+fn remote_plan(pre: bool, (feed, fallback): (Option<Feed>, Fallback)) -> (Option<Feed>, Fallback) {
+    if pre { (feed, Fallback { trust_feed: false, ..fallback }) } else { (feed, fallback) }
 }
 
 /// Answers the apps from a shared queue over a few workers, and returns which sources answered.
@@ -2138,9 +2143,10 @@ fn latest_for(
     }
     let due = {
         let mut asked = shared.github_asked.lock().unwrap_or_else(PoisonError::into_inner);
-        let due = force || asked.get(app.id).is_none_or(|t| now - t >= fallback.github_every);
+        let key = asked_key(app, pre);
+        let due = force || asked.get(&key).is_none_or(|t| now - t >= fallback.github_every);
         if due {
-            asked.insert(app.id.to_string(), now);
+            asked.insert(key, now);
         }
         due
     };
@@ -2148,8 +2154,29 @@ fn latest_for(
         let answer = source.latest(&ReleaseQuery::for_app(app, repo), pre);
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
     } else {
-        (source.cached(&ReleaseQuery::for_app(app, repo), pre), Origin::GitHub, None)
+        let cached = source.cached(&ReleaseQuery::for_app(app, repo), pre);
+        // With pre-releases on, a stable release the feed already lists outranks an older beta
+        // or RC GitHub named last time, without waiting for GitHub's next turn.
+        match (pre.then(|| feed.map(|f| f.answer(app, now))).flatten(), &cached) {
+            (Some(FeedAnswer::Fresh(Some(stable))), Some(LatestRelease::Found(saved)))
+                if stable.version.as_ref().zip(saved.version.as_ref()).is_some_and(|(stable, saved)| version::is_newer(stable, saved)) =>
+            {
+                (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed))
+            }
+            // Nothing saved from GitHub for this track yet (pre-releases just turned on): the
+            // feed's stable release stands until GitHub's turn.
+            (Some(FeedAnswer::Fresh(Some(stable))), None | Some(LatestRelease::None)) => {
+                (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed))
+            }
+            _ => (cached, Origin::GitHub, None),
+        }
     }
+}
+
+/// The key in [`Shared::github_asked`] for `app` with pre-releases on or off: the two settings
+/// get different answers from GitHub, so asking under one doesn't stand in for the other.
+fn asked_key(app: &CraftApp, pre: bool) -> String {
+    if pre { format!("{}+pre", app.id) } else { app.id.to_string() }
 }
 
 /// Whether GitHub names a newer stable release of `repo` than the feed's `latest` (`None`: the
@@ -3126,6 +3153,101 @@ mod tests {
         let fresh_shared = super::tests::shared();
         let (_, _, used) = latest_for(photo, Some(&feed), LOADED, &github, &fresh_shared, false, false, NOW + 2 * 86_400);
         assert_eq!(used, Some(Source::GitHubApi));
+    }
+
+    /// With pre-releases on, GitHub is asked at the fallback's pace, not on every check (#713),
+    /// and between its asks a newer stable release from the feed replaces an older saved RC.
+    #[test]
+    fn with_pre_releases_github_keeps_to_its_pace_and_the_feed_fills_in_newer_stables() {
+        /// GitHub, counting asks, whose last answer for the app is `saved`.
+        struct SavedRc(AtomicUsize, Mutex<Option<&'static str>>);
+        impl ReleaseSource for SavedRc {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Answer { latest: self.cached(_query, true).unwrap_or(LatestRelease::None), source: Source::GitHubApi }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                let tag = (*self.1.lock().unwrap())?;
+                Some(LatestRelease::Found(Release { tag: tag.into(), version: version::parse(tag), ..Default::default() }))
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, shared) = (feed(), shared());
+        let pre = Fallback { trust_feed: false, ..LOADED };
+        let github = SavedRc(AtomicUsize::new(0), Mutex::new(Some("v0.6.0-rc.1")));
+        let tag = |answer: Option<LatestRelease>| match answer {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => panic!("{other:?}"),
+        };
+
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW);
+        assert_eq!((tag(latest), used), ("v0.6.0-rc.1".to_string(), Some(Source::GitHubApi)), "the first check asks GitHub");
+        // Within the hour GitHub isn't asked again, and the feed's newer stable v0.6.0 wins.
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + 30 * 60);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+        // A saved RC newer than the feed's stable stays.
+        *github.1.lock().unwrap() = Some("v0.7.0-rc.1");
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + 40 * 60);
+        assert_eq!((tag(latest), used), ("v0.7.0-rc.1".to_string(), None));
+        assert_eq!(github.0.load(Ordering::SeqCst), 1, "one GitHub ask in the hour");
+        latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+        // Nothing saved from GitHub for this track (pre-releases just turned on): the feed's stable.
+        *github.1.lock().unwrap() = None;
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY + 10 * 60);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+    }
+
+    /// GitHub, counting asks, with nothing saved.
+    struct CountedAsks(AtomicUsize);
+    impl ReleaseSource for CountedAsks {
+        fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+        }
+        fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+            None
+        }
+        fn rate_limited_until(&self) -> Option<i64> {
+            None
+        }
+        fn save(&self) {}
+    }
+
+    /// The plan for a check with pre-releases on keeps GitHub to the feed's hourly pace once
+    /// everything has loaded: checks every 12 minutes ask about an app once in the hour (#713).
+    #[test]
+    fn with_pre_releases_the_check_plan_keeps_github_to_the_hourly_pace() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, plan) = remote_plan(true, (Some(feed()), LOADED));
+        assert!(!plan.trust_feed, "the feed can't settle a beta or RC");
+        let (github, shared) = (CountedAsks(AtomicUsize::new(0)), shared());
+        for minutes in [0, 12, 24, 36, 48] {
+            latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + minutes * 60);
+        }
+        assert_eq!(github.0.load(Ordering::SeqCst), 1, "a check every 12 minutes asks once in the hour");
+        latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+    }
+
+    /// Asking GitHub with pre-releases off doesn't stand in for asking with them on: turning them
+    /// on asks again at once, not after the hour.
+    #[test]
+    fn turning_pre_releases_on_asks_github_again_within_the_hour() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, shared) = (feed(), shared());
+        let plan = Fallback { trust_feed: false, ..LOADED };
+        let github = CountedAsks(AtomicUsize::new(0));
+        latest_for(photo, Some(&feed), plan, &github, &shared, false, false, NOW);
+        latest_for(photo, Some(&feed), plan, &github, &shared, true, false, NOW + 10 * 60);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "pre-releases on is its own question");
+        latest_for(photo, Some(&feed), plan, &github, &shared, true, false, NOW + 20 * 60);
+        latest_for(photo, Some(&feed), plan, &github, &shared, false, false, NOW + 30 * 60);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "each setting keeps its own hourly pace");
     }
 
     /// Refresh looks past a feed that is behind GitHub (#91).
