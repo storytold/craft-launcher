@@ -278,8 +278,8 @@ fn render_inline(ui: &mut Ui, text: &str, color: Color32, t: &Tokens, scale: f32
     let mut needs_space = text.starts_with(char::is_whitespace);
 
     let valign = ui.text_valign();
-    let plain_fmt = TextFormat { font_id: FontId::new(13.5 * scale, FontFamily::Proportional), color, valign, ..Default::default() };
-    let bold_fmt = TextFormat { font_id: FontId::new(13.5 * scale, theme::semibold()), color: t.ink_strong, valign, ..Default::default() };
+    let plain_fmt = TextFormat { font_id: FontId::new(14.0 * scale, FontFamily::Proportional), color, valign, ..Default::default() };
+    let bold_fmt = TextFormat { font_id: FontId::new(14.0 * scale, theme::semibold()), color: t.ink_strong, valign, ..Default::default() };
     let code_fmt = TextFormat { font_id: FontId::new(12.0 * scale, FontFamily::Monospace), color: t.ink, valign, ..Default::default() };
 
     let mut job = LayoutJob::default();
@@ -294,7 +294,7 @@ fn render_inline(ui: &mut Ui, text: &str, color: Color32, t: &Tokens, scale: f32
                     if needs_space || text.starts_with(char::is_whitespace) {
                         ui.add_space(space_w);
                     }
-                    ui.hyperlink_to(RichText::new(text).size(13.5 * scale), url);
+                    ui.hyperlink_to(RichText::new(text).size(14.0 * scale), url);
                     needs_space = text.ends_with(char::is_whitespace);
                 } else {
                     append_run(&mut job, text, plain_fmt.clone(), &mut needs_space);
