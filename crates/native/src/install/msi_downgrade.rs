@@ -60,8 +60,9 @@ pub(super) struct Failed {
 }
 
 /// Whether a failed downgrade put the previous package back, and whether the removal step got
-/// through every registration it covers before that: the two decide which registration may be
-/// recorded as the restore.
+/// through every registration it covers before that: only the second kind of put-back can be
+/// recorded, because a removal that stopped partway leaves registrations behind that cannot be
+/// told apart from the restore.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PutBack {
     /// The previous package was not put back (nothing needed it, or putting it back failed too),
@@ -75,7 +76,9 @@ pub(super) enum PutBack {
     /// restore.
     AfterRemoval,
     /// A removal failed after another registration was already gone, so the app was only partly
-    /// removed: a registration that was there before is never the restore.
+    /// removed. What is still registered cannot be told apart from the restore — a registration
+    /// that appeared since the snapshot can carry the previous numbers just as the restore does —
+    /// so nothing is recorded and the person is told the app is still installed.
     AfterPartialRemoval,
 }
 
@@ -89,7 +92,8 @@ impl Failed {
         Self { error, put_back: PutBack::AfterRemoval }
     }
 
-    /// The previous package is back after a removal that stopped once part of the app was gone.
+    /// The previous package is back after a removal that stopped once part of the app was gone: the
+    /// app is partly gone too, and nothing is recorded for it.
     fn partial_removal_put_back(error: String) -> Self {
         Self { error, put_back: PutBack::AfterPartialRemoval }
     }
@@ -266,51 +270,36 @@ pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> R
     }
 }
 
-/// The registration a put-back is, from the product codes Windows Installer listed before the
-/// downgrade started (`before`), the registrations it lists now, each with the version it reports,
-/// and what the downgrade said about the removal ([`PutBack`]). Windows Installer keeps only the
-/// numbers, so they are compared without any pre-release part.
+/// The registration a put-back is, from the registrations Windows Installer lists now (`after`),
+/// each with the version it reports, and what the downgrade said about the removal ([`PutBack`]).
+/// Windows Installer keeps only the numbers, so they are compared without any pre-release part.
 ///
-/// The same build always installs under the same product code, so once the removal step removed
-/// every registration it covers ([`PutBack::AfterRemoval`]) the restore is simply the one
-/// registration that carries `previous`'s numbers — whether or not that code was listed before the
-/// downgrade, and even when a registration the step never covered (such as an account's own
-/// per-user record) sits beside it with other numbers.
+/// Only a put-back after a completed removal ([`PutBack::AfterRemoval`]) is recorded: every
+/// registration the removal step covers is gone, so the one registration carrying `previous`'s
+/// numbers is the package that just went back in — whether or not Windows Installer reused a
+/// product code the machine already had, and even when a registration the step never covers (such
+/// as an account's own per-user record) sits beside it with other numbers.
 ///
-/// A partial removal ([`PutBack::AfterPartialRemoval`]) leaves part of the app behind, so a
-/// registration that was already there is never the restore: it is the single code that is new
-/// since the snapshot, and only when that one carries `previous`'s numbers.
+/// A partial removal ([`PutBack::AfterPartialRemoval`]) records nothing: the registrations it left
+/// behind cannot be told apart from the restore, and a registration that appeared since the
+/// snapshot can carry the previous numbers just as the restore does. Neither does [`PutBack::Not`].
 ///
-/// `None` in both cases unless there is exactly one such registration: nothing is ever guessed
-/// from rows, and nothing was put back at all for [`PutBack::Not`].
+/// `None` unless there is exactly one registration with `previous`'s numbers: nothing is ever
+/// guessed from rows.
 pub(super) fn put_back_registration(
     put_back: PutBack,
-    before: &[String],
     after: &[(String, Option<super::version::Version>)],
     previous: Option<&super::version::Version>,
 ) -> Option<String> {
     let previous = previous?;
-    let same_numbers = |numbers: &Option<super::version::Version>| {
-        numbers.as_ref().is_some_and(|n| (n.major, n.minor, n.patch) == (previous.major, previous.minor, previous.patch))
-    };
-    match put_back {
-        PutBack::Not => None,
-        // Everything the removal step covers is gone, so nothing of it is left to mistake for the
-        // restore: the one registration with the previous release's numbers is the package that
-        // just went back in.
-        PutBack::AfterRemoval => {
-            let mut restored = after.iter().filter(|(_, numbers)| same_numbers(numbers));
-            let (code, _) = restored.next()?;
-            restored.next().is_none().then(|| code.clone())
-        }
-        // Part of the app may still be there: the restore is the one code that is new since the
-        // snapshot, and only when it carries the previous release's numbers.
-        PutBack::AfterPartialRemoval => {
-            let mut created = after.iter().filter(|(code, _)| !before.iter().any(|old| old.eq_ignore_ascii_case(code)));
-            let (code, numbers) = created.next()?;
-            (created.next().is_none() && same_numbers(numbers)).then(|| code.clone())
-        }
+    if put_back != PutBack::AfterRemoval {
+        return None;
     }
+    let mut restored = after
+        .iter()
+        .filter(|(_, numbers)| numbers.as_ref().is_some_and(|n| (n.major, n.minor, n.patch) == (previous.major, previous.minor, previous.patch)));
+    let (code, _) = restored.next()?;
+    restored.next().is_none().then(|| code.clone())
 }
 
 /// The `msiexec` arguments that remove one registration. Product codes come from the registry, so

@@ -153,129 +153,58 @@ fn a_same_code_restore_after_a_completed_removal_is_the_put_back() {
         "{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}".to_string(),
     );
     // An unrecorded RC whose registrations the removal step covered, put back from its own
-    // package: Windows Installer reinstalled it under the very product code the snapshot already
-    // listed.
-    assert_eq!(put_back_registration(PutBack::AfterRemoval, std::slice::from_ref(&rc), &[install(&rc, "0.25.0")], Some(&previous)), Some(rc.clone()));
-    // A registration the removal step never covered — an account's own per-user record, say —
-    // sits beside the restore without becoming a second candidate of its own.
-    assert_eq!(
-        put_back_registration(
-            PutBack::AfterRemoval,
-            std::slice::from_ref(&rc),
-            &[install(&rc, "0.25.0"), install(&other, "0.24.0")],
-            Some(&previous)
-        ),
-        Some(rc.clone())
-    );
+    // package: Windows Installer reinstalled it under the very product code the machine had.
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[install(&rc, "0.25.0")], Some(&previous)), Some(rc.clone()));
+    // A registration the removal step never covers — an account's own per-user record, say — sits
+    // beside the restore without becoming a second candidate of its own.
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[install(&rc, "0.25.0"), install(&other, "0.24.0")], Some(&previous)), Some(rc.clone()));
     // Two registrations with the previous numbers record nothing, even beside one with other
     // numbers; nor does none at all, or one carrying other numbers.
     assert_eq!(
         put_back_registration(
             PutBack::AfterRemoval,
-            std::slice::from_ref(&rc),
             &[install(&rc, "0.25.0"), install(&second, "0.25.0"), install(&other, "0.24.0")],
             Some(&previous)
         ),
         None
     );
-    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[], &[], Some(&previous)), None);
-    assert_eq!(put_back_registration(PutBack::AfterRemoval, std::slice::from_ref(&rc), &[install(&rc, "0.24.0")], Some(&previous)), None);
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[], Some(&previous)), None);
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[install(&rc, "0.24.0")], Some(&previous)), None);
     // Without the previous release's version there is nothing to match against, and nothing is
     // recorded when no put-back ran.
-    assert_eq!(put_back_registration(PutBack::AfterRemoval, std::slice::from_ref(&rc), &[install(&rc, "0.25.0")], None), None);
-    assert_eq!(put_back_registration(PutBack::Not, std::slice::from_ref(&rc), &[install(&rc, "0.25.0")], Some(&previous)), None);
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[install(&rc, "0.25.0")], None), None);
+    assert_eq!(put_back_registration(PutBack::Not, &[install(&rc, "0.25.0")], Some(&previous)), None);
 }
 
-/// After a removal that failed once part of the app was gone, a registration that was already
-/// there is never the restore: it is the one code that is new since the snapshot, with the previous
-/// release's numbers. A same-numbered leftover, several new codes, none, or other numbers record
-/// nothing.
+/// A removal that stopped with part of the app gone leaves registrations behind that cannot be
+/// told apart from the restore — a registration that appeared since the snapshot can carry the
+/// previous numbers just as the restore does, even when the put-back reused a code the app already
+/// had. Such a put-back records nothing, whatever the registrations look like.
 #[test]
-fn only_one_new_registration_with_the_previous_numbers_can_be_a_partial_removal_put_back() {
+fn a_partial_removal_records_nothing() {
     let previous = super::super::version::parse("0.25.0-rc.1").unwrap();
     let install = |code: &str, v: &str| (code.to_string(), super::super::version::parse(v));
-    let (leftover, removed, created, other) = (
-        "{11111111-2222-3333-4444-555555555555}".to_string(),
-        "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".to_string(),
+    let (reused, appeared, newer) = (
         "{3D425FF2-3EB2-4950-9833-95B01B102845}".to_string(),
+        "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".to_string(),
         "{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}".to_string(),
     );
-    let before = [leftover.clone(), removed.clone()];
-    // The put-back created one registration, and Windows registers it with the numbers only.
+    // The case that matters: the put-back went back in under a code the app already had, and a
+    // registration that appeared after the snapshot carries the previous numbers too. The one
+    // "new" code would have been taken for the restore; nothing is recorded instead.
     assert_eq!(
-        put_back_registration(
-            PutBack::AfterPartialRemoval,
-            &before,
-            &[install(&leftover, "0.26.0"), install(&removed, "0.26.0"), install(&created, "0.25.0")],
-            Some(&previous)
-        ),
-        Some(created.clone())
-    );
-    // A same-numbered registration that was there before is in the snapshot: it is never the one
-    // the put-back made, and when nothing else appeared nothing is recorded.
-    assert_eq!(
-        put_back_registration(PutBack::AfterPartialRemoval, std::slice::from_ref(&leftover), &[install(&leftover, "0.25.0")], Some(&previous)),
+        put_back_registration(PutBack::AfterPartialRemoval, &[install(&reused, "0.25.0"), install(&appeared, "0.25.0")], Some(&previous)),
         None
     );
+    // Even alone, a registration with the previous numbers is not the restore after a partial
+    // removal: it may be one the removal step left behind.
+    assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &[install(&appeared, "0.25.0")], Some(&previous)), None);
+    assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &[install(&reused, "0.25.0")], Some(&previous)), None);
     assert_eq!(
-        put_back_registration(
-            PutBack::AfterPartialRemoval,
-            std::slice::from_ref(&leftover),
-            &[install(&leftover, "0.25.0"), install(&created, "0.25.0")],
-            Some(&previous)
-        ),
-        Some(created.clone())
-    );
-    // Two new registrations record nothing, even when one of them carries the previous numbers.
-    assert_eq!(
-        put_back_registration(
-            PutBack::AfterPartialRemoval,
-            &before,
-            &[install(&removed, "0.26.0"), install(&created, "0.25.0"), install(&other, "0.26.0")],
-            Some(&previous)
-        ),
+        put_back_registration(PutBack::AfterPartialRemoval, &[install(&newer, "0.26.0"), install(&appeared, "0.25.0")], Some(&previous)),
         None
     );
-    // None at all, or one with other numbers.
-    assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &before, &[install(&removed, "0.26.0")], Some(&previous)), None);
-    assert_eq!(
-        put_back_registration(PutBack::AfterPartialRemoval, &before, &[install(&removed, "0.26.0"), install(&created, "0.24.0")], Some(&previous)),
-        None
-    );
-    // Without the previous release's version there is nothing to match it against.
-    assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &before, &[install(&removed, "0.26.0"), install(&created, "0.25.0")], None), None);
-    // Codes are compared as Windows reports them, which does not keep their case: a snapshot that
-    // spells the same code differently still excludes it.
-    assert_eq!(
-        put_back_registration(PutBack::AfterPartialRemoval, &[created.to_lowercase()], &[install(&created, "0.25.0")], Some(&previous)),
-        None,
-        "the registration the snapshot already had is still not the one the put-back made"
-    );
-}
-
-/// The snapshot is the exact set the removal step works on, so a registration that only appears
-/// afterwards was not removed by that step. After a partial removal it is not evidence on its own:
-/// beside the one registration the put-back made there are two new codes, and nothing is recorded.
-#[test]
-fn a_registration_that_appears_after_the_snapshot_is_not_evidence_on_its_own() {
-    let previous = super::super::version::parse("0.25.0-rc.1").unwrap();
-    let install = |code: &str, v: &str| (code.to_string(), super::super::version::parse(v));
-    let (snapshot, appeared, created) = (
-        "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".to_string(),
-        "{11111111-2222-3333-4444-555555555555}".to_string(),
-        "{3D425FF2-3EB2-4950-9833-95B01B102845}".to_string(),
-    );
-    // The registration that appeared later, beside the restore: two codes the step never removed.
-    assert_eq!(
-        put_back_registration(
-            PutBack::AfterPartialRemoval,
-            std::slice::from_ref(&snapshot),
-            &[install(&snapshot, "0.26.0"), install(&appeared, "0.25.0"), install(&created, "0.25.0")],
-            Some(&previous)
-        ),
-        None,
-        "a registration the step never removed cannot be told from the restore"
-    );
+    assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &[], Some(&previous)), None);
 }
 
 /// An all-users downgrade with no elevated session stops before removing anything, and says so.
