@@ -171,7 +171,7 @@ impl GitHubSource {
         // row under `repo`, so that key is still read when it matches this setting.
         let allowed = |entry: &Entry| {
             entry.prereleases == prereleases
-                && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(query.separate_nightly, release))
+                && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(release))
         };
         cache.entries.get(&cache_key(&query.repo, prereleases)).or_else(|| cache.entries.get(&query.repo)).filter(|entry| allowed(entry)).cloned()
     }
@@ -221,7 +221,7 @@ impl GitHubSource {
             Fetched::Body { text, etag } => {
                 let mut multi_page = false;
                 let release = if prereleases {
-                    let mut release = release::parse_github_release_list(&text, repo, true, separate)?;
+                    let mut release = release::parse_github_release_list(&text, repo, true)?;
                     // Nightlies of a separately channelled app are not ordinary releases, so a page
                     // full of them proves nothing: look further, and report an incomplete answer
                     // rather than caching "no release" when the bounded search ends early.
@@ -239,7 +239,7 @@ impl GitHubSource {
                             }
                             match fetch(&format!("{url}&page={page}"), None)? {
                                 Fetched::Body { text, .. } => {
-                                    release = release::parse_github_release_list(&text, repo, true, separate)?;
+                                    release = release::parse_github_release_list(&text, repo, true)?;
                                     full = page_len(&text)? >= per_page;
                                 }
                                 Fetched::RateLimited { reset } => {
@@ -261,7 +261,7 @@ impl GitHubSource {
                 } else {
                     Some(release::parse_github_release(&text, repo)?)
                 };
-                if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(separate, release)) {
+                if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(release)) {
                     return Err("This Nightly belongs to the separate developer channel, not the ordinary release cache.".into());
                 }
                 let etag = if multi_page { None } else { etag };
@@ -323,7 +323,7 @@ impl GitHubSource {
                 }
                 Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
             };
-            let crowded = query.separate_nightly && !list.iter().any(|r| release::ordinary_release_allowed(true, r));
+            let crowded = query.separate_nightly && !list.iter().any(|r| release::ordinary_release_allowed(r));
             if !full || !crowded {
                 return Ok(list);
             }
@@ -379,7 +379,7 @@ impl GitHubSource {
         // nothing about whether github.com itself can be reached for the next app.
         let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
         let r = release::release_from_sums(repo, &tag, &sums);
-        if !release::ordinary_release_allowed(query.separate_nightly, &r) {
+        if !release::ordinary_release_allowed(&r) {
             return Err("The latest release is a Nightly of the separate developer channel, not an ordinary release.".into());
         }
         self.store(repo, Entry { etag: None, release: Some(r.clone()), prereleases: false, fetched_at: crate::now() });

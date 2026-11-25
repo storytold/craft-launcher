@@ -59,7 +59,23 @@ pub struct CraftApp {
 
 /// Whether an app's ordinary version selection must leave Nightly copies to their own channel.
 /// This is a product roster, independent of host adapter availability or signing configuration.
-const SEPARATE_NIGHTLY_CHANNELS: &[(&str, &str)] = &[("photocraft", "storytold/photocraft")];
+const SEPARATE_NIGHTLY_CHANNELS: &[(&str, &str)] = &[
+    ("photocraft", "storytold/photocraft"),
+    ("anicraft", "storytold/anicraft"),
+    ("cadcraft", "storytold/cadcraft"),
+    ("deckcraft", "storytold/deckcraft"),
+    ("designcraft", "storytold/designcraft"),
+    ("effectcraft", "storytold/effectcraft"),
+    ("figcraft", "storytold/figcraft"),
+    ("filmcraft", "storytold/filmcraft"),
+    ("gridcraft", "storytold/gridcraft"),
+    ("lightcraft", "storytold/lightcraft"),
+    ("materialcraft", "storytold/materialcraft"),
+    ("soundcraft", "storytold/soundcraft"),
+    ("texturecraft", "storytold/texturecraft"),
+    ("vectorcraft", "storytold/vectorcraft"),
+    ("wordcraft", "storytold/wordcraft"),
+];
 
 impl CraftApp {
     /// This app has a separate Nightly destination on every host, even where installation refuses.

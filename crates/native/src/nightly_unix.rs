@@ -78,7 +78,7 @@ fn disjoint(paths: &[PathBuf], protected: &[PathBuf]) -> Result<(), String> {
     for path in paths {
         let path = resolved_missing(path)?;
         if protected.iter().any(|stable| path.starts_with(stable) || stable.starts_with(&path)) {
-            return Err("The nightly namespace overlaps PhotoCraft's stable data or installation; nothing was changed.".into());
+            return Err("The nightly namespace overlaps the stable app's data or installation; nothing was changed.".into());
         }
     }
     Ok(())
@@ -91,8 +91,36 @@ fn xdg_root(value: Option<std::ffi::OsString>, home: &Path, fallback: &str) -> P
     value.map(PathBuf::from).filter(|path| path.is_absolute()).unwrap_or_else(|| home.join(fallback))
 }
 
-pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
+/// The app's stable data and installation the Nightly namespace must stay clear of.
+/// The stable app's macOS data and installation, by every name it is stored under: its display
+/// name, the capitalised id some libraries derive (`Photocraft`), and its stable bundle id.
+#[cfg(any(target_os = "macos", test))]
+fn mac_stable_paths(adapter: Adapter, home: &Path) -> Vec<PathBuf> {
+    let app = adapter.app();
+    let display = adapter.display();
+    let capitalised: String = app.chars().take(1).flat_map(char::to_uppercase).chain(app.chars().skip(1)).collect();
+    let stable = artcraft_launcher_core::CraftApp::by_id(app).map_or_else(|| format!("ai.storyteller.{app}"), |app| app.bundle_id());
+    let mut paths = Vec::new();
+    for name in [display, capitalised.as_str()] {
+        for folder in ["Library/Application Support", "Library/Caches", "Library/Preferences"] {
+            paths.push(home.join(folder).join(name));
+        }
+    }
+    paths.push(home.join("Library/Caches").join(&stable));
+    paths.push(home.join("Library/Preferences").join(format!("{stable}.plist")));
+    paths.push(home.join("Library/Saved Application State").join(format!("{stable}.savedState")));
+    paths.push(home.join("Library/WebKit").join(&stable));
+    paths.push(home.join("Library/HTTPStorages").join(&stable));
+    paths.push(home.join("Applications").join(format!("{display}.app")));
+    paths.push(PathBuf::from("/Applications").join(format!("{display}.app")));
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+pub(crate) fn validate_namespaces(adapter: Adapter, paths: &Paths) -> Result<(), String> {
     let home = dirs::home_dir().ok_or("No home directory is available for the nightly isolation check.")?;
+    let app = adapter.app();
     let mut protected = Vec::new();
     #[cfg(target_os = "linux")]
     for (variable, fallback) in
@@ -102,29 +130,12 @@ pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
         if !base.is_absolute() {
             return Err("A stable XDG root is relative; nightly isolation cannot be established.".into());
         }
-        protected.push(base.join("photocraft"));
+        protected.push(base.join(app));
     }
     #[cfg(target_os = "linux")]
-    protected.extend([PathBuf::from("/usr/bin/photocraft"), PathBuf::from("/usr/local/bin/photocraft"), PathBuf::from("/opt/photocraft")]);
+    protected.extend([PathBuf::from("/usr/bin").join(app), PathBuf::from("/usr/local/bin").join(app), PathBuf::from("/opt").join(app)]);
     #[cfg(target_os = "macos")]
-    {
-        for relative in [
-            "Library/Application Support/Photocraft",
-            "Library/Application Support/PhotoCraft",
-            "Library/Caches/Photocraft",
-            "Library/Caches/ai.storyteller.photocraft",
-            "Library/Preferences/Photocraft",
-            "Library/Caches/PhotoCraft",
-            "Library/Preferences/ai.storyteller.photocraft.plist",
-            "Library/Saved Application State/ai.storyteller.photocraft.savedState",
-            "Library/WebKit/ai.storyteller.photocraft",
-            "Library/HTTPStorages/ai.storyteller.photocraft",
-            "Applications/PhotoCraft.app",
-        ] {
-            protected.push(home.join(relative));
-        }
-        protected.push(PathBuf::from("/Applications/PhotoCraft.app"));
-    }
+    protected.extend(mac_stable_paths(adapter, &home));
     if !cfg!(any(target_os = "linux", target_os = "macos")) {
         let _ = &home;
         return Err("No nightly isolation contract is staged for this Unix platform.".into());
@@ -132,7 +143,7 @@ pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
     // Read only the stable Launcher's existing record for an additional custom installation
     // fence. Never adopt it, detect an OS package or use it as a fallback installation.
     let stable_data = paths.data.parent().and_then(Path::parent).ok_or("The nightly data folder has no stable namespace owner.")?;
-    protected.push(stable_data.join("apps/photocraft"));
+    protected.push(stable_data.join("apps").join(app));
     let stable_manifest = stable_data.join("installed.json");
     match std::fs::symlink_metadata(&stable_manifest) {
         Ok(_) => {
@@ -147,7 +158,7 @@ pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
             }
             let manifest: crate::manifest::Manifest =
                 serde_json::from_slice(&bytes).map_err(|_| "The stable ownership record cannot be checked safely.")?;
-            if let Some(record) = manifest.apps.get("photocraft") {
+            if let Some(record) = manifest.apps.get(app) {
                 protected.push(record.path.clone());
             }
         }

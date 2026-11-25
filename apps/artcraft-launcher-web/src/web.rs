@@ -276,12 +276,12 @@ async fn latest(query: &release::ReleaseQuery, prereleases: bool) -> Result<Late
     }
     let text = JsFuture::from(resp.text().map_err(|_| None)?).await.map_err(|_| None)?.as_string().ok_or(None)?;
     let found: Option<Release> = if prereleases {
-        release::parse_github_release_list(&text, repo, true, query.separate_nightly).map_err(|_| None)?
+        release::parse_github_release_list(&text, repo, true).map_err(|_| None)?
     } else {
         Some(release::parse_github_release(&text, repo).map_err(|_| None)?)
     };
     // A separately channelled app's Nightly is never its ordinary latest release.
-    if found.as_ref().is_some_and(|r| !release::ordinary_release_allowed(query.separate_nightly, r)) {
+    if found.as_ref().is_some_and(|r| !release::ordinary_release_allowed(r)) {
         return Err(None);
     }
     Ok(found.map_or(LatestRelease::None, LatestRelease::Found))

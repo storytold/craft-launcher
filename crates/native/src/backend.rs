@@ -1226,7 +1226,7 @@ enum Work {
 fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
     match track {
         VersionTrack::Stable => {
-            artcraft_launcher_core::release::ordinary_release_allowed(app.has_separate_nightly_channel(), release)
+            artcraft_launcher_core::release::ordinary_release_allowed(release)
                 && (prereleases || (!release.prerelease && release.version.as_ref().is_some_and(version::is_stable)))
         }
         VersionTrack::Nightly => artcraft_launcher_core::release::is_nightly(release),
