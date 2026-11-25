@@ -941,6 +941,7 @@ pub fn pin_button(ui: &mut Ui, pinned: bool, tip: &str) -> Response {
     let glyph = if pinned { Glyph::PinFilled } else { Glyph::Pin };
     paint_glyph(p, rect, glyph, c);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    focus_ring(ui, &resp);
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
