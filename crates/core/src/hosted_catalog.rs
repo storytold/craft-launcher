@@ -106,18 +106,11 @@ pub struct VerifiedCatalog {
 impl VerifiedCatalog {
     /// Signature verification always precedes parsing; even cached bytes are reverified.
     pub fn verify(bytes: &[u8], signature: &[u8]) -> Result<Self, String> {
-        let key = VerifyingKey::from_public_key_pem(PUBLIC_KEY_PEM).map_err(|_| "invalid compiled catalog key")?;
-        Self::verify_with_key(bytes, signature, &key)
+        Self::verify_with_key(bytes, signature, &pinned_key()?)
     }
 
     fn verify_with_key(bytes: &[u8], signature: &[u8], key: &VerifyingKey) -> Result<Self, String> {
-        if bytes.len() > MAX_CATALOG_BYTES || signature.len() > MAX_SIGNATURE_BYTES {
-            return Err("catalog or signature exceeds its byte limit".into());
-        }
-        let encoded = std::str::from_utf8(signature).map_err(|_| "signature is not UTF-8")?.trim();
-        let decoded = STANDARD.decode(encoded).map_err(|_| "invalid base64 catalog signature")?;
-        let signature = Signature::from_slice(&decoded).map_err(|_| "invalid Ed25519 signature length")?;
-        key.verify_strict(bytes, &signature).map_err(|_| "catalog signature does not match the pinned key")?;
+        check_signature(bytes, signature, MAX_CATALOG_BYTES, key)?;
         Self::parse(bytes)
     }
 
@@ -199,14 +192,17 @@ impl VerifiedCatalog {
                     ),
                 });
             }
+            // A pinned app keeps its compiled repos, whichever of them the website names.
+            let pinned = SUITE.iter().find(|a| a.id == record.id);
             apps.push(CraftApp {
+                repo: pinned.map_or_else(|| intern(record.repo), |a| a.repo),
+                former_repo: pinned.and_then(|a| a.former_repo),
                 id: intern(record.id),
                 name: intern(record.name),
                 tagline: intern(record.tagline),
                 color: record.color,
                 ink_light: record.ink_light,
                 ink_dark: record.ink_dark,
-                repo: intern(record.repo),
                 former_ids: intern_list(record.former_ids),
                 former_names: intern_list(record.former_names),
                 former_bundles: intern_list(record.former_bundles),
@@ -254,6 +250,22 @@ pub fn valid_icon(bytes: &[u8], digest: &str) -> bool {
     w > 0 && h > 0 && w <= 512 && h <= 512 && format!("{:x}", Sha256::digest(bytes)) == digest
 }
 
+/// The website's public key, compiled in. The notices file is signed with it too.
+pub(crate) fn pinned_key() -> Result<VerifyingKey, String> {
+    VerifyingKey::from_public_key_pem(PUBLIC_KEY_PEM).map_err(|_| "invalid compiled catalog key".into())
+}
+
+/// Checks a base64 Ed25519 `signature` over the exact `bytes`, before anything parses them.
+pub(crate) fn check_signature(bytes: &[u8], signature: &[u8], max_bytes: usize, key: &VerifyingKey) -> Result<(), String> {
+    if bytes.len() > max_bytes || signature.len() > MAX_SIGNATURE_BYTES {
+        return Err("signed file or signature exceeds its byte limit".into());
+    }
+    let encoded = std::str::from_utf8(signature).map_err(|_| "signature is not UTF-8")?.trim();
+    let decoded = STANDARD.decode(encoded).map_err(|_| "invalid base64 signature")?;
+    let signature = Signature::from_slice(&decoded).map_err(|_| "invalid Ed25519 signature length")?;
+    key.verify_strict(bytes, &signature).map_err(|_| "signature does not match the pinned key".into())
+}
+
 fn valid_record(r: &Record) -> bool {
     if !identifier(&r.id)
         || r.id.as_bytes().first().is_none_or(|c| !c.is_ascii_lowercase())
@@ -274,7 +286,8 @@ fn valid_record(r: &Record) -> bool {
     // A signature cannot expand the compiled community allowlist or change existing install
     // identities. These checks keep native detection/uninstall and publisher verification pinned.
     if let Some(pinned) = SUITE.iter().find(|a| a.id == r.id) {
-        if r.repo != pinned.repo
+        // The website may still list the repo under its former name until it catches up.
+        if (r.repo != pinned.repo && Some(r.repo.as_str()) != pinned.former_repo)
             || (r.kind == "official") != (pinned.kind == AppKind::Official)
             || r.publisher != pinned.publisher
             || r.msi_publisher.as_deref() != pinned.msi_publisher
@@ -364,7 +377,7 @@ mod tests {
         assert_eq!(catalog.rejected_entries, 0);
         for record in &catalog.records {
             let bundled = SUITE.iter().find(|app| app.id == record.id).unwrap();
-            assert_eq!(record.repo, bundled.repo);
+            assert!(record.repo == bundled.repo || Some(record.repo.as_str()) == bundled.former_repo, "{}", record.id);
         }
     }
 

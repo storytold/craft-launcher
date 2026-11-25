@@ -20,6 +20,10 @@ serde = { workspace = true }
 log = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# The Fonts page: Craft Font Manager's panel, the font store and the installed fonts.
+craft-font-manager = { workspace = true }
+# `Network`, for the downloads default.
+craft-font-store = { workspace = true }
 # The OS's preferred UI languages, without spawning `defaults` or `reg.exe`.
 sys-locale = "0.3"
 # Finding the Simplified Chinese face in a system font collection; egui already uses it.
@@ -40,3 +44,5 @@ egui = { workspace = true, features = ["default_fonts"] }
 serde_json = { workspace = true }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Real fonts for the Fonts page's fake font store: egui's Ubuntu Light.
+epaint_default_fonts = "0.37"
