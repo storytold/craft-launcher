@@ -335,7 +335,7 @@ impl LauncherUi {
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::button(ui, tl!("Go back"), Kind::Primary, 110.0).clicked() {
-                    self.act_command(Command::InstallChosen { app: id.to_string(), tag: chosen.to_string(), fallback: Some(fallback.to_string()) });
+                    self.install_chosen(id, chosen.to_string(), Some(fallback.to_string()));
                     close = true;
                 }
                 if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {

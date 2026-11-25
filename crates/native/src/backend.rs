@@ -1278,20 +1278,22 @@ fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<
 enum NoWayBack {
     /// Nothing changed, and nothing will until something else does.
     Refused(String),
-    /// Only the release with this tag can be put back
+    /// Only this release can be put back
     /// ([`RestorePoint::SameNumbers`](artcraft_launcher_core::rollback::RestorePoint::SameNumbers)): the person decides.
-    Ask(String),
+    Ask(Box<Release>),
 }
 
 /// For a version chosen by name that is older than the installed copy: the release to put back if
 /// the downgrade fails ([`artcraft_launcher_core::rollback::restore_point`]), the installed
 /// version's own or, once the person agreed to it (`by_name`'s `fallback`), a pre-release with its
-/// numbers. `None` for anything else, without asking `list`.
+/// numbers. `recorded`: the launcher's own record says which release the copy is. `None` for
+/// anything else, without asking `list`.
 fn downgrade_previous(
     app: &CraftApp,
     track: &VersionTrack,
     chosen: &Release,
     existing: Option<&Installed>,
+    recorded: bool,
     by_name: Option<&Chosen>,
     list: impl FnOnce() -> Result<Vec<Release>, String>,
 ) -> Result<Option<Release>, NoWayBack> {
@@ -1303,12 +1305,12 @@ fn downgrade_previous(
     let releases = list().map_err(|e| {
         NoWayBack::Refused(format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))
     })?;
-    match restore_point(&releases, installed, chosen) {
+    match restore_point(&releases, installed, chosen, recorded) {
         RestorePoint::Exact(previous) => Ok(Some(previous.clone())),
         RestorePoint::SameNumbers(fallback) if by_name.and_then(|c| c.fallback.as_deref()) == Some(fallback.tag.as_str()) => {
             Ok(Some(fallback.clone()))
         }
-        RestorePoint::SameNumbers(fallback) => Err(NoWayBack::Ask(fallback.tag.clone())),
+        RestorePoint::SameNumbers(fallback) => Err(NoWayBack::Ask(Box::new(fallback.clone()))),
         RestorePoint::None => Err(NoWayBack::Refused(format!(
             "{} {installed_v} isn't published any more, so it couldn't be put back if going back fails. Nothing was changed.",
             app.name
@@ -1597,6 +1599,10 @@ fn run_install(
         // own update (network, maybe a prompt) so the ready members don't wait for it.
         drop(batch);
         let inst = update?;
+        // Its repository decides the version: a release picked by name can't be installed here.
+        if by_name.is_some() {
+            return Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
+        }
         #[cfg(target_os = "linux")]
         {
             shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
@@ -1642,7 +1648,12 @@ fn run_install(
     let previous = if keeps_old_copy {
         None
     } else {
-        let previous = downgrade_previous(app, track, &release, existing, by_name, || {
+        // The launcher's own record of which release this registration is (see
+        // `detect::with_recorded_release`): such a copy is never taken for a pre-release.
+        let recorded = existing.and_then(|i| i.package.as_deref()).is_some_and(|code| {
+            shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).releases.get(app.id).is_some_and(|r| r.package.eq_ignore_ascii_case(code))
+        });
+        let previous = downgrade_previous(app, track, &release, existing, recorded, by_name, || {
             source
                 .ok_or_else(|| "secure connections aren't available on this system".to_string())?
                 .versions(&release_query(load_feed(paths).as_ref(), app))
@@ -1652,8 +1663,17 @@ fn run_install(
             Err(NoWayBack::Refused(why)) => return Err(why),
             // Asked first, like an overwrite: the UI's question answers it.
             Err(NoWayBack::Ask(fallback)) => {
+                // Only asked when that release has a package to put back.
+                if planned_asset(app, &fallback, platform, options, existing, record).is_none_or(|(_, k)| k != kind) {
+                    return Err(format!("{} {} has no matching download to put back, so nothing was changed.", app.name, fallback.version_label()));
+                }
                 let installed = existing.and_then(|i| i.version.as_ref()).map(ToString::to_string).unwrap_or_default();
-                shared.emit(Event::GoBackFallback { app: app.id.to_string(), installed: installed.clone(), chosen: release.tag.clone(), fallback });
+                shared.emit(Event::GoBackFallback {
+                    app: app.id.to_string(),
+                    installed: installed.clone(),
+                    chosen: release.tag.clone(),
+                    fallback: fallback.tag.clone(),
+                });
                 return Err(format!("{} {installed} isn't published, so going back waits for your answer. Nothing was changed.", app.name));
             }
         }
@@ -1771,7 +1791,6 @@ fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &
     let new_registration = found.as_ref().and_then(|f| f.package.as_deref()).is_some_and(|code| before.is_none_or(|b| !b.eq_ignore_ascii_case(code)));
     let Some(put_back) = installed_release(previous, found.as_ref()).filter(|_| new_registration) else { return };
     let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-    m.apps.remove(app.id);
     m.releases.insert(app.id.to_string(), put_back);
     if let Err(e) = m.save(&paths.manifest()) {
         log::warn!("couldn't save the install record: {e}");
@@ -3028,6 +3047,35 @@ mod tests {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
     }
 
+    /// A Flatpak its repository updates can't install a release picked by name: the repository
+    /// decides the version, so the request is refused before `flatpak update` runs.
+    #[test]
+    fn a_release_picked_by_name_never_runs_the_repository_update() {
+        let seen = Arc::new(Mutex::new(0));
+        let mut shared = shared();
+        shared.waker = Arc::new({
+            let seen = seen.clone();
+            move || *seen.lock().unwrap() += 1
+        });
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let installed = Installed {
+            version: version::parse("0.5.0"),
+            source: InstallSource::Flatpak,
+            location: String::new(),
+            package: None,
+            externally_managed: true,
+            origin: None,
+            installation: Some("user".into()),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let picked = Chosen { tag: "v0.4.0".into(), fallback: None };
+        let (options, stop) = (BackendOptions::default(), Stop::default());
+        let paths = Paths::under(dir.path());
+        let result = run_install(app, &shared, &paths, None, None, &options, Some(&installed), None, &stop, None, None, None, None, Some(&picked));
+        assert!(result.as_ref().is_err_and(|e| e.as_str() != artcraft_launcher_core::protocol::CANCELLED), "{result:?}");
+        assert_eq!(*seen.lock().unwrap(), 0, "nothing started: no progress was reported");
+    }
+
     /// A "Replace" answer covers the path that was shown, never a destination that changed since.
     #[test]
     fn replacing_needs_consent_for_the_exact_path_in_the_way() {
@@ -3079,21 +3127,25 @@ mod tests {
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
         // An update, the latest release, nothing installed, or a stale release: no downgrade.
-        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), None, never), Ok(None));
-        assert_eq!(downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), None, never), Ok(None));
-        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, None, never), Ok(None));
-        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), false, None, never), Ok(None));
+        assert_eq!(
+            downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), false, None, never),
+            Ok(None)
+        );
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, false, None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), false, None, never), Ok(None));
         // Going back finds the installed version's own release.
-        let found = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), None, || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
+        let found =
+            downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
         assert_eq!(found.unwrap().map(|r| r.tag), Some("v0.14.0".to_string()));
         // Without it, or without the list, the downgrade doesn't start.
         let refused = |result: Result<Option<Release>, NoWayBack>| match result {
             Err(NoWayBack::Refused(why)) => why,
             other => panic!("not refused: {other:?}"),
         };
-        let gone = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), None, || Ok(vec![tagged("0.13.0")])));
+        let gone = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Ok(vec![tagged("0.13.0")])));
         assert!(gone.contains("FilmCraft 0.14.0 isn't published any more") && gone.contains("Nothing was changed"), "{gone}");
-        let offline = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), None, || Err("offline".into())));
+        let offline = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Err("offline".into())));
         assert!(offline.contains("(offline)") && offline.contains("nothing was changed"), "{offline}");
     }
 
@@ -3122,15 +3174,15 @@ mod tests {
         let app = CraftApp::by_id("photocraft").unwrap();
         let rc = msi_copy("0.24.0-rc.1");
         let picked = Chosen { tag: "v0.23.1".into(), fallback: None };
-        let back = downgrade_previous(app, &VersionTrack::Stable, &tagged("0.23.1"), Some(&rc), Some(&picked), || Ok(published()));
+        let back = downgrade_previous(app, &VersionTrack::Stable, &tagged("0.23.1"), Some(&rc), false, Some(&picked), || Ok(published()));
         assert_eq!(back.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
         let pinned = VersionTrack::Pinned("v0.23.0".into());
-        let back = downgrade_previous(app, &pinned, &tagged("0.23.0"), Some(&rc), None, || Ok(published()));
+        let back = downgrade_previous(app, &pinned, &tagged("0.23.0"), Some(&rc), false, None, || Ok(published()));
         assert_eq!(back.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
         // The candidate itself, chosen again, is the installed version: nothing to go back to.
         let same = VersionTrack::Pinned("v0.24.0-rc.1".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
-        assert_eq!(downgrade_previous(app, &same, &published()[0], Some(&rc), None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &same, &published()[0], Some(&rc), false, None, never), Ok(None));
     }
 
     /// A copy Windows registered as 0.24.0, with no release of that version and no record of what
@@ -3143,15 +3195,20 @@ mod tests {
         let stuck = msi_copy("0.24.0");
         let latest = tagged("0.23.1");
         let picked = |fallback: Option<&str>| Chosen { tag: "v0.23.1".into(), fallback: fallback.map(String::from) };
-        let ask = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), Some(&picked(None)), || Ok(published()));
-        assert_eq!(ask, Err(NoWayBack::Ask("v0.24.0-rc.1".into())));
-        let agreed = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), Some(&picked(Some("v0.24.0-rc.1"))), || Ok(published()));
+        let ask = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(None)), || Ok(published()));
+        assert!(matches!(&ask, Err(NoWayBack::Ask(fallback)) if fallback.tag == "v0.24.0-rc.1"), "{ask:?}");
+        let agreed =
+            downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(Some("v0.24.0-rc.1"))), || Ok(published()));
         assert_eq!(agreed.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
         // An answer about another release isn't an answer about this one.
-        let other = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), Some(&picked(Some("v0.23.0"))), || Ok(published()));
+        let other = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(Some("v0.23.0"))), || Ok(published()));
         assert!(matches!(other, Err(NoWayBack::Ask(_))), "{other:?}");
+        // A copy the launcher recorded as the final 0.24.0 (since withdrawn) is never taken for the candidate.
+        let recorded = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), true, Some(&picked(None)), || Ok(published()));
+        assert!(matches!(recorded, Err(NoWayBack::Refused(_))), "{recorded:?}");
         // Not the latest release: refused as before.
-        let older = downgrade_previous(app, &VersionTrack::Pinned("v0.23.0".into()), &tagged("0.23.0"), Some(&stuck), None, || Ok(published()));
+        let older =
+            downgrade_previous(app, &VersionTrack::Pinned("v0.23.0".into()), &tagged("0.23.0"), Some(&stuck), false, None, || Ok(published()));
         assert!(matches!(older, Err(NoWayBack::Refused(_))), "{older:?}");
     }
 

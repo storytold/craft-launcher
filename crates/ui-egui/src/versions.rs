@@ -1,7 +1,7 @@
 //! Published-release selector. A choice changes the release used by future checks, not a running install.
 use artcraft_launcher_core::catalog::{CraftApp, LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::platform::pick_asset;
-use artcraft_launcher_core::protocol::{Command, VersionTrack};
+use artcraft_launcher_core::protocol::VersionTrack;
 use artcraft_launcher_core::release::{Asset, Release, choose_version, is_nightly};
 use artcraft_launcher_core::{Os, version};
 use egui::{RichText, Ui};
@@ -118,7 +118,7 @@ impl LauncherUi {
             self.version_before = None;
             match self.going_back_to(id) {
                 // Picked by name, so the backend goes back to it, also to the latest release.
-                Some(tag) => self.act_command(Command::InstallChosen { app: id.to_string(), tag, fallback: None }),
+                Some(tag) => self.install_chosen(id, tag, None),
                 None => self.install_app(id),
             }
             return true;
@@ -170,14 +170,27 @@ impl LauncherUi {
     }
 
     /// The tag of the release the version dialog's Install installs: the pinned one, the nightly
-    /// or latest stable release on screen. `None` while there is none.
+    /// on screen, or the latest release. That is the one the version list names as the latest
+    /// release, the row the person picked, while the list is in: until the checked release on
+    /// screen is that one too, Install waits ([`Self::version_installs`]). `None` while there is
+    /// none.
     fn chosen_tag(&self, entry: &crate::model::AppEntry) -> Option<String> {
         let release = entry.release();
         match self.settings.versions.get(entry.app.id).cloned().unwrap_or_default() {
             VersionTrack::Pinned(tag) => Some(tag),
             VersionTrack::Nightly => release.filter(|r| is_nightly(r)).map(|r| r.tag.clone()),
-            VersionTrack::Stable => release.filter(|r| !r.prerelease).map(|r| r.tag.clone()),
+            VersionTrack::Stable => {
+                let checked = release.filter(|r| !r.prerelease)?;
+                Some(self.listed_latest(entry.app).unwrap_or_else(|| checked.tag.clone()))
+            }
         }
+    }
+
+    /// The newest stable release in `app`'s version list that installs here: the row labelled as
+    /// the latest release. `None` until the list is in.
+    fn listed_latest(&self, app: &CraftApp) -> Option<String> {
+        let releases = self.version_lists.get(app.id)?.as_ref().ok()?;
+        choose_version(releases, &VersionTrack::Stable).filter(|r| self.has_version_download(app, r)).map(|r| r.tag)
     }
 
     /// The tag the version dialog's Install goes back to by name: the latest release (or nightly)
@@ -214,13 +227,27 @@ impl LauncherUi {
     /// the UI has: no release can be put back if it fails
     /// ([`restore_point`](artcraft_launcher_core::rollback::restore_point), the backend's rule).
     /// `None` when that isn't known yet, or when going back would start or ask first.
+    /// A system package (Debian, RPM, pacman) never goes back: the backend has no way to put the
+    /// installed version back if it fails.
     fn no_way_back(&self, entry: &crate::model::AppEntry, tag: &str) -> Option<String> {
+        use artcraft_launcher_core::InstallSource::{Deb, Msi, Pacman, Rpm};
         use artcraft_launcher_core::rollback::{RestorePoint, restore_point};
-        let installed = entry.installed.as_ref().filter(|i| i.source == artcraft_launcher_core::InstallSource::Msi)?;
+        let installed = entry.installed.as_ref()?;
         let have = installed.version.as_ref()?;
+        let older = |chosen: &version::Version| version::is_newer(have, chosen);
+        if matches!(installed.source, Deb | Rpm | Pacman) && version::parse(tag).is_some_and(|chosen| older(&chosen)) {
+            return Some(crate::fmt(
+                tl!("Going back to an older version of {app} isn't available for this kind of install yet."),
+                &[("app", entry.app.name)],
+            ));
+        }
+        if installed.source != Msi {
+            return None;
+        }
         let releases = self.version_lists.get(entry.app.id)?.as_ref().ok()?;
         let chosen = releases.iter().find(|r| r.tag == tag)?;
-        (version::is_newer(have, chosen.version.as_ref()?) && restore_point(releases, installed, chosen) == RestorePoint::None).then(|| {
+        // The UI can't see the launcher's record of the copy; the backend refuses that case itself.
+        (older(chosen.version.as_ref()?) && restore_point(releases, installed, chosen, false) == RestorePoint::None).then(|| {
             crate::fmt(
                 tl!("{app} {version} isn't published any more, so it couldn't be put back if going back fails."),
                 &[("app", entry.app.name), ("version", &have.to_string())],
@@ -236,12 +263,7 @@ impl LauncherUi {
         let mut picked = None;
         // The newest stable release that installs here is labelled as the latest, and choosing it
         // follows new releases. Until the list is in, a plain "Latest release" row keeps that choice.
-        let latest = list
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .and_then(|releases| choose_version(releases, &VersionTrack::Stable))
-            .filter(|r| self.has_version_download(app, r))
-            .map(|r| r.tag);
+        let latest = self.listed_latest(app);
         let latest_label = |tag: &str| crate::fmt(tl!("{version} (latest release)"), &[("version", tag)]);
         let summary = match &choice {
             VersionTrack::Stable => latest.as_deref().map_or_else(|| tl!("Latest release").to_string(), latest_label),

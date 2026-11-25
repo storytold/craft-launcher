@@ -938,7 +938,7 @@ fn a_chosen_version_that_cant_go_back_keeps_open_on_the_card() {
     sent.borrow_mut().clear();
     h.get_by_label("Install version v0.24.0-rc.1").click();
     h.run_steps(3);
-    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "the refused install sends nothing: {:?}", sent.borrow());
+    assert!(installs(&sent).is_empty(), "the refused install sends nothing: {:?}", sent.borrow());
 }
 
 #[test]
@@ -988,7 +988,80 @@ fn a_stuck_copy_goes_back_to_the_latest_release_after_a_warning() {
     h.get_by_label("Go back").click();
     h.run_steps(4);
     let agreed = Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: Some("v0.24.0-rc.1".into()) };
-    assert_eq!(installs(&sent), [agreed], "{:?}", sent.borrow());
+    assert_eq!(installs(&sent), std::slice::from_ref(&agreed), "{:?}", sent.borrow());
+    // The connection drops mid-download: Resume asks for the same release by name, with the same answer.
+    queue.borrow_mut().extend([
+        Event::Paused { app: "photocraft".into(), download: Some(PausedDownload { done: 10 << 20, total: 120 << 20 }) },
+        Event::JobFinished { app: "photocraft".into(), result: Err(artcraft_launcher_core::protocol::PAUSED.into()) },
+    ]);
+    h.run_steps(6);
+    sent.borrow_mut().clear();
+    let resumes = h.query_all_by_label_contains("Resume").count();
+    for n in 0..resumes {
+        let node = h.query_all_by_label_contains("Resume").nth(n).expect("still there");
+        node.scroll_to_me();
+        h.run_steps(2);
+        h.query_all_by_label_contains("Resume").nth(n).expect("still there").click();
+        h.run_steps(3);
+    }
+    assert!(installs(&sent).contains(&agreed), "{:?}", sent.borrow());
+    assert!(!installs(&sent).contains(&Command::Install { app: "photocraft".into() }), "{:?}", sent.borrow());
+}
+
+#[test]
+/// The version dialog installs the latest release its list names, the row the person picked, and
+/// waits while the check still has an older release on screen.
+fn the_dialog_waits_for_the_latest_release_it_names() {
+    let (rc, latest) = rc_and_latest();
+    let older = windows_photocraft("0.23.0");
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0-rc.1"), older.clone(), vec![rc, latest.clone(), older]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    assert!(dialog_button(&h, "Install version v0.23.1").accesskit_node().is_disabled(), "v0.23.0 is still the checked release");
+    assert!(h.query_by_label("Install version v0.23.0").is_none(), "the older checked release is never offered");
+    queue.borrow_mut().push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    h.run_steps(4);
+    sent.borrow_mut().clear();
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    assert_eq!(installs(&sent), [Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: None }]);
+}
+
+#[test]
+/// A Debian package can't go back to an older version (nothing could put it back), so the chosen
+/// older version is greyed out with the reason, beside Open.
+fn a_system_package_cant_go_back_and_says_why() {
+    let mut ev = events();
+    ev.push(Event::Detected {
+        app: "photocraft".into(),
+        installed: Some(Installed {
+            version: version::parse("0.4.1"),
+            source: InstallSource::Deb,
+            location: "/usr/bin/photocraft".into(),
+            package: Some("photocraft".into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }),
+    });
+    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.4.0", NOW)), from: Origin::GitHub });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.4.0".into()));
+    h.run_steps(8);
+    let install = h.get_by_label("Install version v0.4.0");
+    assert!(install.accesskit_node().is_disabled(), "a system package can't go back");
+    install.hover();
+    h.run_steps(4);
+    h.get_by_label_contains("isn't available for this kind of install yet");
+    sent.borrow_mut().clear();
+    h.get_by_label("Install version v0.4.0").click();
+    h.run_steps(2);
+    assert!(installs(&sent).is_empty(), "{:?}", sent.borrow());
 }
 
 #[test]

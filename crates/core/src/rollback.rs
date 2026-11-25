@@ -23,14 +23,15 @@ pub enum RestorePoint<'a> {
 }
 
 /// Where going back from `installed` to `chosen` finds the release to put back, in `releases`
-/// (the app's published releases).
-pub fn restore_point<'a>(releases: &'a [Release], installed: &Installed, chosen: &Release) -> RestorePoint<'a> {
+/// (the app's published releases). `recorded`: the launcher's own record says which release the
+/// copy is, so it is never taken for a pre-release with its numbers.
+pub fn restore_point<'a>(releases: &'a [Release], installed: &Installed, chosen: &Release, recorded: bool) -> RestorePoint<'a> {
     let Some(have) = installed.version.as_ref() else { return RestorePoint::None };
     if let Some(exact) = releases.iter().find(|r| r.version.as_ref() == Some(have)) {
         return RestorePoint::Exact(exact);
     }
     let to_newest_stable = choose_version(releases, &VersionTrack::Stable).is_some_and(|newest| newest.tag == chosen.tag);
-    if installed.source != InstallSource::Msi || !have.pre.is_empty() || !to_newest_stable {
+    if recorded || installed.source != InstallSource::Msi || !have.pre.is_empty() || !to_newest_stable {
         return RestorePoint::None;
     }
     releases
@@ -66,7 +67,7 @@ mod tests {
     fn the_installed_release_is_put_back_when_it_is_published() {
         let releases = [release("0.24.0-rc.1"), release("0.23.1")];
         let rc = copy("0.24.0-rc.1", InstallSource::Msi);
-        assert_eq!(restore_point(&releases, &rc, &releases[1]), RestorePoint::Exact(&releases[0]));
+        assert_eq!(restore_point(&releases, &rc, &releases[1], false), RestorePoint::Exact(&releases[0]));
     }
 
     #[test]
@@ -74,13 +75,15 @@ mod tests {
         let releases = [release("0.24.0-rc.2"), release("0.24.0-rc.1"), release("0.23.1"), release("0.23.0")];
         let stuck = copy("0.24.0", InstallSource::Msi);
         // The newest pre-release with those numbers, and only for going back to the latest release.
-        assert_eq!(restore_point(&releases, &stuck, &releases[2]), RestorePoint::SameNumbers(&releases[0]));
-        assert_eq!(restore_point(&releases, &stuck, &releases[3]), RestorePoint::None);
-        assert_eq!(restore_point(&releases, &stuck, &releases[1]), RestorePoint::None);
+        assert_eq!(restore_point(&releases, &stuck, &releases[2], false), RestorePoint::SameNumbers(&releases[0]));
+        assert_eq!(restore_point(&releases, &stuck, &releases[3], false), RestorePoint::None);
+        assert_eq!(restore_point(&releases, &stuck, &releases[1], false), RestorePoint::None);
         // Only Windows Installer drops the label; another copy with no release of its own stays guarded.
-        assert_eq!(restore_point(&releases, &copy("0.24.0", InstallSource::MacApp), &releases[2]), RestorePoint::None);
+        assert_eq!(restore_point(&releases, &copy("0.24.0", InstallSource::MacApp), &releases[2], false), RestorePoint::None);
+        // The launcher's record says which release the copy is (a final 0.24.0 since withdrawn): guarded.
+        assert_eq!(restore_point(&releases, &stuck, &releases[2], true), RestorePoint::None);
         // Nothing published with its numbers: guarded.
-        assert_eq!(restore_point(&releases, &copy("0.25.0", InstallSource::Msi), &releases[2]), RestorePoint::None);
-        assert_eq!(restore_point(&releases, &copy("", InstallSource::Msi), &releases[2]), RestorePoint::None);
+        assert_eq!(restore_point(&releases, &copy("0.25.0", InstallSource::Msi), &releases[2], false), RestorePoint::None);
+        assert_eq!(restore_point(&releases, &copy("", InstallSource::Msi), &releases[2], false), RestorePoint::None);
     }
 }

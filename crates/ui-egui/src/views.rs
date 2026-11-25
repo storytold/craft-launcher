@@ -1268,9 +1268,10 @@ impl LauncherUi {
             fmt(tl!("{done} downloaded"), &[("done", &widgets::human_bytes(p.done))])
         };
         if resp.on_hover_text(tip).clicked() {
-            self.install_app(id);
+            self.resume_app(id);
         }
         if widgets::glyph_button(ui, widgets::Glyph::Close, tl!("Discard download")).clicked() {
+            self.chosen_installs.remove(id);
             self.act_command(Command::Cancel { app: id.to_string() });
         }
         if show_pin {

@@ -194,6 +194,9 @@ pub struct LauncherUi {
     /// While the Choose version dialog is open: its app and the choice it had before, put back
     /// unless the dialog's Install keeps the new one.
     pub(crate) version_before: Option<(String, artcraft_launcher_core::protocol::VersionTrack)>,
+    /// The `InstallChosen` last sent for an app, while its job runs or its download is paused, so
+    /// Resume asks for the same release by name again rather than the track's.
+    pub(crate) chosen_installs: std::collections::HashMap<String, Command>,
     /// The launcher's own update, while it downloads and installs.
     pub(crate) launcher_job: Option<artcraft_launcher_core::protocol::JobPhase>,
     /// The new launcher is in place: quit so it can start.
@@ -331,6 +334,7 @@ impl LauncherUi {
             version_lists: std::collections::HashMap::new(),
             version_requests: std::collections::HashSet::new(),
             version_before: None,
+            chosen_installs: std::collections::HashMap::new(),
             launcher_job: None,
             restart_requested: false,
             announcements: Vec::new(),
@@ -588,6 +592,22 @@ impl LauncherUi {
             Some(Dialog::Install { app: id.to_string(), folder: self.settings.install_locations.per_app.get(id).cloned().unwrap_or_default() });
     }
 
+    /// Installs the release `tag` the person picked by name ([`Command::InstallChosen`]), and keeps
+    /// the request so Resume repeats it.
+    pub(crate) fn install_chosen(&mut self, id: &str, tag: String, fallback: Option<String>) {
+        let command = Command::InstallChosen { app: id.to_string(), tag, fallback };
+        self.chosen_installs.insert(id.to_string(), command.clone());
+        self.act_command(command);
+    }
+
+    /// Resumes `id`'s paused download: as the request by name that started it, else as an install.
+    pub(crate) fn resume_app(&mut self, id: &str) {
+        match self.chosen_installs.get(id).cloned() {
+            Some(command) => self.act_command(command),
+            None => self.install_app(id),
+        }
+    }
+
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         // Messages made here (toasts, alerts) are drawn later, so use the language the UI can
@@ -780,6 +800,10 @@ impl LauncherUi {
             e.job = None;
         }
         let kept = self.entry(&app).is_some_and(|e| e.ready);
+        // A paused job is resumed by the same request; any other end closes it.
+        if !matches!(&result, Err(e) if e == PAUSED) {
+            self.chosen_installs.remove(&app);
+        }
         match result {
             Ok(msg) => self.toast(msg, false),
             // The paused card says it all.
