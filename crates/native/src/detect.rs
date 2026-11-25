@@ -52,7 +52,7 @@ pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot) -> Optio
     None
 }
 
-fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
+pub(crate) fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
     let rec = manifest.apps.get(app.id)?;
     if !rec.path.exists() {
         return None;

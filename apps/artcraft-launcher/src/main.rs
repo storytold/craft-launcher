@@ -93,7 +93,15 @@ fn main() -> ExitCode {
 
     let wake: Wake = Arc::new(OnceLock::new());
     let starts = match single_instance::claim(wake.clone()) {
-        Instance::Secondary => return ExitCode::SUCCESS,
+        Instance::Secondary => {
+            // No log file yet (a second start must not rotate the running one's), so say it on stderr.
+            use std::io::Write;
+            let _ = writeln!(
+                std::io::stderr(),
+                "ArtCraft Launcher: another launcher already holds this account's instance port and was asked to show its window; exiting."
+            );
+            return ExitCode::SUCCESS;
+        }
         Instance::Primary(rx) => rx,
     };
     // The log file lives in the launcher's data folder (beside the executable in portable mode);

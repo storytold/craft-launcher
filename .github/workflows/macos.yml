@@ -1,0 +1,34 @@
+# Clippy and the tests of the desktop crates (native and ui-egui) on an Apple silicon runner, so the
+# macOS-only code (install verification, Nightly extraction and signing checks) is compiled and
+# tested. The org's 5 macOS slots are shared with release builds, so this runs only on pull
+# requests labelled `full-ci`, including later pushes to them.
+name: macOS
+
+on:
+  pull_request:
+    # `labeled` so that adding `full-ci` to an open pull request starts a run.
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+# A newer push to a pull request branch cancels its older run. Adding any label but `full-ci` gets
+# a group of its own, so it neither runs anything nor cancels a run.
+concurrency:
+  group: macos-${{ (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci')
+    # Tracks @main so suite-wide CI fixes reach every app without a PR in each repository.
+    uses: storytold/craft-common-actions/.github/workflows/gate.yml@main
+    with:
+      os: '["macos-15"]'
+      # The launcher bundles its own fonts (assets/fonts/) and builds nothing from craft-fonts.
+      craft-fonts-ref: ""
+      tools: ""
+      targets: ""
+      command: |
+        cargo clippy -p artcraft-launcher-native -p artcraft-launcher-ui-egui --all-targets --locked -- -D warnings
+        cargo test -p artcraft-launcher-native -p artcraft-launcher-ui-egui --locked
