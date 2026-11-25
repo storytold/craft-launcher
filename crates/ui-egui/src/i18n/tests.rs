@@ -300,7 +300,7 @@ fn hebrew_plural_rule_and_legacy_tag_candidates_work() {
     assert!(Lang::HE.rtl());
     assert_eq!(Lang::HE.name(), "עברית");
     assert_eq!(Lang::HE.english_name(), "Hebrew");
-    assert_eq!(trn(Lang::HE, 1, "{n} app", "{n} apps"), "יישום 1");
+    assert_eq!(trn(Lang::HE, 1, "{n} app", "{n} apps"), "1 יישום");
     assert_eq!(trn(Lang::HE, 2, "{n} app", "{n} apps"), "2 יישומים");
     assert_eq!(trn(Lang::HE, 5, "{n} app", "{n} apps"), "5 יישומים");
 }
