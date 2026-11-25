@@ -199,7 +199,7 @@ impl FontsTab {
         let toggled = ui.checkbox(&mut enabled, tl!("Show font previews")).changed();
         let from_env = field.source == PreviewServiceSource::Env;
         let small = |ui: &mut egui::Ui, text: &str, color: egui::Color32| {
-            ui.add(egui::Label::new(egui::RichText::new(text).size(12.0).color(color)).wrap());
+            ui.add(egui::Label::new(egui::RichText::new(text).size(crate::theme::TEXT_CAPTION).color(color)).wrap());
         };
         // The server address is for people who host their own: collapsed, and held open while the
         // address is refused or fixed by the environment so the reason stays visible.
