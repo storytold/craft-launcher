@@ -2250,8 +2250,8 @@ fn track_answer(
         }
         asked.insert(key, now);
         drop(asked);
-        if force {
-            // A pressed check asks GitHub now, past the saved version list however recent.
+        if due {
+            // A due or pressed check asks GitHub now, past the saved version list however recent.
             let answer = source.chosen_within(&query, track, 0);
             return (Some(answer.latest), Origin::GitHub, Some(answer.source));
         }
@@ -3421,11 +3421,52 @@ mod tests {
         let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
         let source = crate::source::GitHubSource::new(http, path);
         let shared = shared();
-        let (latest, _, _) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, false, NOW);
-        assert!(!matches!(latest, Some(LatestRelease::Failed(_))), "the recent list stands in: {latest:?}");
-        let (latest, _, used) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, true, NOW + 60);
+        let (latest, _, used) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Failed(_))), "a first due check asked GitHub: {latest:?}");
+        assert_eq!(used, Some(Source::GitHubApi));
+        let (latest, _, _) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, false, NOW + 60);
+        assert!(!matches!(latest, Some(LatestRelease::Failed(_))), "the recent list stands in within the three hours: {latest:?}");
+        let (latest, _, used) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, true, NOW + 120);
         assert!(matches!(latest, Some(LatestRelease::Failed(_))), "a pressed check asked GitHub: {latest:?}");
         assert_eq!(used, Some(Source::GitHubApi));
+    }
+
+    /// A due Nightly check asks GitHub even if Choose version saved a list a moment ago, so that
+    /// list cannot stand in for the next three hours (#713).
+    #[test]
+    fn a_due_nightly_check_asks_github_past_a_recent_version_list() {
+        #[derive(Default)]
+        struct Lists(Mutex<Vec<Option<i64>>>);
+        impl ReleaseSource for Lists {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+            }
+            fn versions(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                self.versions_within(query, crate::source::VERSIONS_FRESH)
+            }
+            fn versions_within(&self, _query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+                self.0.lock().unwrap().push(Some(max_age));
+                Ok(Vec::new())
+            }
+            fn saved_choice(&self, _query: &ReleaseQuery, _track: &VersionTrack) -> Option<LatestRelease> {
+                Some(LatestRelease::Found(Release { tag: "nightly-old".into(), ..Default::default() }))
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let (github, shared) = (Lists::default(), shared());
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        track_answer(word, &VersionTrack::Nightly, None, &github, &shared, false, NOW);
+        assert_eq!(*github.0.lock().unwrap(), vec![Some(0)], "a due check asks GitHub even if a list was just saved");
+        track_answer(word, &VersionTrack::Nightly, None, &github, &shared, false, NOW + 60);
+        assert_eq!(github.0.lock().unwrap().len(), 1, "within the three hours the saved choice stands in");
+        track_answer(word, &VersionTrack::Nightly, None, &github, &shared, false, NOW + NIGHTLY_TRACK_EVERY);
+        assert_eq!(*github.0.lock().unwrap(), vec![Some(0), Some(0)]);
     }
 
     /// The stable and Nightly tracks keep separate records of when GitHub was asked: asking about
