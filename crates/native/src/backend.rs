@@ -1741,7 +1741,7 @@ fn run_install(
         Ok(new_record) => new_record,
         Err(e) => {
             // A failed Windows Installer downgrade that put `previous` back reports which
-            // registration that put-back created; only then is a release recorded for it.
+            // registration that package is in now; only then is a release recorded for it.
             if let Some(put_back) = job.put_back.take()
                 && let Some(previous) = previous.as_ref()
             {
@@ -1797,11 +1797,11 @@ fn recorded_copy(manifest: &Manifest, app: &CraftApp, existing: Option<&Installe
 }
 
 /// After a Windows Installer downgrade that failed and put `previous` back: the install reports
-/// the registration that put-back created (the one product code that appeared since just before
-/// the downgrade, with the previous release's numbers; see [`install::PutBack`]), and that release
-/// is recorded for exactly that
-/// registration. Nothing is read off the registry here: a leftover registration that happens to
-/// have the same numbers never gets the release, and the copy that was there before keeps its own.
+/// the registration that package is in now (the one product code, carrying the previous release's
+/// numbers, that the put-back is; see [`install::PutBack`]), and that release is recorded for
+/// exactly that registration. Nothing is read off the registry here: a leftover registration that
+/// happens to have the same numbers never gets the release, and the copy that was there before
+/// keeps its own.
 fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &Release, put_back: &install::PutBack) {
     let Some(version) = previous.version.as_ref() else { return };
     let record =

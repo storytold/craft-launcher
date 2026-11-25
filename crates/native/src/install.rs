@@ -53,7 +53,7 @@ pub struct Job<'a> {
     /// gets to its download).
     pub place: Option<crate::downloads::Place<'static>>,
     /// Set by the install itself, only when a failed Windows Installer downgrade reports that it
-    /// put the previous package back: the product code of the registration that install created
+    /// put the previous package back: the product code of the registration that package is in now
     /// ([`PutBack`]). The backend records the release for exactly that registration.
     pub put_back: Option<PutBack>,
 }
@@ -91,11 +91,12 @@ pub enum Downgrade<'a> {
 }
 
 /// A failed Windows Installer downgrade that put the previous package back: the product code of
-/// the registration the put-back install created, from the ones Windows Installer listed before
-/// the downgrade and after it (see `msi_downgrade::put_back_registration`). Every package build
-/// gets a new product code, so this names exactly the registration that put-back made — never a
-/// registration that was already on the machine, which is why the backend records the release from
-/// this report rather than by comparing rows.
+/// the registration that package is in now, worked out from the ones Windows Installer listed
+/// before the downgrade and after it (see `msi_downgrade::put_back_registration`). The same package
+/// always installs under the same product code, so after a complete removal this is the one
+/// registration carrying the previous release's numbers, even when the machine listed that code
+/// before; after a partial removal only a code that is new since then can be it. The backend
+/// records the release from this report rather than by comparing rows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PutBack {
     pub product_code: String,
@@ -2552,9 +2553,9 @@ pub mod windows {
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), super::Failure> {
-        // Which registrations exist before the downgrade changes anything: a put-back is only the
-        // one registration that is new afterwards (see [`reported`]), so a registration that was
-        // already on the machine can never be taken for the restore.
+        // Which registrations exist before the downgrade changes anything: the put-back is worked
+        // out from them and the ones listed afterwards (see [`reported`]), so a registration left
+        // behind by a partial removal can never be taken for the restore.
         let before = registrations(app);
         let previous_numbers = super::version::parse(previous.version);
         if scope == Some(MsiScope::PerMachine) {
@@ -2604,16 +2605,18 @@ pub mod windows {
     }
 
     /// What a failed downgrade reports: its message, and — only when the installer says it put the
-    /// previous package back — the registration that put-back created, by product code. It is the
-    /// single code Windows Installer lists now that `before` (taken before the downgrade started)
-    /// did not, with `previous`'s numbers ([`msi_downgrade::put_back_registration`]): a registration
-    /// that was already on the machine is never taken for the restore, and several new ones or none
+    /// previous package back — the registration that package is in now, by product code
+    /// ([`msi_downgrade::put_back_registration`]). After a complete removal that is the single
+    /// registration carrying `previous`'s numbers, even when Windows Installer already listed its
+    /// code before the downgrade (the same package installs under the same code); after a partial
+    /// removal it is the single code that is new since `before`. Several such registrations or none
     /// record nothing.
     fn reported(app: &CraftApp, failed: msi_downgrade::Failed, before: &[String], previous: Option<&super::version::Version>) -> super::Failure {
         let mut put_back = None;
-        if failed.put_back {
+        if failed.put_back != msi_downgrade::PutBack::Not {
             let after: Vec<_> = crate::detect::windows::msi_installs(app).into_iter().map(|m| (m.product_code, m.version)).collect();
-            put_back = msi_downgrade::put_back_registration(before, &after, previous).map(|product_code| super::PutBack { product_code });
+            put_back =
+                msi_downgrade::put_back_registration(failed.put_back, before, &after, previous).map(|product_code| super::PutBack { product_code });
         }
         super::Failure { error: failed.error, put_back }
     }

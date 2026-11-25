@@ -50,25 +50,44 @@ pub(super) struct Removal {
     pub partly: bool,
 }
 
-/// A downgrade that didn't finish: what to tell the person, and whether the previous package was
-/// put back. Which registration that put-back created is worked out by the caller from the ones
-/// Windows Installer listed before the downgrade started ([`put_back_registration`]).
+/// A downgrade that didn't finish: what to tell the person, and what happened to the previous
+/// package. Which registration the put-back is worked out by the caller from the ones Windows
+/// Installer listed before the downgrade started ([`put_back_registration`]).
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Failed {
     pub error: String,
-    pub put_back: bool,
+    pub put_back: PutBack,
+}
+
+/// Whether a failed downgrade put the previous package back, and how much of the app was removed
+/// before that: the two decide which registration may be recorded as the restore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PutBack {
+    /// The previous package was not put back (nothing needed it, or putting it back failed too),
+    /// so no registration was created that could be recorded.
+    Not,
+    /// The installed copy was removed in full, and the checked previous package then went back in.
+    /// Windows Installer gives the same package the same product code every time, so the restore
+    /// can carry a code the machine already listed before the downgrade.
+    AfterRemoval,
+    /// A removal failed after another registration was already gone, so the app was only partly
+    /// removed: a registration that was there before is never the restore.
+    AfterPartialRemoval,
 }
 
 impl Failed {
-    /// The previous package was not put back (nothing needed it, or putting it back failed too),
-    /// so no registration was created that could be recorded.
     fn without_put_back(error: String) -> Self {
-        Self { error, put_back: false }
+        Self { error, put_back: PutBack::Not }
     }
 
-    /// The previous package is back in place of the chosen one.
-    fn put_back(error: String) -> Self {
-        Self { error, put_back: true }
+    /// The previous package is back after the installed copy was removed in full.
+    fn complete_removal_put_back(error: String) -> Self {
+        Self { error, put_back: PutBack::AfterRemoval }
+    }
+
+    /// The previous package is back after a removal that stopped once part of the app was gone.
+    fn partial_removal_put_back(error: String) -> Self {
+        Self { error, put_back: PutBack::AfterPartialRemoval }
     }
 }
 
@@ -83,7 +102,7 @@ pub(super) fn run(steps: Steps<'_>) -> Result<(), Failed> {
         }
         let why = reason(&error);
         return match reinstall_previous() {
-            Ok(()) => Err(Failed::put_back(partly_removed_put_back(app, previous, &why))),
+            Ok(()) => Err(Failed::partial_removal_put_back(partly_removed_put_back(app, previous, &why))),
             Err(again) => Err(Failed::without_put_back(partly_removed_not_put_back(app, previous, &why, &reason(&again)))),
         };
     }
@@ -92,7 +111,7 @@ pub(super) fn run(steps: Steps<'_>) -> Result<(), Failed> {
         Err(e) => reason(&e),
     };
     match reinstall_previous() {
-        Ok(()) => Err(Failed::put_back(put_back(app, chosen, previous, &why))),
+        Ok(()) => Err(Failed::complete_removal_put_back(put_back(app, chosen, previous, &why))),
         Err(again) => Err(Failed::without_put_back(not_put_back(app, chosen, previous, &why, &reason(&again)))),
     }
 }
@@ -225,9 +244,9 @@ pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> R
         Ended::RemovalFailed(code) => {
             Err(Failed::without_put_back(format!("{app} {previous} couldn't be removed ({}), so nothing was changed.", msiexec(code))))
         }
-        Ended::PutBack(code) => Err(Failed::put_back(put_back(app, chosen, previous, &msiexec(code)))),
+        Ended::PutBack(code) => Err(Failed::complete_removal_put_back(put_back(app, chosen, previous, &msiexec(code)))),
         Ended::NotPutBack { install, back } => Err(Failed::without_put_back(not_put_back(app, chosen, previous, &msiexec(install), &msiexec(back)))),
-        Ended::PartlyRemovedPutBack(code) => Err(Failed::put_back(partly_removed_put_back(app, previous, &msiexec(code)))),
+        Ended::PartlyRemovedPutBack(code) => Err(Failed::partial_removal_put_back(partly_removed_put_back(app, previous, &msiexec(code)))),
         Ended::PartlyRemovedNotPutBack { removal, back } => {
             Err(Failed::without_put_back(partly_removed_not_put_back(app, previous, &msiexec(removal), &msiexec(back))))
         }
@@ -243,25 +262,48 @@ pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> R
     }
 }
 
-/// The registration a put-back created, from the product codes Windows Installer listed before the
-/// downgrade started (`before`) and the registrations it lists now, each with the version it
-/// reports: the single code that is new there, when its numbers are `previous`'s (Windows Installer
-/// keeps only the numbers). `None` when no code is new, several are, or the new one carries other
-/// numbers — so a registration that was already on the machine is never taken for the restore, and
-/// nothing is ever guessed from rows.
+/// The registration a put-back is, from the product codes Windows Installer listed before the
+/// downgrade started (`before`), the registrations it lists now, each with the version it reports,
+/// and what the downgrade said about the removal ([`PutBack`]). Windows Installer keeps only the
+/// numbers, so they are compared without any pre-release part.
+///
+/// The same build always installs under the same product code, so after a complete removal
+/// ([`PutBack::AfterRemoval`]) the restore is simply the one registration that carries `previous`'s
+/// numbers — whether or not that code was listed before the downgrade.
+///
+/// A partial removal ([`PutBack::AfterPartialRemoval`]) leaves part of the app behind, so a
+/// registration that was already there is never the restore: it is the single code that is new
+/// since the snapshot, and only when that one carries `previous`'s numbers.
+///
+/// `None` in both cases unless there is exactly one such registration: nothing is ever guessed
+/// from rows, and nothing was put back at all for [`PutBack::Not`].
 pub(super) fn put_back_registration(
+    put_back: PutBack,
     before: &[String],
     after: &[(String, Option<super::version::Version>)],
     previous: Option<&super::version::Version>,
 ) -> Option<String> {
     let previous = previous?;
-    let mut created = after.iter().filter(|(code, _)| !before.iter().any(|old| old.eq_ignore_ascii_case(code)));
-    let (code, numbers) = created.next()?;
-    if created.next().is_some() {
-        return None;
+    let same_numbers = |numbers: &Option<super::version::Version>| {
+        numbers.as_ref().is_some_and(|n| (n.major, n.minor, n.patch) == (previous.major, previous.minor, previous.patch))
+    };
+    match put_back {
+        PutBack::Not => None,
+        // The installed copy is gone, so nothing of it is left to mistake for the restore: the one
+        // registration with the previous release's numbers is the package that just went back in.
+        PutBack::AfterRemoval => {
+            let mut restored = after.iter().filter(|(_, numbers)| same_numbers(numbers));
+            let (code, _) = restored.next()?;
+            restored.next().is_none().then(|| code.clone())
+        }
+        // Part of the app may still be there: the restore is the one code that is new since the
+        // snapshot, and only when it carries the previous release's numbers.
+        PutBack::AfterPartialRemoval => {
+            let mut created = after.iter().filter(|(code, _)| !before.iter().any(|old| old.eq_ignore_ascii_case(code)));
+            let (code, numbers) = created.next()?;
+            (created.next().is_none() && same_numbers(numbers)).then(|| code.clone())
+        }
     }
-    let numbers = numbers.as_ref()?;
-    ((numbers.major, numbers.minor, numbers.patch) == (previous.major, previous.minor, previous.patch)).then(|| code.clone())
 }
 
 /// The `msiexec` arguments that remove one registration. Product codes come from the registry, so
