@@ -244,16 +244,37 @@ fn only_one_new_registration_with_the_previous_numbers_can_be_a_partial_removal_
     );
     // Without the previous release's version there is nothing to match it against.
     assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &before, &[install(&removed, "0.26.0"), install(&created, "0.25.0")], None), None);
-    // Codes are compared as Windows reports them, which does not keep their case.
+    // Codes are compared as Windows reports them, which does not keep their case: a snapshot that
+    // spells the same code differently still excludes it.
+    assert_eq!(
+        put_back_registration(PutBack::AfterPartialRemoval, &[created.to_lowercase()], &[install(&created, "0.25.0")], Some(&previous)),
+        None,
+        "the registration the snapshot already had is still not the one the put-back made"
+    );
+}
+
+/// The snapshot is the exact set the removal step works on, so a registration that only appears
+/// afterwards was not removed by that step. After a partial removal it is not evidence on its own:
+/// beside the one registration the put-back made there are two new codes, and nothing is recorded.
+#[test]
+fn a_registration_that_appears_after_the_snapshot_is_not_evidence_on_its_own() {
+    let previous = super::super::version::parse("0.25.0-rc.1").unwrap();
+    let install = |code: &str, v: &str| (code.to_string(), super::super::version::parse(v));
+    let (snapshot, appeared, created) = (
+        "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".to_string(),
+        "{11111111-2222-3333-4444-555555555555}".to_string(),
+        "{3D425FF2-3EB2-4950-9833-95B01B102845}".to_string(),
+    );
+    // The registration that appeared later, beside the restore: two codes the step never removed.
     assert_eq!(
         put_back_registration(
             PutBack::AfterPartialRemoval,
-            &[leftover.to_lowercase()],
-            &[install(&leftover.to_lowercase(), "0.25.0")],
+            std::slice::from_ref(&snapshot),
+            &[install(&snapshot, "0.26.0"), install(&appeared, "0.25.0"), install(&created, "0.25.0")],
             Some(&previous)
         ),
         None,
-        "the existing registration is still the one in the snapshot"
+        "a registration the step never removed cannot be told from the restore"
     );
 }
 
@@ -292,6 +313,12 @@ fn only_machine_wide_records_name_what_the_elevated_session_removes() {
     let none = elevated_removals("FilmCraft", [(PLANTED, MsiScope::PerUser)]).unwrap_err();
     assert!(none.contains("FilmCraft isn't registered"), "{none}");
     assert!(elevated_removals("FilmCraft", [("{x' ; calc ; '}", MsiScope::PerMachine)]).is_err());
+    // The session removes exactly the listing the downgrade snapshotted: one that is missing from
+    // it — a registration that appears later — is not removed behind the snapshot's back.
+    let later = "{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}";
+    let snapshot = elevated_removals("FilmCraft", [(OURS, MsiScope::PerMachine)]).unwrap();
+    assert_eq!(snapshot, vec![format!("/x {OURS} /passive /norestart")]);
+    assert!(!snapshot.iter().any(|line| line.contains(later)), "a registration outside the snapshot stays put");
 }
 
 /// Runs the generated elevated script for real, but not elevated and with `cmd.exe` standing in

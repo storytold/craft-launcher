@@ -2553,15 +2553,17 @@ pub mod windows {
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), super::Failure> {
-        // Which registrations exist before the downgrade changes anything: the put-back is worked
-        // out from them and the ones listed afterwards (see [`reported`]), so a registration left
-        // behind by a partial removal can never be taken for the restore.
-        let before = registrations(app);
+        // The registrations the downgrade works on, listed once: that same listing is what the
+        // removal step removes and what a put-back is judged against (see [`reported`]), so a
+        // registration that appears in between is never removed behind the snapshot's back, and
+        // one the step leaves behind can never be taken for the restore.
+        let installs = crate::detect::windows::msi_installs(app);
+        let before: Vec<String> = installs.iter().map(|m| m.product_code.clone()).collect();
         let previous_numbers = super::version::parse(previous.version);
         if scope == Some(MsiScope::PerMachine) {
             let mut elevated = None;
             let started = in_turn(stop, phase, JobPhase::Installing, || {
-                elevated = downgrade_elevated(app, &chosen, &previous, destination, scope)?;
+                elevated = downgrade_elevated(app, &chosen, &previous, destination, scope, &installs)?;
                 Ok(())
             });
             if let Err(error) = started {
@@ -2583,7 +2585,7 @@ pub mod windows {
                 app: app.name,
                 chosen: chosen.version,
                 previous: previous.version,
-                remove: &mut || remove_registrations(app),
+                remove: &mut || remove_listed(app, &installs),
                 install_chosen: &mut || run_direct(chosen.file, destination, scope),
                 reinstall_previous: &mut || run_direct(previous.file, destination, scope),
             })
@@ -2597,11 +2599,6 @@ pub mod windows {
             return Err(reported(app, failed, &before, previous_numbers.as_ref()));
         }
         started.map_err(|error| super::Failure { error, put_back: None })
-    }
-
-    /// The product codes Windows Installer lists for `app` right now.
-    fn registrations(app: &CraftApp) -> Vec<String> {
-        crate::detect::windows::msi_installs(app).into_iter().map(|m| m.product_code).collect()
     }
 
     /// What a failed downgrade reports: its message, and — only when the installer says it put the
@@ -2622,16 +2619,18 @@ pub mod windows {
     }
 
     /// The one-prompt route: both packages held unchanged and checked again, then one elevated
-    /// session removes, installs and if needed puts back. `None` when that session can't start.
+    /// session removes, installs and if needed puts back. `installs` is the downgrade's one listing,
+    /// which is both the snapshot a put-back is judged against and the set the session removes.
+    /// `None` when that session can't start.
     fn downgrade_elevated(
         app: &CraftApp,
         chosen: &Package<'_>,
         previous: &Package<'_>,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
+        installs: &[crate::detect::windows::MsiInstall],
     ) -> Result<Option<msi_downgrade::Ended>, String> {
         let _held = (msi_batch::hold(chosen.file, chosen.sha256)?, msi_batch::hold(previous.file, previous.sha256)?);
-        let installs = crate::detect::windows::msi_installs(app);
         if installs.is_empty() {
             return Err(format!("{} isn't registered with the Windows Installer", app.name));
         }
@@ -2665,10 +2664,17 @@ pub mod windows {
     }
 
     /// Removes every Windows Installer registration of `app` in turn, within the caller's queue
-    /// turn. A failure says whether an earlier registration was already removed, so a downgrade
-    /// knows the app is partly gone.
+    /// turn: an uninstall, where no put-back follows that a later listing could misjudge.
     fn remove_registrations(app: &CraftApp) -> Result<(), msi_downgrade::Removal> {
         let installs = crate::detect::windows::msi_installs(app);
+        remove_listed(app, &installs)
+    }
+
+    /// Removes exactly the registrations in `installs`, in turn, within the caller's queue turn. A
+    /// downgrade passes the listing its snapshot came from, so what the step removes is exactly the
+    /// set a put-back is judged against. A failure says whether an earlier registration was already
+    /// removed, so a downgrade knows the app is partly gone.
+    fn remove_listed(app: &CraftApp, installs: &[crate::detect::windows::MsiInstall]) -> Result<(), msi_downgrade::Removal> {
         if installs.is_empty() {
             return Err(msi_downgrade::Removal { error: format!("{} isn't registered with the Windows Installer", app.name), partly: false });
         }
