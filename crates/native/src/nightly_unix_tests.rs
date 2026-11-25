@@ -773,9 +773,10 @@ fn mac_stable_fence_keeps_photo_crafts_old_list_and_uses_each_apps_own_names() {
     }
     assert!(cadcraft.contains(&PathBuf::from("/Applications/CADCraft.app")));
     assert!(!cadcraft.iter().any(|path| path.to_string_lossy().contains("hotocraft")));
-    // Without its own row the app has no macOS Nightly at all, and the plist key stays derived
-    // from the row's display name rather than guessed per app.
-    assert!(crate::nightly_profile::for_app(CraftApp::by_id("cadcraft").unwrap(), Platform { os: Os::MacOs, arch: Arch::Arm64 }).is_err());
+    // Its own row admits it on macOS, under its own bundle and display name, and the plist key
+    // stays derived from that name rather than guessed per app.
+    let cad = crate::nightly_profile::for_app(CraftApp::by_id("cadcraft").unwrap(), Platform { os: Os::MacOs, arch: Arch::Arm64 }).unwrap();
+    assert_eq!(cad.bundle(), Some(("CADCraft Nightly.app", "ai.storyteller.cadcraft.nightly")));
     assert_eq!(mac_version_key("PhotoCraft"), "PhotoCraftVersion");
     assert_eq!(mac_version_key("CADCraft"), "CADCraftVersion");
 }

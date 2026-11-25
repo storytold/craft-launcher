@@ -53,7 +53,7 @@ impl std::fmt::Debug for Adapter {
             Os::MacOs => "Mac",
             Os::FreeBsd => "FreeBSD",
         };
-        write!(formatter, "{}{os}V1", self.0.display)
+        write!(formatter, "{}{os}V1", self.display())
     }
 }
 
@@ -842,6 +842,9 @@ const CAPABILITIES: &[Capability] = &[
     },
 ];
 
+/// PhotoCraft's three rows by name, for the tests that pin the identities the Launcher persisted
+/// before this table existed. Test-only: production code reaches every row through `for_app`.
+#[cfg(test)]
 #[allow(non_upper_case_globals)]
 impl Adapter {
     pub(crate) const PhotoCraftWindowsV1: Self = Self(&CAPABILITIES[0]);

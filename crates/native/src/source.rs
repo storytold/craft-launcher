@@ -169,10 +169,7 @@ impl GitHubSource {
         let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
         // New files keep one row per setting (`repo` and `repo+pre`). Old files stored one
         // row under `repo`, so that key is still read when it matches this setting.
-        let allowed = |entry: &Entry| {
-            entry.prereleases == prereleases
-                && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(release))
-        };
+        let allowed = |entry: &Entry| entry.prereleases == prereleases && entry.release.as_ref().is_none_or(release::ordinary_release_allowed);
         cache.entries.get(&cache_key(&query.repo, prereleases)).or_else(|| cache.entries.get(&query.repo)).filter(|entry| allowed(entry)).cloned()
     }
 
@@ -323,7 +320,7 @@ impl GitHubSource {
                 }
                 Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
             };
-            let crowded = query.separate_nightly && !list.iter().any(|r| release::ordinary_release_allowed(r));
+            let crowded = query.separate_nightly && !list.iter().any(release::ordinary_release_allowed);
             if !full || !crowded {
                 return Ok(list);
             }
@@ -933,19 +930,20 @@ mod tests {
         assert_eq!(tag_of(&unchanged), Some("v0.9.0-beta.1"));
     }
     #[test]
-    fn shared_selection_legacy_nightly_cache_and_etag_replay_remain_main_compatible() {
+    fn shared_selection_legacy_nightly_cache_and_etag_replay_never_offer_a_nightly_on_the_ordinary_track() {
+        // Main kept a third-party app's saved Nightly as an ordinary answer; no app is offered a
+        // Nightly on its ordinary track now, so the same cache is neither served nor replayable.
         for id in ["solidcraft", "filmcraft"] {
             let repo = artcraft_launcher_core::CraftApp::by_id(id).unwrap().repo;
-            let (_temp, source, release) = shared_selection_saved_source(repo, "v1.0.0-dev.nightly.1");
-            assert_eq!(source.cached(&q(repo), true), Some(LatestRelease::Found(release.clone())));
-            let answer = source
-                .ask_api_with(&q(repo), true, |_, etag| {
-                    assert_eq!(etag, Some("old-etag"));
-                    Ok(Fetched::NotModified)
-                })
-                .unwrap()
-                .unwrap();
-            assert_eq!(answer.latest, LatestRelease::Found(release));
+            let (_temp, source, _release) = shared_selection_saved_source(repo, "v1.0.0-dev.nightly.1");
+            assert_eq!(source.cached(&q(repo), true), None, "{id}: a Nightly is not an ordinary answer");
+            let mut sent_etag = Some("not called".to_string());
+            let replay = source.ask_api_with(&q(repo), true, |_, etag| {
+                sent_etag = etag.map(str::to_owned);
+                Ok(Fetched::NotModified)
+            });
+            assert!(replay.is_err(), "{id}: a saved Nightly cannot replay as an unchanged ordinary answer");
+            assert_eq!(sent_etag, None, "{id}: force a real body instead of accepting the Nightly's stale ETag");
         }
     }
     fn crowded_page(repo: &str, count: usize, offset: usize) -> String {
@@ -1014,7 +1012,7 @@ mod tests {
         assert_eq!(asked, 2);
     }
     #[test]
-    fn third_party_lookups_keep_mains_single_page_with_its_nightlies() {
+    fn third_party_lookups_keep_mains_single_page_and_offer_no_nightly() {
         let repo = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap().repo;
         let (_temp, source) = fresh_source();
         let mut asked = 0;
@@ -1025,7 +1023,9 @@ mod tests {
             })
             .unwrap()
             .unwrap();
-        assert!(tag_of(&answer).is_some_and(|tag| tag.contains("nightly")));
+        // Main offered a third-party app's Nightly here; no app's ordinary track does now.
+        assert!(matches!(answer.latest, LatestRelease::None), "a Nightly is never an ordinary or pre-release candidate");
+        assert_eq!(asked, 1, "one request, as on main");
         let list = source
             .versions_with(&q(repo), |_, _| {
                 asked += 1;
