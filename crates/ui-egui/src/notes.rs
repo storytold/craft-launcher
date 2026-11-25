@@ -189,19 +189,24 @@ pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
                         (special_idx, link_text_candidate)
                     };
 
-                    if let Some(after_paren) = after_close.strip_prefix('(')
-                        && let Some(close_paren) = after_paren.find(')')
-                        && let Some(url) = after_paren.get(..close_paren)
-                    {
-                        let end_pos = special_idx + 1 + close_bracket + 1 + 1 + close_paren + 1;
-                        if plain_start < actual_start
-                            && let Some(plain) = orig.get(plain_start..actual_start)
+                    if let Some(after_paren) = after_close.strip_prefix('(') {
+                        if let Some(close_paren) = after_paren.find(')')
+                            && let Some(url) = after_paren.get(..close_paren)
                         {
-                            out.push(Inline::Plain(plain));
+                            let end_pos = special_idx + 1 + close_bracket + 1 + 1 + close_paren + 1;
+                            if plain_start < actual_start
+                                && let Some(plain) = orig.get(plain_start..actual_start)
+                            {
+                                out.push(Inline::Plain(plain));
+                            }
+                            out.push(Inline::Link { text: link_text, url });
+                            plain_start = end_pos;
+                            cursor = end_pos;
+                        } else {
+                            // No ')' exists later on this line, so no subsequent link can close either.
+                            next_bracket = None;
+                            cursor = special_idx + 1 + close_bracket + 1 + 1;
                         }
-                        out.push(Inline::Link { text: link_text, url });
-                        plain_start = end_pos;
-                        cursor = end_pos;
                     } else {
                         cursor = special_idx + 1 + close_bracket + 1;
                     }
@@ -354,6 +359,7 @@ mod tests {
         assert_eq!(parse_inline("**unclosed"), vec![Inline::Plain("**unclosed")]);
         assert_eq!(parse_inline("`unclosed"), vec![Inline::Plain("`unclosed")]);
         assert_eq!(parse_inline("[unclosed](https://"), vec![Inline::Plain("[unclosed](https://")]);
+        assert_eq!(parse_inline("[a](x [b](y"), vec![Inline::Plain("[a](x [b](y")]);
         assert_eq!(parse_inline("[[[[[unclosed"), vec![Inline::Plain("[[[[[unclosed")]);
         assert_eq!(
             parse_inline("[unmatched [site](https://getartcraft.com)"),
