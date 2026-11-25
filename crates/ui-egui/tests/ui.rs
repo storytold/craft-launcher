@@ -3848,7 +3848,7 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
         h.run_steps(6);
         snapshot(&mut h, &format!("footer-rate-limited-{width}"));
         // Full or short, the notice says when GitHub can be asked again.
-        let notice = h.get_by_label_contains("in 30 min").rect();
+        let notice = h.get_by_label_contains("check at").rect();
         let checked = h.get_by_label_contains("Checked ").rect();
         // Cut short in a narrow window, but enough of it left to read.
         assert!(notice.width() >= 120.0 && notice.right() <= width, "{width}: notice {notice:?}");
