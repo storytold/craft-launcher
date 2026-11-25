@@ -3774,6 +3774,47 @@ fn the_details_scrollbar_stays_inside_the_card() {
     }
 }
 
+/// At the width where the details page turns wide (a 900 px card), a chosen RC version's
+/// "Install version …" sits beside the name while it leaves the text 200 px, and moves under it
+/// when it doesn't; either way it is never clipped by the card or run under its scrollbar.
+#[test]
+fn a_long_chosen_version_label_stacks_under_the_name_at_the_wide_threshold() {
+    let headline = AppDetails::by_id("photocraft").expect("PhotoCraft has a page").headline;
+    let window = egui::vec2(964.0, 1320.0);
+    // The card as `details_drawer` sizes it: 900 x 1000, the narrowest wide page.
+    let card = egui::Rect::from_center_size(egui::pos2(window.x / 2.0, window.y / 2.0), egui::vec2(900.0, 1000.0));
+    for (tag, beside) in [("v0.24.0-rc.1", true), ("v0.24.0-rc.1+windows-arm64-nightly-20261124", false)] {
+        let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+        h.set_size(window);
+        h.run_steps(8);
+        h.state_mut()
+            .as_mut()
+            .expect("the harness built the launcher")
+            .settings
+            .versions
+            .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned(tag.into()));
+        h.get_by_label("PhotoCraft details").click();
+        h.run_steps(20);
+        let bar = h
+            .query_all_by_role(egui::accesskit::Role::ScrollBar)
+            .map(|n| n.rect())
+            .find(|r| r.top() >= card.top() - 1.0 && r.bottom() <= card.bottom() + 1.0)
+            .expect("the card has a scrollbar");
+        assert!(bar.right() <= card.right() + 0.5, "{tag}: the bar {bar:?} is outside the card {card:?}");
+        // The drawer's controls and text come after the grid card's in the tree.
+        let label = format!("Install version {tag}");
+        let install = h.get_all_by_label(&label).last().expect("the drawer offers the chosen version").rect();
+        let menu = h.get_all_by_label("More actions for PhotoCraft").last().expect("the drawer's … menu").rect();
+        let text = h.get_all_by_label(headline).last().expect("the drawer's headline").rect();
+        assert!(
+            install.left() >= card.left() && menu.right() <= bar.left(),
+            "{tag}: {install:?} … {menu:?} out of the card {card:?} or under the bar {bar:?}"
+        );
+        assert!(!install.intersects(text), "{tag}: the button {install:?} covers the headline {text:?}");
+        assert_eq!(install.top() < text.bottom(), beside, "{tag}: button {install:?}, headline {text:?}");
+    }
+}
+
 #[test]
 /// At 720–1180 px the rate-limit notice stays readable and clear of the footer's checked time
 /// and eight right-side links.
