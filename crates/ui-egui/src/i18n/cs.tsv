@@ -203,8 +203,8 @@ month	Oct	10.
 month	Nov	11.
 month	Dec	12.
 	Not checked yet	Zatím nezkontrolováno
-	GitHub's hourly limit was reached; full details return in {min} min	Byl dosažen hodinový limit GitHubu; úplné informace budou znovu dostupné za {min} min
-	GitHub limit hit; back in {min} min	Dosažen limit GitHubu; obnovení za {min} min
+	Next GitHub check at {time}	Další kontrola GitHubu v {time}
+	Next check at {time}	Další kontrola v {time}
 	Installing for {platform}	Instalace pro {platform}
 	Downloads for {platform}	Stažení pro {platform}
 	No downloads for this system	Pro tento systém nejsou k dispozici žádné soubory ke stažení
