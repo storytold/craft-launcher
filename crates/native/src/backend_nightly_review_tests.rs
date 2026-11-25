@@ -781,6 +781,38 @@ fn review_lifecycle_real_detector_cannot_hide_same_record_restored_by_failed_rem
     assert!(!backend.has_active_jobs());
 }
 
+/// Startup recovery covers every app with its own channel: an unreadable record is reported
+/// once per app, under that app's own name, not as one PhotoCraft notice.
+#[test]
+fn review_startup_refresh_reports_each_apps_own_failure() {
+    let temp = tempfile::tempdir().unwrap();
+    let paths = paths(temp.path());
+    std::fs::create_dir_all(paths.manifest().parent().unwrap()).unwrap();
+    std::fs::write(paths.manifest(), b"{ unreadable").unwrap();
+    let backend = fresh_backend(&paths);
+    let platform = backend.platform.unwrap();
+    let expected: Vec<&str> = artcraft_launcher_core::hosted_catalog::apps()
+        .iter()
+        .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
+        .filter(|app| crate::nightly_profile::for_app(app, platform).is_ok())
+        .map(|app| app.id)
+        .collect();
+    assert!(expected.len() > 1, "the sweep covers more than PhotoCraft: {expected:?}");
+    let events = backend.shared.events.lock().unwrap();
+    let mut noticed: Vec<&str> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Notice { app, result: Err(_) } => Some(app.as_str()),
+            _ => None,
+        })
+        .collect();
+    noticed.sort_unstable();
+    noticed.dedup();
+    let mut expected_sorted = expected;
+    expected_sorted.sort_unstable();
+    assert_eq!(noticed, expected_sorted, "{events:?}");
+}
+
 #[test]
 fn review_unreadable_manifest_keeps_the_last_known_copy_instead_of_publishing_none() {
     const TEST: &str = "review_unreadable_manifest_keeps_the_last_known_copy_instead_of_publishing_none";
