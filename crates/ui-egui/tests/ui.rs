@@ -2215,7 +2215,7 @@ fn pin_toggle_button_pins_and_unpins() {
     h.get_by_label("Pin PhotoCraft to top").click();
     h.run_steps(4);
     assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
-    h.get_by_label("Pinned");
+    h.get_by_label("Pinned · 1");
     assert!(h.query_by_label("Pin PhotoCraft to top").is_none());
     h.get_by_label("Unpin PhotoCraft").click();
     h.run_steps(4);
