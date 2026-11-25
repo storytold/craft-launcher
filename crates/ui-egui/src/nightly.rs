@@ -1579,10 +1579,16 @@ mod polish_tests {
         }
     }
     #[test]
-    fn shared_selection_pre_release_destination_lists_only_explicit_channel_apps_on_every_host() {
+    fn shared_selection_pre_release_destination_lists_every_explicit_channel_app_on_every_host() {
         for os in [artcraft_launcher_core::Os::Windows, artcraft_launcher_core::Os::Linux, artcraft_launcher_core::Os::MacOs] {
             let state = NightlyState::new(None, Some(Platform { os, arch: artcraft_launcher_core::Arch::X64 }));
-            assert_eq!(state.entries.iter().map(|entry| entry.app.id).collect::<Vec<_>>(), vec!["photocraft"]);
+            let expected: Vec<&str> = artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|app| app.has_separate_nightly_channel() && app.runs_on(os))
+                .map(|app| app.id)
+                .collect();
+            assert!(expected.len() > 1, "the destination is not a one-app page: {expected:?}");
+            assert_eq!(state.entries.iter().map(|entry| entry.app.id).collect::<Vec<_>>(), expected, "{os:?}");
         }
     }
     #[test]

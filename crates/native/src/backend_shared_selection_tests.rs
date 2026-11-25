@@ -37,8 +37,10 @@ impl ReleaseSource for Published {
 }
 #[test]
 fn shared_selection_legacy_native_follow_and_pin_keep_main_tag_checksums_and_publication_order() {
-    for id in ["solidcraft", "filmcraft"] {
+    // Apps without their own Nightly channel keep main's publication-time ordering.
+    for id in ["solidcraft", "pdfcraft"] {
         let app = CraftApp::by_id(id).unwrap();
+        assert!(!app.has_separate_nightly_channel(), "{id} must stay an app without its own Nightly channel here");
         for prefix in ["v1.0.0-dev.nightly.1", "v1.0.0-nightly.1"] {
             let mut older = representative(app, prefix, 200);
             if prefix == "v1.0.0-nightly.1" {
@@ -66,7 +68,7 @@ fn shared_selection_legacy_native_follow_and_pin_keep_main_tag_checksums_and_pub
     }
 }
 #[test]
-fn shared_selection_ordinary_install_plans_accept_legacy_follow_and_pin_but_refuse_separate_channel() {
+fn shared_selection_ordinary_install_plans_refuse_a_nightly_on_stable_for_every_app_and_on_separate_channel_apps() {
     let platform = Platform { os: Os::Windows, arch: Arch::X64 };
     let system = install::SystemKinds { available: vec![PackageKind::PortableZip], can_pacman: false };
     for id in ["solidcraft", "filmcraft", "photocraft"] {
@@ -76,8 +78,11 @@ fn shared_selection_ordinary_install_plans_accept_legacy_follow_and_pin_but_refu
             let mut options = BackendOptions { prereleases: true, kinds: vec![PackageKind::PortableZip], ..Default::default() };
             options.versions.insert(id.into(), track.clone());
             let plan = install_plan(app, Some(release.clone()), Some(platform), &options, (None, None), Asking::Answer(&system));
-            if id == "photocraft" {
-                assert!(plan.is_err());
+            // An ordinary Stable install never takes a Nightly: not for an app with its own
+            // channel, and not for SolidCraft. Apps without one still follow or pin a legacy
+            // Nightly on the Nightly tracks.
+            if app.has_separate_nightly_channel() || matches!(track, VersionTrack::Stable) {
+                assert!(plan.is_err(), "{id} {track:?} must not install a Nightly here");
             } else {
                 let plan = plan.unwrap_or_else(|why| panic!("{id} {track:?}: {why}"));
                 assert_eq!(plan.asset.name, release.assets[0].name);
@@ -87,7 +92,7 @@ fn shared_selection_ordinary_install_plans_accept_legacy_follow_and_pin_but_refu
     }
 }
 #[test]
-fn shared_selection_backend_configuration_keeps_legacy_tracks_but_reconciles_photo() {
+fn shared_selection_backend_configuration_keeps_legacy_tracks_but_reconciles_every_separate_channel_app() {
     let temp = tempfile::tempdir().unwrap();
     let platform = Platform { os: Os::Windows, arch: Arch::X64 };
     for track in [VersionTrack::Nightly, VersionTrack::Pinned("v1.0.0-dev.nightly.1".into())] {
@@ -102,7 +107,9 @@ fn shared_selection_backend_configuration_keeps_legacy_tracks_but_reconciles_pho
         }
         backend.send(Command::Configure(options.clone()));
         let actual = backend.shared.options.lock().unwrap().clone();
-        options.versions.remove("photocraft");
+        // Every app with its own Nightly destination loses the ordinary Nightly choice; apps
+        // without one keep main's legacy tracks.
+        options.versions.retain(|id, _| CraftApp::by_id(id).is_none_or(|app| !app.has_separate_nightly_channel()));
         assert_eq!(actual.versions, options.versions);
         assert_eq!(actual.launcher_version, track);
     }

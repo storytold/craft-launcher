@@ -282,6 +282,32 @@ mod tests {
         }
     }
 
+    /// The separate Nightly roster is exactly the apps the checked-in registry
+    /// (`craft-nightly-registry/v1`, copied from craft-common-actions) gives Nightly targets to.
+    /// A registry change that adds or drops an app then fails this test in review instead of
+    /// silently changing which stable updater leaves Nightly copies alone.
+    #[test]
+    fn the_separate_nightly_roster_is_the_registrys_apps_with_targets() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../native/tests/fixtures/nightly-apps.json");
+        let registry: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"))).unwrap();
+        let apps = registry["apps"].as_object().unwrap_or_else(|| panic!("{path} has no apps table"));
+        let mut expected: Vec<(&str, &str)> = apps
+            .iter()
+            .filter(|(_, entry)| entry["targets"].as_array().is_some_and(|targets| !targets.is_empty()))
+            .map(|(id, entry)| (id.as_str(), entry["repository"].as_str().unwrap_or_else(|| panic!("{id} has no repository"))))
+            .collect();
+        expected.sort_unstable();
+        let mut roster: Vec<(&str, &str)> = SEPARATE_NIGHTLY_CHANNELS.to_vec();
+        roster.sort_unstable();
+        assert_eq!(roster, expected, "the Nightly roster and the registry's targets disagree");
+        for (id, repository) in roster {
+            let app = CraftApp::by_id(id).unwrap_or_else(|| panic!("{id} is not in the catalog"));
+            assert!(app.kind == AppKind::Official && app.repo == repository, "{id} is not the official {repository} app");
+            assert!(app.has_separate_nightly_channel(), "{id} is in the roster but not the channel lookup");
+        }
+    }
+
     #[test]
     fn solidcraft_is_a_community_app_with_its_own_bundle_id() {
         let sc = CraftApp::by_id("solidcraft").unwrap();
