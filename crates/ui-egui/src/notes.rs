@@ -1,6 +1,6 @@
 //! Release notes: GitHub's generated Markdown, shown readably without a Markdown engine.
 
-use egui::{Color32, RichText, Ui};
+use egui::{Color32, FontFamily, FontId, RichText, TextFormat, Ui, text::LayoutJob};
 
 use crate::theme::Tokens;
 
@@ -228,60 +228,81 @@ pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
     out
 }
 
+fn append_run(job: &mut LayoutJob, text: &str, format: TextFormat, needs_space: &mut bool) {
+    let text = if job.text.is_empty() {
+        let trimmed = text.trim_start();
+        if trimmed.len() < text.len() {
+            *needs_space = true;
+        }
+        trimmed
+    } else {
+        text
+    };
+    if !text.is_empty() {
+        job.append(text, 0.0, format);
+    }
+}
+
+fn flush_run(ui: &mut Ui, job: &mut LayoutJob, needs_space: &mut bool, space_w: f32) {
+    let space_before = *needs_space;
+    let trimmed_len = job.text.trim_end().len();
+    let space_after = trimmed_len < job.text.len();
+    if trimmed_len == 0 {
+        job.text.clear();
+        job.sections.clear();
+        *needs_space = space_before || space_after;
+        return;
+    }
+    if space_after {
+        job.text.truncate(trimmed_len);
+        let limit = egui::text::ByteIndex(trimmed_len);
+        while let Some(last) = job.sections.last_mut() {
+            if last.byte_range.start >= limit {
+                job.sections.pop();
+            } else {
+                last.byte_range.end = last.byte_range.end.min(limit);
+                break;
+            }
+        }
+    }
+    if space_before {
+        ui.add_space(space_w);
+    }
+    ui.add(egui::Label::new(std::mem::take(job)).wrap());
+    *needs_space = space_after;
+}
+
 fn render_inline(ui: &mut Ui, text: &str, color: Color32, t: &Tokens, scale: f32) {
     let space_w = (ui.spacing().item_spacing.x * scale).max(2.0);
     ui.spacing_mut().item_spacing.x = 0.0;
     let mut needs_space = text.starts_with(char::is_whitespace);
 
-    let tokens = parse_inline(text);
-    for token in tokens {
+    let valign = ui.text_valign();
+    let plain_fmt = TextFormat { font_id: FontId::new(13.5 * scale, FontFamily::Proportional), color, valign, ..Default::default() };
+    let bold_fmt = TextFormat { font_id: FontId::new(13.5 * scale, FontFamily::Proportional), color: t.ink_strong, valign, ..Default::default() };
+    let code_fmt = TextFormat { font_id: FontId::new(12.0 * scale, FontFamily::Monospace), color: t.ink, valign, ..Default::default() };
+
+    let mut job = LayoutJob::default();
+    for token in parse_inline(text) {
         match token {
-            Inline::Plain(plain) => {
-                if plain.starts_with(char::is_whitespace) {
-                    needs_space = true;
-                }
-                let mut words = plain.split_whitespace().peekable();
-                while let Some(word) = words.next() {
-                    if needs_space {
-                        ui.add_space(space_w);
-                    }
-                    ui.label(RichText::new(word).size(13.5 * scale).color(color));
-                    needs_space = if words.peek().is_some() { true } else { plain.ends_with(char::is_whitespace) };
-                }
-            }
-            Inline::Bold(bold) => {
-                if bold.starts_with(char::is_whitespace) {
-                    needs_space = true;
-                }
-                let mut words = bold.split_whitespace().peekable();
-                while let Some(word) = words.next() {
-                    if needs_space {
-                        ui.add_space(space_w);
-                    }
-                    ui.label(RichText::new(word).strong().size(13.5 * scale).color(t.ink_strong));
-                    needs_space = if words.peek().is_some() { true } else { bold.ends_with(char::is_whitespace) };
-                }
-            }
-            Inline::Code(code) => {
-                if needs_space || code.starts_with(char::is_whitespace) {
-                    ui.add_space(space_w);
-                }
-                ui.label(RichText::new(code).monospace().size(12.0 * scale).color(t.ink));
-                needs_space = code.ends_with(char::is_whitespace);
-            }
+            Inline::Plain(plain) => append_run(&mut job, plain, plain_fmt.clone(), &mut needs_space),
+            Inline::Bold(bold) => append_run(&mut job, bold, bold_fmt.clone(), &mut needs_space),
+            Inline::Code(code) => append_run(&mut job, code, code_fmt.clone(), &mut needs_space),
             Inline::Link { text, url } => {
-                if needs_space || text.starts_with(char::is_whitespace) {
-                    ui.add_space(space_w);
-                }
                 if artcraft_launcher_core::release::safe_web_link(url) {
+                    flush_run(ui, &mut job, &mut needs_space, space_w);
+                    if needs_space || text.starts_with(char::is_whitespace) {
+                        ui.add_space(space_w);
+                    }
                     ui.hyperlink_to(RichText::new(text).size(13.5 * scale), url);
+                    needs_space = text.ends_with(char::is_whitespace);
                 } else {
-                    ui.label(RichText::new(text).size(13.5 * scale).color(color));
+                    append_run(&mut job, text, plain_fmt.clone(), &mut needs_space);
                 }
-                needs_space = text.ends_with(char::is_whitespace);
             }
         }
     }
+    flush_run(ui, &mut job, &mut needs_space, space_w);
 }
 
 fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
