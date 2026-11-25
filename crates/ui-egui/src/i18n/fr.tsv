@@ -221,8 +221,8 @@ month	Oct	oct.
 month	Nov	nov.
 month	Dec	déc.
 	Not checked yet	Pas encore vérifié
-	GitHub's hourly limit was reached; full details return in {min} min	La limite horaire de GitHub a été atteinte ; les détails complets reviennent dans {min} min
-	GitHub limit hit; back in {min} min	Limite GitHub atteinte ; retour dans {min} min
+	Next GitHub check at {time}	Prochaine vérification de GitHub à {time}
+	Next check at {time}	Prochaine vérification à {time}
 	Installing for {platform}	Installation pour {platform}
 	Downloads for {platform}	Téléchargements pour {platform}
 	No downloads for this system	Aucun téléchargement pour ce système

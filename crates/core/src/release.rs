@@ -267,17 +267,46 @@ pub struct ReleaseQuery {
     pub separate_nightly: bool,
     /// The app's [`former_repo`](crate::CraftApp::former_repo), asked when `repo` has no release.
     pub former_repo: Option<String>,
+    /// Who is waiting for the answer, when the GitHub budget runs short.
+    pub priority: Priority,
+}
+
+/// Who a GitHub request is for, most urgent first. When the GitHub budget runs short, the less
+/// urgent ones wait so something the user just asked for still gets an answer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Priority {
+    /// Something the user just did: Choose version, an install, a check they pressed.
+    #[default]
+    User,
+    /// A background check of an app that is installed.
+    Installed,
+    /// A background check of an app that isn't installed.
+    NotInstalled,
+    /// A background check of an app following the nightly.
+    NightlyTrack,
+    /// Finding new builds for the Developer Builds page.
+    Discovery,
 }
 
 impl ReleaseQuery {
     pub fn for_app(app: &crate::CraftApp, repo: impl Into<String>) -> Self {
-        Self { repo: repo.into(), separate_nightly: app.has_separate_nightly_channel(), former_repo: app.former_repo.map(str::to_string) }
+        Self {
+            repo: repo.into(),
+            separate_nightly: app.has_separate_nightly_channel(),
+            former_repo: app.former_repo.map(str::to_string),
+            priority: Priority::User,
+        }
+    }
+
+    /// The same question, asked on behalf of `priority`.
+    pub fn with_priority(self, priority: Priority) -> Self {
+        Self { priority, ..self }
     }
 
     /// The same question about the former repo, when there is one. Its answer's downloads must be
     /// under the former repo, as for any repo asked.
     pub fn former(&self) -> Option<Self> {
-        self.former_repo.clone().map(|repo| Self { repo, separate_nightly: self.separate_nightly, former_repo: None })
+        self.former_repo.clone().map(|repo| Self { repo, separate_nightly: self.separate_nightly, former_repo: None, priority: self.priority })
     }
 }
 
