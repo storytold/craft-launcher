@@ -138,11 +138,13 @@ fn ellipsis_preserved() {
 fn complete_catalogs_cover_every_ui_literal() {
     let sources = [
         include_str!("../app.rs"),
+        include_str!("../bell.rs"),
         include_str!("../details.rs"),
         include_str!("../dialogs.rs"),
         include_str!("../card_parts.rs"),
         include_str!("../model.rs"),
         include_str!("../notes.rs"),
+        include_str!("../nightly.rs"),
         include_str!("../settings.rs"),
         include_str!("../settings_dialog.rs"),
         include_str!("../views.rs"),

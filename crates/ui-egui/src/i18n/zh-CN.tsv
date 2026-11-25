@@ -127,8 +127,8 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未检查
-	GitHub's hourly limit was reached; full details return in {min} min	已达到 GitHub 每小时请求上限；{min} 分钟后可获取完整信息
-	GitHub limit hit; back in {min} min	已达 GitHub 限额；{min} 分钟后恢复
+	Next GitHub check at {time}	下次检查 GitHub：{time}
+	Next check at {time}	下次检查：{time}
 	Installing for {platform}	安装平台：{platform}
 	Downloads for {platform}	下载平台：{platform}
 	No downloads for this system	此系统暂无可用下载
@@ -449,3 +449,78 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	已添加
 	Remove	移除
 	Add	添加
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	字体
+	Allow font downloads	允许下载字体
+	Couldn't change the font download setting: {e}	无法更改字体下载设置：{e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	仅在您安装字体时，才会从其来源下载字体。字体预览在下方有单独的设置。所有 Craft 应用共用此设置。
+	Sources	来源
+	Apps	应用
+	Fonts for every Craft app	适用于所有 Craft 应用的字体
+# The font preview settings in Settings' Fonts box.
+	Show font previews	显示字体预览
+	Font preview server	字体预览服务器
+	Couldn't use this server: {e}	无法使用此服务器：{e}
+	Couldn't change the font previews setting: {e}	无法更改字体预览设置：{e}
+	Set by {name} in the environment.	由环境变量 {name} 设置。
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	未安装的字体从此服务器显示预览，安装时也会先尝试此服务器。留空则使用默认服务器。
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	预发布渠道每晚会使用最新代码自动更新，可能存在错误、性能和稳定性问题，以及尚未完成的功能。重要工作请使用稳定版渠道。
+
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	预发布版本让你提前体验新功能，但其中会有缺陷，并且可能导致未保存的工作丢失。
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	预发布版本会与稳定版应用并行安装，使用各自独立的设置和数据，不会改动你的稳定版环境。在预发布版本中打开重要文件之前，请务必备份，因为用较新版本保存的文件可能无法在稳定版中打开。
+	You can turn this off at any time without deleting your installed developer builds or their data.	你可以随时关闭此选项，而不会删除已安装的预发布版应用或其数据。
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{year}/{month}/{day}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	每夜构建
+	Discover nightly builds (Developer Builds page)	发现每夜构建（Developer Builds 页面）
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	安装、设置和数据均独立。关闭后仍会保留已安装的副本及其数据。
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	测试版和候选发布版可能会替换您的稳定版安装。
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	公告
+	No announcements	暂无公告
+@plural	Announcements, {n} unread|Announcements, {n} unread	公告，{n} 条未读

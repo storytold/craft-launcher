@@ -76,6 +76,16 @@ pub trait Host {
     fn quit(&mut self) {}
 }
 
+/// The launcher's pages, switched by the toggle at the start of the toolbar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Page {
+    /// The Craft App Suite.
+    #[default]
+    Apps,
+    /// Craft Font Manager (desktop only).
+    Fonts,
+}
+
 pub(crate) struct Toast {
     pub text: String,
     pub error: bool,
@@ -96,6 +106,8 @@ pub(crate) struct Toast {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum UiAction {
     Command(Command),
+    NightlyCommand(Command),
+    NightlyConsent(bool),
     /// [`Command::Launch`] with the app's launch flags, plus one launch-count increment.
     Launch(String),
     /// Re-run the manual update check, clearing the auto-update back-off.
@@ -149,6 +161,7 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    pub(crate) nightly: crate::nightly::NightlyState,
     /// AI agents: the gateway switch and the MCP clients.
     pub(crate) mcp_agents: McpAgents,
     /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
@@ -171,10 +184,14 @@ pub struct LauncherUi {
     pub(crate) launcher_job: Option<artcraft_launcher_core::protocol::JobPhase>,
     /// The new launcher is in place: quit so it can start.
     restart_requested: bool,
-    /// News from ArtCraft's release feed, shown inline until dismissed.
-    pub(crate) announcements: Vec<artcraft_launcher_core::feed::Notice>,
-    /// Alerts from the feed, shown as popups until acknowledged.
-    pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
+    /// Announcements from the signed notices file, listed in the header's bell until dismissed.
+    pub(crate) announcements: Vec<artcraft_launcher_core::notices::Notice>,
+    /// The bell's panel is open.
+    pub(crate) bell_open: bool,
+    /// Announcements that were unread when the panel opened: they keep a dot while it is open.
+    pub(crate) bell_new: std::collections::BTreeSet<String>,
+    /// Alerts from the signed notices file, shown as popups until acknowledged.
+    pub(crate) alerts: Vec<artcraft_launcher_core::notices::Notice>,
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
@@ -217,6 +234,9 @@ pub struct LauncherUi {
     auto_update_waiting: std::collections::BTreeSet<String>,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
+    pub(crate) page: Page,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fonts: crate::fonts::FontsTab,
     /// UI actions drawn in this pass, not sent yet.
     pending: Vec<UiAction>,
     /// The `egui::Context::cumulative_frame_nr` those actions belong to.
@@ -276,9 +296,11 @@ impl LauncherUi {
         let platform = backend.platform();
         let mut settings = settings;
         settings.migrate();
+        let nightly = crate::nightly::NightlyState::new(backend.nightly_context(), platform);
         Self {
             backend,
             settings,
+            nightly,
             entries: artcraft_launcher_core::hosted_catalog::apps()
                 .iter()
                 .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
@@ -299,6 +321,8 @@ impl LauncherUi {
             launcher_job: None,
             restart_requested: false,
             announcements: Vec::new(),
+            bell_open: false,
+            bell_new: std::collections::BTreeSet::new(),
             alerts: Vec::new(),
             search: String::new(),
             toasts: Vec::new(),
@@ -323,6 +347,9 @@ impl LauncherUi {
             auto_update_attempted: std::collections::BTreeMap::new(),
             auto_update_waiting: std::collections::BTreeSet::new(),
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
+            page: Page::Apps,
+            #[cfg(not(target_arch = "wasm32"))]
+            fonts: crate::fonts::FontsTab::new(),
             pending: Vec::new(),
             frame: None,
             flushed: Vec::new(),
@@ -365,7 +392,7 @@ impl LauncherUi {
     /// Something is downloading or installing, the launcher's own update included: quitting now
     /// would cut it short.
     pub fn busy(&self) -> bool {
-        self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
+        self.backend.has_active_jobs() || self.nightly.busy() || self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
     }
 
     /// Looks for updates now (the tray's "Check for Updates").
@@ -388,7 +415,7 @@ impl LauncherUi {
 
     /// Queues one user action. Distinct controls may queue equal payloads in the same pass; the
     /// per-frame duplicate check happens in [`Self::flush_actions`] when the draw order is known.
-    fn act(&mut self, action: UiAction) {
+    pub(crate) fn act(&mut self, action: UiAction) {
         self.pending.push(action);
     }
 
@@ -439,6 +466,15 @@ impl LauncherUi {
                         _ => {}
                     }
                     self.backend.send(command.clone());
+                }
+                UiAction::NightlyCommand(command) => self.nightly.send(command.clone(), self.settings.nightly_enabled),
+                UiAction::NightlyConsent(enabled) => {
+                    self.settings.nightly_enabled = *enabled;
+                    self.nightly.consent_open = false;
+                    if *enabled {
+                        self.nightly.active = true;
+                    }
+                    self.nightly.configure(&self.settings);
                 }
                 UiAction::Launch(id) => {
                     let flags = self.settings.launch_flags.get(id).map_or("", String::as_str);
@@ -504,6 +540,7 @@ impl LauncherUi {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
+            nightly_enabled: false, // The stable backend never acquires nightly consent.
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             simultaneous_downloads: self.settings.simultaneous_downloads,
@@ -561,6 +598,7 @@ impl LauncherUi {
         // actually show: English where the system has no CJK face for the preference.
         set_current(effective_lang(&self.settings.language));
         self.configure();
+        self.nightly.logic(&self.settings);
         // A kept version's card notes a newer release; that needs the app's published list.
         self.request_pinned_lists();
         if !self.started {
@@ -665,6 +703,8 @@ impl LauncherUi {
                 false
             }
             Event::Notices { announcements, alerts } => {
+                let current = announcements.iter().chain(&alerts).map(|n| n.id.as_str()).collect();
+                self.settings.forget_notices_not_in(&current);
                 self.announcements = announcements;
                 self.alerts = alerts;
                 false
@@ -701,6 +741,7 @@ impl LauncherUi {
                 self.on_notice(result);
                 true
             }
+            Event::NightlyStatus { .. } => false, // Nightly metadata never changes Stable scheduling or presentation.
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;
@@ -982,45 +1023,89 @@ impl LauncherUi {
             .exact_size(crate::views::FOOTER_H)
             .resizable(false)
             .show(ui, |ui| self.footer(ui));
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
-            .show(ui, |ui| {
-                self.toolbar(ui);
-                ui.add_space(18.0);
-                let ids = self.visible_ids();
-                // The table is wider than a narrow window: let it scroll sideways too.
-                let scroll = match self.settings.view {
-                    ViewMode::Grid => egui::ScrollArea::vertical(),
-                    ViewMode::Table => egui::ScrollArea::both(),
-                };
-                scroll.auto_shrink(false).show(ui, |ui| {
-                    // Escape must run even when search/filter leaves no rows (grid/table skipped).
-                    self.clear_pin_drag_on_escape(ui);
-                    if ids.is_empty() {
-                        ui.add_space(40.0);
-                        ui.vertical_centered(|ui| {
-                            crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
-                        });
-                    } else {
-                        match self.settings.view {
-                            ViewMode::Grid => self.grid(ui, &ids),
-                            ViewMode::Table => self.table(ui, &ids),
-                        }
-                    }
-                    ui.add_space(16.0);
-                    // The drop targets have seen this frame's pointer: a released drag ends here.
-                    if !ui.input(|i| i.pointer.primary_down()) {
-                        self.pin_dragging = None;
-                    }
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(tokens.bg)).show(ui, |ui| {
+            // The Pre-Release channel has its own page; Apps and Fonts belong to Stable.
+            if self.nightly.active {
+                #[cfg(not(target_arch = "wasm32"))]
+                self.fonts.hidden();
+                egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| {
+                    ui.add_space(12.0);
+                    self.nightly_page(ui);
                 });
-            });
+                return;
+            }
+            egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| self.toolbar(ui));
+            // The panel keeps its own margins.
+            #[cfg(not(target_arch = "wasm32"))]
+            if self.page == Page::Fonts {
+                self.fonts.ui(ui, &mut self.settings.fonts, lang.code());
+                return;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            self.fonts.hidden();
+            ui.add_space(18.0);
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(20, 0)).show(ui, |ui| self.apps_page(ui));
+        });
         self.details_drawer(&ctx);
         self.dialogs(&ctx, host);
+        self.nightly_consent_modal(&ctx);
         self.flush_actions();
         self.draw_toasts(&ctx);
         if host.title_bar() == TitleBar::Custom {
             crate::widgets::window_edges(&ctx);
         }
+    }
+
+    /// The Craft App Suite as cards or a table, below the toolbar.
+    fn apps_page(&mut self, ui: &mut egui::Ui) {
+        let tokens = Tokens::get(ui.ctx());
+        let ids = self.visible_ids();
+        // The table is wider than a narrow window: let it scroll sideways too.
+        let scroll = match self.settings.view {
+            ViewMode::Grid => egui::ScrollArea::vertical(),
+            ViewMode::Table => egui::ScrollArea::both(),
+        };
+        scroll.auto_shrink(false).show(ui, |ui| {
+            // Escape must run even when search/filter leaves no rows (grid/table skipped).
+            self.clear_pin_drag_on_escape(ui);
+            if ids.is_empty() {
+                ui.add_space(40.0);
+                ui.vertical_centered(|ui| {
+                    crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
+                });
+            } else {
+                match self.settings.view {
+                    ViewMode::Grid => self.grid(ui, &ids),
+                    ViewMode::Table => self.table(ui, &ids),
+                }
+            }
+            ui.add_space(16.0);
+            // The drop targets have seen this frame's pointer: a released drag ends here.
+            if !ui.input(|i| i.pointer.primary_down()) {
+                self.pin_dragging = None;
+            }
+        });
+    }
+
+    /// The page the window shows.
+    pub fn page(&self) -> Page {
+        self.page
+    }
+
+    pub fn set_page(&mut self, page: Page) {
+        self.page = if cfg!(target_arch = "wasm32") { Page::Apps } else { page };
+    }
+
+    /// Builds the Fonts page from `options` instead of the user's fonts and font store (tests).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn use_font_options(&mut self, options: craft_font_manager::Options) {
+        self.fonts = crate::fonts::FontsTab::with_options(options);
+    }
+
+    /// The Fonts page's panel, once the page has shown.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn fonts_panel(&self) -> Option<&craft_font_manager::FontsPanel> {
+        self.fonts.panel()
     }
 
     /// Test hook for the filtered/sorted catalog ids currently shown.
@@ -1688,5 +1773,21 @@ mod tests {
         assert!(update_check_due(Some(NOW + 60), NOW, EVERY));
         assert!(update_check_due(Some(i64::MAX), NOW, EVERY));
         assert!(update_check_due(Some(i64::MIN), NOW, EVERY));
+    }
+    #[test]
+    fn shared_selection_declined_consent_never_activates_a_new_destination() {
+        let (mut refused, _, _) = launcher();
+        refused.pending.push(UiAction::NightlyConsent(false));
+        refused.flush_actions();
+        assert!(!refused.settings.nightly_enabled && !refused.nightly.active);
+        let (mut accepted, _, _) = launcher();
+        accepted.pending.push(UiAction::NightlyConsent(true));
+        accepted.flush_actions();
+        assert!(accepted.settings.nightly_enabled && accepted.nightly.active);
+        let (mut retained, _, _) = launcher();
+        retained.nightly.active = true;
+        retained.pending.push(UiAction::NightlyConsent(false));
+        retained.flush_actions();
+        assert!(!retained.settings.nightly_enabled && retained.nightly.active, "OFF must not force an already open management destination away");
     }
 }

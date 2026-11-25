@@ -13,6 +13,7 @@ pub mod desktop_entry;
 pub mod detect;
 pub mod downloads;
 pub mod feed_throttle;
+mod github_budget;
 pub mod hosted_catalog;
 pub mod http;
 pub mod install;
@@ -22,6 +23,18 @@ pub mod manifest;
 mod msi_context;
 #[cfg(target_os = "macos")]
 mod network;
+mod nightly;
+mod nightly_fs;
+mod nightly_lookup;
+mod nightly_profile;
+mod nightly_signing;
+mod nightly_transaction;
+mod nightly_trust;
+#[cfg(unix)]
+mod nightly_unix;
+#[cfg(all(test, windows))]
+mod nightly_windows_mechanics_tests;
+pub mod notices;
 pub mod packages;
 pub mod paths;
 pub mod pins;
