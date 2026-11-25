@@ -51,8 +51,8 @@ pub(super) struct Removal {
 }
 
 /// A downgrade that didn't finish: what to tell the person, and what happened to the previous
-/// package. Which registration the put-back is worked out by the caller from the ones Windows
-/// Installer listed before the downgrade started ([`put_back_registration`]).
+/// package. Which registration the put-back is worked out by the caller, only after a completed
+/// removal, from the registrations Windows Installer lists afterwards ([`put_back_registration`]).
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Failed {
     pub error: String,
