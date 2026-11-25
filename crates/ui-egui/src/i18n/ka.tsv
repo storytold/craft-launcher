@@ -167,6 +167,7 @@
 	Uninstall cancelled	დეინსტალაცია გაუქმდა
 	Retry install	ინსტალაციის ხელახლა ცდა
 	Retry reinstall	ხელახლა ინსტალაციის ხელახლა ცდა
+	Retry	ხელახლა ცდა
 	Retry update	განახლების ხელახლა ცდა
 	Retry update to {version}	განახლების ხელახლა ცდა: {version}
 	Move down	ქვემოთ გადატანა

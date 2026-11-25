@@ -171,6 +171,7 @@
 	Retry install	Повторити встановлення
 	Retry reinstall	Повторити перевстановлення
 	Retry update to {version}	Повторити оновлення до {version}
+	Retry	Повторити
 	Retry update	Повторити оновлення
 	The download is still here. It's checked again, then installed.	Завантажений файл усе ще на місці. Його перевірять ще раз, а потім встановлять.
 	Waiting for another app…	Очікування іншого застосунку…

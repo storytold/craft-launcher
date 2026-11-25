@@ -1517,7 +1517,66 @@ fn a_stop_is_forgotten_when_the_installed_copy_changes() {
         // CadCraft's kept download is the only install to retry.
         assert_eq!(h.query_all_by_label("Retry install").count(), 1, "{view:?}: Install is PhotoCraft's main button");
         assert!(h.query_by_label_contains("press Retry").is_none(), "{view:?}");
+
+        // Replaced by another kind of copy at the same place and version: the stop was another copy's.
+        let (mut h, _) =
+            harness_with(stopped_then(Some(Installed { source: InstallSource::Launcher, ..copy("0.4.1") })), view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        assert!(h.query_by_label("Update stopped").is_none(), "{view:?}: another copy's stop is forgotten");
+        h.get_by_label("Update to 0.5.0");
     }
+}
+
+#[test]
+/// A removal that fails leaves the copy and keeps what stopped its last update; an update that
+/// starts again clears it.
+fn a_failed_removal_keeps_the_stop_and_a_new_update_clears_it() {
+    let stopped_then = |phase: JobPhase| {
+        let mut ev = events();
+        ev.push(Event::Blocked {
+            app: "photocraft".into(),
+            failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft.exe".into() }),
+        });
+        ev.push(Event::Progress { app: "photocraft".into(), phase });
+        ev.push(Event::JobFinished { app: "photocraft".into(), result: Err("PhotoCraft isn't installed".into()) });
+        ev
+    };
+    let (mut h, _) = harness_with(stopped_then(JobPhase::Removing), ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update stopped").is_some(), "a failed removal keeps the stop");
+    h.get_by_label("Retry update to 0.5.0");
+
+    let (mut h, _) = harness_with(stopped_then(JobPhase::Downloading { done: 0, total: 150 << 20 }), ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update stopped").is_none(), "a new update clears the stop");
+    h.get_by_label("Update to 0.5.0");
+}
+
+#[test]
+/// A stop belongs to the release it tried: a newer release forgets it, and the same release
+/// found again keeps it.
+fn a_stop_is_forgotten_when_a_newer_release_comes_out() {
+    let stopped_then = |v: &str| {
+        let mut ev = events();
+        ev.push(Event::Blocked {
+            app: "photocraft".into(),
+            failure: Some(InstallFailure { blocker: Blocker::AppOpen, details: r"C:\Apps\PhotoCraft\photocraft.exe".into() }),
+        });
+        ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", v, NOW)), from: Origin::ArtCraftApi });
+        ev
+    };
+    let (mut h, _) = harness_with(stopped_then("0.5.0"), ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update stopped").is_some(), "the same release keeps the stop");
+    h.get_by_label("Retry update to 0.5.0");
+
+    let (mut h, _) = harness_with(stopped_then("0.6.0"), ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update stopped").is_none(), "a newer release forgets the stop");
+    assert!(h.query_by_label_contains("press Retry").is_none());
+    assert!(h.query_by_label("Retry update to 0.6.0").is_none());
+    // EffectCraft's update to 0.6.0 and PhotoCraft's.
+    assert_eq!(h.query_all_by_label("Update to 0.6.0").count(), 2);
 }
 
 #[test]

@@ -246,7 +246,8 @@ pub fn install(
 }
 
 /// [`install`], which also sets `refused` when Windows refuses to remove or write a program file
-/// with error 5 or 32 (see [`Refused`]).
+/// with error 5 or 32 (see [`Refused`]). When the replacement fails, `on_failure` runs before the
+/// previous files are put back.
 #[allow(clippy::too_many_arguments)]
 pub fn install_noting(
     app: &CraftApp,
@@ -258,8 +259,16 @@ pub fn install_noting(
     replace: bool,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
     refused: &mut Option<Refused>,
+    on_failure: &mut dyn FnMut(),
 ) -> Result<Record, String> {
-    install_with_authentication(Package { app, file, version, previous, paths, directory, replace }, &|_, _| Ok(()), None, commit, refused)
+    install_with_authentication(
+        Package { app, file, version, previous, paths, directory, replace },
+        &|_, _| Ok(()),
+        None,
+        commit,
+        refused,
+        on_failure,
+    )
 }
 
 pub(crate) struct Package<'a> {
@@ -280,30 +289,32 @@ pub(crate) fn install_checked(
     check_layout: &CheckLayout<'_>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
-    install_with_authentication(package, check_layout, None, commit, &mut None)
+    install_with_authentication(package, check_layout, None, commit, &mut None, &mut || {})
 }
 
 /// The signed Nightly entry point always authenticates its permitted staged executable.
-/// Stable's transaction entry point and policy are unchanged. It sets `refused` as
-/// [`install_noting`] does.
+/// Stable's transaction entry point and policy are unchanged. It sets `refused` and runs
+/// `on_failure` as [`install_noting`] does.
 pub(crate) fn install_signed(
     package: Package<'_>,
     check_layout: &CheckLayout<'_>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
     refused: &mut Option<Refused>,
+    on_failure: &mut dyn FnMut(),
 ) -> Result<Record, String> {
-    install_with_authentication(package, check_layout, Some(&crate::nightly_signing::authenticate_windows), commit, refused)
+    install_with_authentication(package, check_layout, Some(&crate::nightly_signing::authenticate_windows), commit, refused, on_failure)
 }
 
 type Authenticate = dyn Fn(&Path, &[PathBuf]) -> Result<std::fs::File, String>;
 
-/// Sets `refused` as [`install_noting`] does.
+/// Sets `refused` and runs `on_failure` as [`install_noting`] does.
 fn install_with_authentication(
     package: Package<'_>,
     check_layout: &CheckLayout<'_>,
     authenticate: Option<&Authenticate>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
     refused: &mut Option<Refused>,
+    on_failure: &mut dyn FnMut(),
 ) -> Result<Record, String> {
     let Package { app, file, version, previous, paths, directory, replace } = package;
     let (destination, mut old_files) = match previous {
@@ -401,6 +412,7 @@ fn install_with_authentication(
         Ok::<(), String>(())
     })();
     if let Err(error) = transaction {
+        on_failure();
         for relative in copied {
             let _ = std::fs::remove_file(destination.join(relative));
         }
@@ -718,6 +730,7 @@ pub(crate) mod tests {
                 Ok(())
             },
             &mut None,
+            &mut || {},
         );
         assert!(result.unwrap_err().contains("wrong publisher"));
         assert!(!committed);
@@ -1120,6 +1133,34 @@ pub(crate) mod tests {
         assert_eq!(other, None);
     }
 
+    /// A failed replacement runs `on_failure` while the new files are still in place, before the
+    /// previous ones are put back.
+    #[test]
+    fn a_failed_replacement_reports_before_putting_the_previous_files_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old")]);
+        let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new")]);
+        let mut seen = None;
+        let result = install_noting(
+            app,
+            &next,
+            "0.6.0",
+            Some(&record),
+            &paths,
+            None,
+            false,
+            &mut |_| Err("the record could not be saved".into()),
+            &mut None,
+            &mut || seen = std::fs::read(&record.path).ok(),
+        );
+        assert_eq!(result.unwrap_err(), "the record could not be saved");
+        assert_eq!(seen.as_deref(), Some(&b"new"[..]));
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"old");
+    }
+
     #[cfg(windows)]
     #[test]
     fn a_file_another_program_holds_is_named_and_the_previous_program_stays() {
@@ -1136,8 +1177,13 @@ pub(crate) mod tests {
         let shared = std::fs::OpenOptions::new().read(true).share_mode(1).open(&held).unwrap();
         let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("lib.dll", b"new library")]);
         let mut refused = None;
-        let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused);
+        // The program file was already moved away when the held library stopped the replacement.
+        let mut moved_away = false;
+        let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused, &mut || {
+            moved_away = !record.path.exists()
+        });
         assert!(result.is_err());
+        assert!(moved_away);
         let refused = refused.unwrap();
         assert_eq!(refused.code, 32);
         assert!(same_windows_path(&refused.path, Path::new(&held.to_string_lossy().replace('/', "\\"))), "{}", refused.path.display());
@@ -1148,7 +1194,7 @@ pub(crate) mod tests {
         // Not shared at all: the file can't even be read for the backup, and is still named.
         let holder = std::fs::OpenOptions::new().read(true).share_mode(0).open(&held).unwrap();
         let mut refused = None;
-        let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused);
+        let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused, &mut || {});
         assert!(result.is_err());
         let refused = refused.expect("a file another program holds unshared is named");
         assert_eq!(refused.code, 32);

@@ -50,6 +50,12 @@ fn fitted<'a>(ui: &Ui, long: &'a str, shorter: &[&'a str], width: f32) -> &'a st
         .unwrap_or(long)
 }
 
+/// The shorter labels of a retry's main button: `longer` (longest first), then a plain Retry, so
+/// the button says Retry, as the card does, however little room it has.
+fn retry_shorter(longer: &[&'static str]) -> Vec<&'static str> {
+    longer.iter().copied().chain([tl!("Retry")]).collect()
+}
+
 /// Translate an absolute date ("Oct 8, 2026" → "8 окт. 2026") into the current language, on this
 /// computer's calendar (`local_time`). Every date the launcher shows is written by this.
 pub(crate) fn date_text(secs: i64) -> String {
@@ -1074,16 +1080,16 @@ impl LauncherUi {
         // A kept download, or a named cause of the last failure, makes the next try a retry.
         let retry = entry.ready || entry.blocked.is_some();
         match status {
-            AppStatus::Available if retry => Primary::Retry(tl!("Retry install").into(), vec![tl!("Install")], entry.ready),
+            AppStatus::Available if retry => Primary::Retry(tl!("Retry install").into(), retry_shorter(&[]), entry.ready),
             AppStatus::UpdateAvailable if retry => Primary::Retry(
                 fmt(tl!("Retry update to {version}"), &[("version", &entry.latest_label().unwrap_or_default())]),
-                vec![tl!("Retry update"), tl!("Update")],
+                retry_shorter(&[tl!("Retry update")]),
                 entry.ready,
             ),
             // A reinstall stopped by a named cause is retried from the main button, as the card says;
             // Open stays in the menu.
             AppStatus::UpToDate if entry.blocked.is_some() && entry.installs_here(self.platform) => {
-                Primary::Retry(tl!("Retry reinstall").into(), vec![tl!("Reinstall")], entry.ready)
+                Primary::Retry(tl!("Retry reinstall").into(), retry_shorter(&[]), entry.ready)
             }
             AppStatus::Available => Primary::Install,
             AppStatus::UpdateAvailable => Primary::Update(entry.latest_label().unwrap_or_default()),
@@ -1747,6 +1753,26 @@ mod tests {
             output.drop_without_applying_deltas();
         }
         assert_eq!(copies, 1, "the tooltip of a cut-off line must hold one copy of the text");
+    }
+
+    /// A retry with too little room for any of its labels still says Retry, as the card tells the
+    /// person to press, and never falls back to a plain Install, Update or Reinstall.
+    #[test]
+    fn a_retry_with_no_room_still_says_retry() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        let mut shown = Vec::new();
+        // Fonts installed in a pass take effect in the next one.
+        ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            for shorter in [retry_shorter(&[]), retry_shorter(&[tl!("Retry update")])] {
+                shown.push(fitted(ui, "Retry update to 0.12.0", &shorter, 0.0));
+            }
+            // With room, the longest label that fits is still chosen first.
+            shown.push(fitted(ui, "Retry update to 0.12.0", &retry_shorter(&[tl!("Retry update")]), 10_000.0));
+        })
+        .drop_without_applying_deltas();
+        assert_eq!(shown, ["Retry", "Retry", "Retry update to 0.12.0"]);
     }
 
     #[test]

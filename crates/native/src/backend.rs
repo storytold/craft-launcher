@@ -211,12 +211,36 @@ struct JobGuard {
     app_id: String,
 }
 
+impl JobGuard {
+    /// Queues the job's last events and frees its slot in one hold of the admission lock, so an
+    /// attempt admitted after it cannot queue an event ahead of them. The UI is woken afterwards.
+    fn finish(mut self, events: impl IntoIterator<Item = Event>) {
+        let app_id = std::mem::take(&mut self.app_id);
+        {
+            let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+            let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+            self.shared.events.lock().unwrap_or_else(PoisonError::into_inner).extend(events);
+            self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&app_id);
+            process.remove(&self.shared.job_key(&app_id));
+            #[cfg(test)]
+            tests::note_slot_freed(&self.shared, &app_id);
+        }
+        (self.shared.waker)();
+    }
+}
+
 impl Drop for JobGuard {
     fn drop(&mut self) {
+        // `finish` already freed the slot.
+        if self.app_id.is_empty() {
+            return;
+        }
         let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
         let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
         self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
         process.remove(&self.shared.job_key(&self.app_id));
+        #[cfg(test)]
+        tests::note_slot_freed(&self.shared, &self.app_id);
     }
 }
 
@@ -1072,11 +1096,10 @@ impl NativeBackend {
                 shared.invalidate_download_size(app.id);
                 publish_detected(app, found, &shared, platform);
                 report_partial(app, &shared, &paths, platform);
-                drop(job);
                 // One poll sees both: a Blocked alone would offer Retry while the job still runs.
                 let blocked =
                     (!uninstall && !launching).then(|| Event::Blocked { app: app.id.to_string(), failure: failure.filter(|_| result.is_err()) });
-                shared.emit_all(blocked.into_iter().chain([Event::JobFinished { app: app.id.to_string(), result }]));
+                job.finish(blocked.into_iter().chain([Event::JobFinished { app: app.id.to_string(), result }]));
             }));
         }))
     }
@@ -2824,6 +2847,20 @@ mod tests {
         });
     }
 
+    std::thread_local! {
+        /// For each freed job slot on this thread, whether that app's `JobFinished` was queued by then.
+        static SLOT_FREED: std::cell::RefCell<Option<Vec<bool>>> = const { std::cell::RefCell::new(None) };
+    }
+
+    pub(super) fn note_slot_freed(shared: &Shared, app: &str) {
+        SLOT_FREED.with(|freed| {
+            if let Some(freed) = freed.borrow_mut().as_mut() {
+                let queued = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app: a, .. } if a == app));
+                freed.push(queued);
+            }
+        });
+    }
+
     /// A member of a batch that ends before it ever reaches the installer — its download failed,
     /// or it turned out to need none of the batch's prompts — frees the rest of the batch at
     /// once, rather than holding them back until the batch's wait runs out.
@@ -4225,10 +4262,27 @@ mod tests {
         *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
 
         assert!(backend.start_job(APP, Work::Launch(Vec::new())));
-        // The worker then holds the last reference to the waker, so the channel closes if it
-        // exits without sending.
+        // The worker then holds the last reference to the waker, so the channel closes once it
+        // exits, and everything it sent can be read to the end.
         drop(backend);
-        assert!(matches!(received.recv().unwrap(), Event::JobFinished { .. }));
+        let sent: Vec<Event> = received.iter().collect();
+        assert!(matches!(sent.as_slice(), [Event::JobFinished { .. }]), "{sent:?}");
+    }
+
+    /// A job's last events are queued before its slot is freed, so an attempt admitted next
+    /// cannot queue its progress ahead of the old `Blocked` and `JobFinished`.
+    #[test]
+    fn a_job_queues_its_last_events_before_freeing_its_slot() {
+        let Some(platform) = native_platform() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        backend.spawn = Arc::new(|work| work());
+        SLOT_FREED.with(|freed| *freed.borrow_mut() = Some(Vec::new()));
+        assert!(backend.start_job(APP, Work::Install(None)));
+        let freed = SLOT_FREED.with(|freed| freed.borrow_mut().take()).unwrap();
+        assert_eq!(freed, [true]);
     }
 
     /// A nightly update stopped by the running app hands its blocker to the worker, which sends

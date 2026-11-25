@@ -647,11 +647,18 @@ impl LauncherUi {
             }
             Event::Detected { app, installed } => {
                 if let Some(e) = self.entry_mut(&app) {
-                    // A copy updated, moved or removed outside the launcher makes the last stop
+                    // A copy updated, moved, removed or replaced by another kind of copy (a
+                    // portable copy where an MSI copy was) outside the launcher makes the last stop
                     // stale. A job's own look comes before its `Blocked`, so this does not clear
                     // the stop of the job that just ended.
                     let same_copy = match (&e.installed, &installed) {
-                        (Some(was), Some(now)) => was.version == now.version && was.location == now.location,
+                        (Some(was), Some(now)) => {
+                            was.version == now.version
+                                && was.location == now.location
+                                && was.source == now.source
+                                && was.package == now.package
+                                && was.installation == now.installation
+                        }
                         (None, None) => true,
                         _ => false,
                     };
@@ -746,6 +753,13 @@ impl LauncherUi {
         if let Some(e) = self.entry_mut(&app)
             && !(matches!(latest, LatestRelease::Failed(_)) && matches!(e.latest, Some(LatestRelease::Found(_))))
         {
+            // What stopped the last try belongs to the release it tried: a newer one is a new
+            // try, and the same release coming back keeps it.
+            if let (Some(LatestRelease::Found(was)), LatestRelease::Found(now)) = (&e.latest, &latest)
+                && was.tag != now.tag
+            {
+                e.blocked = None;
+            }
             e.latest = Some(latest);
             e.origin = Some(from);
         }
@@ -760,8 +774,13 @@ impl LauncherUi {
             }
         } else if let Some(e) = self.entry_mut(&app) {
             e.job = Some(phase);
-            // A new try has started, so the cause of the last one is cleared.
-            e.blocked = None;
+            // A new install or update has started, so the cause of the last one is cleared. A
+            // removal reports only `Waiting` and `Removing`: one that fails keeps the copy and
+            // what stopped its last update, and one that works clears it when the copy is
+            // detected gone.
+            if !matches!(phase, JobPhase::Waiting | JobPhase::Removing) {
+                e.blocked = None;
+            }
         }
     }
 

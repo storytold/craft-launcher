@@ -171,6 +171,7 @@
 	Uninstall cancelled	Eltávolítás megszakítva
 	Retry install	Telepítés újrapróbálása
 	Retry reinstall	Újratelepítés újrapróbálása
+	Retry	Újrapróbálás
 	Retry update	Frissítés újrapróbálása
 	Retry update to {version}	Frissítés újrapróbálása: {version}
 	The download is still here. It's checked again, then installed.	A letöltött fájl megmaradt. Újra ellenőrizzük, majd telepítjük.
