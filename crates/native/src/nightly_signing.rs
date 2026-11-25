@@ -396,10 +396,10 @@ fn textual_notice(bytes: &[u8]) -> bool {
 /// and everything else, which must be textual notices. Another app's or the stable program is a
 /// notice here, and is refused as a binary.
 #[cfg(any(windows, test))]
-fn windows_payload<'a>(
+fn windows_payload(
     adapter: crate::nightly_profile::Adapter,
-    files: &'a [std::path::PathBuf],
-) -> (&'static std::path::Path, impl Iterator<Item = &'a std::path::PathBuf>) {
+    files: &[std::path::PathBuf],
+) -> (&'static std::path::Path, impl Iterator<Item = &std::path::PathBuf>) {
     (adapter.executable(), files.iter().filter(move |relative| relative.as_path() != adapter.executable()))
 }
 

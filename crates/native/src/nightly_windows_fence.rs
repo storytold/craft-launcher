@@ -198,12 +198,12 @@ mod tests {
             local.join("Programs").join("ArtCraft").join("CADCraft").join("program"),
             appdata.clone(),
         ] {
-            assert!(disjoint(&[nightly.clone()], &protected, true).is_err(), "{}", nightly.display());
+            assert!(disjoint(std::slice::from_ref(&nightly), &protected, true).is_err(), "{}", nightly.display());
         }
         for nightly in
             [appdata.join("CADCraft Nightly"), local.join("ArtCraft").join("cadcraft-nightly"), local.join("Programs").join("ArtCraft Nightly")]
         {
-            assert!(disjoint(&[nightly.clone()], &protected, true).is_ok(), "{}", nightly.display());
+            assert!(disjoint(std::slice::from_ref(&nightly), &protected, true).is_ok(), "{}", nightly.display());
         }
         // The exact spelling refuses without any case fold too: the fence never depends on it.
         assert!(disjoint(&[appdata.join("cadcraft").join("pre-release")], &protected, false).is_err());
