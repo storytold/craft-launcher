@@ -204,11 +204,23 @@ pub struct PausedDownload {
 
 /// The `JobFinished` error a paused job ends with (not a failure).
 pub const PAUSED: &str = "paused";
+/// What a job paused by a connection that keeps dropping says instead of plain [`PAUSED`]: the
+/// download stopped where it was, and Resume continues it. Still a pause, not a failure
+/// ([`is_paused`]), so the UI keeps the request that started the job and sends it again.
+pub const PAUSED_BY_CONNECTION: &str = "The download paused because the connection keeps dropping. Press Resume to continue where it stopped.";
 /// The `JobFinished` error a cancelled job ends with (not a failure).
 pub const CANCELLED: &str = "cancelled";
 /// The `JobFinished` error of an install whose system prompt (password, Windows Installer) the
 /// user dismissed after the download finished (not a failure).
 pub const INSTALL_CANCELLED: &str = "install cancelled";
+
+/// Whether a `JobFinished` error means the job paused rather than failed: the download is kept
+/// and Resume sends the request that started the job again ([`Command::InstallChosen`] included,
+/// with the release and fallback the person agreed to). A pause ends a job as an error, so every
+/// pause outcome is recognised here, in one place: never by matching the message where it is shown.
+pub fn is_paused(error: &str) -> bool {
+    error == PAUSED || error == PAUSED_BY_CONNECTION
+}
 
 /// Which service an app's release information came from (the footer names them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

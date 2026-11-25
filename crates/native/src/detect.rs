@@ -81,15 +81,30 @@ pub(crate) fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Insta
 /// Debian and RPM `~rc.1`, the launcher's own record of what it unpacked).
 #[cfg(any(windows, test))]
 pub(crate) fn with_recorded_release(mut found: Installed, recorded: Option<&crate::manifest::InstalledRelease>) -> Installed {
-    let Some(recorded) = recorded else { return found };
-    let same_copy = found.source == InstallSource::Msi && found.package.as_deref().is_some_and(|code| code.eq_ignore_ascii_case(&recorded.package));
-    let full = version::parse(&recorded.version).filter(|full| {
-        found.version.as_ref().is_some_and(|seen| seen.pre.is_empty() && (seen.major, seen.minor, seen.patch) == (full.major, full.minor, full.patch))
-    });
-    if same_copy && let Some(full) = full {
+    if let Some(full) = recorded_full_version(&found, recorded) {
         found.version = Some(full);
     }
     found
+}
+
+/// The full version `recorded` gives `found`, when the record describes that very copy: the same
+/// registration (product code) and the same major, minor and patch numbers as the version Windows
+/// reports. Only the pre-release label is what Windows Installer drops, never the numbers, so a
+/// record with other numbers is not read at all.
+pub(crate) fn recorded_full_version(found: &Installed, recorded: Option<&crate::manifest::InstalledRelease>) -> Option<version::Version> {
+    let recorded = recorded?;
+    let same_copy = found.source == InstallSource::Msi && found.package.as_deref().is_some_and(|code| code.eq_ignore_ascii_case(&recorded.package));
+    let full = version::parse(&recorded.version)?;
+    let seen = found.version.as_ref()?;
+    (same_copy && seen.pre.is_empty() && (seen.major, seen.minor, seen.patch) == (full.major, full.minor, full.patch)).then_some(full)
+}
+
+/// Whether the launcher's record `recorded` describes the copy `found` the same way detection
+/// reads it ([`recorded_full_version`]). The fallback decision asks this, so it reads the record
+/// only where detection does: a record whose numbers don't match the copy is no record of it, and
+/// nothing may be concluded from it.
+pub(crate) fn record_describes(found: Option<&Installed>, recorded: Option<&crate::manifest::InstalledRelease>) -> bool {
+    found.is_some_and(|found| recorded_full_version(found, recorded).is_some())
 }
 
 /// Whether a file name is an AppImage of the app with asset stems `stems`, and the version its
@@ -927,6 +942,36 @@ mod tests {
         // Only a Windows Installer copy loses the label.
         let mac = Installed { source: InstallSource::MacApp, ..msi("0.24.0", CODE) };
         assert_eq!(read(mac).as_deref(), Some("0.24.0"));
+    }
+
+    /// The fallback decision reads a recorded release only where detection reads it: the same
+    /// registration and the same numbers. A record whose numbers don't match the copy describes
+    /// another release, so nothing may be concluded from it.
+    #[test]
+    fn a_recorded_release_describes_only_the_copy_it_matches() {
+        const CODE: &str = "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}";
+        let msi = |v: &str| Installed {
+            version: version::parse(v),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: Some(CODE.into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let recorded = crate::manifest::InstalledRelease { tag: "v0.24.0-rc.1".into(), version: "0.24.0-rc.1".into(), package: CODE.into() };
+        assert!(record_describes(Some(&msi("0.24.0")), Some(&recorded)));
+        // The numbers don't match: the copy is not the release the record names.
+        assert!(!record_describes(Some(&msi("0.23.1")), Some(&recorded)));
+        assert!(!record_describes(Some(&msi("0.24.1")), Some(&recorded)));
+        // Another registration with those numbers is a different copy.
+        let elsewhere = Installed { package: Some("{00000000-0000-0000-0000-000000000000}".into()), ..msi("0.24.0") };
+        assert!(!record_describes(Some(&elsewhere), Some(&recorded)));
+        // A copy Windows already reports as the pre-release is left as it is.
+        assert!(!record_describes(Some(&msi("0.24.0-rc.1")), Some(&recorded)));
+        assert!(!record_describes(Some(&Installed { source: InstallSource::MacApp, ..msi("0.24.0") }), Some(&recorded)));
+        assert!(!record_describes(None, Some(&recorded)));
+        assert!(!record_describes(Some(&msi("0.24.0")), None));
     }
 
     #[test]

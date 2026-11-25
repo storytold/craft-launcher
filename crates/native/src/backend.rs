@@ -9,8 +9,8 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
-    Source, VersionTrack,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED_BY_CONNECTION,
+    PausedDownload, Source, VersionTrack, is_paused,
 };
 use artcraft_launcher_core::release::{Asset, Priority, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
@@ -1057,10 +1057,9 @@ impl NativeBackend {
                         by_name,
                     );
                     // Stopped by the connection rather than by the user: say so, and how to go on.
+                    // Still a pause (`protocol::is_paused`), so the UI keeps the request by name.
                     match r {
-                        Err(e) if e == PAUSED && stop.check().is_ok() => {
-                            Err("The download paused because the connection keeps dropping. Press Resume to continue where it stopped.".into())
-                        }
+                        Err(e) if is_paused(&e) && stop.check().is_ok() => Err(PAUSED_BY_CONNECTION.into()),
                         other => other,
                     }
                 };
@@ -1587,6 +1586,7 @@ fn run_install(
             downgrade: None,
             batch: None,
             place,
+            put_back: None,
         };
         return run_nightly_install(app, shared, platform, &mut job);
     }
@@ -1650,9 +1650,10 @@ fn run_install(
     } else {
         // The launcher's own record of which release this registration is (see
         // `detect::with_recorded_release`): such a copy is never taken for a pre-release.
-        let recorded = existing.and_then(|i| i.package.as_deref()).is_some_and(|code| {
-            shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).releases.get(app.id).is_some_and(|r| r.package.eq_ignore_ascii_case(code))
-        });
+        let recorded = {
+            let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            recorded_copy(&manifest, app, existing)
+        };
         let previous = downgrade_previous(app, track, &release, existing, recorded, by_name, || {
             source
                 .ok_or_else(|| "secure connections aren't available on this system".to_string())?
@@ -1722,6 +1723,7 @@ fn run_install(
         downgrade,
         batch: batch.take(),
         place,
+        put_back: None,
     };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1734,11 +1736,12 @@ fn run_install(
     let new_record = match install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record)) {
         Ok(new_record) => new_record,
         Err(e) => {
-            // A failed Windows Installer downgrade can have put `previous` back as a new registration.
-            if kind == PackageKind::Msi
-                && let Some(previous) = &previous
+            // A failed Windows Installer downgrade that put `previous` back reports which
+            // registration that put-back created; only then is a release recorded for it.
+            if let Some(put_back) = job.put_back.take()
+                && let Some(previous) = previous.as_ref()
             {
-                remember_put_back(app, shared, paths, previous, existing);
+                remember_put_back(app, shared, paths, previous, &put_back);
             }
             return Err(e);
         }
@@ -1781,17 +1784,28 @@ fn installed_release(release: &Release, found: Option<&Installed>) -> Option<cra
         .then(|| crate::manifest::InstalledRelease { tag: release.tag.clone(), version: full.to_string(), package })
 }
 
-/// After a Windows Installer downgrade that failed: when a registration that wasn't there before
-/// has the numbers of `previous`, the checked package of `previous` put it there, so that release
-/// is recorded for it. The copy that was there before (`existing`) is never recorded this way:
-/// whatever it was, its own registration is unchanged.
-fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &Release, existing: Option<&Installed>) {
-    let found = shared.host.registered(app);
-    let before = existing.and_then(|i| i.package.as_deref());
-    let new_registration = found.as_ref().and_then(|f| f.package.as_deref()).is_some_and(|code| before.is_none_or(|b| !b.eq_ignore_ascii_case(code)));
-    let Some(put_back) = installed_release(previous, found.as_ref()).filter(|_| new_registration) else { return };
+/// Whether the launcher's record says which release the installed copy `existing` is, read
+/// exactly as detection reads it ([`crate::detect::record_describes`], numbers included): only
+/// then may the fallback decision conclude anything from it. A record whose numbers don't match
+/// the copy describes another release, not this one.
+fn recorded_copy(manifest: &Manifest, app: &CraftApp, existing: Option<&Installed>) -> bool {
+    crate::detect::record_describes(existing, manifest.releases.get(app.id))
+}
+
+/// After a Windows Installer downgrade that failed and put `previous` back: the install reports
+/// the registration that put-back created (the checked package's own product code, from the
+/// installer's log, see [`install::PutBack`]), and that release is recorded for exactly that
+/// registration. Nothing is read off the registry here: a leftover registration that happens to
+/// have the same numbers never gets the release, and the copy that was there before keeps its own.
+fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &Release, put_back: &install::PutBack) {
+    let Some(version) = previous.version.as_ref() else { return };
+    let record =
+        crate::manifest::InstalledRelease { tag: previous.tag.clone(), version: version.to_string(), package: put_back.product_code.clone() };
     let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-    m.releases.insert(app.id.to_string(), put_back);
+    if m.releases.get(app.id) == Some(&record) {
+        return;
+    }
+    m.releases.insert(app.id.to_string(), record);
     if let Err(e) = m.save(&paths.manifest()) {
         log::warn!("couldn't save the install record: {e}");
     }
@@ -1830,7 +1844,7 @@ fn installed_text(app: &CraftApp, update: bool, release: &Release) -> String {
 /// shared by several apps (Linux packages installed together) can have installed some of them;
 /// any other error, a cancellation or a pause stands, whatever is found afterwards.
 fn landed_despite(error: &str, before: Option<&Installed>, after: Option<&Installed>, latest: &version::Version) -> bool {
-    error != PAUSED && error != CANCELLED && error != INSTALL_CANCELLED && install::failed_in_shared_call(error) && landed(before, after, latest)
+    !is_paused(error) && error != CANCELLED && error != INSTALL_CANCELLED && install::failed_in_shared_call(error) && landed(before, after, latest)
 }
 
 /// Whether an install took, whatever its job reported: `latest` is there now and wasn't before.
@@ -3224,6 +3238,58 @@ mod tests {
         assert_eq!(installed_release(&rc, Some(&Installed { package: None, ..msi_copy("0.24.0") })), None, "no registration to tie it to");
         assert_eq!(installed_release(&rc, Some(&Installed { source: InstallSource::Launcher, ..msi_copy("0.24.0") })), None);
         assert_eq!(installed_release(&rc, None), None);
+    }
+
+    /// A put-back is recorded for the registration the installer reports it created, never for a
+    /// leftover registration that happens to have the previous version's numbers.
+    #[test]
+    fn a_put_back_is_recorded_for_the_registration_the_installer_reported() {
+        const CREATED: &str = "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}";
+        const LEFTOVER: &str = "{11111111-2222-3333-4444-555555555555}";
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let mut shared = shared();
+        // A different registration with the previous version's numbers is still on the machine.
+        shared.host = HostDetection::Stub(Arc::new(|_| Some(Installed { package: Some(LEFTOVER.into()), ..msi_copy("0.24.0") })));
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let previous = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        remember_put_back(app, &shared, &paths, &previous, &install::PutBack { product_code: CREATED.into() });
+        let recorded = shared.manifest.lock().unwrap().releases.get(app.id).cloned();
+        let wanted = crate::manifest::InstalledRelease { tag: "v0.24.0-rc.1".into(), version: "0.24.0-rc.1".into(), package: CREATED.into() };
+        assert_eq!(recorded, Some(wanted.clone()), "the reported registration, not the leftover one");
+        assert_eq!(Manifest::load(&paths.manifest()).releases.get(app.id), Some(&wanted), "saved for the next detection");
+        // Detection then reads that copy as the release the put-back installed.
+        let read = crate::detect::with_recorded_release(Installed { package: Some(CREATED.into()), ..msi_copy("0.24.0") }, Some(&wanted));
+        assert_eq!(read.version.map(|v| v.to_string()).as_deref(), Some("0.24.0-rc.1"));
+    }
+
+    /// The fallback decision asks whether the record describes the copy the way detection reads
+    /// it: a record whose numbers don't match the copy decides nothing, so the same-numbered
+    /// fallback is offered rather than refused.
+    #[test]
+    fn only_a_record_of_the_copy_itself_decides_what_going_back_may_put_back() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let stuck = msi_copy("0.24.0");
+        let code = stuck.package.clone().unwrap();
+        let record = |tag: &str, version: &str| crate::manifest::InstalledRelease { tag: tag.into(), version: version.into(), package: code.clone() };
+        let mut manifest = Manifest::default();
+        let latest = tagged("0.23.1");
+        let picked = Chosen { tag: "v0.23.1".into(), fallback: None };
+        let outcome = |manifest: &Manifest| {
+            let recorded = recorded_copy(manifest, app, Some(&stuck));
+            downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), recorded, Some(&picked), || Ok(published()))
+        };
+        // The record says the copy is the final 0.24.0 (since withdrawn): never taken for the candidate.
+        manifest.releases.insert(app.id.to_string(), record("v0.24.0", "0.24.0"));
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Refused(_))), "{:?}", outcome(&manifest));
+        // The record's numbers don't match the copy: it describes another release, so detection
+        // keeps what Windows reports and the candidate with the same numbers is put up for a yes.
+        manifest.releases.insert(app.id.to_string(), record("v0.23.5", "0.23.5"));
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Ask(_))), "{:?}", outcome(&manifest));
+        // Another registration is another copy, whatever it reports.
+        let elsewhere = crate::manifest::InstalledRelease { package: "{00000000-0000-0000-0000-000000000000}".into(), ..record("v0.24.0", "0.24.0") };
+        manifest.releases.insert(app.id.to_string(), elsewhere);
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Ask(_))), "{:?}", outcome(&manifest));
     }
 
     /// Going back is a conscious choice: a check for a pinned app reports the pinned release, so
@@ -4993,7 +5059,15 @@ mod tests {
         let landed_after = |error: &str| landed_despite(error, before.as_ref(), after.as_ref(), &latest);
         // An app's own failure stands, even if its new version shows up (an MSI or AppImage that
         // reported an error, a cancelled or dismissed prompt, a pause).
-        for error in ["the Windows Installer stopped with error 1603", "couldn't copy the AppImage", CANCELLED, INSTALL_CANCELLED, PAUSED] {
+        let paused = artcraft_launcher_core::protocol::PAUSED;
+        for error in [
+            "the Windows Installer stopped with error 1603",
+            "couldn't copy the AppImage",
+            CANCELLED,
+            INSTALL_CANCELLED,
+            paused,
+            PAUSED_BY_CONNECTION,
+        ] {
             assert!(!landed_after(error), "{error}");
         }
         // A call shared with other apps may have installed this one before it failed.

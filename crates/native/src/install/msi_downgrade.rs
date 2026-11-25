@@ -27,6 +27,9 @@
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
+use std::io::Read;
+use std::path::Path;
+
 use artcraft_launcher_core::protocol::CANCELLED;
 
 use super::msi_batch::{self, DECLINED, LAUNCH_FAILED};
@@ -50,19 +53,41 @@ pub(super) struct Removal {
     pub partly: bool,
 }
 
+/// A downgrade that didn't finish: what to tell the person, and whether the previous package was
+/// put back. The registration that put-back created is read from the installer's own log by the
+/// caller ([`registered_product_code`]), which knows which package ran.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Failed {
+    pub error: String,
+    pub put_back: bool,
+}
+
+impl Failed {
+    /// The previous package was not put back (nothing needed it, or putting it back failed too),
+    /// so no registration was created that could be recorded.
+    fn without_put_back(error: String) -> Self {
+        Self { error, put_back: false }
+    }
+
+    /// The previous package is back in place of the chosen one.
+    fn put_back(error: String) -> Self {
+        Self { error, put_back: true }
+    }
+}
+
 /// Removes the installed copy, installs the chosen version, and puts the previous one back if
 /// that install does not finish, one step after another. A removal that stops after removing
 /// something also puts the previous version back.
-pub(super) fn run(steps: Steps<'_>) -> Result<(), String> {
+pub(super) fn run(steps: Steps<'_>) -> Result<(), Failed> {
     let Steps { app, chosen, previous, remove, install_chosen, reinstall_previous } = steps;
     if let Err(Removal { error, partly }) = remove() {
         if !partly {
-            return Err(error);
+            return Err(Failed::without_put_back(error));
         }
         let why = reason(&error);
         return match reinstall_previous() {
-            Ok(()) => Err(partly_removed_put_back(app, previous, &why)),
-            Err(again) => Err(partly_removed_not_put_back(app, previous, &why, &reason(&again))),
+            Ok(()) => Err(Failed::put_back(partly_removed_put_back(app, previous, &why))),
+            Err(again) => Err(Failed::without_put_back(partly_removed_not_put_back(app, previous, &why, &reason(&again)))),
         };
     }
     let why = match install_chosen() {
@@ -70,8 +95,8 @@ pub(super) fn run(steps: Steps<'_>) -> Result<(), String> {
         Err(e) => reason(&e),
     };
     match reinstall_previous() {
-        Ok(()) => Err(put_back(app, chosen, previous, &why)),
-        Err(again) => Err(not_put_back(app, chosen, previous, &why, &reason(&again))),
+        Ok(()) => Err(Failed::put_back(put_back(app, chosen, previous, &why))),
+        Err(again) => Err(Failed::without_put_back(not_put_back(app, chosen, previous, &why, &reason(&again)))),
     }
 }
 
@@ -191,7 +216,7 @@ pub(super) fn ended(code: Option<i32>) -> Ended {
 
 /// What a finished elevated downgrade means for the person. `LaunchFailed` is not passed here:
 /// the caller reports [`no_session`] instead.
-pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> Result<(), String> {
+pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> Result<(), Failed> {
     // Inside the session permission was already given: a cancel there is the progress window's.
     let msiexec = |code: i32| match super::explain(Some(code)).err().unwrap_or_default() {
         e if e == CANCELLED => "it was cancelled".to_string(),
@@ -199,20 +224,51 @@ pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> R
     };
     match ended {
         Ended::Done => Ok(()),
-        Ended::Declined => Err(CANCELLED.to_string()),
-        Ended::RemovalFailed(code) => Err(format!("{app} {previous} couldn't be removed ({}), so nothing was changed.", msiexec(code))),
-        Ended::PutBack(code) => Err(put_back(app, chosen, previous, &msiexec(code))),
-        Ended::NotPutBack { install, back } => Err(not_put_back(app, chosen, previous, &msiexec(install), &msiexec(back))),
-        Ended::PartlyRemovedPutBack(code) => Err(partly_removed_put_back(app, previous, &msiexec(code))),
-        Ended::PartlyRemovedNotPutBack { removal, back } => Err(partly_removed_not_put_back(app, previous, &msiexec(removal), &msiexec(back))),
+        Ended::Declined => Err(Failed::without_put_back(CANCELLED.to_string())),
+        Ended::RemovalFailed(code) => {
+            Err(Failed::without_put_back(format!("{app} {previous} couldn't be removed ({}), so nothing was changed.", msiexec(code))))
+        }
+        Ended::PutBack(code) => Err(Failed::put_back(put_back(app, chosen, previous, &msiexec(code)))),
+        Ended::NotPutBack { install, back } => Err(Failed::without_put_back(not_put_back(app, chosen, previous, &msiexec(install), &msiexec(back)))),
+        Ended::PartlyRemovedPutBack(code) => Err(Failed::put_back(partly_removed_put_back(app, previous, &msiexec(code)))),
+        Ended::PartlyRemovedNotPutBack { removal, back } => {
+            Err(Failed::without_put_back(partly_removed_not_put_back(app, previous, &msiexec(removal), &msiexec(back))))
+        }
         Ended::LaunchFailed | Ended::Other(_) => {
             let code = match ended {
                 Ended::Other(Some(code)) => code.to_string(),
                 _ => "none".to_string(),
             };
-            Err(format!("going back to {app} {chosen} stopped unexpectedly (code {code}). Check which version of {app} is installed."))
+            Err(Failed::without_put_back(format!(
+                "going back to {app} {chosen} stopped unexpectedly (code {code}). Check which version of {app} is installed."
+            )))
         }
     }
+}
+
+/// The product code Windows Installer registered for the package it ran from `msi`: the installer's
+/// own `/l*v` log beside the package (see [`super::msi_log`]) names it. `None` when the log is
+/// there but names no valid code, so nothing is ever recorded from a guess.
+pub(super) fn registered_product_code(msi: &Path) -> Option<String> {
+    /// The code is resolved near the top of the log; a package's log can grow to megabytes.
+    const HEAD: u64 = 4 << 20;
+    // The same path the installer was given, so the log beside the package is the one it wrote.
+    let msi = super::msi_path(msi).ok()?;
+    let log = std::fs::File::open(super::msi_log(&msi)).ok()?;
+    let mut head = Vec::new();
+    log.take(HEAD).read_to_end(&mut head).ok()?;
+    product_code_in(&String::from_utf8_lossy(&head))
+}
+
+/// The first product code a Windows Installer log names (`ProductCode = {…}` and
+/// `PROPERTY CHANGE: Adding ProductCode property. Its value is '{…}'` are both logged).
+fn product_code_in(log: &str) -> Option<String> {
+    log.lines().filter(|line| line.contains("ProductCode")).find_map(|line| {
+        let start = line.find('{')?;
+        let end = start + line[start..].find('}')?;
+        let code = line.get(start..=end)?;
+        crate::msi_context::valid_product_code(code).then(|| code.to_string())
+    })
 }
 
 /// The `msiexec` arguments that remove one registration. Product codes come from the registry, so

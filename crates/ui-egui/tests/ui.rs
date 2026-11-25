@@ -1009,6 +1009,50 @@ fn a_stuck_copy_goes_back_to_the_latest_release_after_a_warning() {
 }
 
 #[test]
+/// A download paused because the connection keeps dropping ends the job as a pause, not a
+/// failure: the agreed request by name survives, and Resume sends it again with the same release
+/// and the same fallback rather than a plain install (#1621).
+fn a_connection_caused_pause_keeps_the_agreed_version() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0"), latest.clone(), vec![rc, latest]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    queue.borrow_mut().extend([
+        Event::GoBackFallback { app: "photocraft".into(), installed: "0.24.0".into(), chosen: "v0.23.1".into(), fallback: "v0.24.0-rc.1".into() },
+        Event::JobFinished {
+            app: "photocraft".into(),
+            result: Err("PhotoCraft 0.24.0 isn't published, so going back waits for your answer.".into()),
+        },
+    ]);
+    h.run_steps(6);
+    sent.borrow_mut().clear();
+    h.get_by_label("Go back").click();
+    h.run_steps(4);
+    let agreed = Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: Some("v0.24.0-rc.1".into()) };
+    assert_eq!(installs(&sent), std::slice::from_ref(&agreed), "{:?}", sent.borrow());
+    // The connection keeps dropping: the download pauses, and the job ends as a pause that says so.
+    queue.borrow_mut().extend([
+        Event::Paused { app: "photocraft".into(), download: Some(PausedDownload { done: 10 << 20, total: 120 << 20 }) },
+        Event::JobFinished { app: "photocraft".into(), result: Err(artcraft_launcher_core::protocol::PAUSED_BY_CONNECTION.into()) },
+    ]);
+    h.run_steps(6);
+    h.get_by_label_contains("the connection keeps dropping");
+    sent.borrow_mut().clear();
+    let resumes = h.query_all_by_label_contains("Resume").count();
+    for n in 0..resumes {
+        let node = h.query_all_by_label_contains("Resume").nth(n).expect("still there");
+        node.scroll_to_me();
+        h.run_steps(2);
+        h.query_all_by_label_contains("Resume").nth(n).expect("still there").click();
+        h.run_steps(3);
+    }
+    assert!(installs(&sent).contains(&agreed), "{:?}", sent.borrow());
+    assert!(!installs(&sent).contains(&Command::Install { app: "photocraft".into() }), "{:?}", sent.borrow());
+}
+
+#[test]
 /// The version dialog installs the latest release its list names, the row the person picked, and
 /// waits while the check still has an older release on screen.
 fn the_dialog_waits_for_the_latest_release_it_names() {

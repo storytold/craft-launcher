@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
+    is_paused,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -800,8 +801,9 @@ impl LauncherUi {
             e.job = None;
         }
         let kept = self.entry(&app).is_some_and(|e| e.ready);
-        // A paused job is resumed by the same request; any other end closes it.
-        if !matches!(&result, Err(e) if e == PAUSED) {
+        // A paused job is resumed by the same request, so the request is kept: every pause
+        // outcome, the connection-caused one included (is_paused), not just the plain PAUSED.
+        if !matches!(&result, Err(e) if is_paused(e)) {
             self.chosen_installs.remove(&app);
         }
         match result {

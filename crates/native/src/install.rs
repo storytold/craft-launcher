@@ -52,6 +52,10 @@ pub struct Job<'a> {
     /// The job's place in the download line, taken when it started (none: it takes one when it
     /// gets to its download).
     pub place: Option<crate::downloads::Place<'static>>,
+    /// Set by the install itself, only when a failed Windows Installer downgrade reports that it
+    /// put the previous package back: the product code of the registration that install created
+    /// ([`PutBack`]). The backend records the release for exactly that registration.
+    pub put_back: Option<PutBack>,
 }
 
 /// A job's place in its batch (see [`Job::batch`]): the installer queue takes it where the batch
@@ -84,6 +88,25 @@ pub enum Downgrade<'a> {
     /// The installed copy stays until the older one is in place (see [`keeps_old_copy`]). No
     /// older package is needed.
     KeepOldCopy,
+}
+
+/// A failed Windows Installer downgrade that put the previous package back: the product code of
+/// the registration the put-back install created, as Windows Installer's own log names it (see
+/// `msi_downgrade::registered_product_code`). Every package build gets a new product code, so this
+/// names exactly the registration that put-back made — never a leftover one with the same numbers,
+/// which is why the backend records the release from this report rather than by comparing rows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PutBack {
+    pub product_code: String,
+}
+
+/// A failed install: what to tell the person, and whether a Windows Installer downgrade put the
+/// previous package back ([`PutBack`]), reported by the install itself.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Debug, PartialEq, Eq)]
+struct Failure {
+    error: String,
+    put_back: Option<PutBack>,
 }
 
 /// Whether going back over `existing` keeps the old copy until the new one is in place, the same
@@ -343,7 +366,7 @@ fn install_at_with_profile(
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
             // fresh install passes no context and takes the package's own default.
-            match &rollback {
+            let failure = match &rollback {
                 Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
                     windows::Package { file: &file, sha256: &sha256, version: &version },
@@ -361,9 +384,15 @@ fn install_at_with_profile(
                     batch.take(),
                     job.stop,
                     &mut *job.phase,
-                ),
+                )
+                .map_err(|error| Failure { error, put_back: None }),
+            };
+            // A failed downgrade that put the previous package back says which registration that
+            // install made; nothing else may record it (see `Job::put_back`).
+            if let Err(failed) = &failure {
+                job.put_back = failed.put_back.clone();
             }
-            .map(|_| None)
+            failure.map(|()| None).map_err(|failure| failure.error)
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {
@@ -2521,22 +2550,29 @@ pub mod windows {
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
-    ) -> Result<(), String> {
+    ) -> Result<(), super::Failure> {
         if scope == Some(MsiScope::PerMachine) {
             let mut elevated = None;
-            in_turn(stop, phase, JobPhase::Installing, || {
+            let started = in_turn(stop, phase, JobPhase::Installing, || {
                 elevated = downgrade_elevated(app, &chosen, &previous, destination, scope)?;
                 Ok(())
-            })?;
+            });
+            if let Err(error) = started {
+                return Err(super::Failure { error, put_back: None });
+            }
             // Separate prompts are no fallback: refusing a later one would leave no app at all.
             return match elevated {
-                Some(ended) => msi_downgrade::report(ended, app.name, chosen.version, previous.version),
-                None => Err(msi_downgrade::no_session(app.name, chosen.version)),
+                Some(ended) => {
+                    msi_downgrade::report(ended, app.name, chosen.version, previous.version).map_err(|failed| reported(app, failed, &previous))
+                }
+                None => Err(super::Failure { error: msi_downgrade::no_session(app.name, chosen.version), put_back: None }),
             };
         }
         // One turn for all three steps: once the copy is removed, nothing waiting in the queue
-        // (another install, or a cancel while waiting) can stop the put-back.
-        in_turn(stop, phase, JobPhase::Installing, || {
+        // (another install, or a cancel while waiting) can stop the put-back. The queue's turn
+        // carries a message out, so what the installer reported is kept beside it.
+        let mut failed = None;
+        let started = in_turn(stop, phase, JobPhase::Installing, || {
             msi_downgrade::run(msi_downgrade::Steps {
                 app: app.name,
                 chosen: chosen.version,
@@ -2545,7 +2581,32 @@ pub mod windows {
                 install_chosen: &mut || run_direct(chosen.file, destination, scope),
                 reinstall_previous: &mut || run_direct(previous.file, destination, scope),
             })
-        })
+            .map_err(|stopped| {
+                let message = stopped.error.clone();
+                failed = Some(stopped);
+                message
+            })
+        });
+        if let Some(failed) = failed {
+            return Err(reported(app, failed, &previous));
+        }
+        started.map_err(|error| super::Failure { error, put_back: None })
+    }
+
+    /// What a failed downgrade reports: its message, and — only when the installer says it put the
+    /// previous package back — the product code of the registration that put-back created. That
+    /// code is the one the installer's own log names for the package it ran, and only when Windows
+    /// Installer now lists a registration under it: nothing is inferred from the registry, and a
+    /// code no registration carries records nothing.
+    fn reported(app: &CraftApp, failed: msi_downgrade::Failed, previous: &Package<'_>) -> super::Failure {
+        let mut put_back = None;
+        if failed.put_back
+            && let Some(code) = msi_downgrade::registered_product_code(previous.file)
+            && crate::detect::windows::msi_installs(app).iter().any(|m| m.product_code.eq_ignore_ascii_case(&code))
+        {
+            put_back = Some(super::PutBack { product_code: code });
+        }
+        super::Failure { error: failed.error, put_back }
     }
 
     /// The one-prompt route: both packages held unchanged and checked again, then one elevated
@@ -3079,6 +3140,7 @@ mod tests {
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
                 batch: None,
                 place: None,
+                put_back: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
         };
@@ -3203,6 +3265,7 @@ mod tests {
                     downgrade,
                     batch: None,
                     place: None,
+                    put_back: None,
                 };
                 install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
             };
@@ -3244,6 +3307,7 @@ mod tests {
                 downgrade: None,
                 batch: None,
                 place: None,
+                put_back: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
@@ -3279,6 +3343,7 @@ mod tests {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
         assert!(error.contains("folder is unavailable") || (process::in_sandbox() && error.contains("aren't supported")), "{error}");
@@ -3313,6 +3378,7 @@ mod tests {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
@@ -3990,6 +4056,7 @@ mod tests {
             downgrade: Some(Downgrade::Reinstall { previous: &previous, asset: &installed }),
             batch: None,
             place: None,
+            put_back: None,
         };
         let have = |asset: &Asset| {
             let dest = download_path(&paths, asset);
@@ -4038,6 +4105,7 @@ mod tests {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
         assert!(result.is_err());
@@ -4072,6 +4140,7 @@ mod tests {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
         assert!(result.is_err(), "mismatched artifact version must be rejected");
