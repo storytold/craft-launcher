@@ -32,8 +32,10 @@ in [GLOSSARY.md](../GLOSSARY.md).
    pace (hourly per app once everything has loaded). A newer stable release in the feed replaces
    an older saved beta or RC at once.
 5. **Pinned version.** Fetched once and saved; asked again only when the pin changes or the
-   saved copy is missing. The Choose version list is kept an hour, on disk.
-6. **Nightly track.** At most every 3 hours per app.
+   saved copy is missing. The version list is kept an hour, on disk; opening Choose version
+   asks again for one older than 15 minutes, and a pressed check on the Nightly track asks now.
+6. **Nightly track.** At most every 3 hours per app, with its own record apart from the stable
+   track's. Nightly discovery for Developer Builds already waits 6 hours between automatic sweeps (`nightly_lookup::EVERY`).
 7. **Forced check.** Skips the per-app throttles but not the budget; a second one within 2
    minutes of a forced one reuses its answers (an automatic check doesn't count). A budget
    refusal of nightly discovery isn't saved as a server backoff.

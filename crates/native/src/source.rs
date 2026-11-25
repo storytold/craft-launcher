@@ -36,17 +36,39 @@ pub trait ReleaseSource: Send + Sync {
     fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
         Err("version list isn't available here".into())
     }
+    /// [`versions`](Self::versions), with a saved list standing in only when it is less than
+    /// `max_age` seconds old (0: ask GitHub now).
+    fn versions_within(&self, query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+        let _ = max_age;
+        self.versions(query)
+    }
     /// The release `track` follows: the latest stable one, or the chosen nightly or exact version
     /// from [`versions`](Self::versions), with no fallback to another.
     fn chosen(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack) -> Answer {
+        self.chosen_within(query, track, VERSIONS_FRESH)
+    }
+    /// [`chosen`](Self::chosen), with a version list no older than `max_age` seconds (0: a check
+    /// the user pressed asks GitHub now).
+    fn chosen_within(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack, max_age: i64) -> Answer {
         if *track == artcraft_launcher_core::protocol::VersionTrack::Stable {
             return self.latest(query, false);
         }
-        let latest = match self.versions(query) {
+        // A pinned version never changes: once it is saved, GitHub isn't asked about it again.
+        if let artcraft_launcher_core::protocol::VersionTrack::Pinned(_) = track
+            && let Some(saved @ LatestRelease::Found(_)) = self.saved_choice(query, track)
+        {
+            return Answer { latest: saved, source: Source::Cache };
+        }
+        let latest = match self.versions_within(query, max_age) {
             Ok(list) => release::choose_version_for(&list, track, query.separate_nightly).map_or(LatestRelease::None, LatestRelease::Found),
             Err(why) => LatestRelease::Failed(why),
         };
         Answer { latest, source: Source::GitHubApi }
+    }
+    /// The release `track` follows in the version list saved last time, however old, without
+    /// asking GitHub. `None` when no list is saved.
+    fn saved_choice(&self, _query: &ReleaseQuery, _track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        None
     }
     /// The last answer saved for the query's repo, for an instant first paint.
     fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease>;
@@ -75,7 +97,16 @@ struct Entry {
 #[derive(Default, Serialize, Deserialize)]
 struct CacheFile {
     entries: BTreeMap<String, Entry>,
+    /// Each repo's version list and when it was fetched (Unix seconds).
+    #[serde(default)]
+    versions: BTreeMap<String, (i64, Vec<Release>)>,
 }
+
+/// How long a version list stands in for asking GitHub again (#713).
+pub(crate) const VERSIONS_FRESH: i64 = 60 * 60;
+/// How long a version list stands in when the user opens Choose version: the in-memory list's
+/// lifetime before #713, so the picker sees a new release as soon as it did then.
+pub(crate) const CHOOSER_FRESH: i64 = 15 * 60;
 
 /// Once github.com itself hasn't answered, the release-pages route is left alone for this long.
 /// Without it a machine with no network at all would take that route for every app in the catalog
@@ -101,7 +132,6 @@ fn page_len(text: &str) -> Result<usize, String> {
 pub struct GitHubSource {
     http: Http,
     cache: Mutex<CacheFile>,
-    versions_cache: Mutex<BTreeMap<String, (i64, Vec<Release>)>>,
     cache_path: std::path::PathBuf,
     limited_until: Mutex<Option<i64>>,
     /// The launcher's own GitHub budget held a request back until this time (Unix seconds). Unlike
@@ -110,6 +140,9 @@ pub struct GitHubSource {
     over_budget_until: Mutex<Option<i64>>,
     /// github.com couldn't be reached; don't ask it again until this time (Unix seconds).
     pages_quiet_until: Mutex<Option<i64>>,
+    /// Held across taking a snapshot of `cache` and writing it, so writes from several worker
+    /// threads land in the order they were taken and an older snapshot never replaces a newer one.
+    saving: Mutex<()>,
 }
 
 /// The cache key for `repo` under one pre-release setting. Stable keeps the repo as the key
@@ -124,11 +157,11 @@ impl GitHubSource {
         Self {
             http,
             cache: Mutex::new(cache),
-            versions_cache: Mutex::new(BTreeMap::new()),
             cache_path,
             limited_until: Mutex::new(None),
             over_budget_until: Mutex::new(None),
             pages_quiet_until: Mutex::new(None),
+            saving: Mutex::new(()),
         }
     }
 
@@ -436,9 +469,10 @@ fn with_former<T>(query: &ReleaseQuery, ask: impl Fn(&ReleaseQuery) -> T, no_rel
 }
 
 impl GitHubSource {
-    fn versions_in(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
-        if let Some((at, list)) = self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).get(&query.repo)
-            && crate::now().saturating_sub(*at) < 15 * 60
+    fn versions_in(&self, query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+        if let Some((at, list)) = self.cache.lock().unwrap_or_else(PoisonError::into_inner).versions.get(&query.repo)
+            // A list stamped in the future (the clock set back since) isn't recent.
+            && (0..max_age).contains(&crate::now().saturating_sub(*at))
         {
             return Ok(list.clone());
         }
@@ -446,8 +480,27 @@ impl GitHubSource {
             return Err("GitHub's request limit was reached. Try again later.".into());
         }
         let list = self.versions_with(query, |url, etag| self.http.get_api_as(url, etag, query.priority))?;
-        self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).insert(query.repo.clone(), (crate::now(), list.clone()));
+        self.cache.lock().unwrap_or_else(PoisonError::into_inner).versions.insert(query.repo.clone(), (crate::now(), list.clone()));
+        // Kept on disk at once: a restart shouldn't ask for the list again within the hour.
+        self.save();
         Ok(list)
+    }
+
+    fn saved_choice_in(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        let (_, list) = cache.versions.get(&query.repo)?;
+        Some(release::choose_version_for(list, track, query.separate_nightly).map_or(LatestRelease::None, LatestRelease::Found))
+    }
+
+    /// Why the API gave no answer when it was the launcher's own budget that held the request
+    /// back, not GitHub: `None` when GitHub refused, or nothing was held back.
+    fn held_back_why(&self) -> Option<String> {
+        let now = crate::now();
+        if self.limited() {
+            return None;
+        }
+        let until = (*self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner)).filter(|u| *u > now)?;
+        Some(over_budget_why(until, now))
     }
 
     fn latest_in(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
@@ -455,7 +508,11 @@ impl GitHubSource {
             &query.repo,
             prereleases,
             self.limited(),
-            || self.ask_api(query, prereleases),
+            // A request the budget held back says so, instead of GitHub's own limit.
+            || match self.ask_api(query, prereleases) {
+                Ok(None) => self.held_back_why().map_or(Ok(None), Err),
+                other => other,
+            },
             || self.ask_pages(query),
             // Offline, a release saved under the other name still stands in.
             || self.cached(query, prereleases),
@@ -469,7 +526,11 @@ impl GitHubSource {
 
 impl ReleaseSource for GitHubSource {
     fn versions(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
-        with_former(query, |q| self.versions_in(q), |list| list.as_ref().is_ok_and(Vec::is_empty))
+        self.versions_within(query, VERSIONS_FRESH)
+    }
+
+    fn versions_within(&self, query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+        with_former(query, |q| self.versions_in(q, max_age), |list| list.as_ref().is_ok_and(Vec::is_empty))
     }
 
     fn latest(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
@@ -478,6 +539,10 @@ impl ReleaseSource for GitHubSource {
 
     fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease> {
         with_former(query, |q| self.cached_in(q, prereleases), |c| matches!(c, None | Some(LatestRelease::None)))
+    }
+
+    fn saved_choice(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        with_former(query, |q| self.saved_choice_in(q, track), |c| matches!(c, None | Some(LatestRelease::None)))
     }
 
     fn newest_tag(&self, repo: &str) -> Option<String> {
@@ -497,6 +562,7 @@ impl ReleaseSource for GitHubSource {
     }
 
     fn save(&self) {
+        let _saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
         let json = {
             let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
             serde_json::to_vec(&*cache)
@@ -699,6 +765,72 @@ mod tests {
         assert!(matches!(refused, Ok(Fetched::OverBudget { .. })), "{refused:?}");
     }
 
+    /// A pinned version is answered from the saved version list however old it is, the list
+    /// itself stands in for an hour, and both survive a restart (#713). The budget of 0 makes any
+    /// request to GitHub fail, so an answer here came from disk.
+    #[test]
+    fn a_pinned_version_and_a_recent_version_list_are_answered_without_github() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("releases.json");
+        let list: Vec<Release> = ["v0.6.0", "v0.5.0"]
+            .iter()
+            .map(|tag| Release { tag: (*tag).into(), version: artcraft_launcher_core::version::parse(tag), ..Default::default() })
+            .collect();
+        let saved = |age: i64| {
+            let cache = CacheFile { versions: [(REPO.to_string(), (crate::now() - age, list.clone()))].into(), ..Default::default() };
+            std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+            let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
+            GitHubSource::new(http, path.clone())
+        };
+        let pin = artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into());
+
+        let day_old = saved(86_400);
+        let answer = day_old.chosen(&q(REPO), &pin);
+        assert!(matches!(&answer.latest, LatestRelease::Found(r) if r.tag == "v0.5.0"), "{answer:?}");
+        assert_eq!(answer.source, Source::Cache);
+        assert!(day_old.versions(&q(REPO)).is_err(), "a list older than an hour is asked for again");
+        assert_eq!(saved(30 * 60).versions(&q(REPO)).unwrap().len(), 2, "a recent list stands in");
+        let ahead = saved(-60);
+        assert!(ahead.versions_within(&q(REPO), 0).is_err(), "a pressed check asks GitHub past a list stamped ahead");
+        assert!(ahead.versions(&q(REPO)).is_err(), "a list stamped in the future isn't recent");
+    }
+
+    /// A request GitHubSource itself held back says so, not that GitHub's limit was
+    /// reached: GitHub refused nothing.
+    #[test]
+    fn a_github_source_budget_refusal_isnt_reported_as_githubs_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = crate::now();
+        let budget = crate::github_budget::GitHubBudget::in_memory(2);
+        for _ in 0..2 {
+            assert!(budget.take(Default::default(), now).is_ok());
+        }
+        let source = GitHubSource::new(Http::new().unwrap().with_budget(budget), dir.path().join("releases.json"));
+        // Pre-releases on, nothing saved: no release-pages route and no saved answer.
+        let answer = source.latest(&q(REPO), true);
+        let LatestRelease::Failed(why) = &answer.latest else { panic!("{answer:?}") };
+        assert!(!why.contains("GitHub's request limit was reached"), "{why}");
+        assert!(why.contains("The launcher has used its GitHub requests"), "{why}");
+    }
+
+    /// GitHub's own refusal is reported as GitHub's limit, and held_back_why stays out of the
+    /// way even when a budget wait is also recorded. A stale version list is not reused then.
+    #[test]
+    fn a_github_rate_limit_isnt_reported_as_a_budget_hold() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), dir.path().join("releases.json"));
+        let until = crate::now() + 600;
+        let budget = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until }));
+        assert!(budget.is_err(), "{budget:?}");
+        assert!(source.held_back_why().is_some_and(|why| why.contains("The launcher has used its GitHub requests")));
+        let refused = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::RateLimited { reset: Some(until) }));
+        assert!(matches!(refused, Ok(None)), "{refused:?}");
+        assert!(source.limited());
+        assert!(source.held_back_why().is_none(), "GitHub refused, so this isn't a budget hold");
+        let versions = source.versions(&q(REPO));
+        assert!(matches!(&versions, Err(why) if why.contains("GitHub's request limit")), "{versions:?}");
+    }
+
     #[test]
     fn a_refusal_waits_for_the_reset_github_names() {
         assert_eq!(retry_at(Some(1_000 + 600), 1_000), 1_600);
@@ -721,7 +853,10 @@ mod tests {
         let stable =
             release::parse_github_release(&serde_json::json!({"tag_name":"v0.6.0","prerelease":false,"assets":[]}).to_string(), REPO).unwrap();
         // An old file: one row under the repo, for pre-releases.
-        let cache = CacheFile { entries: [(REPO.into(), Entry { etag: None, release: Some(pre.clone()), prereleases: true, fetched_at: 1 })].into() };
+        let cache = CacheFile {
+            entries: [(REPO.into(), Entry { etag: None, release: Some(pre.clone()), prereleases: true, fetched_at: 1 })].into(),
+            ..Default::default()
+        };
         std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
         let source = GitHubSource::new(Http::new().unwrap(), path);
         let tag = |latest: Option<LatestRelease>| match latest {
@@ -744,6 +879,7 @@ mod tests {
         let cache = CacheFile {
             entries: [(repo.into(), Entry { etag: Some("old-etag".into()), release: Some(release.clone()), prereleases: true, fetched_at: 7 })]
                 .into(),
+            ..Default::default()
         };
         let path = temp.path().join("releases.json");
         std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
