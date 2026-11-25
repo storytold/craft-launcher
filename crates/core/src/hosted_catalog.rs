@@ -370,10 +370,18 @@ mod tests {
         document.apps.into_iter().next().unwrap().try_into().unwrap()
     }
 
+    /// Bundled apps the signed website fixture does not list yet. A community app is bundled first; only the website's key can
+    /// sign a fixture that lists it, so the fixture is refreshed from the live website afterwards and this list is emptied.
+    const NOT_ON_THE_WEBSITE_YET: &[&str] = &["diacraft"];
+
     #[test]
     fn website_fixture_verifies_with_the_actual_pinned_public_key() {
         let catalog = VerifiedCatalog::verify(WEBSITE, SIGNATURE).unwrap();
-        assert_eq!(catalog.records.len(), SUITE.len());
+        assert_eq!(catalog.records.len() + NOT_ON_THE_WEBSITE_YET.len(), SUITE.len());
+        for id in NOT_ON_THE_WEBSITE_YET {
+            assert!(SUITE.iter().any(|app| app.id == *id), "{id} is not bundled");
+            assert!(catalog.records.iter().all(|r| r.id != *id), "{id} is in the fixture now: empty NOT_ON_THE_WEBSITE_YET");
+        }
         assert_eq!(catalog.rejected_entries, 0);
         for record in &catalog.records {
             let bundled = SUITE.iter().find(|app| app.id == record.id).unwrap();
@@ -474,6 +482,18 @@ mod tests {
         r = first_record();
         r.details.as_mut().unwrap().shots[0].url = "https://other.example/shot.jpg".into();
         assert!(!valid_record(&r));
+    }
+
+    /// The website hosts, under the digest in its name, the very file the launcher bundles. A digest typed in by hand for a new
+    /// app would otherwise make the launcher refuse the hosted icon and download it again.
+    #[test]
+    fn bundled_catalog_icon_digests_are_those_of_the_bundled_icons() {
+        let document: Document = toml::from_str(std::str::from_utf8(BUNDLED).unwrap()).unwrap();
+        for value in document.apps {
+            let record: Record = value.try_into().unwrap();
+            let icon = crate::catalog::app_icon_png(&record.id).unwrap_or_else(|| panic!("no bundled icon for {}", record.id));
+            assert!(valid_icon(icon, &record.icon_sha256), "{}", record.id);
+        }
     }
 
     #[test]

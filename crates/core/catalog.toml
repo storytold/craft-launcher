@@ -1044,3 +1044,48 @@ title = "Files"
 [[apps.details.features]]
 text = "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."
 title = "Desktop, web and agents"
+
+[[apps]]
+bundle = "app.diacraft"
+color = [38, 166, 182]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "diacraft"
+binary = "diacraft"
+flatpak_id = "app.diacraft"
+mac_bundle_id = "app.diacraft"
+mac_bundle_name = "DiaCraft"
+website = "https://diacraft.dev"
+windows_msi_publisher = "DiaCraft contributors"
+deb_package = "diacraft"
+rpm_package = "diacraft"
+desktop_categories = ["Graphics", "2DGraphics"]
+startup_wm_class = "app.diacraft"
+icon_url = "https://getartcraft.com/launcher-app-icons/diacraft-9b2dded93a610574f73c2d9af87b73c2be648a62518cbac6f1498324674985e3.png"
+icon_sha256 = "9b2dded93a610574f73c2d9af87b73c2be648a62518cbac6f1498324674985e3"
+ink_dark = [86, 205, 220]
+ink_light = [23, 100, 110]
+kind = "community"
+msi_publisher = "DiaCraft contributors"
+name = "DiaCraft"
+publisher = "Intergrado"
+repo = "intergrado/diacraft"
+site = "https://diacraft.dev"
+tagline = "Diagrams and flowcharts"
+[apps.details]
+headline = "Diagrams, flowcharts and architecture drawings, in a native app."
+about = "An open-source diagram editor by Intergrado, written in Rust: stencils, connectors that reroute as shapes move, containers, layers and themes. Opens, edits and saves .vsdx and .odg drawings, and keeps its own .diacraft format. Early (0.2), and it can be driven by AI agents through its MCP server."
+platforms = "macOS, Windows, Linux, web"
+[[apps.details.features]]
+text = "Flowcharts, process flows, org charts and architecture diagrams, from stencils of ready shapes."
+title = "Diagrams"
+[[apps.details.features]]
+text = "Connectors glue to shapes and reroute around them as you move things."
+title = "Connectors"
+[[apps.details.features]]
+text = ".vsdx and .odg in and out, SVG, PNG and PDF export, and .diacraft drawings."
+title = "Files"
+[[apps.details.features]]
+text = "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."
+title = "Desktop, web and agents"
