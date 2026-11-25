@@ -835,7 +835,10 @@ mod tests {
         let stable =
             release::parse_github_release(&serde_json::json!({"tag_name":"v0.6.0","prerelease":false,"assets":[]}).to_string(), REPO).unwrap();
         // An old file: one row under the repo, for pre-releases.
-        let cache = CacheFile { entries: [(REPO.into(), Entry { etag: None, release: Some(pre.clone()), prereleases: true, fetched_at: 1 })].into(), ..Default::default() };
+        let cache = CacheFile {
+            entries: [(REPO.into(), Entry { etag: None, release: Some(pre.clone()), prereleases: true, fetched_at: 1 })].into(),
+            ..Default::default()
+        };
         std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
         let source = GitHubSource::new(Http::new().unwrap(), path);
         let tag = |latest: Option<LatestRelease>| match latest {
