@@ -929,6 +929,11 @@ fn the_version_menu_says_when_only_hidden_pre_releases_are_available() {
     rc.prerelease = true;
     let (h, _, _) = launcher_menu_on(Machine::default(), vec![rc]);
     assert!(h.query_by_label(NOTE).is_some(), "the launcher's own menu in Settings");
+    // A nightly is hidden by the nightly setting, not this one: turning on pre-releases wouldn't show it.
+    let mut nightly = release_with("artcraft-launcher", "1.0.0-nightly.20261120", &[("macos-universal.dmg", 150)]);
+    nightly.prerelease = true;
+    let (h, _, _) = launcher_menu_on(Machine::default(), vec![nightly]);
+    assert!(h.query_by_label(NOTE).is_none(), "only a nightly, with pre-releases and nightly builds off");
 }
 
 /// The Nightly row and the nightly builds are offered only with nightly builds turned on. A

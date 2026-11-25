@@ -312,6 +312,8 @@ impl LauncherUi {
             if id == LAUNCHER_ID { self.settings.launcher_version.clone() } else { self.settings.versions.get(id).cloned().unwrap_or_default() };
         let downloads = |r: &&Release| self.has_version_download(app, r);
         let stable = releases.iter().filter(downloads).any(|r| !r.prerelease && r.version.as_ref().is_some_and(version::is_stable));
+        // Only what the pre-release setting would reveal: `separate_channel_nightly` matches every
+        // nightly by flag or tag (it includes `is_nightly`), whichever channel the app uses.
         let hidden = releases
             .iter()
             .filter(downloads)
