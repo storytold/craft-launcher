@@ -163,12 +163,15 @@ pub(crate) fn run_command_bounded(mut cmd: Command, program: &str, timeout: Dura
     Ok(RunOutput { success: status.success(), code: status.code(), status: status.to_string(), stdout: out, stderr: err })
 }
 
+/// The most of a helper's output [`run`] keeps.
+const OUTPUT_LIMIT: usize = 8 << 20;
+
 /// Captures at most 8 MB of a child's pipe and drains the rest on its own thread.
 fn read_all<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut out = Vec::new();
         if let Some(mut pipe) = pipe {
-            let _ = std::io::Read::read_to_end(&mut std::io::Read::take(&mut pipe, 8 << 20), &mut out);
+            let _ = std::io::Read::read_to_end(&mut std::io::Read::take(&mut pipe, OUTPUT_LIMIT as u64), &mut out);
             // Keep reading without retaining more output: closing a full pipe early can make a
             // successful helper fail with a broken pipe (SIGPIPE on Unix).
             let _ = std::io::copy(&mut pipe, &mut std::io::sink());
@@ -811,13 +814,15 @@ pub fn is_running(path: &Path) -> bool {
         run_command(cmd, "tasklist", Duration::from_secs(5)).ok().is_some_and(|out| out.to_ascii_lowercase().contains(&name.to_ascii_lowercase()))
     } else {
         let Some(p) = path.to_str() else { return false };
-        let ps = ["ps", "-A", "-ww", "-o", "command="];
+        // `ps` escapes the bytes its locale can't decode; a UTF-8 locale keeps a non-ASCII path as it is.
+        let ps = ["env", "LC_ALL=C.UTF-8", "ps", "-A", "-ww", "-o", "command="];
         let commands = if in_sandbox() {
             capture("flatpak-spawn", &[&["--host"][..], &ps].concat(), Duration::from_secs(5))
         } else {
             capture(ps[0], &ps[1..], Duration::from_secs(5))
         };
-        commands.is_some_and(|commands| commands.lines().any(|command| runs_from(command.trim_start(), p)))
+        // A listing cut at the output limit may have lost the app's line, so it counts as running.
+        commands.is_some_and(|commands| commands.len() >= OUTPUT_LIMIT || commands.lines().any(|command| runs_from(command.trim_start(), p)))
     }
 }
 
