@@ -76,6 +76,16 @@ pub trait Host {
     fn quit(&mut self) {}
 }
 
+/// The launcher's pages, switched by the toggle at the start of the toolbar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Page {
+    /// The Craft App Suite.
+    #[default]
+    Apps,
+    /// Craft Font Manager (desktop only).
+    Fonts,
+}
+
 pub(crate) struct Toast {
     pub text: String,
     pub error: bool,
@@ -216,6 +226,9 @@ pub struct LauncherUi {
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
+    pub(crate) page: Page,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fonts: crate::fonts::FontsTab,
     /// UI actions drawn in this pass, not sent yet.
     pending: Vec<UiAction>,
     /// The `egui::Context::cumulative_frame_nr` those actions belong to.
@@ -325,6 +338,9 @@ impl LauncherUi {
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
+            page: Page::Apps,
+            #[cfg(not(target_arch = "wasm32"))]
+            fonts: crate::fonts::FontsTab::new(),
             pending: Vec::new(),
             frame: None,
             flushed: Vec::new(),
@@ -968,43 +984,29 @@ impl LauncherUi {
             .exact_size(crate::views::FOOTER_H)
             .resizable(false)
             .show(ui, |ui| self.footer(ui));
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
-            .show(ui, |ui| {
-                ui.add_space(12.0);
-                if self.nightly.active {
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(tokens.bg)).show(ui, |ui| {
+            // The Pre-Release channel has its own page; Apps and Fonts belong to Stable.
+            if self.nightly.active {
+                #[cfg(not(target_arch = "wasm32"))]
+                self.fonts.hidden();
+                egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| {
+                    ui.add_space(12.0);
                     self.nightly_page(ui);
-                    return;
-                }
-                self.toolbar(ui);
-                ui.add_space(18.0);
-                let ids = self.visible_ids();
-                // The table is wider than a narrow window: let it scroll sideways too.
-                let scroll = match self.settings.view {
-                    ViewMode::Grid => egui::ScrollArea::vertical(),
-                    ViewMode::Table => egui::ScrollArea::both(),
-                };
-                scroll.auto_shrink(false).show(ui, |ui| {
-                    // Escape must run even when search/filter leaves no rows (grid/table skipped).
-                    self.clear_pin_drag_on_escape(ui);
-                    if ids.is_empty() {
-                        ui.add_space(40.0);
-                        ui.vertical_centered(|ui| {
-                            crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
-                        });
-                    } else {
-                        match self.settings.view {
-                            ViewMode::Grid => self.grid(ui, &ids),
-                            ViewMode::Table => self.table(ui, &ids),
-                        }
-                    }
-                    ui.add_space(16.0);
-                    // The drop targets have seen this frame's pointer: a released drag ends here.
-                    if !ui.input(|i| i.pointer.primary_down()) {
-                        self.pin_dragging = None;
-                    }
                 });
-            });
+                return;
+            }
+            egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| self.toolbar(ui));
+            // The panel keeps its own margins.
+            #[cfg(not(target_arch = "wasm32"))]
+            if self.page == Page::Fonts {
+                self.fonts.ui(ui, &mut self.settings.fonts, lang.code());
+                return;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            self.fonts.hidden();
+            ui.add_space(18.0);
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(20, 0)).show(ui, |ui| self.apps_page(ui));
+        });
         self.details_drawer(&ctx);
         self.dialogs(&ctx, host);
         self.nightly_consent_modal(&ctx);
@@ -1013,6 +1015,58 @@ impl LauncherUi {
         if host.title_bar() == TitleBar::Custom {
             crate::widgets::window_edges(&ctx);
         }
+    }
+
+    /// The Craft App Suite as cards or a table, below the toolbar.
+    fn apps_page(&mut self, ui: &mut egui::Ui) {
+        let tokens = Tokens::get(ui.ctx());
+        let ids = self.visible_ids();
+        // The table is wider than a narrow window: let it scroll sideways too.
+        let scroll = match self.settings.view {
+            ViewMode::Grid => egui::ScrollArea::vertical(),
+            ViewMode::Table => egui::ScrollArea::both(),
+        };
+        scroll.auto_shrink(false).show(ui, |ui| {
+            // Escape must run even when search/filter leaves no rows (grid/table skipped).
+            self.clear_pin_drag_on_escape(ui);
+            if ids.is_empty() {
+                ui.add_space(40.0);
+                ui.vertical_centered(|ui| {
+                    crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
+                });
+            } else {
+                match self.settings.view {
+                    ViewMode::Grid => self.grid(ui, &ids),
+                    ViewMode::Table => self.table(ui, &ids),
+                }
+            }
+            ui.add_space(16.0);
+            // The drop targets have seen this frame's pointer: a released drag ends here.
+            if !ui.input(|i| i.pointer.primary_down()) {
+                self.pin_dragging = None;
+            }
+        });
+    }
+
+    /// The page the window shows.
+    pub fn page(&self) -> Page {
+        self.page
+    }
+
+    pub fn set_page(&mut self, page: Page) {
+        self.page = if cfg!(target_arch = "wasm32") { Page::Apps } else { page };
+    }
+
+    /// Builds the Fonts page from `options` instead of the user's fonts and font store (tests).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn use_font_options(&mut self, options: craft_font_manager::Options) {
+        self.fonts = crate::fonts::FontsTab::with_options(options);
+    }
+
+    /// The Fonts page's panel, once the page has shown.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn fonts_panel(&self) -> Option<&craft_font_manager::FontsPanel> {
+        self.fonts.panel()
     }
 
     /// Test hook for the filtered/sorted catalog ids currently shown.

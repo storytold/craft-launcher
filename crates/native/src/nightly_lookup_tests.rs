@@ -578,11 +578,12 @@ fn shared_selection_native_missing_winning_evidence_is_not_an_ordinary_checksum_
     );
 }
 #[test]
-fn shared_selection_unconfigured_mac_lookup_refuses_before_any_network_body() {
+fn shared_selection_unconfigured_platform_lookup_refuses_before_any_network_body() {
     let mut requests = 0;
     let result = lookup(
         app(),
-        Platform { os: Os::MacOs, arch: Arch::Arm64 },
+        // Intel Macs have no Nightly row; Apple silicon is admitted by its pinned signing team.
+        Platform { os: Os::MacOs, arch: Arch::X64 },
         NOW,
         &mut |_, _, _, _| {
             requests += 1;

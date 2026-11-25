@@ -87,7 +87,14 @@ you when an update is out. It is a small native app that can sit in your menu ba
   </tr>
 </table>
 
-The web version shows the same catalog in the browser, with the latest download for each app.
+The **Fonts** page is Craft Font Manager: browse the Google Fonts and Noto collections (and index
+URLs you add), preview families in their own faces, and install them into the font store every Craft
+app reads. Font files download only after you allow font downloads in Settings or confirm an
+install. Previews come from a font preview server; Settings can change the server or turn previews
+off.
+
+The web version shows the same catalog in the browser, with the latest download for each app; the
+Fonts page is desktop only.
 
 ## Interface languages
 
@@ -294,7 +301,7 @@ stand on its own.
 | <img src="https://raw.githubusercontent.com/storytold/materialcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.materialcraft.png" alt="" width="32" height="32">               | **MaterialCraft**   | Procedural material design                            | [GitHub](https://github.com/storytold/materialcraft)  | [Website](https://getartcraft.com/apps/materialcraft)      |
 | <img src="https://raw.githubusercontent.com/storytold/craft-anything/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.craft-anything.png" alt="" width="32" height="32">             | **Craft Anything**  | See how any software works, then build your own       | [GitHub](https://github.com/storytold/craft-anything) | [Website](https://getartcraft.com/apps/craft-anything)     |
 | <img src="https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/64x64/apps/io.tangencylabs.solidcraft.png" alt="" width="32" height="32"> | **SolidCraft**      | Parametric 3D CAD by Tangency Labs (community app)    | [GitHub](https://github.com/tangency-labs/solidcraft) |                                                            |
-| <img src="https://raw.githubusercontent.com/UCS-Care-Group/mailcraft/main/assets/app-icon/hicolor/64x64/apps/io.github.billsecond.mailcraft.png" alt="" width="32" height="32"> | **MailCraft** | Mail, calendar and contacts by UCS Care Group (community app) | [GitHub](https://github.com/UCS-Care-Group/mailcraft) | [Website](https://mailcraft.work) |
+| <img src="https://raw.githubusercontent.com/UCS-Care-Group/mailcraft/main/assets/app-icon/hicolor/64x64/apps/io.github.billsecond.mailcraft.png" alt="" width="32" height="32"> | **MailCraft** | Mail, calendar and contacts by UCS Labs (community app) | [GitHub](https://github.com/UCS-Care-Group/mailcraft) | [Website](https://mailcraft.work) |
 
 <br>
 

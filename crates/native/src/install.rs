@@ -305,13 +305,15 @@ fn install_at_with_profile(
     // changes its trust source. The private verified copy, not the mutable download, is unpacked.
     #[cfg(target_os = "linux")]
     let authenticated = if profile.is_some() {
-        Some(crate::nightly_signing::prepare_linux(
-            &file,
-            asset,
-            signature.ok_or("The signed Nightly archive has no detached signature.")?,
-            job.http,
-            job.paths,
-        )?)
+        let signature = signature.ok_or("The signed Nightly archive has no detached signature.")?;
+        // A refused archive can never be installed, so it doesn't wait in the downloads for the
+        // next try. One that couldn't be checked this time (a failed signature fetch, say) stays.
+        Some(crate::nightly_signing::prepare_linux(&file, asset, signature, job.http, job.paths).map_err(|error| {
+            if matches!(error, crate::nightly_signing::LinuxPrepareError::Refused(_)) {
+                let _ = std::fs::remove_file(&file);
+            }
+            String::from(error)
+        })?)
     } else {
         None
     };
@@ -2881,6 +2883,18 @@ pub mod windows {
     }
 }
 
+#[cfg(unix)]
+fn complete_nightly_install(
+    downloaded: &Path,
+    authenticated: Option<&Path>,
+    install: impl FnOnce(&Path) -> Result<Record, String>,
+) -> Result<Option<Record>, String> {
+    let file = authenticated.unwrap_or(downloaded);
+    let record = install(file)?;
+    let _ = std::fs::remove_file(downloaded);
+    Ok(Some(record))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4988,18 +5002,6 @@ mod tests {
             assert!(signed_by(Path::new(&app), TEAM_ID), "{app} isn't signed by {TEAM_ID}");
         }
     }
-}
-
-#[cfg(unix)]
-fn complete_nightly_install(
-    downloaded: &Path,
-    authenticated: Option<&Path>,
-    install: impl FnOnce(&Path) -> Result<Record, String>,
-) -> Result<Option<Record>, String> {
-    let file = authenticated.unwrap_or(downloaded);
-    let record = install(file)?;
-    let _ = std::fs::remove_file(downloaded);
-    Ok(Some(record))
 }
 
 #[cfg(all(test, target_os = "linux"))]

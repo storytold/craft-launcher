@@ -182,6 +182,8 @@ fn mac_entry(path: &Path) -> bool {
         "Resources/docs",
         "_CodeSignature",
         "_CodeSignature/CodeResources",
+        // The notarization ticket `stapler staple` writes into a notarized bundle.
+        "CodeResources",
     ]
     .contains(&relative)
         || relative.strip_prefix("Resources/docs/").is_some_and(notice)
@@ -355,11 +357,21 @@ fn verify_mac(root: &Path, version: &str) -> Result<(), String> {
     if !architecture.success || architecture.stdout.trim() != "arm64" {
         return Err("The nightly bundle is not the source-owned aarch64 target.".into());
     }
+    verify_mac_signature(&bundle, crate::process::run_with_output)
+}
+
+/// The stable Mac checks (integrity, Developer ID identity, notarization, Gatekeeper policy),
+/// with the source-owned Nightly team and only the Nightly bundle identifier.
+#[cfg(target_os = "macos")]
+fn verify_mac_signature(
+    bundle: &Path,
+    run: impl FnMut(&str, &[&str], std::time::Duration) -> Result<crate::process::RunOutput, String>,
+) -> Result<(), String> {
     let app = artcraft_launcher_core::CraftApp::by_id("photocraft").ok_or("Unknown nightly app.")?;
-    let team = app.mac_team.ok_or("No production macOS signing team is recorded for this nightly; signing remains pending.")?;
+    let team = crate::nightly_profile::mac_team()?;
     // Pin only the Nightly identifier. Never accept the stable/former identifiers here.
     let identity = artcraft_launcher_core::CraftApp { bundle: Some("ai.storyteller.photocraft.nightly"), former_bundles: &[], ..*app };
-    crate::install::macos_verify::verify_with(&identity, &bundle, team, crate::process::run_with_output)
+    crate::install::macos_verify::verify_with(&identity, bundle, team, run)
 }
 
 fn verify_content(adapter: Adapter, root: &Path, files: &[PathBuf]) -> Result<(), String> {
@@ -528,7 +540,7 @@ pub(crate) fn install_with_checkpoints(
     Ok(record)
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 pub(crate) fn remove_with_checkpoints(
     adapter: Adapter,
     record: &Record,

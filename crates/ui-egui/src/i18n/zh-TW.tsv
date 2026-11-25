@@ -127,8 +127,8 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未檢查
-	GitHub's hourly limit was reached; full details return in {min} min	已達到 GitHub 的每小時上限；完整資訊將在 {min} 分鐘後恢復
-	GitHub limit hit; back in {min} min	已觸及 GitHub 上限；{min} 分鐘後恢復
+	Next GitHub check at {time}	下次檢查 GitHub：{time}
+	Next check at {time}	下次檢查：{time}
 	Installing for {platform}	正在為 {platform} 安裝
 	Downloads for {platform}	{platform} 適用的下載項目
 	No downloads for this system	此系統沒有可下載的項目
@@ -464,52 +464,72 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	已加入
 	Remove	移除
 	Add	加入
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	字型
+	Allow font downloads	允許下載字型
+	Couldn't change the font download setting: {e}	無法變更字型下載設定：{e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	只有在你安裝字型時，才會從其來源下載字型。字型預覽在下方有單獨的設定。所有 Craft 應用程式共用這項設定。
+	Sources	來源
+	Apps	應用程式
+	Fonts for every Craft app	供所有 Craft 應用程式使用的字型
+# The font preview settings in Settings' Fonts box.
+	Show font previews	顯示字型預覽
+	Advanced	進階
+	Font preview server	字型預覽伺服器
+	Couldn't use this server: {e}	無法使用這部伺服器：{e}
+	Couldn't change the font previews setting: {e}	無法變更字型預覽設定：{e}
+	Set by {name} in the environment.	由環境變數 {name} 設定。
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	尚未安裝的字型會從這部伺服器顯示預覽，安裝時也會先試用這部伺服器。留空則使用預設伺服器。
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
-	Enable pre-release builds	Enable pre-release builds
-	Enable pre-release builds?	Enable pre-release builds?
-	Install pre-release	Install pre-release
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
 	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
-	No pre-release build is available yet.	No pre-release build is available yet.
-	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
 	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
 	Open stable	Open stable
-	Pre-Release	Pre-Release
-	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
-	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
 	Show installed copy	Show installed copy
 	Stable	Stable
-	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
 	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
 	Try nightly builds	Try nightly builds
-	Turn off pre-release builds	Turn off pre-release builds
-	Uninstall pre-release	Uninstall pre-release
-	Uninstall pre-release?	Uninstall pre-release?
-	Uninstall pre-release…	Uninstall pre-release…
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
 
 # Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
-	Pre-release builds are off.	Pre-release builds are off.
-	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
-	Installed pre-release copy	Installed pre-release copy
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
 	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
 
-# Availability-only pre-release destination (English fallback)
-	Could not check for pre-release builds.	Could not check for pre-release builds.
-	No pre-release builds are available yet.	No pre-release builds are available yet.
-	Nightly builds, separate from your stable apps.	Nightly builds, separate from your stable apps.
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	預先發佈管道每晚會以最新程式碼自動更新，可能存在錯誤、效能與穩定性問題，以及尚未完成的功能。重要工作請使用穩定版管道。
 
-# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
-	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	預先發佈版本讓你提早體驗新功能，但其中會有錯誤，也可能導致尚未儲存的工作遺失。
-	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	預先發佈版本會與穩定版應用程式並行安裝，使用各自獨立的設定與資料，不會更動你的穩定版環境。在預先發佈版本中開啟重要檔案前，請務必先備份，因為以較新版本儲存的檔案可能無法在穩定版中開啟。
-	You can turn this off at any time without deleting your installed pre-release apps or their data.	你可以隨時關閉此選項，而不會刪除已安裝的預先發佈版應用程式或其資料。
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	預先發佈版本讓你提早體驗新功能，但其中會有錯誤，也可能導致尚未儲存的工作遺失。
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	預先發佈版本會與穩定版應用程式並行安裝，使用各自獨立的設定與資料，不會更動你的穩定版環境。在預先發佈版本中開啟重要檔案前，請務必先備份，因為以較新版本儲存的檔案可能無法在穩定版中開啟。
+	You can turn this off at any time without deleting your installed developer builds or their data.	你可以隨時關閉此選項，而不會刪除已安裝的預先發佈版應用程式或其資料。
 
 # Nightly build calendar date (date-only, never publication time or a local timestamp).
 	{month}/{day}/{year}	{year}/{month}/{day}
 
 # Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
 	Nightly builds	每夜組建
-	Discover nightly builds (Pre-Release page)	探索每夜組建（Pre-Release 頁面）
+	Discover nightly builds (Developer Builds page)	探索每夜組建（Developer Builds 頁面）
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	安裝、設定和資料皆獨立。關閉後仍會保留已安裝的副本及其資料。
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	測試版與候選發行版可能會取代您的穩定版安裝。
 
 # Nightly status (English fallback; localization is maintained upstream).

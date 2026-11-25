@@ -76,6 +76,13 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 | `crates/core/catalog.toml`                           | Bundled launcher catalog                  | ArtCraft Team | `storytold/artcraft-services` PR #205                | MIT OR Apache-2.0 |
 | `crates/core/tests/fixtures/hosted-catalog.toml.sig` | Detached catalog signature test fixture   | ArtCraft Team | Signature of the bundled catalog with its pinned key | MIT OR Apache-2.0 |
 
+## Linux release signing key
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `crates/native/assets/linux-release-signing-key.asc` | ArtCraft Linux Release Signing Key (public part only; primary 2B76741B414AAD6CD33E631213A005C0B9D7C3ED) | ArtCraft Team | Handed over by Infra, who hold the key, on 2026-11-23; independently the `GPGKey` of getartcraft.com's artcraft-oci.flatpakrepo (the copy published with PhotoCraft releases is vouched for only by its own signature) | MIT OR Apache-2.0 |
+| `crates/native/tests/fixtures/linux-release-signed/SHA256SUMS.txt`, `SHA256SUMS.txt.asc` | Real signed release file and its detached signature, test fixture | ArtCraft Team and PhotoCraft contributors | Exact `SHA256SUMS.txt` and `SHA256SUMS.txt.asc` of the PhotoCraft v0.23.1 release, signed by the key above in the stable release workflow | MIT OR Apache-2.0 (PhotoCraft's license) |
+
 ## External native signing test fixture (not bundled)
 
 | Manifest | Title | Author | Source and version | License and acquisition |

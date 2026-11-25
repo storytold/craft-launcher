@@ -104,6 +104,9 @@ impl LauncherUi {
     }
 
     fn settings_contents(&mut self, ui: &mut Ui, host: &mut dyn Host, wide: bool) {
+        // The right column holds install, fonts and background settings, which need app
+        // management: without it (the web build) it would be empty, so one column is drawn.
+        let wide = wide && self.caps.manage_apps;
         // The columns are drawn from two closures that both need `self` and `host`: the pieces
         // are drawn one after the other, through a cell, never at the same time (were they ever,
         // the second would be skipped rather than panic).
@@ -117,12 +120,13 @@ impl LauncherUi {
                     return;
                 };
                 let (this, _) = &mut *state;
+                // Fonts makes the right column long, so the left also takes Community and the
+                // nightly opt-in, which keeps the two columns about the same height.
                 this.settings_language(ui);
                 this.settings_updates(ui);
-                if !wide {
-                    this.settings_nightly(ui);
-                }
                 this.settings_appearance(ui);
+                this.settings_nightly(ui);
+                this.settings_community(ui);
                 this.settings_agents(ui);
             },
             |ui| {
@@ -131,11 +135,9 @@ impl LauncherUi {
                 };
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
+                #[cfg(not(target_arch = "wasm32"))]
+                this.settings_fonts(ui);
                 this.settings_background(ui, &mut **host);
-                this.settings_community(ui);
-                if wide {
-                    this.settings_nightly(ui);
-                }
             },
         );
     }
@@ -241,7 +243,15 @@ impl LauncherUi {
     fn settings_nightly(&mut self, ui: &mut Ui) {
         sheet::panel(ui, tl!("Nightly builds"), |ui| {
             let mut enabled = self.settings.nightly_enabled;
-            let response = ui.checkbox(&mut enabled, tl!("Discover nightly builds (Pre-Release page)"));
+            // Where builds can't be verified yet, nothing is offered to download; a choice
+            // already on can still be turned off.
+            let available = self.nightly.available();
+            let interactive = available || enabled;
+            let checkbox = egui::Checkbox::new(&mut enabled, tl!("Discover nightly builds (Developer Builds page)"));
+            let response = ui.add_enabled(interactive, checkbox);
+            if !available {
+                note(ui, tl!("Developer builds aren't available on this platform yet."));
+            }
             if response.changed() {
                 if enabled {
                     self.open_nightly_consent(response.id);
@@ -352,6 +362,34 @@ impl LauncherUi {
             });
             self.settings.preferred_kinds = choice.into_iter().collect();
             note(ui, tl!("Updates always use the format an app was installed with."));
+        });
+    }
+
+    /// The font store's download consent, preview settings and font sources, which every Craft app
+    /// shares.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn settings_fonts(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Fonts"), |ui| {
+            let now = ui.input(|i| i.time);
+            let mut allowed = self.fonts.downloads_allowed(now);
+            if ui.checkbox(&mut allowed, tl!("Allow font downloads")).changed()
+                && let Err(e) = self.fonts.set_downloads_allowed(allowed)
+            {
+                self.toast_from_ui(fmt(tl!("Couldn't change the font download setting: {e}"), &[("e", &e)]), true);
+            }
+            note(
+                ui,
+                tl!(
+                    "Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting."
+                ),
+            );
+            ui.add_space(10.0);
+            self.fonts.preview_settings_ui(ui);
+            ui.add_space(10.0);
+            widgets::hud(ui, tl!("Sources"), Tokens::get(ui.ctx()).faint);
+            ui.add_space(2.0);
+            let lang = crate::app::drawable_lang(&self.settings.language, self.cjk_font);
+            self.fonts.sources_ui(ui, &self.settings.fonts, lang.code());
         });
     }
 

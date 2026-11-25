@@ -452,6 +452,14 @@ pub trait Backend {
     fn nightly_context(&self) -> Option<Box<dyn Backend>> {
         None
     }
+
+    /// Whether this (nightly) context can discover and install new pre-release builds: the
+    /// platform's Nightly signing trust is configured. Without it the UI offers neither, while
+    /// copies already installed stay manageable. Backends with no signing trust of their own
+    /// (test doubles) can install whatever they are asked to.
+    fn nightly_available(&self) -> bool {
+        true
+    }
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;

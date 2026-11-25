@@ -12,7 +12,7 @@ use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, InstallFailure, JobPhase, LatestRelease, Origin, PAUSED,
     PausedDownload, Source, VersionTrack,
 };
-use artcraft_launcher_core::release::{Asset, Release, ReleaseQuery};
+use artcraft_launcher_core::release::{Asset, Priority, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
@@ -29,6 +29,8 @@ const RESTART_WAIT: Duration = Duration::from_secs(10 * 60);
 /// Automatic checks closer together than this reuse the last answers. The UI asks every five
 /// minutes; this stops a burst of requests (refresh, focus, timers) from repeating work.
 const FRESH_FOR: i64 = 4 * 60;
+/// A forced check this soon after the last check reuses its GitHub answers (#713).
+const FORCED_REUSE: i64 = 2 * 60;
 /// Once every app has loaded, GitHub is asked about an app the feed can't vouch for at most this
 /// often (pressing Refresh asks right away).
 const GITHUB_FALLBACK_EVERY: i64 = 60 * 60;
@@ -73,6 +75,38 @@ struct ProcessLifecycle {
     // snapshots even when rollback restores an identical manifest record.
     revisions: Mutex<HashMap<String, u64>>,
 }
+/// Where installed copies are looked for besides the launcher's own records: the system. Tests
+/// look only at the records and a stub, so a copy installed on the machine running them (a
+/// Flatpak, a distro package, an AppImage) can't change what they see.
+#[derive(Clone)]
+enum HostDetection {
+    System,
+    #[cfg(test)]
+    Stub(HostStub),
+}
+
+/// What a test says is installed on the machine, besides the launcher's records.
+#[cfg(test)]
+type HostStub = Arc<dyn Fn(&CraftApp) -> Option<Installed> + Send + Sync>;
+
+impl HostDetection {
+    fn snapshot(&self) -> crate::detect::Snapshot {
+        match self {
+            Self::System => crate::detect::Snapshot::take(),
+            #[cfg(test)]
+            Self::Stub(_) => crate::detect::Snapshot::default(),
+        }
+    }
+
+    fn detect(&self, app: &CraftApp, manifest: &Manifest, snapshot: &crate::detect::Snapshot) -> Option<Installed> {
+        match self {
+            Self::System => crate::detect::detect(app, manifest, snapshot),
+            #[cfg(test)]
+            Self::Stub(host) => crate::detect::from_manifest(app, manifest).or_else(|| host(app)),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq)]
 enum Admission {
     Reserved,
@@ -83,6 +117,7 @@ enum Admission {
 struct Shared {
     /// Immutable: Configure cannot turn the stable backend into a nightly installer.
     channel: artcraft_launcher_core::nightly::InstallChannel,
+    host: HostDetection,
     events: Mutex<Vec<Event>>,
     /// Held while an app's latest release or installed copy changes and its [`Event::Installable`]
     /// is worked out and queued, so no answer from older state lands after a newer one. Always
@@ -111,6 +146,11 @@ struct Shared {
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
     last_check: Mutex<Option<i64>>,
+    /// When a forced check last asked GitHub (Unix seconds), for [`FORCED_REUSE`].
+    last_forced: Mutex<Option<i64>>,
+    /// Set while a check the user pressed reuses the last forced check's answers: it still looks
+    /// past a feed that is behind GitHub, so it can't swap GitHub's newer answer for the feed's.
+    reusing_forced: AtomicBool,
     /// The newer ArtCraft Launcher release, once a check has found one, with the repo that check
     /// read it from (the feed's rename, if any): its download links must be that repo's.
     launcher_release: Mutex<Option<(Release, String)>>,
@@ -325,7 +365,7 @@ struct RefusedNightlyBackend {
 impl RefusedNightlyBackend {
     fn new(reason: String, platform: Option<Platform>, waker: Waker) -> Self {
         let reason = format!(
-            "Pre-Release storage is unavailable: {reason} Existing copies and data were not opened or changed. Fix the folders and restart the launcher to try again."
+            "Developer build storage is unavailable: {reason} Existing copies and data were not opened or changed. Fix the folders and restart the launcher to try again."
         );
         let apps = artcraft_launcher_core::hosted_catalog::apps()
             .iter()
@@ -357,6 +397,12 @@ impl RefusedNightlyBackend {
     }
 }
 impl Backend for RefusedNightlyBackend {
+    /// Unusable storage doesn't make a platform without signing trust look available: Settings
+    /// shows the same calm "not available yet" as a usable context would.
+    fn nightly_available(&self) -> bool {
+        self.platform.is_some_and(crate::nightly_profile::new_installs_available)
+    }
+
     fn send(&mut self, command: Command) {
         match command {
             Command::Configure(_) | Command::DownloadOrder(_) => {}
@@ -407,7 +453,13 @@ impl NativeBackend {
         lifecycle: Arc<ProcessLifecycle>,
     ) -> Self {
         let waker: Waker = Arc::new(waker);
-        let http = match Http::new().and_then(|http| {
+        let limit = if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
+            crate::github_budget::DEVELOPER_BUILDS
+        } else {
+            crate::github_budget::STABLE
+        };
+        let budget = crate::github_budget::GitHubBudget::load(paths.github_budget(), limit);
+        let http = match Http::new().map(|http| http.with_budget(budget)).and_then(|http| {
             if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly { http.with_nightly_test_transport() } else { Ok(http) }
         }) {
             Ok(h) => Some(h),
@@ -424,6 +476,7 @@ impl NativeBackend {
 
         let shared = Arc::new(Shared {
             channel,
+            host: HostDetection::System,
             #[cfg(test)]
             nightly_detection_observer: Mutex::new(None),
             events: Mutex::new(Vec::new()),
@@ -457,6 +510,8 @@ impl NativeBackend {
             feed_throttle: Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now())),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
+            last_forced: Mutex::new(None),
+            reusing_forced: AtomicBool::new(false),
         });
         let pins = if channel == artcraft_launcher_core::nightly::InstallChannel::Stable {
             craft_update::pins::Pins::default_path()
@@ -601,10 +656,10 @@ impl NativeBackend {
             // Leftovers from interrupted installs or older versions of the launcher. A paused
             // download stays a month; a finished one kept after a failed install, a week.
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
-            let snapshot = crate::detect::Snapshot::take();
+            let snapshot = shared.host.snapshot();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
-                let found = crate::detect::detect(app, &manifest, &snapshot);
+                let found = shared.host.detect(app, &manifest, &snapshot);
                 publish_detected(app, found, &shared, platform);
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
@@ -699,6 +754,8 @@ impl NativeBackend {
             shared.emit(Event::CheckStarted);
             // One sweep and one request at a time. All admitted app lookups share this deadline.
             let started = Instant::now();
+            // Opening the page or pressing its check is the user's own action.
+            let priority = if manual { Priority::User } else { Priority::Discovery };
             for app in apps.into_iter().filter(|app| chosen.contains(&crate::nightly_lookup::key(app, platform))) {
                 let enabled = || {
                     shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
@@ -718,7 +775,7 @@ impl NativeBackend {
                         &app,
                         platform,
                         now,
-                        &mut |url, max, timeout, now| http.nightly_get(url, max, timeout, now),
+                        &mut |url, max, timeout, now| http.nightly_get_as(url, max, timeout, now, priority),
                         &|| started.elapsed(),
                         &enabled,
                     )
@@ -756,10 +813,13 @@ impl NativeBackend {
             return;
         };
         let now = crate::now();
-        let recent = self.shared.last_check.lock().unwrap_or_else(PoisonError::into_inner).is_some_and(|t| now - t < FRESH_FOR);
-        if (recent && !force) || self.shared.checking.swap(true, Ordering::SeqCst) {
+        let last = *self.shared.last_check.lock().unwrap_or_else(PoisonError::into_inner);
+        if (last.is_some_and(|t| now - t < FRESH_FOR) && !force) || self.shared.checking.swap(true, Ordering::SeqCst) {
             return;
         }
+        let pressed = force;
+        let force = self.shared.forced_now(force, now);
+        self.shared.reusing_forced.store(pressed && !force, Ordering::SeqCst);
         let shared = self.shared.clone();
         let busy = BusyGuard { shared: shared.clone(), flag: BusyFlag::Checking };
         let paths = self.paths.clone();
@@ -843,7 +903,7 @@ impl NativeBackend {
             match work {
                 Work::Install(None) => {
                     if !self.options().nightly_enabled {
-                        return Err("Pre-Release installs and updates are off. Retained copies and data are kept.".into());
+                        return Err("Developer build installs and updates are off. Retained copies and data are kept.".into());
                     }
                     selected_nightly(app, &self.shared, platform)?;
                     Ok(())
@@ -993,7 +1053,7 @@ impl NativeBackend {
                 let found = if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
                     manifest.apps.get(app.id).and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok())
                 } else {
-                    crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take())
+                    shared.host.detect(app, &manifest, &shared.host.snapshot())
                 };
                 // One installer call can cover several apps, and fail after some of them went in.
                 let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
@@ -1323,7 +1383,7 @@ struct NightlyInstallPlan {
 
 fn nightly_install_plan(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>) -> Result<NightlyInstallPlan, String> {
     if !shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled {
-        return Err("Pre-Release installs and updates are off. Retained copies and data are kept.".into());
+        return Err("Developer build installs and updates are off. Retained copies and data are kept.".into());
     }
     let platform = platform.ok_or("This nightly target is not supported on this system.")?;
     let verified = selected_nightly(app, shared, platform)?;
@@ -1369,7 +1429,7 @@ fn run_nightly_install(app: &CraftApp, shared: &Shared, platform: Option<Platfor
         crate::nightly::owned_installation(app, record, paths, platform)?;
         let consent = shared.options.lock().unwrap_or_else(PoisonError::into_inner);
         if !consent.nightly_enabled {
-            return Err("Pre-Release was turned off; the pending install was not committed.".into());
+            return Err("Developer builds were turned off; the pending install was not committed.".into());
         }
         let updated = lease.publish(previous.as_ref(), Some(record))?;
         committed = true;
@@ -1415,7 +1475,7 @@ fn install_plan(
     if app.has_separate_nightly_channel()
         && (artcraft_launcher_core::release::separate_channel_nightly(&release) || artcraft_launcher_core::release::is_nightly_track(track))
     {
-        return Err("Nightly builds use the separate Pre-Release channel; the stable copy was left unchanged.".into());
+        return Err("Nightly builds use the separate developer channel; the stable copy was left unchanged.".into());
     }
     if !release_matches_track(app, &release, track, options.prereleases) {
         return Err("the selected version isn't available yet. Check for updates before installing.".into());
@@ -1906,12 +1966,17 @@ fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, sh
     if let Some(base) = mirror {
         // A local mirror answers for everything: GitHub is never asked.
         (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
-    } else if pre {
-        // The feed serves stable releases only; with pre-releases on, GitHub decides.
-        (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY })
     } else {
-        feed_and_fallback(http, paths, shared)
+        remote_plan(pre, feed_and_fallback(http, paths, shared))
     }
+}
+
+/// [`check_plan`] without a local mirror, given what the feed said. The feed serves stable
+/// releases only, so with pre-releases on it can't settle an answer that may be a beta or RC. It
+/// still stands in between GitHub's asks, which keep to the feed's own pace (hourly per app once
+/// everything has loaded), not every check (#713).
+fn remote_plan(pre: bool, (feed, fallback): (Option<Feed>, Fallback)) -> (Option<Feed>, Fallback) {
+    if pre { (feed, Fallback { trust_feed: false, ..fallback }) } else { (feed, fallback) }
 }
 
 /// Answers the apps from a shared queue over a few workers, and returns which sources answered.
@@ -1947,7 +2012,8 @@ fn sweep(
                     let (latest, from, used) = match mirror {
                         Some(_) => mirror_chosen(app, feed, now, track),
                         None if *track != VersionTrack::Stable => {
-                            let answer = source.chosen(&release_query(feed, app), track);
+                            let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
+                            let answer = source.chosen(&query, track);
                             (Some(answer.latest), Origin::GitHub, Some(answer.source))
                         }
                         None => latest_for(app, feed, fallback, source.as_ref(), shared, options.prereleases, force, now),
@@ -2106,8 +2172,11 @@ fn latest_for(
     if fallback.trust_feed {
         match feed.map(|f| f.answer(app, now)) {
             // The feed can lag GitHub by some minutes after a release. A check the user pressed
-            // looks past it when GitHub's quota-free redirect names something newer (#91).
-            Some(FeedAnswer::Fresh(found)) if !(force && feed_is_behind(source, &repo, found.as_ref())) => {
+            // looks past it when GitHub's quota-free redirect names something newer (#91); one
+            // reusing the last forced check's answers then takes GitHub's saved answer.
+            Some(FeedAnswer::Fresh(found))
+                if !((force || shared.reusing_forced.load(Ordering::SeqCst)) && feed_is_behind(source, &repo, found.as_ref())) =>
+            {
                 return (Some(found.map_or(LatestRelease::None, LatestRelease::Found)), Origin::ArtCraftApi, Some(Source::Feed));
             }
             Some(FeedAnswer::Fresh(_) | FeedAnswer::AskGitHub) | None => {}
@@ -2115,18 +2184,86 @@ fn latest_for(
     }
     let due = {
         let mut asked = shared.github_asked.lock().unwrap_or_else(PoisonError::into_inner);
-        let due = force || asked.get(app.id).is_none_or(|t| now - t >= fallback.github_every);
+        let key = asked_key(app, pre);
+        let due = force || asked.get(&key).is_none_or(|t| now - t >= fallback.github_every);
         if due {
-            asked.insert(app.id.to_string(), now);
+            asked.insert(key, now);
         }
         due
     };
     if due {
-        let answer = source.latest(&ReleaseQuery::for_app(app, repo), pre);
+        let query = ReleaseQuery::for_app(app, repo).with_priority(github_priority(app, &VersionTrack::Stable, shared, force));
+        let answer = source.latest(&query, pre);
+        // GitHub couldn't answer (its limit, the launcher's budget, the network), or fell back
+        // to a saved release older than the feed's: the feed's stable release stands.
+        let live = answer.source == Source::GitHubApi && !matches!(answer.latest, LatestRelease::Failed(_));
+        if !live && let Some(stable) = feed_if_newer(feed, app, now, Some(&answer.latest)) {
+            return (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed));
+        }
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
     } else {
-        (source.cached(&ReleaseQuery::for_app(app, repo), pre), Origin::GitHub, None)
+        let cached = source.cached(&ReleaseQuery::for_app(app, repo), pre);
+        // A stable release the feed already lists outranks an older one (or a beta or RC) GitHub
+        // named last time, without waiting for GitHub's next turn; so does it when nothing is
+        // saved from GitHub for this track yet (pre-releases just turned on). A check reusing a
+        // forced one's answers keeps whichever of the two is newer.
+        match feed_if_newer(feed, app, now, cached.as_ref()) {
+            Some(stable) => (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed)),
+            None => (cached, Origin::GitHub, None),
+        }
     }
+}
+
+/// The feed's fresh stable release for `app`, when it is newer than `github`'s answer, or that
+/// answer is missing, empty or failed.
+fn feed_if_newer(feed: Option<&Feed>, app: &CraftApp, now: i64, github: Option<&LatestRelease>) -> Option<Release> {
+    let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| f.answer(app, now)) else { return None };
+    let newer = match github {
+        Some(LatestRelease::Found(saved)) => {
+            stable.version.as_ref().zip(saved.version.as_ref()).is_some_and(|(stable, saved)| version::is_newer(stable, saved))
+        }
+        _ => true,
+    };
+    newer.then_some(stable)
+}
+
+impl Shared {
+    /// Whether a check asked for with `force` at `now` really skips the per-app throttles. A
+    /// forced check pressed again within [`FORCED_REUSE`] of the last forced one still finishes,
+    /// but reuses what that one asked GitHub. Only a forced check opens the window: one right after
+    /// an automatic check (at launch, say) or a settings change still asks.
+    fn forced_now(&self, force: bool, now: i64) -> bool {
+        if !force {
+            return false;
+        }
+        let mut last = self.last_forced.lock().unwrap_or_else(PoisonError::into_inner);
+        if last.is_some_and(|t| (0..FORCED_REUSE).contains(&(now - t))) {
+            return false;
+        }
+        *last = Some(now);
+        true
+    }
+}
+
+/// Who a GitHub request about `app` is for, when the GitHub budget runs short.
+fn github_priority(app: &CraftApp, track: &VersionTrack, shared: &Shared, force: bool) -> Priority {
+    // A reused forced check still asks as the user: it can hit GitHub when the feed is behind,
+    // and must not be held back as a background request.
+    if force || shared.reusing_forced.load(Ordering::SeqCst) {
+        Priority::User
+    } else if *track == VersionTrack::Nightly {
+        Priority::NightlyTrack
+    } else if shared.installed.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id) {
+        Priority::Installed
+    } else {
+        Priority::NotInstalled
+    }
+}
+
+/// The key in [`Shared::github_asked`] for `app` with pre-releases on or off: the two settings
+/// get different answers from GitHub, so asking under one doesn't stand in for the other.
+fn asked_key(app: &CraftApp, pre: bool) -> String {
+    if pre { format!("{}+pre", app.id) } else { app.id.to_string() }
 }
 
 /// Whether GitHub names a newer stable release of `repo` than the feed's `latest` (`None`: the
@@ -2357,6 +2494,11 @@ impl NativeBackend {
 impl Backend for NativeBackend {
     fn has_active_jobs(&self) -> bool {
         !self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
+    }
+
+    fn nightly_available(&self) -> bool {
+        self.shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly
+            && self.platform.is_some_and(crate::nightly_profile::new_installs_available)
     }
 
     fn nightly_context(&self) -> Option<Box<dyn Backend>> {
@@ -2639,8 +2781,8 @@ fn run_mcp(shared: &Shared, cmd: Command) {
 /// The installed apps with their CLIs, from a fresh detection snapshot.
 fn detected_apps(shared: &Shared) -> Vec<crate::agents::InstalledApp> {
     let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    let snapshot = crate::detect::Snapshot::take();
-    crate::agents::installed_apps(&manifest, &snapshot)
+    let snapshot = shared.host.snapshot();
+    crate::agents::installed_apps(|app| shared.host.detect(app, &manifest, &snapshot))
 }
 
 #[cfg(test)]
@@ -2903,6 +3045,7 @@ mod tests {
     pub(super) fn shared() -> Shared {
         Shared {
             channel: artcraft_launcher_core::nightly::InstallChannel::Stable,
+            host: HostDetection::Stub(Arc::new(|_| None)),
             nightly_detection_observer: Mutex::new(None),
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
@@ -2921,6 +3064,8 @@ mod tests {
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
             last_check: Mutex::new(None),
+            last_forced: Mutex::new(None),
+            reusing_forced: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),
             self_updating: OnceLock::new(),
@@ -3098,6 +3243,221 @@ mod tests {
         let fresh_shared = super::tests::shared();
         let (_, _, used) = latest_for(photo, Some(&feed), LOADED, &github, &fresh_shared, false, false, NOW + 2 * 86_400);
         assert_eq!(used, Some(Source::GitHubApi));
+    }
+
+    /// With pre-releases on, GitHub is asked at the fallback's pace, not on every check (#713),
+    /// and between its asks a newer stable release from the feed replaces an older saved RC.
+    #[test]
+    fn with_pre_releases_github_keeps_to_its_pace_and_the_feed_fills_in_newer_stables() {
+        /// GitHub, counting asks, whose last answer for the app is `saved`.
+        struct SavedRc(AtomicUsize, Mutex<Option<&'static str>>);
+        impl ReleaseSource for SavedRc {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Answer { latest: self.cached(_query, true).unwrap_or(LatestRelease::None), source: Source::GitHubApi }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                let tag = (*self.1.lock().unwrap())?;
+                Some(LatestRelease::Found(Release { tag: tag.into(), version: version::parse(tag), ..Default::default() }))
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, shared) = (feed(), shared());
+        let pre = Fallback { trust_feed: false, ..LOADED };
+        let github = SavedRc(AtomicUsize::new(0), Mutex::new(Some("v0.6.0-rc.1")));
+        let tag = |answer: Option<LatestRelease>| match answer {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => panic!("{other:?}"),
+        };
+
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW);
+        assert_eq!((tag(latest), used), ("v0.6.0-rc.1".to_string(), Some(Source::GitHubApi)), "the first check asks GitHub");
+        // Within the hour GitHub isn't asked again, and the feed's newer stable v0.6.0 wins.
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + 30 * 60);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+        // A saved RC newer than the feed's stable stays.
+        *github.1.lock().unwrap() = Some("v0.7.0-rc.1");
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + 40 * 60);
+        assert_eq!((tag(latest), used), ("v0.7.0-rc.1".to_string(), None));
+        assert_eq!(github.0.load(Ordering::SeqCst), 1, "one GitHub ask in the hour");
+        latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+        // Nothing saved from GitHub for this track (pre-releases just turned on): the feed's stable.
+        *github.1.lock().unwrap() = None;
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY + 10 * 60);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+    }
+
+    /// GitHub, counting asks, with nothing saved.
+    struct CountedAsks(AtomicUsize);
+    impl ReleaseSource for CountedAsks {
+        fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+        }
+        fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+            None
+        }
+        fn rate_limited_until(&self) -> Option<i64> {
+            None
+        }
+        fn save(&self) {}
+    }
+
+    /// The plan for a check with pre-releases on keeps GitHub to the feed's hourly pace once
+    /// everything has loaded: checks every 12 minutes ask about an app once in the hour (#713).
+    #[test]
+    fn with_pre_releases_the_check_plan_keeps_github_to_the_hourly_pace() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, plan) = remote_plan(true, (Some(feed()), LOADED));
+        assert!(!plan.trust_feed, "the feed can't settle a beta or RC");
+        let (github, shared) = (CountedAsks(AtomicUsize::new(0)), shared());
+        for minutes in [0, 12, 24, 36, 48] {
+            latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + minutes * 60);
+        }
+        assert_eq!(github.0.load(Ordering::SeqCst), 1, "a check every 12 minutes asks once in the hour");
+        latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+    }
+
+    /// Asking GitHub with pre-releases off doesn't stand in for asking with them on: turning them
+    /// on asks again at once, not after the hour.
+    #[test]
+    fn turning_pre_releases_on_asks_github_again_within_the_hour() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, shared) = (feed(), shared());
+        let plan = Fallback { trust_feed: false, ..LOADED };
+        let github = CountedAsks(AtomicUsize::new(0));
+        latest_for(photo, Some(&feed), plan, &github, &shared, false, false, NOW);
+        latest_for(photo, Some(&feed), plan, &github, &shared, true, false, NOW + 10 * 60);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "pre-releases on is its own question");
+        latest_for(photo, Some(&feed), plan, &github, &shared, true, false, NOW + 20 * 60);
+        latest_for(photo, Some(&feed), plan, &github, &shared, false, false, NOW + 30 * 60);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "each setting keeps its own hourly pace");
+    }
+
+    /// A forced check right after an automatic one (the one at launch) still asks GitHub; only
+    /// pressing it again within two minutes of a forced one reuses that one's answers (#713).
+    #[test]
+    fn only_a_recent_forced_check_makes_a_forced_check_reuse_answers() {
+        let shared = shared();
+        *shared.last_check.lock().unwrap() = Some(NOW - 30);
+        assert!(shared.forced_now(true, NOW), "an automatic check doesn't stand in for a forced one");
+        assert!(!shared.forced_now(true, NOW + 60), "pressed again at once: reused");
+        assert!(!shared.forced_now(false, NOW + 61));
+        assert!(shared.forced_now(true, NOW + FORCED_REUSE), "asks again after the window");
+    }
+
+    /// A reused forced check still asks as the user, so the budget doesn't hold it back as a
+    /// background request for an app that isn't installed.
+    #[test]
+    fn a_reused_forced_check_keeps_the_users_priority() {
+        let shared = shared();
+        assert_eq!(github_priority(CraftApp::by_id("photocraft").unwrap(), &VersionTrack::Stable, &shared, false), Priority::NotInstalled);
+        shared.reusing_forced.store(true, Ordering::SeqCst);
+        assert_eq!(github_priority(CraftApp::by_id("photocraft").unwrap(), &VersionTrack::Stable, &shared, false), Priority::User);
+    }
+
+    /// With pre-releases on, GitHub's turn refused (by the budget, say) with nothing saved leaves
+    /// the feed's stable release standing, not an error.
+    #[test]
+    fn a_refused_github_turn_falls_back_to_the_feeds_release() {
+        struct Refused;
+        impl ReleaseSource for Refused {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::Failed("held back".into()), source: Source::GitHubApi }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let plan = remote_plan(true, (None, LOADED)).1;
+        let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Refused, &shared(), true, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.6.0"), "{latest:?}");
+        assert_eq!(used, Some(Source::Feed));
+    }
+
+    /// A check reusing a forced one's answers, or a GitHub turn that fell back to a saved
+    /// release, keeps the feed's stable release when it is newer than what GitHub had saved.
+    #[test]
+    fn an_older_saved_github_answer_doesnt_hide_the_feeds_newer_release() {
+        /// GitHub answering only from the release it saved, `self.0`.
+        struct Saved(&'static str);
+        impl Saved {
+            fn saved(&self) -> LatestRelease {
+                LatestRelease::Found(Release { tag: format!("v{}", self.0), version: version::parse(self.0), ..Release::default() })
+            }
+        }
+        impl ReleaseSource for Saved {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: self.saved(), source: Source::Cache }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                Some(self.saved())
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+            fn newest_tag(&self, _repo: &str) -> Option<String> {
+                Some("v0.8.0".into())
+            }
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let tag = |latest: Option<LatestRelease>| match latest {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => format!("{other:?}"),
+        };
+        // Reusing a forced check: the feed's v0.6.0 is newer than the saved v0.5.0.
+        let reusing = shared();
+        reusing.github_asked.lock().unwrap().insert(asked_key(photo, false), NOW - 60);
+        reusing.reusing_forced.store(true, Ordering::SeqCst);
+        assert_eq!(tag(latest_for(photo, Some(&feed()), LOADED, &Saved("0.5.0"), &reusing, false, false, NOW).0), "v0.6.0");
+        // A refused turn answered from a saved RC older than the feed's release.
+        let plan = remote_plan(true, (None, LOADED)).1;
+        let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Saved("0.6.0-rc.1"), &shared(), true, false, NOW);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+        // A saved RC newer than the feed's release stands.
+        let (latest, _, _) = latest_for(photo, Some(&feed()), plan, &Saved("0.7.0-rc.1"), &shared(), true, false, NOW);
+        assert_eq!(tag(latest), "v0.7.0-rc.1");
+    }
+
+    /// A check pressed again within the reuse window keeps the newer release the forced check
+    /// found on GitHub, rather than the feed's older one.
+    #[test]
+    fn a_reused_forced_check_keeps_githubs_newer_answer_over_the_feed() {
+        struct Saved;
+        impl ReleaseSource for Saved {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                panic!("a reused check doesn't ask the API again")
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                Some(LatestRelease::Found(Release { tag: "v0.7.0".into(), version: version::parse("0.7.0"), ..Release::default() }))
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+            fn newest_tag(&self, _repo: &str) -> Option<String> {
+                Some("v0.7.0".into())
+            }
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let shared = shared();
+        // The forced check a minute ago asked GitHub; this press reuses it.
+        shared.github_asked.lock().unwrap().insert(asked_key(photo, false), NOW - 60);
+        shared.reusing_forced.store(true, Ordering::SeqCst);
+        let (latest, _, _) = latest_for(photo, Some(&feed()), LOADED, &Saved, &shared, false, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.7.0"), "{latest:?}");
     }
 
     /// Refresh looks past a feed that is behind GitHub (#91).
@@ -3752,34 +4112,60 @@ mod tests {
         assert!(!ids.iter().any(|id| backend.shared.jobs.lock().unwrap().contains_key(*id)), "and the jobs are free again");
     }
 
+    /// Wherever the tests run: with or without a PhotoCraft installed on the machine (here a
+    /// stubbed host Flatpak, newer than any release the backend knows), JobFinished observers see
+    /// the job's final busy state and download plan.
     #[test]
     fn job_finished_follows_busy_cleanup_and_download_plan_publication() {
         let Some(platform) = native_platform() else {
             return;
         };
-        let dir = tempfile::tempdir().unwrap();
-        let mut backend = backend(dir.path(), platform, None);
-        let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
-        let shared_for_waker = shared.clone();
-        let (sent, received) = mpsc::channel();
-        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
-            let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
-                return;
-            };
-            let finished = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
-            if finished {
-                let busy = shared.jobs.lock().unwrap().contains_key(APP);
-                let plan = shared.download_sizes.lock().unwrap().get(APP).and_then(|cached| cached.plan);
-                let _ = sent.send((busy, plan));
+        let host_flatpak = || Installed {
+            version: version::parse("99.0.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft".into(),
+            package: Some("ai.storyteller.photocraft".into()),
+            externally_managed: false,
+            origin: None,
+            installation: Some("system".into()),
+        };
+        for host_copy in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut backend = backend(dir.path(), platform, None);
+            if host_copy {
+                Arc::get_mut(&mut backend.shared).unwrap().host =
+                    HostDetection::Stub(Arc::new(move |app: &CraftApp| (app.id == APP).then(host_flatpak)));
             }
-        });
-        *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
+            let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
+            let shared_for_waker = shared.clone();
+            let paths = backend.paths.clone();
+            let (sent, received) = mpsc::channel();
+            Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+                let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
+                    return;
+                };
+                let finished = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
+                if finished {
+                    let busy = shared.jobs.lock().unwrap().contains_key(APP);
+                    let plan = shared.download_sizes.lock().unwrap().get(APP).and_then(|cached| cached.plan);
+                    let options = shared.options.lock().unwrap().clone();
+                    let current = planned_download(CraftApp::by_id(APP).unwrap(), &shared, &paths, Some(platform), &options)
+                        .map(|(_, kind, size)| (kind, size));
+                    let _ = sent.send((busy, plan, current));
+                }
+            });
+            *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
 
-        backend.start_job(APP, Work::Uninstall);
-        let (busy, plan) = received.recv_timeout(Duration::from_secs(2)).unwrap();
-        assert!(!busy);
-        assert!(matches!(plan, Some((_, 3))), "JobFinished observers need the final download plan: {plan:?}");
-        assert_eq!(backend.download_size(APP), plan);
+            backend.start_job(APP, Work::Uninstall);
+            // Generous for a loaded machine; the job itself takes a few milliseconds.
+            let (busy, plan, current) = received.recv_timeout(Duration::from_secs(10)).unwrap();
+            assert!(!busy, "host copy: {host_copy}");
+            assert_eq!(plan, current, "JobFinished observers need the final download plan (host copy: {host_copy})");
+            if !host_copy {
+                assert!(matches!(plan, Some((_, 3))), "{plan:?}");
+            }
+            assert_eq!(backend.download_size(APP), plan);
+        }
     }
 
     /// A poll that finds an install's `Blocked` also finds its `JobFinished`, so the card never
