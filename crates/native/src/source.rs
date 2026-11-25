@@ -145,6 +145,12 @@ pub struct GitHubSource {
     saving: Mutex<()>,
 }
 
+/// The cache key for `repo` under one pre-release setting. Stable keeps the repo as the key
+/// so files written before the two settings were stored separately still load.
+fn cache_key(repo: &str, prereleases: bool) -> String {
+    if prereleases { format!("{repo}+pre") } else { repo.to_string() }
+}
+
 impl GitHubSource {
     pub fn new(http: Http, cache_path: std::path::PathBuf) -> Self {
         let cache = std::fs::read(&cache_path).ok().and_then(|b| serde_json::from_slice::<CacheFile>(&b).ok()).unwrap_or_default();
@@ -161,18 +167,29 @@ impl GitHubSource {
 
     fn entry(&self, query: &ReleaseQuery, prereleases: bool) -> Option<Entry> {
         let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
-        cache
-            .entries
-            .get(&query.repo)
-            .filter(|entry| {
-                entry.prereleases == prereleases
-                    && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(query.separate_nightly, release))
-            })
-            .cloned()
+        // New files keep one row per setting (`repo` and `repo+pre`). Old files stored one
+        // row under `repo`, so that key is still read when it matches this setting.
+        let allowed = |entry: &Entry| {
+            entry.prereleases == prereleases
+                && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(query.separate_nightly, release))
+        };
+        cache.entries.get(&cache_key(&query.repo, prereleases)).or_else(|| cache.entries.get(&query.repo)).filter(|entry| allowed(entry)).cloned()
     }
 
     fn store(&self, repo: &str, entry: Entry) {
-        self.cache.lock().unwrap_or_else(PoisonError::into_inner).entries.insert(repo.to_string(), entry);
+        let key = cache_key(repo, entry.prereleases);
+        let mut cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        // An old file kept one row under `repo`. If that row is for the other setting, move it
+        // to that setting's key so this write cannot evict it.
+        if key == repo
+            && let Some(old) = cache.entries.get(repo).cloned().filter(|old| old.prereleases != entry.prereleases)
+        {
+            cache.entries.insert(cache_key(repo, old.prereleases), old);
+        }
+        if key != repo && cache.entries.get(repo).is_some_and(|old| old.prereleases == entry.prereleases) {
+            cache.entries.remove(repo);
+        }
+        cache.entries.insert(key, entry);
     }
 
     fn limited(&self) -> bool {
@@ -231,7 +248,7 @@ impl GitHubSource {
                                 }
                                 Fetched::OverBudget { until } => {
                                     self.note_over_budget(until);
-                                    return Ok(None);
+                                    return Err(over_budget_why(until, crate::now()));
                                 }
                                 Fetched::NotModified | Fetched::NotFound => {
                                     return Err("GitHub's release list changed while it was read; the newest ordinary release is unknown.".into());
@@ -245,7 +262,7 @@ impl GitHubSource {
                     Some(release::parse_github_release(&text, repo)?)
                 };
                 if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(separate, release)) {
-                    return Err("This Nightly belongs to the separate Pre-Release channel, not the ordinary release cache.".into());
+                    return Err("This Nightly belongs to the separate developer channel, not the ordinary release cache.".into());
                 }
                 let etag = if multi_page { None } else { etag };
                 self.store(repo, Entry { etag, release: release.clone(), prereleases, fetched_at: crate::now() });
@@ -268,7 +285,7 @@ impl GitHubSource {
             }
             Fetched::OverBudget { until } => {
                 self.note_over_budget(until);
-                Ok(None)
+                Err(over_budget_why(until, crate::now()))
             }
         }
     }
@@ -302,8 +319,7 @@ impl GitHubSource {
                 }
                 Fetched::OverBudget { until } => {
                     self.note_over_budget(until);
-                    let minutes = ((until - crate::now()) / 60).max(1);
-                    return Err(format!("The launcher has used its GitHub requests for now; try again in {minutes} min."));
+                    return Err(over_budget_why(until, crate::now()));
                 }
                 Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
             };
@@ -364,7 +380,7 @@ impl GitHubSource {
         let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
         let r = release::release_from_sums(repo, &tag, &sums);
         if !release::ordinary_release_allowed(query.separate_nightly, &r) {
-            return Err("The latest release is a Nightly of the separate Pre-Release channel, not an ordinary release.".into());
+            return Err("The latest release is a Nightly of the separate developer channel, not an ordinary release.".into());
         }
         self.store(repo, Entry { etag: None, release: Some(r.clone()), prereleases: false, fetched_at: crate::now() });
         Ok(Answer { latest: LatestRelease::Found(r), source: Source::GitHubPages })
@@ -396,6 +412,18 @@ fn is_release_list(location: &str, repo: &str) -> bool {
 /// docs). Pre-releases aren't published there, so with pre-releases turned on that route is
 /// skipped. Only when neither answered does the lookup settle for the last saved answer, and
 /// report the failure when there isn't one.
+/// How long the footer should say to wait after the launcher's own budget held a request back:
+/// whole minutes, rounded up, at least one, so a retry after that time is due.
+fn over_budget_minutes(until: i64, now: i64) -> i64 {
+    let secs = until.saturating_sub(now);
+    (secs / 60 + i64::from(secs % 60 != 0)).max(1)
+}
+
+fn over_budget_why(until: i64, now: i64) -> String {
+    let minutes = over_budget_minutes(until, now);
+    format!("The launcher has used its GitHub requests for now; try again in {minutes} min.")
+}
+
 fn resolve(
     repo: &str,
     prereleases: bool,
@@ -472,7 +500,7 @@ impl GitHubSource {
             return None;
         }
         let until = (*self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner)).filter(|u| *u > now)?;
-        Some(format!("The launcher held back its GitHub requests to stay under GitHub's limit; it asks again in {} min", ((until - now) / 60).max(1)))
+        Some(over_budget_why(until, now))
     }
 
     fn latest_in(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
@@ -694,12 +722,42 @@ mod tests {
     /// The launcher's own budget holding a background request back says when GitHub is next
     /// asked, but unlike GitHub's own refusal it doesn't stop the next, more urgent request.
     #[test]
+    fn a_budget_refusal_isnt_reported_as_githubs_limit() {
+        let asked = std::cell::Cell::new(false);
+        let until = crate::now() + 600;
+        let a = resolve(
+            REPO,
+            true,
+            false,
+            || Err(over_budget_why(until, crate::now())),
+            || {
+                asked.set(true);
+                Err("unused".into())
+            },
+            || None,
+        );
+        assert!(!asked.get(), "pre-releases don't ask the release pages");
+        assert!(
+            matches!(&a.latest, LatestRelease::Failed(why) if why.contains("The launcher has used its GitHub requests") && !why.contains("request limit was reached")),
+            "{a:?}"
+        );
+    }
+
+    #[test]
+    fn a_budget_wait_is_rounded_up_to_a_whole_minute() {
+        assert_eq!(over_budget_minutes(1_000 + 119, 1_000), 2, "119 seconds is still two minutes");
+        assert_eq!(over_budget_minutes(1_000 + 60, 1_000), 1);
+        assert_eq!(over_budget_minutes(1_000, 1_000), 1, "already due still names a minute");
+    }
+
+    #[test]
     fn a_spent_budget_is_reported_without_stopping_more_urgent_requests() {
         let dir = tempfile::tempdir().unwrap();
         let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
         let source = GitHubSource::new(http, dir.path().join("releases.json"));
         let until = crate::now() + 600;
-        assert!(matches!(source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until })), Ok(None)));
+        let refused = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until }));
+        assert!(matches!(&refused, Err(why) if why.contains("The launcher has used its GitHub requests")), "{refused:?}");
         assert_eq!(source.rate_limited_until(), Some(until), "the footer can say when GitHub is next asked");
         assert!(!source.limited(), "a more urgent request still goes to the budget");
         // A budget of nothing never reaches the network.
@@ -737,10 +795,10 @@ mod tests {
         assert!(ahead.versions(&q(REPO)).is_err(), "a list stamped in the future isn't recent");
     }
 
-    /// A request the launcher's own budget held back says so, not that GitHub's limit was
+    /// A request GitHubSource itself held back says so, not that GitHub's limit was
     /// reached: GitHub refused nothing.
     #[test]
-    fn a_budget_refusal_isnt_reported_as_githubs_limit() {
+    fn a_github_source_budget_refusal_isnt_reported_as_githubs_limit() {
         let dir = tempfile::tempdir().unwrap();
         let now = crate::now();
         let budget = crate::github_budget::GitHubBudget::in_memory(2);
@@ -752,7 +810,7 @@ mod tests {
         let answer = source.latest(&q(REPO), true);
         let LatestRelease::Failed(why) = &answer.latest else { panic!("{answer:?}") };
         assert!(!why.contains("GitHub's request limit was reached"), "{why}");
-        assert!(why.contains("held back"), "{why}");
+        assert!(why.contains("The launcher has used its GitHub requests"), "{why}");
     }
 
     #[test]
@@ -766,6 +824,34 @@ mod tests {
         assert_eq!(retry_at(Some(i64::MAX), 1_000), 1_000 + 60 * 60);
         assert_eq!(retry_at(Some(99_999_999_999), 1_000), 1_000 + 60 * 60);
     }
+    /// A stable-only save cannot evict the pre-release answer for the same repo, and a cache
+    /// file written when there was only one row per repo still loads under both settings.
+    #[test]
+    fn a_stable_save_keeps_the_saved_prerelease_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("releases.json");
+        let pre =
+            release::parse_github_release(&serde_json::json!({"tag_name":"v0.7.0-rc.1","prerelease":true,"assets":[]}).to_string(), REPO).unwrap();
+        let stable =
+            release::parse_github_release(&serde_json::json!({"tag_name":"v0.6.0","prerelease":false,"assets":[]}).to_string(), REPO).unwrap();
+        // An old file: one row under the repo, for pre-releases.
+        let cache = CacheFile { entries: [(REPO.into(), Entry { etag: None, release: Some(pre.clone()), prereleases: true, fetched_at: 1 })].into(), ..Default::default() };
+        std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), path);
+        let tag = |latest: Option<LatestRelease>| match latest {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => format!("{other:?}"),
+        };
+        assert_eq!(tag(source.cached(&q(REPO), true)), "v0.7.0-rc.1", "the old row still loads");
+        source.store(REPO, Entry { etag: None, release: Some(stable.clone()), prereleases: false, fetched_at: 2 });
+        assert_eq!(tag(source.cached(&q(REPO), true)), "v0.7.0-rc.1", "a stable save leaves the pre-release answer");
+        assert_eq!(tag(source.cached(&q(REPO), false)), "v0.6.0");
+        source.save();
+        let again = GitHubSource::new(Http::new().unwrap(), dir.path().join("releases.json"));
+        assert_eq!(tag(again.cached(&q(REPO), true)), "v0.7.0-rc.1", "both answers survive a restart");
+        assert_eq!(tag(again.cached(&q(REPO), false)), "v0.6.0");
+    }
+
     fn shared_selection_saved_source(repo: &str, tag: &str) -> (tempfile::TempDir, GitHubSource, Release) {
         let temp = tempfile::tempdir().unwrap();
         let release = release::parse_github_release(&serde_json::json!({"tag_name":tag,"prerelease":true,"assets":[]}).to_string(), repo).unwrap();
