@@ -151,7 +151,7 @@ impl LauncherUi {
         let installed = self.cjk_font;
         sheet::panel_with_heading(ui, tl!("Language"), |ui, heading| {
             let width = ui.available_width();
-            craft_ui::ComboBox::from_id_salt("language")
+            egui::ComboBox::from_id_salt("language")
                 .selected_text(Settings::language_label(&lang_code, installed))
                 .width(width)
                 .show_ui(ui, |ui| {
@@ -189,7 +189,7 @@ impl LauncherUi {
         sheet::panel(ui, tl!("Updates"), |ui| {
             let mut every = self.settings.check_every;
             row(ui, tl!("Check for updates"), 150.0, &mut |ui, label| {
-                craft_ui::ComboBox::from_id_salt("every")
+                egui::ComboBox::from_id_salt("every")
                     .selected_text(every.label())
                     .width(150.0)
                     .show_ui(ui, |ui| {
@@ -213,7 +213,7 @@ impl LauncherUi {
                 let mut at_once = self.settings.simultaneous_downloads.min(4);
                 let no_limit = tl!("No limit").to_string();
                 row(ui, tl!("Simultaneous downloads"), 150.0, &mut |ui, label| {
-                    craft_ui::ComboBox::from_id_salt("at_once")
+                    egui::ComboBox::from_id_salt("at_once")
                         .selected_text(if at_once == 0 { no_limit.clone() } else { at_once.to_string() })
                         .width(150.0)
                         .show_ui(ui, |ui| {
@@ -305,7 +305,7 @@ impl LauncherUi {
                 .or(Some(PackageKind::Msi));
             row(ui, tl!("Install new apps as"), 210.0, &mut |ui, label| {
                 let shown = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
-                craft_ui::ComboBox::from_id_salt("windows-kind")
+                egui::ComboBox::from_id_salt("windows-kind")
                     .selected_text(shown)
                     .width(210.0)
                     .show_ui(ui, |ui| {
@@ -341,7 +341,7 @@ impl LauncherUi {
                     None => tl!("System package (recommended)"),
                 };
                 let shown = choice.map_or(default_label, |k| crate::i18n::t(k.label()));
-                craft_ui::ComboBox::from_id_salt("kind")
+                egui::ComboBox::from_id_salt("kind")
                     .selected_text(shown)
                     .width(210.0)
                     .show_ui(ui, |ui| {

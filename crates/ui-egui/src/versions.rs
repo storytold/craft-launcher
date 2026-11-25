@@ -203,7 +203,7 @@ impl LauncherUi {
             VersionTrack::Nightly => tl!("Nightly").to_string(),
             VersionTrack::Pinned(tag) => tag.clone(),
         };
-        craft_ui::ComboBox::from_id_salt(("version", id))
+        egui::ComboBox::from_id_salt(("version", id))
             .selected_text(summary)
             .width(width)
             .height(390.0)
