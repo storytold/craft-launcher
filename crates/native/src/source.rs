@@ -813,6 +813,24 @@ mod tests {
         assert!(why.contains("The launcher has used its GitHub requests"), "{why}");
     }
 
+    /// GitHub's own refusal is reported as GitHub's limit, and held_back_why stays out of the
+    /// way even when a budget wait is also recorded. A stale version list is not reused then.
+    #[test]
+    fn a_github_rate_limit_isnt_reported_as_a_budget_hold() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), dir.path().join("releases.json"));
+        let until = crate::now() + 600;
+        let budget = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until }));
+        assert!(budget.is_err(), "{budget:?}");
+        assert!(source.held_back_why().is_some_and(|why| why.contains("The launcher has used its GitHub requests")));
+        let refused = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::RateLimited { reset: Some(until) }));
+        assert!(matches!(refused, Ok(None)), "{refused:?}");
+        assert!(source.limited());
+        assert!(source.held_back_why().is_none(), "GitHub refused, so this isn't a budget hold");
+        let versions = source.versions(&q(REPO));
+        assert!(matches!(&versions, Err(why) if why.contains("GitHub's request limit")), "{versions:?}");
+    }
+
     #[test]
     fn a_refusal_waits_for_the_reset_github_names() {
         assert_eq!(retry_at(Some(1_000 + 600), 1_000), 1_600);
