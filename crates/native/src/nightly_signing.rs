@@ -392,27 +392,45 @@ fn textual_notice(bytes: &[u8]) -> bool {
         && !bytes.iter().any(|byte| byte.is_ascii_control() && !matches!(*byte, b'\n' | b'\r' | b'\t'))
 }
 
+/// The staged payload split as the row names it: the one file the publisher must have signed,
+/// and everything else, which must be textual notices. Another app's or the stable program is a
+/// notice here, and is refused as a binary.
+#[cfg(any(windows, test))]
+fn windows_payload<'a>(
+    adapter: crate::nightly_profile::Adapter,
+    files: &'a [std::path::PathBuf],
+) -> (&'static std::path::Path, impl Iterator<Item = &'a std::path::PathBuf>) {
+    (adapter.executable(), files.iter().filter(move |relative| relative.as_path() != adapter.executable()))
+}
+
 #[cfg(windows)]
-pub(crate) fn authenticate_windows(root: &std::path::Path, files: &[std::path::PathBuf]) -> Result<std::fs::File, String> {
+pub(crate) fn authenticate_windows(
+    adapter: crate::nightly_profile::Adapter,
+    root: &std::path::Path,
+    files: &[std::path::PathBuf],
+) -> Result<std::fs::File, String> {
     let publisher = configured(crate::nightly_trust::WINDOWS_PUBLISHER.as_ref())
         .ok_or("No independently trusted Windows Nightly publisher is configured; the installed copy and data were left unchanged.")?;
-    authenticate_windows_as(root, files, publisher)
+    authenticate_windows_as(adapter, root, files, publisher)
 }
 
 // This private helper receives only source trust from the production wrapper. A cfg(test)
 // native OS fixture supplies its own independently verified Microsoft reference identity.
 #[cfg(windows)]
-fn authenticate_windows_as(root: &std::path::Path, files: &[std::path::PathBuf], publisher: &WindowsPublisher<'_>) -> Result<std::fs::File, String> {
+fn authenticate_windows_as(
+    adapter: crate::nightly_profile::Adapter,
+    root: &std::path::Path,
+    files: &[std::path::PathBuf],
+    publisher: &WindowsPublisher<'_>,
+) -> Result<std::fs::File, String> {
     use std::io::Read;
     use std::os::windows::fs::OpenOptionsExt;
-    let executable = dunce::canonicalize(root.join("photocraft.exe")).map_err(|error| error.to_string())?;
+    let (executable, notices) = windows_payload(adapter, files);
+    let executable = dunce::canonicalize(root.join(executable)).map_err(|error| error.to_string())?;
     // FILE_SHARE_READ only: deny mutation, deletion or rename from before either check through
     // the installer copying these same bytes and committing the ownership record.
     let held = std::fs::OpenOptions::new().read(true).share_mode(1).open(&executable).map_err(|error| error.to_string())?;
-    for relative in files {
-        if relative == std::path::Path::new("photocraft.exe") {
-            continue;
-        }
+    for relative in notices {
         let mut bytes = Vec::new();
         std::fs::File::open(root.join(relative))
             .and_then(|file| file.take(1024 * 1024 + 1).read_to_end(&mut bytes))
@@ -589,6 +607,32 @@ mod tests {
         }
     }
 
+    /// The one file Authenticode must vouch for is the row's own entrypoint (`<app>.exe`), so
+    /// another app's or the stable program in the same ZIP is a notice, and is refused as binary.
+    #[test]
+    fn windows_payload_authenticates_the_rows_own_entrypoint() {
+        let mut rows = 0;
+        for app in artcraft_launcher_core::hosted_catalog::apps() {
+            let platform = artcraft_launcher_core::Platform { os: artcraft_launcher_core::Os::Windows, arch: artcraft_launcher_core::Arch::X64 };
+            let Ok(adapter) = crate::nightly_profile::for_app(app, platform) else { continue };
+            rows += 1;
+            assert_eq!(adapter.executable(), std::path::Path::new(&format!("{}.exe", app.id)), "the Windows row names the app's own exe");
+            let signed = std::path::PathBuf::from(adapter.executable());
+            let other_program = std::path::PathBuf::from(if adapter.app() == "photocraft" { "cadcraft.exe" } else { "photocraft.exe" });
+            let files = vec![signed.clone(), std::path::PathBuf::from("LICENSE-MIT"), other_program.clone()];
+            let (executable, notices) = windows_payload(adapter, &files);
+            assert_eq!(executable, adapter.executable(), "{adapter:?}");
+            let notices: Vec<_> = notices.cloned().collect();
+            assert_eq!(
+                notices,
+                [std::path::PathBuf::from("LICENSE-MIT"), other_program],
+                "only the row's entrypoint is the signed file: {adapter:?}"
+            );
+            assert!(!textual_notice(b"MZ\0binary"), "the other program is refused where notices are read");
+        }
+        assert!(rows >= 1, "PhotoCraft's Windows row is the table's first");
+    }
+
     #[test]
     fn windows_notice_names_do_not_authorize_binary_payloads() {
         assert!(textual_notice(b"An authored notice.\nCopyright\tTest\r\n"));
@@ -685,16 +729,17 @@ mod tests {
     /// CRAFT_NIGHTLY_FOREIGN_EXE must be refused by the publisher pin itself. The foreign file
     /// must therefore be validly signed by someone else (pwsh.exe, say): a test-signed or
     /// unsigned file is refused earlier by WinVerifyTrust and fails this test, as do a timeout
-    /// or a query error. Each is checked through `authenticate_windows` itself, as a payload's
-    /// photocraft.exe. Without them this lists a skip, which is not coverage.
+    /// or a query error. Each is checked through `authenticate_windows` itself, staged under the
+    /// row's own entrypoint name. Without them this lists a skip, which is not coverage.
     #[cfg(windows)]
     #[test]
     fn production_publisher_check_on_supplied_executables() {
         use std::io::Write;
+        let adapter = crate::nightly_profile::Adapter::PhotoCraftWindowsV1;
         let check = |supplied: std::ffi::OsString| {
             let directory = tempfile::tempdir().unwrap();
-            std::fs::copy(supplied, directory.path().join("photocraft.exe")).expect("supplied executable must be readable");
-            authenticate_windows(directory.path(), &[std::path::PathBuf::from("photocraft.exe")]).map(drop)
+            std::fs::copy(supplied, directory.path().join(adapter.executable())).expect("supplied executable must be readable");
+            authenticate_windows(adapter, directory.path(), &[adapter.executable().to_path_buf()]).map(drop)
         };
         let production = std::env::var_os("CRAFT_NIGHTLY_PRODUCTION_EXE");
         let foreign = std::env::var_os("CRAFT_NIGHTLY_FOREIGN_EXE");
@@ -762,12 +807,13 @@ mod tests {
         let native = verifier.verify_file(&reference).expect("configured fixture requires genuine native chain/revocation trust");
         windows_metadata_with(&reference, Some(&publisher), &native.sha256_thumbprint(), read_windows_metadata)
             .expect("configured fixture requires exact reviewed subject, real embedded timestamped metadata and same leaf");
+        let adapter = crate::nightly_profile::Adapter::PhotoCraftWindowsV1;
         let directory = tempfile::tempdir().unwrap();
-        let executable = directory.path().join("photocraft.exe");
+        let executable = directory.path().join(adapter.executable());
         std::fs::copy(&reference, &executable).unwrap();
         std::fs::OpenOptions::new().write(true).open(&executable).expect("fixture must be writable before authentication");
         let before = crate::http::sha256_file(&executable).unwrap();
-        let held = authenticate_windows_as(directory.path(), &[std::path::PathBuf::from("photocraft.exe")], &publisher)
+        let held = authenticate_windows_as(adapter, directory.path(), &[adapter.executable().to_path_buf()], &publisher)
             .expect("real native trust, fixed full-subject/timestamp query and same-leaf binding");
         let renamed = directory.path().join("renamed.exe");
         assert!(std::fs::OpenOptions::new().write(true).open(&executable).is_err(), "held executable admitted a writer");

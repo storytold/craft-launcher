@@ -145,7 +145,7 @@ pub(crate) fn launch(
             .map(|file| file.strip_prefix(&root).map(Path::to_path_buf).map_err(|e| e.to_string()))
             .collect::<Result<Vec<_>, _>>()?;
         // Kept alive through CreateProcess: deny writes, replacement and deletion after approval.
-        crate::nightly_signing::authenticate_windows(&root, &files)?
+        crate::nightly_signing::authenticate_windows(adapter, &root, &files)?
     };
     stop.check()?;
     let profile = adapter.profile_root(paths)?;
