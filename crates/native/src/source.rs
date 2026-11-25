@@ -215,7 +215,7 @@ impl GitHubSource {
                                 }
                                 Fetched::OverBudget { until } => {
                                     self.note_over_budget(until);
-                                    return Ok(None);
+                                    return Err(over_budget_why(until, crate::now()));
                                 }
                                 Fetched::NotModified | Fetched::NotFound => {
                                     return Err("GitHub's release list changed while it was read; the newest ordinary release is unknown.".into());
@@ -252,7 +252,7 @@ impl GitHubSource {
             }
             Fetched::OverBudget { until } => {
                 self.note_over_budget(until);
-                Ok(None)
+                Err(over_budget_why(until, crate::now()))
             }
         }
     }
@@ -286,8 +286,7 @@ impl GitHubSource {
                 }
                 Fetched::OverBudget { until } => {
                     self.note_over_budget(until);
-                    let minutes = ((until - crate::now()) / 60).max(1);
-                    return Err(format!("The launcher has used its GitHub requests for now; try again in {minutes} min."));
+                    return Err(over_budget_why(until, crate::now()));
                 }
                 Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
             };
@@ -380,6 +379,18 @@ fn is_release_list(location: &str, repo: &str) -> bool {
 /// docs). Pre-releases aren't published there, so with pre-releases turned on that route is
 /// skipped. Only when neither answered does the lookup settle for the last saved answer, and
 /// report the failure when there isn't one.
+/// How long the footer should say to wait after the launcher's own budget held a request back:
+/// whole minutes, rounded up, at least one, so a retry after that time is due.
+fn over_budget_minutes(until: i64, now: i64) -> i64 {
+    let secs = until.saturating_sub(now);
+    (secs / 60 + i64::from(secs % 60 != 0)).max(1)
+}
+
+fn over_budget_why(until: i64, now: i64) -> String {
+    let minutes = over_budget_minutes(until, now);
+    format!("The launcher has used its GitHub requests for now; try again in {minutes} min.")
+}
+
 fn resolve(
     repo: &str,
     prereleases: bool,
@@ -645,12 +656,42 @@ mod tests {
     /// The launcher's own budget holding a background request back says when GitHub is next
     /// asked, but unlike GitHub's own refusal it doesn't stop the next, more urgent request.
     #[test]
+    fn a_budget_refusal_isnt_reported_as_githubs_limit() {
+        let asked = std::cell::Cell::new(false);
+        let until = crate::now() + 600;
+        let a = resolve(
+            REPO,
+            true,
+            false,
+            || Err(over_budget_why(until, crate::now())),
+            || {
+                asked.set(true);
+                Err("unused".into())
+            },
+            || None,
+        );
+        assert!(!asked.get(), "pre-releases don't ask the release pages");
+        assert!(
+            matches!(&a.latest, LatestRelease::Failed(why) if why.contains("The launcher has used its GitHub requests") && !why.contains("request limit was reached")),
+            "{a:?}"
+        );
+    }
+
+    #[test]
+    fn a_budget_wait_is_rounded_up_to_a_whole_minute() {
+        assert_eq!(over_budget_minutes(1_000 + 119, 1_000), 2, "119 seconds is still two minutes");
+        assert_eq!(over_budget_minutes(1_000 + 60, 1_000), 1);
+        assert_eq!(over_budget_minutes(1_000, 1_000), 1, "already due still names a minute");
+    }
+
+    #[test]
     fn a_spent_budget_is_reported_without_stopping_more_urgent_requests() {
         let dir = tempfile::tempdir().unwrap();
         let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
         let source = GitHubSource::new(http, dir.path().join("releases.json"));
         let until = crate::now() + 600;
-        assert!(matches!(source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until })), Ok(None)));
+        let refused = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until }));
+        assert!(matches!(&refused, Err(why) if why.contains("The launcher has used its GitHub requests")), "{refused:?}");
         assert_eq!(source.rate_limited_until(), Some(until), "the footer can say when GitHub is next asked");
         assert!(!source.limited(), "a more urgent request still goes to the budget");
         // A budget of nothing never reaches the network.

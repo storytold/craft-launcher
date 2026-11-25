@@ -2230,7 +2230,9 @@ impl Shared {
 
 /// Who a GitHub request about `app` is for, when the GitHub budget runs short.
 fn github_priority(app: &CraftApp, track: &VersionTrack, shared: &Shared, force: bool) -> Priority {
-    if force {
+    // A reused forced check still asks as the user: it can hit GitHub when the feed is behind,
+    // and must not be held back as a background request.
+    if force || shared.reusing_forced.load(Ordering::SeqCst) {
         Priority::User
     } else if *track == VersionTrack::Nightly {
         Priority::NightlyTrack
@@ -3330,6 +3332,16 @@ mod tests {
         assert!(!shared.forced_now(true, NOW + 60), "pressed again at once: reused");
         assert!(!shared.forced_now(false, NOW + 61));
         assert!(shared.forced_now(true, NOW + FORCED_REUSE), "asks again after the window");
+    }
+
+    /// A reused forced check still asks as the user, so the budget doesn't hold it back as a
+    /// background request for an app that isn't installed.
+    #[test]
+    fn a_reused_forced_check_keeps_the_users_priority() {
+        let shared = shared();
+        assert_eq!(github_priority(CraftApp::by_id("photocraft").unwrap(), &VersionTrack::Stable, &shared, false), Priority::NotInstalled);
+        shared.reusing_forced.store(true, Ordering::SeqCst);
+        assert_eq!(github_priority(CraftApp::by_id("photocraft").unwrap(), &VersionTrack::Stable, &shared, false), Priority::User);
     }
 
     /// With pre-releases on, GitHub's turn refused (by the budget, say) with nothing saved leaves
