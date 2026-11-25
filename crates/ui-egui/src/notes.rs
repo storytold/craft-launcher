@@ -2,7 +2,7 @@
 
 use egui::{Color32, FontFamily, FontId, RichText, TextFormat, Ui, text::LayoutJob};
 
-use crate::theme::Tokens;
+use crate::theme::{self, Tokens};
 
 /// One line of notes, classified.
 #[derive(Debug, PartialEq, Eq)]
@@ -279,7 +279,7 @@ fn render_inline(ui: &mut Ui, text: &str, color: Color32, t: &Tokens, scale: f32
 
     let valign = ui.text_valign();
     let plain_fmt = TextFormat { font_id: FontId::new(13.5 * scale, FontFamily::Proportional), color, valign, ..Default::default() };
-    let bold_fmt = TextFormat { font_id: FontId::new(13.5 * scale, FontFamily::Proportional), color: t.ink_strong, valign, ..Default::default() };
+    let bold_fmt = TextFormat { font_id: FontId::new(13.5 * scale, theme::semibold()), color: t.ink_strong, valign, ..Default::default() };
     let code_fmt = TextFormat { font_id: FontId::new(12.0 * scale, FontFamily::Monospace), color: t.ink, valign, ..Default::default() };
 
     let mut job = LayoutJob::default();
