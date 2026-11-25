@@ -227,8 +227,8 @@ month	Oct	ოქტ
 month	Nov	ნოე
 month	Dec	დეკ
 	Not checked yet	ჯერ არ შემოწმებულა
-	GitHub's hourly limit was reached; full details return in {min} min	GitHub-ის საათობრივი ლიმიტი ამოიწურა; სრული ინფორმაცია {min} წუთში დაბრუნდება
-	GitHub limit hit; back in {min} min	GitHub-ის ლიმიტი ამოიწურა; {min} წუთში დაბრუნდება
+	Next GitHub check at {time}	GitHub-ის შემდეგი შემოწმება: {time}
+	Next check at {time}	შემდეგი შემოწმება: {time}
 	Installing for {platform}	ინსტალაცია პლატფორმისთვის: {platform}
 	Downloads for {platform}	ჩამოტვირთვები პლატფორმისთვის: {platform}
 	No downloads for this system	ამ სისტემისთვის ჩამოსატვირთი არაფერია
@@ -500,51 +500,52 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	დაუინსტალირებელი შრიფტების ნიმუშები ამ სერვერიდან ჩანს და ინსტალაციაც პირველ რიგში მას მიმართავს. თუ ველი ცარიელია, გამოიყენება ნაგულისხმევი სერვერი.
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
-	Enable pre-release builds	წინასწარი ვერსიების ჩართვა
-	Enable pre-release builds?	წინასწარი ვერსიების ჩართვა?
-	Install pre-release	წინასწარი ვერსიის ინსტალაცია
+	Enable developer builds	დეველოპერული აწყობების ჩართვა
+	Enable developer builds?	დეველოპერული აწყობების ჩართვა?
+	Install developer build	დეველოპერული აწყობის ინსტალაცია
 	New builds as the apps evolve. Stable copies stay separate.	ახალი ვერსიები აპლიკაციების განვითარების კვალდაკვალ. სტაბილური ასლები ცალკე რჩება.
-	No pre-release build is available yet.	წინასწარი ვერსია ჯერ ხელმისაწვდომი არ არის.
-	Only this pre-release copy will be removed. Stable copies and user data are kept.	წაიშლება მხოლოდ წინასწარი ვერსიის ეს ასლი. სტაბილური ასლები და მომხმარებლის მონაცემები შენარჩუნდება.
+	No developer build is available yet.	დეველოპერული აწყობა ჯერ ხელმისაწვდომი არ არის.
+	Only this developer build will be removed. Stable copies and user data are kept.	წაიშლება მხოლოდ ეს დეველოპერული აწყობა. სტაბილური ასლები და მომხმარებლის მონაცემები შენარჩუნდება.
 	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	მხოლოდ გადამოწმებული, იზოლირებული ვერსიების ინსტალაციაა შესაძლებელი. გამორთვა დაინსტალირებულ ასლებსა და მათ მონაცემებს არასოდეს შლის.
 	Open stable	სტაბილური ვერსიის გახსნა
-	Pre-Release	წინასწარი გამოშვება
-	Pre-release builds are off. Installed copies and their data are kept.	წინასწარი ვერსიები გამორთულია. დაინსტალირებული ასლები და მათი მონაცემები შენარჩუნებულია.
-	Pre-release installation is unavailable on this platform.	ამ პლატფორმაზე წინასწარი ვერსიების ინსტალაცია მიუწვდომელია.
+	Developer Builds	დეველოპერული აწყობები
+	Developer Build	დეველოპერული აწყობა
+	Developer builds are off. Installed copies and their data are kept.	დეველოპერული აწყობები გამორთულია. დაინსტალირებული ასლები და მათი მონაცემები შენარჩუნებულია.
+	Developer build installation is unavailable on this platform.	ამ პლატფორმაზე დეველოპერული აწყობების ინსტალაცია მიუწვდომელია.
 	Show installed copy	დაინსტალირებული ასლის ჩვენება
 	Stable	სტაბილური
-	These are pre-release builds. They will have issues and may lose work.	ეს წინასწარი ვერსიებია. მათში იქნება ხარვეზები და შესაძლოა ნამუშევარი დაიკარგოს.
+	These are developer builds. They will have issues and may lose work.	ეს დეველოპერული აწყობებია. მათში იქნება ხარვეზები და შესაძლოა ნამუშევარი დაიკარგოს.
 	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	ისინი ცალკე ინსტალირდება, ცალკე პარამეტრებით. შეინახეთ სარეზერვო ასლები: უფრო ახალ ვერსიაში შენახული ფაილები შესაძლოა სტაბილურ ვერსიებში არ გაიხსნას.
 	Try nightly builds	ღამის აწყობების გამოცდა
-	Turn off pre-release builds	წინასწარი ვერსიების გამორთვა
-	Uninstall pre-release	წინასწარი ვერსიის დეინსტალაცია
-	Uninstall pre-release?	წინასწარი ვერსიის დეინსტალაცია?
-	Uninstall pre-release…	წინასწარი ვერსიის დეინსტალაცია…
+	Turn off developer builds	დეველოპერული აწყობების გამორთვა
+	Uninstall developer build	დეველოპერული აწყობის დეინსტალაცია
+	Uninstall developer build?	დეველოპერული აწყობის დეინსტალაცია?
+	Uninstall developer build…	დეველოპერული აწყობის დეინსტალაცია…
 
 # Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
-	Pre-release builds are off.	წინასწარი ვერსიები გამორთულია.
-	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	დაინსტალირებული ასლები და მათი მონაცემები შენარჩუნებულია. ახალი ვერსიების მოსაძიებლად პარამეტრებში ჩართეთ წინასწარი ვერსიები.
-	Installed pre-release copy	წინასწარი ვერსიის დაინსტალირებული ასლი
+	Developer builds are off.	დეველოპერული აწყობები გამორთულია.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	დაინსტალირებული ასლები და მათი მონაცემები შენარჩუნებულია. ახალი აწყობების მოსაძიებლად პარამეტრებში ჩართეთ დეველოპერული აწყობები.
+	Installed developer build	დაინსტალირებული დეველოპერული აწყობა
 	Nightly builds use a separate install and settings. Stable updates stay unchanged.	ღამის აწყობებს ცალკე ინსტალაცია და პარამეტრები აქვს. სტაბილური განახლებები უცვლელი რჩება.
 
-# Availability-only pre-release destination (English fallback)
-	Could not check for pre-release builds.	წინასწარი ვერსიების შემოწმება ვერ მოხერხდა.
-	No pre-release builds are available yet.	წინასწარი ვერსიები ჯერ ხელმისაწვდომი არ არის.
-	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	წინასწარი გამოშვების არხი ყოველ ღამე ავტომატურად განახლდება უახლესი კოდით. მასში შეიძლება იყოს შეცდომები, წარმადობისა და სტაბილურობის პრობლემები და დაუსრულებელი ფუნქციები. მნიშვნელოვანი სამუშაოსთვის გამოიყენეთ სტაბილური არხი.
+# Availability-only Developer Builds destination
+	Could not check for developer builds.	დეველოპერული აწყობების შემოწმება ვერ მოხერხდა.
+	No developer builds are available yet.	დეველოპერული აწყობები ჯერ ხელმისაწვდომი არ არის.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	დეველოპერული არხი ყოველ ღამე ავტომატურად განახლდება უახლესი კოდით. მასში შეიძლება იყოს შეცდომები, წარმადობისა და სტაბილურობის პრობლემები და დაუსრულებელი ფუნქციები. მნიშვნელოვანი სამუშაოსთვის გამოიყენეთ სტაბილური არხი.
 
-# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
-	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	წინასწარი ვერსიები სიახლეების ადრე გამოცდის საშუალებას გაძლევთ, თუმცა მათში იქნება ხარვეზები და შესაძლოა შეუნახავი ნამუშევარი დაიკარგოს.
-	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	ისინი სტაბილური აპლიკაციების გვერდით, საკუთარი პარამეტრებითა და მონაცემებით ინსტალირდება და თქვენს სტაბილურ გარემოს უცვლელად ტოვებს. მნიშვნელოვანი ფაილების წინასწარ ვერსიაში გახსნამდე ყოველთვის შექმენით მათი სარეზერვო ასლები, რადგან უფრო ახალ ვერსიებში შენახული ფაილები შესაძლოა სტაბილურ ვერსიებში აღარ გაიხსნას.
-	You can turn this off at any time without deleting your installed pre-release apps or their data.	ამ პარამეტრის გამორთვა ნებისმიერ დროს შეგიძლიათ, დაინსტალირებული წინასწარი ვერსიებისა და მათი მონაცემების წაშლის გარეშე.
+# Approved consent Copy A: translated paragraphs.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	დეველოპერული აწყობები სიახლეების ადრე გამოცდის საშუალებას გაძლევთ, თუმცა მათში იქნება ხარვეზები და შესაძლოა შეუნახავი ნამუშევარი დაიკარგოს.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	ისინი სტაბილური აპლიკაციების გვერდით, საკუთარი პარამეტრებითა და მონაცემებით ინსტალირდება და თქვენს სტაბილურ გარემოს უცვლელად ტოვებს. მნიშვნელოვანი ფაილების დეველოპერულ აწყობაში გახსნამდე ყოველთვის შექმენით მათი სარეზერვო ასლები, რადგან უფრო ახალ ვერსიებში შენახული ფაილები შესაძლოა სტაბილურ ვერსიებში აღარ გაიხსნას.
+	You can turn this off at any time without deleting your installed developer builds or their data.	ამ პარამეტრის გამორთვა ნებისმიერ დროს შეგიძლიათ, დაინსტალირებული დეველოპერული აწყობებისა და მათი მონაცემების წაშლის გარეშე.
 
 # Nightly build calendar date (date-only, never publication time or a local timestamp).
 	{month}/{day}/{year}	{day}.{month}.{year}
 
 # Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
 	Nightly builds	ღამის აწყობები
-	Discover nightly builds (Pre-Release page)	ღამის აწყობების მოძიება (გვერდი „წინასწარი გამოშვება“)
+	Discover nightly builds (Developer Builds page)	ღამის აწყობების მოძიება (გვერდი „დეველოპერული აწყობები“)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	ცალკე ინსტალაციები, პარამეტრები და მონაცემები. გამორთვა ინარჩუნებს დაინსტალირებულ ასლებსა და მათ მონაცემებს.
-	Pre-release builds aren't available on this platform yet.	ამ პლატფორმაზე წინასწარი ვერსიები ჯერ ხელმისაწვდომი არ არის.
+	Developer builds aren't available on this platform yet.	ამ პლატფორმაზე დეველოპერული აწყობები ჯერ ხელმისაწვდომი არ არის.
 	Betas and release candidates can replace your stable installation.	ბეტა-ვერსიებმა და გამოშვების კანდიდატებმა შეიძლება ჩაანაცვლოს თქვენი სტაბილური ინსტალაცია.
 
 # Nightly status (English fallback; localization is maintained upstream).

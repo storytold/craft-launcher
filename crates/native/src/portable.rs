@@ -695,11 +695,11 @@ pub(crate) mod tests {
         let error = install_checked(package(), &|files, entries| adapter.validate_layout(files, entries), &mut |record| {
             assert_eq!(std::fs::read(&record.path).unwrap(), b"new program");
             committed.set(true);
-            Err("Pre-Release was turned off before commit".into())
+            Err("Developer builds were turned off before commit".into())
         })
         .unwrap_err();
         assert!(committed.get());
-        assert_eq!(error, "Pre-Release was turned off before commit");
+        assert_eq!(error, "Developer builds were turned off before commit");
         assert!(!paths.apps().join(app.id).exists(), "a refused fresh install must not block the next admission");
         assert!(!paths.manifest().exists());
         let record = install_checked(package(), &|files, entries| adapter.validate_layout(files, entries), &mut |_| Ok(())).unwrap();

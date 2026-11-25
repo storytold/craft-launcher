@@ -3771,7 +3771,7 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
         h.run_steps(6);
         snapshot(&mut h, &format!("footer-rate-limited-{width}"));
         // Full or short, the notice says when GitHub can be asked again.
-        let notice = h.get_by_label_contains("in 30 min").rect();
+        let notice = h.get_by_label_contains("check at").rect();
         let checked = h.get_by_label_contains("Checked ").rect();
         // Cut short in a narrow window, but enough of it left to read.
         assert!(notice.width() >= 120.0 && notice.right() <= width, "{width}: notice {notice:?}");
@@ -4822,7 +4822,7 @@ fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
                 ("Settings", top(&h, "Settings")),
                 ("bell", top(&h, "Announcements, 1 unread")),
                 ("Stable", top(&h, "Stable")),
-                ("Pre-Release", top(&h, "Pre-Release")),
+                ("Developer Builds", top(&h, "Developer Builds")),
             ];
             for (name, rect) in &controls {
                 assert!(rect.left() >= 0.0 && rect.right() <= width + 0.5, "{name} is clipped at {width}: {rect:?}");
@@ -4837,4 +4837,53 @@ fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
             snapshot(&mut h, &name);
         }
     }
+}
+
+/// Wide Settings is two columns that scroll together: neither may run far past the other, or one
+/// side scrolls through empty space (Fonts once left the right column twice the left's height).
+#[test]
+fn wide_settings_columns_are_about_the_same_height() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.set_size(egui::vec2(1180.0, 4000.0));
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(8);
+    let top = h.get_by_label("Language").accesskit_node().bounding_box().unwrap().y0 - 40.0;
+    let split = h.get_by_label("Install folder").accesskit_node().bounding_box().unwrap().x0 - 20.0;
+    let (mut left, mut right) = (top, top);
+    for node in h.root().children_recursive() {
+        let node = node.accesskit_node();
+        let mut ancestor = node.parent();
+        let mut in_dialog = false;
+        while let Some(parent) = ancestor {
+            in_dialog |= parent.role() == egui::accesskit::Role::Dialog;
+            ancestor = parent.parent();
+        }
+        let footer = matches!(node.label().as_deref(), Some("Quit ArtCraft Launcher" | "Done"));
+        let Some(rect) = node.bounding_box().filter(|rect| in_dialog && !footer && rect.y0 >= top) else { continue };
+        let column = if rect.x0 < split { &mut left } else { &mut right };
+        *column = column.max(rect.y1);
+    }
+    let (left, right) = (left - top, right - top);
+    assert!(left.max(right) < 1.5 * left.min(right), "left column {left:.0}px, right {right:.0}px");
+    snapshot(&mut h, "settings-wide-columns");
+}
+
+/// Without app management (the web build) the right column would have nothing in it, so wide
+/// Settings is one column: every checkbox starts at the same left edge.
+#[test]
+fn settings_without_app_management_is_one_column() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, false);
+    h.set_size(egui::vec2(1180.0, 4000.0));
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(8);
+    let mut edges: Vec<i64> = h
+        .root()
+        .children_recursive()
+        .filter(|node| node.accesskit_node().role() == egui::accesskit::Role::CheckBox)
+        .filter_map(|node| node.accesskit_node().bounding_box().map(|rect| rect.x0.round() as i64))
+        .collect();
+    edges.dedup();
+    assert!(!edges.is_empty() && edges.iter().all(|x| *x == edges[0]), "checkboxes start at {edges:?}");
 }

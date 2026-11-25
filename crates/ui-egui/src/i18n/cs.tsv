@@ -203,8 +203,8 @@ month	Oct	10.
 month	Nov	11.
 month	Dec	12.
 	Not checked yet	Zatím nezkontrolováno
-	GitHub's hourly limit was reached; full details return in {min} min	Byl dosažen hodinový limit GitHubu; úplné informace budou znovu dostupné za {min} min
-	GitHub limit hit; back in {min} min	Dosažen limit GitHubu; obnovení za {min} min
+	Next GitHub check at {time}	Další kontrola GitHubu v {time}
+	Next check at {time}	Další kontrola v {time}
 	Installing for {platform}	Instalace pro {platform}
 	Downloads for {platform}	Stažení pro {platform}
 	No downloads for this system	Pro tento systém nejsou k dispozici žádné soubory ke stažení
@@ -465,51 +465,54 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Nenainstalovaná písma zobrazují náhledy z tohoto serveru a instalace jej zkoušejí jako první. Prázdné pole použije výchozí server.
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
-	Enable pre-release builds	Enable pre-release builds
-	Enable pre-release builds?	Enable pre-release builds?
-	Install pre-release	Install pre-release
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
 	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
-	No pre-release build is available yet.	No pre-release build is available yet.
-	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
 	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
 	Open stable	Open stable
-	Pre-Release	Pre-Release
-	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
-	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
 	Show installed copy	Show installed copy
 	Stable	Stable
-	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
 	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
 	Try nightly builds	Try nightly builds
-	Turn off pre-release builds	Turn off pre-release builds
-	Uninstall pre-release	Uninstall pre-release
-	Uninstall pre-release?	Uninstall pre-release?
-	Uninstall pre-release…	Uninstall pre-release…
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
 
 # Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
-	Pre-release builds are off.	Pre-release builds are off.
-	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
-	Installed pre-release copy	Installed pre-release copy
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
 	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
 
-# Availability-only pre-release destination (English fallback)
-	Could not check for pre-release builds.	Could not check for pre-release builds.
-	No pre-release builds are available yet.	No pre-release builds are available yet.
-	The pre-release channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Kanál předběžných verzí se každou noc automaticky aktualizuje nejnovějším kódem. Může obsahovat chyby, problémy s výkonem a stabilitou i nedokončené funkce. Pro důležitou práci prosím používejte stabilní kanál.
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Kanál předběžných verzí se každou noc automaticky aktualizuje nejnovějším kódem. Může obsahovat chyby, problémy s výkonem a stabilitou i nedokončené funkce. Pro důležitou práci prosím používejte stabilní kanál.
 
-# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
-	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	Předběžné verze vám umožní vyzkoušet novinky dříve, ale budou obsahovat chyby a může v nich dojít ke ztrátě neuložené práce.
-	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	Instalují se vedle vašich stabilních aplikací s vlastním nastavením a daty, takže vaše stabilní prostředí zůstane beze změn. Než důležité soubory otevřete v předběžné verzi, vždy si je zálohujte. Soubory uložené v novějších verzích totiž nemusí jít otevřít ve stabilních verzích.
-	You can turn this off at any time without deleting your installed pre-release apps or their data.	Tuto možnost můžete kdykoli vypnout, aniž by se smazaly nainstalované předběžné verze aplikací nebo jejich data.
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	Předběžné verze vám umožní vyzkoušet novinky dříve, ale budou obsahovat chyby a může v nich dojít ke ztrátě neuložené práce.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	Instalují se vedle vašich stabilních aplikací s vlastním nastavením a daty, takže vaše stabilní prostředí zůstane beze změn. Než důležité soubory otevřete v předběžné verzi, vždy si je zálohujte. Soubory uložené v novějších verzích totiž nemusí jít otevřít ve stabilních verzích.
+	You can turn this off at any time without deleting your installed developer builds or their data.	Tuto možnost můžete kdykoli vypnout, aniž by se smazaly nainstalované předběžné verze aplikací nebo jejich data.
 
 # Nightly build calendar date (date-only, never publication time or a local timestamp).
 	{month}/{day}/{year}	{day}. {month}. {year}
 
 # Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
 	Nightly builds	Noční sestavení
-	Discover nightly builds (Pre-Release page)	Vyhledávat noční sestavení (stránka Pre-Release)
+	Discover nightly builds (Developer Builds page)	Vyhledávat noční sestavení (stránka Developer Builds)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Oddělené instalace, nastavení a data. Vypnutím se zachovají nainstalované kopie i jejich data.
-	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	Beta verze a kandidáti na vydání mohou nahradit vaši stabilní instalaci.
 
 # Nightly status (English fallback; localization is maintained upstream).
