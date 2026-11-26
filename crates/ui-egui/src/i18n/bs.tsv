@@ -529,3 +529,6 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Announcements	Obavještenja
 	No announcements	Nema obavještenja
 @plural	Announcements, {n} unread|Announcements, {n} unread	Obavještenja, {n} nepročitano|Obavještenja, {n} nepročitana|Obavještenja, {n} nepročitanih
+
+# Version menu note (English fallback; translations are supplied through craft-i18n).
+	Only pre-release versions are available. Turn on pre-releases in Settings to see them.	Only pre-release versions are available. Turn on pre-releases in Settings to see them.

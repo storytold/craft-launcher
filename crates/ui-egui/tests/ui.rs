@@ -407,7 +407,7 @@ fn app_and_launcher_offer_version_choices_without_starting_an_install() {
     h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
     h.run_steps(3);
     h.get_by_label("Latest release");
-    h.get_by_label("Nightly (none published yet)");
+    assert!(h.query_by_label("Nightly (none published yet)").is_none(), "nightly builds are off");
     assert!(h.query_by_label("Launcher versions").is_none(), "version selection belongs in Settings, not another dialog");
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::ListVersions { app } if app == artcraft_launcher_core::catalog::LAUNCHER_ID)));
 }
@@ -427,6 +427,7 @@ fn version_choices_have_room_and_nightly_scrolls_with_the_versions() {
     let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.set_size(egui::vec2(1180.0, 1100.0));
     h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.nightly_enabled = true;
     h.get_by_label("Settings").click();
     h.run_steps(4);
     h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
@@ -557,6 +558,12 @@ fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
 /// [`version_menu`] on `machine`.
 fn version_menu_on(machine: Machine, latest: Release, answer: Vec<Release>) -> VersionsHarness {
     let (mut h, sent, queue) = versions_harness(machine, Some(latest), answer);
+    open_photocraft_versions(&mut h);
+    (h, sent, queue)
+}
+
+/// Opens PhotoCraft's version dialog and expands its menu.
+fn open_photocraft_versions(h: &mut Harness<'static, Option<LauncherUi>>) {
     // Not installed, PhotoCraft's card is further down.
     h.get_by_label("More actions for PhotoCraft").scroll_to_me();
     h.run_steps(3);
@@ -566,7 +573,6 @@ fn version_menu_on(machine: Machine, latest: Release, answer: Vec<Release>) -> V
     h.run_steps(4);
     h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Version").click();
     h.run_steps(4);
-    (h, sent, queue)
 }
 
 /// The launcher's own version list in Settings on `machine`, expanded, with `answer` published.
@@ -842,6 +848,120 @@ fn the_launcher_version_list_sizes_what_its_self_update_downloads() {
         let facts = row_facts(&h, "v0.9.0 (latest release)").unwrap_or_default();
         let tail = size.map_or_else(|| ", 2026".to_string(), |size| format!(", 2026 · {size}"));
         assert!(facts.starts_with("Oct ") && facts.ends_with(&tail), "{why}: {facts:?}");
+    }
+}
+
+/// A PhotoCraft release candidate, published as a pre-release.
+fn photocraft_rc(v: &str) -> Release {
+    let mut r = signed_photocraft(v);
+    r.prerelease = true;
+    r
+}
+
+fn version_row_shown(h: &Harness<'static, Option<LauncherUi>>, label: &str) -> bool {
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, label).next().is_some()
+}
+
+/// With "Include pre-releases" off the version menu lists stable releases only; on, it lists
+/// release candidates too.
+#[test]
+fn the_version_menu_lists_release_candidates_only_with_pre_releases_on() {
+    for prereleases in [false, true] {
+        let answer = vec![photocraft_rc("0.6.0-rc.1"), signed_photocraft("0.5.0")];
+        let (mut h, _, _) = versions_harness(Machine::default(), Some(signed_photocraft("0.5.0")), answer);
+        h.state_mut().as_mut().unwrap().settings.prereleases = prereleases;
+        open_photocraft_versions(&mut h);
+        assert!(version_row_shown(&h, "v0.5.0 (latest release)"), "pre-releases {prereleases}");
+        assert_eq!(version_row_shown(&h, "v0.6.0-rc.1"), prereleases, "pre-releases {prereleases}");
+    }
+}
+
+/// With pre-releases off, a release candidate that is installed or chosen stays listed, so the
+/// menu shows what PhotoCraft is on and can move it back to the latest release. Others don't.
+#[test]
+fn the_version_menu_keeps_an_installed_or_chosen_release_candidate() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let answer = || vec![photocraft_rc("0.6.0-rc.2"), photocraft_rc("0.6.0-rc.1"), signed_photocraft("0.5.0")];
+    let installed = Installed {
+        version: version::parse("0.6.0-rc.1"),
+        source: InstallSource::MacApp,
+        location: "/Applications/PhotoCraft.app".into(),
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    let more = vec![Event::Detected { app: "photocraft".into(), installed: Some(installed) }];
+    let (h, _, _) = version_menu_on(Machine { more, ..Machine::default() }, signed_photocraft("0.5.0"), answer());
+    assert!(version_row_shown(&h, "v0.6.0-rc.1"), "the installed candidate is listed");
+    assert!(!version_row_shown(&h, "v0.6.0-rc.2"));
+
+    let (mut h, _, _) = versions_harness(Machine::default(), Some(photocraft_rc("0.6.0-rc.2")), answer());
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.6.0-rc.2".into()));
+    open_photocraft_versions(&mut h);
+    assert!(version_row_shown(&h, "v0.6.0-rc.2"), "the chosen candidate is listed");
+    assert!(!version_row_shown(&h, "v0.6.0-rc.1"));
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.5.0 (latest release)").next().unwrap().click();
+    h.run_steps(4);
+    assert!(!h.state().as_ref().unwrap().settings.versions.contains_key("photocraft"), "back on the latest release");
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Version").click();
+    h.run_steps(4);
+    assert!(!version_row_shown(&h, "v0.6.0-rc.2"), "a candidate left behind isn't offered again");
+}
+
+/// When nothing stable downloads here but the pre-release setting hides a release candidate, the
+/// version menu says so, in an app's dialog and for the launcher in Settings.
+#[test]
+fn the_version_menu_says_when_only_hidden_pre_releases_are_available() {
+    const NOTE: &str = "Only pre-release versions are available. Turn on pre-releases in Settings to see them.";
+    let cases = [
+        (vec![photocraft_rc("0.6.0-rc.1")], false, true, "only a hidden candidate"),
+        (vec![photocraft_rc("0.6.0-rc.1")], true, false, "the candidate is listed"),
+        (vec![photocraft_rc("0.6.0-rc.1"), signed_photocraft("0.5.0")], false, false, "a stable release is listed"),
+    ];
+    for (answer, prereleases, shown, why) in cases {
+        let (mut h, _, _) = versions_harness(Machine::default(), Some(photocraft_rc("0.6.0-rc.1")), answer);
+        h.state_mut().as_mut().unwrap().settings.prereleases = prereleases;
+        open_photocraft_versions(&mut h);
+        assert_eq!(h.query_by_label(NOTE).is_some(), shown, "{why}");
+    }
+    let mut rc = release_with("artcraft-launcher", "1.0.0-rc.1", &[("macos-universal.dmg", 150)]);
+    rc.prerelease = true;
+    let (h, _, _) = launcher_menu_on(Machine::default(), vec![rc]);
+    assert!(h.query_by_label(NOTE).is_some(), "the launcher's own menu in Settings");
+    // A nightly is hidden by the nightly setting, not this one: turning on pre-releases wouldn't show it.
+    let mut nightly = release_with("artcraft-launcher", "1.0.0-nightly.20261120", &[("macos-universal.dmg", 150)]);
+    nightly.prerelease = true;
+    let (h, _, _) = launcher_menu_on(Machine::default(), vec![nightly]);
+    assert!(h.query_by_label(NOTE).is_none(), "only a nightly, with pre-releases and nightly builds off");
+}
+
+/// The Nightly row and the nightly builds are offered only with nightly builds turned on. A
+/// launcher already following nightlies keeps the row, and can move back to the latest release.
+#[test]
+fn the_version_menu_offers_nightlies_only_with_nightly_builds_on() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let mut nightly = release_with("artcraft-launcher", "1.0.0-nightly.20261120", &[("macos-universal.dmg", 150)]);
+    nightly.prerelease = true;
+    let stable = release_with("artcraft-launcher", "0.9.0", &[("macos-universal.dmg", 150)]);
+    for (enabled, track, shown) in [(false, VersionTrack::Stable, false), (true, VersionTrack::Stable, true), (false, VersionTrack::Nightly, true)] {
+        let (mut h, _, _) = versions_harness(Machine::default(), None, vec![nightly.clone(), stable.clone()]);
+        let settings = &mut h.state_mut().as_mut().unwrap().settings;
+        settings.nightly_enabled = enabled;
+        settings.launcher_version = track.clone();
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
+        h.run_steps(5);
+        let why = format!("nightly builds on: {enabled}, following {track:?}");
+        assert!(version_row_shown(&h, "v0.9.0 (latest release)"), "{why}");
+        assert_eq!(version_row_shown(&h, "Nightly"), shown, "{why}");
+        assert_eq!(version_row_shown(&h, "v1.0.0-nightly.20261120"), enabled, "{why}");
+        if track == VersionTrack::Nightly {
+            h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.9.0 (latest release)").next().unwrap().click();
+            h.run_steps(4);
+            assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Stable, "{why}");
+        }
     }
 }
 
