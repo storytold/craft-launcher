@@ -331,6 +331,49 @@ mod tests {
         }
     }
 
+    /// DiaCraft 0.2.1's files, as its release lists them.
+    const DIACRAFT: &[&str] = &[
+        "diacraft-0.2.1-linux-aarch64.AppImage",
+        "diacraft-0.2.1-linux-aarch64.deb",
+        "diacraft-0.2.1-linux-aarch64.tar.gz",
+        "diacraft-0.2.1-linux-x86_64.AppImage",
+        "diacraft-0.2.1-linux-x86_64.deb",
+        "diacraft-0.2.1-linux-x86_64.tar.gz",
+        "diacraft-0.2.1-macos-arm64.dmg",
+        "diacraft-0.2.1-macos-arm64.zip",
+        "diacraft-0.2.1-macos-x86_64.dmg",
+        "diacraft-0.2.1-macos-x86_64.zip",
+        "diacraft-0.2.1-windows-arm64-portable.zip",
+        "diacraft-0.2.1-windows-arm64.msi",
+        "diacraft-0.2.1-windows-x64-portable.zip",
+        "diacraft-0.2.1-windows-x64.msi",
+        "SHA256SUMS.txt",
+    ];
+
+    #[test]
+    fn diacraft_selects_its_published_desktop_assets() {
+        let r = release(DIACRAFT);
+        for (os, arch, kind, expected) in [
+            (Os::Linux, Arch::X64, PackageKind::AppImage, "diacraft-0.2.1-linux-x86_64.AppImage"),
+            (Os::Linux, Arch::X64, PackageKind::Deb, "diacraft-0.2.1-linux-x86_64.deb"),
+            (Os::Linux, Arch::X64, PackageKind::TarGz, "diacraft-0.2.1-linux-x86_64.tar.gz"),
+            (Os::Linux, Arch::Arm64, PackageKind::AppImage, "diacraft-0.2.1-linux-aarch64.AppImage"),
+            (Os::Windows, Arch::X64, PackageKind::Msi, "diacraft-0.2.1-windows-x64.msi"),
+            (Os::Windows, Arch::X64, PackageKind::PortableZip, "diacraft-0.2.1-windows-x64-portable.zip"),
+            (Os::Windows, Arch::Arm64, PackageKind::Msi, "diacraft-0.2.1-windows-arm64.msi"),
+            (Os::MacOs, Arch::Arm64, PackageKind::Dmg, "diacraft-0.2.1-macos-arm64.dmg"),
+            (Os::MacOs, Arch::X64, PackageKind::Dmg, "diacraft-0.2.1-macos-x86_64.dmg"),
+        ] {
+            let (asset, selected) = pick_asset(&r, &["diacraft"], Platform { os, arch }, &[kind]).unwrap();
+            assert_eq!(asset.name, expected);
+            assert_eq!(selected, kind);
+        }
+        // The macOS `.zip` and the checksums file are no installable package.
+        for other in ["diacraft-0.2.1-macos-arm64.zip", "diacraft-0.2.1-macos-x86_64.zip", "SHA256SUMS.txt"] {
+            assert_eq!(parse_asset_name(other, &["diacraft"]), None, "{other}");
+        }
+    }
+
     /// ArtCraft Studio's release fixture resolves the right asset across macOS, Windows, and Linux.
     #[test]
     fn artcraft_studio_selects_published_desktop_assets() {

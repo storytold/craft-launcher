@@ -16,7 +16,7 @@
 <p align="center">
   <b>One place to install, update and open every app in the Craft App Suite, rebuilt in pure Rust.</b><br>
   PhotoCraft, LightCraft, FilmCraft, DesignCraft, VectorCraft, PdfCraft, EffectCraft, AniCraft, WordCraft,<br>
-  DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft, MaterialCraft and the community apps SolidCraft and MailCraft: the right build for your computer, kept up to date.
+  DeckCraft, GridCraft, CADCraft, SoundCraft, FigCraft, Craft Anything, TextureCraft, MaterialCraft and the community apps SolidCraft, MailCraft and DiaCraft: the right build for your computer, kept up to date.
 </p>
 
 <p align="center">
@@ -293,6 +293,7 @@ stand on its own.
 | <img src="https://raw.githubusercontent.com/storytold/craft-anything/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.craft-anything.png" alt="" width="32" height="32">             | **Craft Anything**  | See how any software works, then build your own       | [GitHub](https://github.com/storytold/craft-anything) | [Website](https://getartcraft.com/apps/craft-anything)     |
 | <img src="https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/64x64/apps/io.tangencylabs.solidcraft.png" alt="" width="32" height="32"> | **SolidCraft**      | Parametric 3D CAD by Tangency Labs (community app)    | [GitHub](https://github.com/tangency-labs/solidcraft) |                                                            |
 | <img src="https://raw.githubusercontent.com/UCS-Care-Group/mailcraft/main/assets/app-icon/hicolor/64x64/apps/io.github.billsecond.mailcraft.png" alt="" width="32" height="32"> | **MailCraft** | Mail, calendar and contacts by UCS Labs (community app) | [GitHub](https://github.com/UCS-Care-Group/mailcraft) | [Website](https://mailcraft.work) |
+| <img src="https://raw.githubusercontent.com/intergrado/diacraft/main/assets/branding/diacraft-icon-256.png" alt="" width="32" height="32"> | **DiaCraft** | Diagrams and flowcharts by Intergrado (community app) | [GitHub](https://github.com/intergrado/diacraft) | [Website](https://diacraft.dev) |
 
 <br>
 
@@ -347,7 +348,7 @@ Bundled fonts, icons, images and other assets keep their own open licenses; each
 with its author, source and license in [ATTRIBUTION.md](ATTRIBUTION.md).
 
 The app icons of the Craft apps (`assets/app-icons/`) are each app's own icon, copied unmodified
-from its repository and licensed like that app (MIT OR Apache-2.0).
+from its repository and licensed like that app (MIT OR Apache-2.0), except that DiaCraft's is resized from 256 to 128 px.
 
 **The ArtCraft name, logo and "A" mark are not licensed under MIT or Apache-2.0.** They (everything
 in [`docs/brand/`](docs/brand/), plus the app icon in [`assets/app-icon/`](assets/app-icon/), the
