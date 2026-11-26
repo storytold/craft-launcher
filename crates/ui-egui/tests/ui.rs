@@ -149,6 +149,7 @@ fn test_harness_builder<State>(theme: egui::Theme) -> egui_kittest::HarnessBuild
         .with_accessibility_check(true)
         .with_render_cursor(false)
         .with_context_setup(move |ctx| {
+            artcraft_launcher_ui_egui::framework::install_headless(ctx);
             artcraft_launcher_ui_egui::theme::install_fonts(ctx, None);
             egui_extras::install_image_loaders(ctx);
             artcraft_launcher_ui_egui::theme::apply(ctx, choice);
@@ -869,6 +870,244 @@ fn the_version_dialog_wont_install_a_version_the_install_would_refuse() {
     h.get_all_by_label("Install version v0.4.0").find(|n| (n.rect().center().y - row).abs() < 4.0).unwrap().click();
     h.run_steps(4);
     assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })), "{:?}", sent.borrow());
+}
+
+/// Windows, with PhotoCraft as Windows Installer registered it: `v` holds only what the registry has.
+fn windows_with_msi_photocraft(v: &str) -> Machine {
+    let installed = Installed {
+        version: version::parse(v),
+        source: InstallSource::Msi,
+        location: r"C:\Program Files\ArtCraft\PhotoCraft\photocraft.exe".into(),
+        package: Some("{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".into()),
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    Machine {
+        platform: Platform { os: Os::Windows, arch: Arch::X64 },
+        more: vec![Event::Detected { app: "photocraft".into(), installed: Some(installed) }],
+        ..Default::default()
+    }
+}
+
+/// PhotoCraft's published releases in #1617: a release candidate and the latest release.
+fn rc_and_latest() -> (Release, Release) {
+    let mut rc = windows_photocraft("0.24.0-rc.1");
+    rc.prerelease = true;
+    (rc, windows_photocraft("0.23.1"))
+}
+
+/// The installs `sent` asked for.
+fn installs(sent: &RefCell<Vec<Command>>) -> Vec<Command> {
+    sent.borrow()
+        .iter()
+        .filter(|c| matches!(c, Command::Install { .. } | Command::InstallChosen { .. } | Command::InstallAll { .. }))
+        .cloned()
+        .collect()
+}
+
+/// The dialog's own button labelled `label`, on its Close button's row (the card can show the same label).
+fn dialog_button<'h>(h: &'h Harness<'static, Option<LauncherUi>>, label: &'h str) -> egui_kittest::Node<'h> {
+    let row = h.get_by_label("Close").rect().center().y;
+    h.get_all_by_label(label).find(|n| (n.rect().center().y - row).abs() < 4.0).expect("the dialog shows the button")
+}
+
+#[test]
+/// A chosen version the launcher already knows it won't install (going back from a copy whose
+/// version isn't published, so nothing could be put back) leaves Open as the card's main action,
+/// with the install beside it greyed out and saying why (#1616).
+fn a_chosen_version_that_cant_go_back_keeps_open_on_the_card() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, _) = versions_harness(windows_with_msi_photocraft("0.24.0"), Some(rc.clone()), vec![rc, latest]);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.24.0-rc.1".into()));
+    h.run_steps(8);
+    h.get_by_label("More actions for PhotoCraft").scroll_to_me();
+    h.run_steps(3);
+    let install = h.get_by_label("Install version v0.24.0-rc.1");
+    assert!(install.accesskit_node().is_disabled(), "going back would be refused");
+    install.hover();
+    h.run_steps(4);
+    h.get_by_label_contains("PhotoCraft 0.24.0 isn't published any more");
+    sent.borrow_mut().clear();
+    h.get_by_label("Open 0.24.0").click();
+    h.run_steps(3);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "Open works: {:?}", sent.borrow());
+    sent.borrow_mut().clear();
+    h.get_by_label("Install version v0.24.0-rc.1").click();
+    h.run_steps(3);
+    assert!(installs(&sent).is_empty(), "the refused install sends nothing: {:?}", sent.borrow());
+}
+
+#[test]
+/// Going back from an installed release candidate to the latest release, picked in the version
+/// dialog, asks the backend to go back by name and keeps following the latest release, so the
+/// next release is offered as an update again (#1617).
+fn going_back_to_the_latest_release_keeps_following_releases() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0-rc.1"), latest.clone(), vec![rc, latest]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    sent.borrow_mut().clear();
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    let picked = Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: None };
+    assert_eq!(installs(&sent), [picked], "{:?}", sent.borrow());
+    assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), None, "still following the latest release");
+    // Rolled back, and a newer release comes out: it is an update again.
+    let mut back = windows_with_msi_photocraft("0.23.1").more;
+    back.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(windows_photocraft("0.23.2")), from: Origin::GitHub });
+    queue.borrow_mut().extend(back);
+    h.run_steps(6);
+    h.get_by_label_contains("Update to 0.23.2");
+}
+
+#[test]
+/// A copy Windows registered as 0.24.0, with no record of which release it was, can go back to the
+/// latest release once the person agrees that a failure puts the 0.24.0 release candidate back.
+fn a_stuck_copy_goes_back_to_the_latest_release_after_a_warning() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0"), latest.clone(), vec![rc, latest]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    queue.borrow_mut().extend([
+        Event::GoBackFallback { app: "photocraft".into(), installed: "0.24.0".into(), chosen: "v0.23.1".into(), fallback: "v0.24.0-rc.1".into() },
+        Event::JobFinished {
+            app: "photocraft".into(),
+            result: Err("PhotoCraft 0.24.0 isn't published, so going back waits for your answer.".into()),
+        },
+    ]);
+    h.run_steps(6);
+    h.get_by_label_contains("if going back to 0.23.1 fails, the launcher reinstalls 0.24.0-rc.1 instead");
+    assert!(h.query_by_label_contains("waits for your answer").is_none(), "the question says it all, without an error toast");
+    sent.borrow_mut().clear();
+    h.get_by_label("Go back").click();
+    h.run_steps(4);
+    let agreed = Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: Some("v0.24.0-rc.1".into()) };
+    assert_eq!(installs(&sent), std::slice::from_ref(&agreed), "{:?}", sent.borrow());
+    // The connection drops mid-download: Resume asks for the same release by name, with the same answer.
+    queue.borrow_mut().extend([
+        Event::Paused { app: "photocraft".into(), download: Some(PausedDownload { done: 10 << 20, total: 120 << 20 }) },
+        Event::JobFinished { app: "photocraft".into(), result: Err(artcraft_launcher_core::protocol::PAUSED.into()) },
+    ]);
+    h.run_steps(6);
+    sent.borrow_mut().clear();
+    let resumes = h.query_all_by_label_contains("Resume").count();
+    for n in 0..resumes {
+        let node = h.query_all_by_label_contains("Resume").nth(n).expect("still there");
+        node.scroll_to_me();
+        h.run_steps(2);
+        h.query_all_by_label_contains("Resume").nth(n).expect("still there").click();
+        h.run_steps(3);
+    }
+    assert!(installs(&sent).contains(&agreed), "{:?}", sent.borrow());
+    assert!(!installs(&sent).contains(&Command::Install { app: "photocraft".into() }), "{:?}", sent.borrow());
+}
+
+#[test]
+/// A download paused because the connection keeps dropping ends the job as a pause, not a
+/// failure: the agreed request by name survives, and Resume sends it again with the same release
+/// and the same fallback rather than a plain install (#1621).
+fn a_connection_caused_pause_keeps_the_agreed_version() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0"), latest.clone(), vec![rc, latest]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    queue.borrow_mut().extend([
+        Event::GoBackFallback { app: "photocraft".into(), installed: "0.24.0".into(), chosen: "v0.23.1".into(), fallback: "v0.24.0-rc.1".into() },
+        Event::JobFinished {
+            app: "photocraft".into(),
+            result: Err("PhotoCraft 0.24.0 isn't published, so going back waits for your answer.".into()),
+        },
+    ]);
+    h.run_steps(6);
+    sent.borrow_mut().clear();
+    h.get_by_label("Go back").click();
+    h.run_steps(4);
+    let agreed = Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: Some("v0.24.0-rc.1".into()) };
+    assert_eq!(installs(&sent), std::slice::from_ref(&agreed), "{:?}", sent.borrow());
+    // The connection keeps dropping: the download pauses, and the job ends as a pause that says so.
+    queue.borrow_mut().extend([
+        Event::Paused { app: "photocraft".into(), download: Some(PausedDownload { done: 10 << 20, total: 120 << 20 }) },
+        Event::JobFinished { app: "photocraft".into(), result: Err(artcraft_launcher_core::protocol::PAUSED_BY_CONNECTION.into()) },
+    ]);
+    h.run_steps(6);
+    h.get_by_label_contains("the connection keeps dropping");
+    sent.borrow_mut().clear();
+    let resumes = h.query_all_by_label_contains("Resume").count();
+    for n in 0..resumes {
+        let node = h.query_all_by_label_contains("Resume").nth(n).expect("still there");
+        node.scroll_to_me();
+        h.run_steps(2);
+        h.query_all_by_label_contains("Resume").nth(n).expect("still there").click();
+        h.run_steps(3);
+    }
+    assert!(installs(&sent).contains(&agreed), "{:?}", sent.borrow());
+    assert!(!installs(&sent).contains(&Command::Install { app: "photocraft".into() }), "{:?}", sent.borrow());
+}
+
+#[test]
+/// The version dialog installs the latest release its list names, the row the person picked, and
+/// waits while the check still has an older release on screen.
+fn the_dialog_waits_for_the_latest_release_it_names() {
+    let (rc, latest) = rc_and_latest();
+    let older = windows_photocraft("0.23.0");
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0-rc.1"), older.clone(), vec![rc, latest.clone(), older]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    assert!(dialog_button(&h, "Install version v0.23.1").accesskit_node().is_disabled(), "v0.23.0 is still the checked release");
+    assert!(h.query_by_label("Install version v0.23.0").is_none(), "the older checked release is never offered");
+    queue.borrow_mut().push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    h.run_steps(4);
+    sent.borrow_mut().clear();
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    assert_eq!(installs(&sent), [Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: None }]);
+}
+
+#[test]
+/// A Debian package can't go back to an older version (nothing could put it back), so the chosen
+/// older version is greyed out with the reason, beside Open.
+fn a_system_package_cant_go_back_and_says_why() {
+    let mut ev = events();
+    ev.push(Event::Detected {
+        app: "photocraft".into(),
+        installed: Some(Installed {
+            version: version::parse("0.4.1"),
+            source: InstallSource::Deb,
+            location: "/usr/bin/photocraft".into(),
+            package: Some("photocraft".into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }),
+    });
+    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.4.0", NOW)), from: Origin::GitHub });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.4.0".into()));
+    h.run_steps(8);
+    let install = h.get_by_label("Install version v0.4.0");
+    assert!(install.accesskit_node().is_disabled(), "a system package can't go back");
+    install.hover();
+    h.run_steps(4);
+    h.get_by_label_contains("isn't available for this kind of install yet");
+    sent.borrow_mut().clear();
+    h.get_by_label("Install version v0.4.0").click();
+    h.run_steps(2);
+    assert!(installs(&sent).is_empty(), "{:?}", sent.borrow());
 }
 
 #[test]
@@ -4273,8 +4512,9 @@ fn turn_wheel(h: &mut Harness<'_, Option<LauncherUi>>, lines: f32) {
         source: egui::MouseWheelSource::Wheel,
     };
     let mut raw = egui::RawInput { events: vec![wheel], ..Default::default() };
-    if let Some(l) = h.state() {
-        l.raw_input(&h.ctx, &mut raw);
+    let ctx = h.ctx.clone();
+    if let Some(l) = h.state_mut() {
+        l.raw_input(&ctx, &mut raw);
     }
     for event in raw.events {
         h.event(event);
@@ -4533,6 +4773,14 @@ fn web_download_actions_also_preview_known_sizes() {
     }
 }
 
+/// The shell's `raw_input_hook` of the next frame, which hands the runtime the launcher's zoom.
+fn next_frame_input(h: &mut Harness<'_, Option<LauncherUi>>) {
+    let ctx = h.ctx.clone();
+    if let Some(l) = h.state_mut().as_mut() {
+        l.raw_input(&ctx, &mut egui::RawInput::default());
+    }
+}
+
 #[test]
 /// Command-plus-wheel over the main UI raises the global zoom factor.
 fn control_wheel_zooms_the_main_ui() {
@@ -4547,6 +4795,7 @@ fn control_wheel_zooms_the_main_ui() {
         source: egui::MouseWheelSource::Unknown,
     });
     h.step();
+    next_frame_input(&mut h);
     h.run_steps(2);
     assert!(h.ctx.zoom_factor() > before);
 }
@@ -4604,6 +4853,8 @@ fn changelog_shortcuts_zoom_only_the_notes_text() {
     assert_eq!(h.ctx.zoom_factor(), global);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Equals);
     h.run_steps(3);
+    next_frame_input(&mut h);
+    h.run_steps(2);
     assert!(h.ctx.zoom_factor() > global, "main-UI keyboard zoom should still work after closing notes");
 }
 

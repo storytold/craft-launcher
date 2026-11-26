@@ -120,26 +120,30 @@ fn harness_language(
     let sent2 = sent.clone();
     let mut backend = Some(Fake { events: events(), sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
     let settings = Settings { view, notify: false, language: language.into(), ..Settings::default() };
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).build_ui_state(
-        move |ui, state: &mut Option<LauncherUi>| {
-            if state.is_none()
-                && let Some(b) = backend.take()
-            {
-                let mut s = settings.clone();
-                s.theme = if theme == egui::Theme::Dark {
-                    artcraft_launcher_ui_egui::theme::ThemeChoice::Dark
-                } else {
-                    artcraft_launcher_ui_egui::theme::ThemeChoice::Light
-                };
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), s));
-            }
-            if let Some(l) = state.as_mut() {
-                l.logic(&ui.ctx().clone(), &mut NoHost);
-                l.ui(ui, &mut NoHost);
-            }
-        },
-        None,
-    );
+    let harness = Harness::builder()
+        .with_context_setup(artcraft_launcher_ui_egui::framework::install_headless)
+        .with_size(egui::vec2(1180.0, 900.0))
+        .with_theme(theme)
+        .build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none()
+                    && let Some(b) = backend.take()
+                {
+                    let mut s = settings.clone();
+                    s.theme = if theme == egui::Theme::Dark {
+                        artcraft_launcher_ui_egui::theme::ThemeChoice::Dark
+                    } else {
+                        artcraft_launcher_ui_egui::theme::ThemeChoice::Light
+                    };
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), s));
+                }
+                if let Some(l) = state.as_mut() {
+                    l.logic(&ui.ctx().clone(), &mut NoHost);
+                    l.ui(ui, &mut NoHost);
+                }
+            },
+            None,
+        );
     (harness, sent)
 }
 

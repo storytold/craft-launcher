@@ -84,20 +84,24 @@ fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
     let mut backend = Some(Fake { events: events(), clock: Rc::new(Cell::new(NOW)) });
     let settings =
         Settings { view, notify: false, language: "pt-BR".into(), theme: artcraft_launcher_ui_egui::theme::ThemeChoice::Dark, ..Settings::default() };
-    Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(egui::Theme::Dark).build_ui_state(
-        move |ui, state: &mut Option<LauncherUi>| {
-            if state.is_none()
-                && let Some(b) = backend.take()
-            {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), settings.clone()));
-            }
-            if let Some(l) = state.as_mut() {
-                l.logic(&ui.ctx().clone(), &mut NoHost);
-                l.ui(ui, &mut NoHost);
-            }
-        },
-        None,
-    )
+    Harness::builder()
+        .with_context_setup(artcraft_launcher_ui_egui::framework::install_headless)
+        .with_size(egui::vec2(1180.0, 900.0))
+        .with_theme(egui::Theme::Dark)
+        .build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none()
+                    && let Some(b) = backend.take()
+                {
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), settings.clone()));
+                }
+                if let Some(l) = state.as_mut() {
+                    l.logic(&ui.ctx().clone(), &mut NoHost);
+                    l.ui(ui, &mut NoHost);
+                }
+            },
+            None,
+        )
 }
 
 #[test]

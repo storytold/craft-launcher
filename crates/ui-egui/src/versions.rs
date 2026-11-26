@@ -116,7 +116,11 @@ impl LauncherUi {
             // Installing keeps the new choice. May open the folder dialog in this one's place;
             // `dialogs` keeps it.
             self.version_before = None;
-            self.install_app(id);
+            match self.going_back_to(id) {
+                // Picked by name, so the backend goes back to it, also to the latest release.
+                Some(tag) => self.install_chosen(id, tag, None),
+                None => self.install_app(id),
+            }
             return true;
         }
         close
@@ -149,22 +153,57 @@ impl LauncherUi {
         if !self.caps.manage_apps || entry.job.is_some() {
             return None;
         }
-        let release = entry.release();
-        let tag = match self.settings.versions.get(id).cloned().unwrap_or_default() {
-            VersionTrack::Pinned(tag) => tag,
-            VersionTrack::Nightly => match release {
-                Some(r) if is_nightly(r) => r.tag.clone(),
-                _ if self.checking => return Some((tl!("Checking…").to_string(), false, None)),
-                _ => return None,
-            },
-            VersionTrack::Stable => release.filter(|r| !r.prerelease)?.tag.clone(),
+        let tag = match self.chosen_tag(entry) {
+            Some(tag) => tag,
+            None if self.settings.versions.get(id) == Some(&VersionTrack::Nightly) && self.checking => {
+                return Some((tl!("Checking…").to_string(), false, None));
+            }
+            None => return None,
         };
         let installed = entry.installed.as_ref().and_then(|i| i.version.as_ref());
         if installed.is_some() && installed == version::parse(&tag).as_ref() {
             return Some((tl!("Installed").to_string(), false, None));
         }
-        let ready = self.version_installs(entry, &tag) == Some(true);
-        Some((crate::fmt(tl!("Install version {version}"), &[("version", &tag)]), ready, self.version_refusal(entry, &tag)))
+        let why = self.version_refusal(entry, &tag);
+        let ready = self.version_installs(entry, &tag) == Some(true) && why.is_none();
+        Some((crate::fmt(tl!("Install version {version}"), &[("version", &tag)]), ready, why))
+    }
+
+    /// The tag of the release the version dialog's Install installs: the pinned one, the nightly
+    /// on screen, or the latest release. That is the one the version list names as the latest
+    /// release, the row the person picked, while the list is in: until the checked release on
+    /// screen is that one too, Install waits ([`Self::version_installs`]). `None` while there is
+    /// none.
+    fn chosen_tag(&self, entry: &crate::model::AppEntry) -> Option<String> {
+        let release = entry.release();
+        match self.settings.versions.get(entry.app.id).cloned().unwrap_or_default() {
+            VersionTrack::Pinned(tag) => Some(tag),
+            VersionTrack::Nightly => release.filter(|r| is_nightly(r)).map(|r| r.tag.clone()),
+            VersionTrack::Stable => {
+                let checked = release.filter(|r| !r.prerelease)?;
+                Some(self.listed_latest(entry.app).unwrap_or_else(|| checked.tag.clone()))
+            }
+        }
+    }
+
+    /// The newest stable release in `app`'s version list that installs here: the row labelled as
+    /// the latest release. `None` until the list is in.
+    fn listed_latest(&self, app: &CraftApp) -> Option<String> {
+        let releases = self.version_lists.get(app.id)?.as_ref().ok()?;
+        choose_version(releases, &VersionTrack::Stable).filter(|r| self.has_version_download(app, r)).map(|r| r.tag)
+    }
+
+    /// The tag the version dialog's Install goes back to by name: the latest release (or nightly)
+    /// it shows, when that is older than the installed copy. `None` for an install, an update, or a
+    /// pinned version, which the backend already treats as chosen by name.
+    fn going_back_to(&self, id: &str) -> Option<String> {
+        if matches!(self.settings.versions.get(id), Some(VersionTrack::Pinned(_))) {
+            return None;
+        }
+        let entry = self.entry(id)?;
+        let installed = entry.installed.as_ref()?.version.as_ref()?;
+        let tag = self.chosen_tag(entry)?;
+        version::parse(&tag).is_some_and(|chosen| version::is_newer(installed, &chosen)).then_some(tag)
     }
 
     /// Whether version `tag` of `entry` can be installed now: `None` until the release on screen
@@ -181,6 +220,39 @@ impl LauncherUi {
     pub(crate) fn version_refusal(&self, entry: &crate::model::AppEntry, tag: &str) -> Option<String> {
         (entry.installed.is_some() && self.version_installs(entry, tag) == Some(false))
             .then(|| crate::fmt(tl!("ArtCraft Launcher can't install version {version} over this copy."), &[("version", tag)]))
+            .or_else(|| self.no_way_back(entry, tag))
+    }
+
+    /// Why going back from a Windows Installer copy to `tag` won't start, from the published list
+    /// the UI has: no release can be put back if it fails
+    /// ([`restore_point`](artcraft_launcher_core::rollback::restore_point), the backend's rule).
+    /// `None` when that isn't known yet, or when going back would start or ask first.
+    /// A system package (Debian, RPM, pacman) never goes back: the backend has no way to put the
+    /// installed version back if it fails.
+    fn no_way_back(&self, entry: &crate::model::AppEntry, tag: &str) -> Option<String> {
+        use artcraft_launcher_core::InstallSource::{Deb, Msi, Pacman, Rpm};
+        use artcraft_launcher_core::rollback::{RestorePoint, restore_point};
+        let installed = entry.installed.as_ref()?;
+        let have = installed.version.as_ref()?;
+        let older = |chosen: &version::Version| version::is_newer(have, chosen);
+        if matches!(installed.source, Deb | Rpm | Pacman) && version::parse(tag).is_some_and(|chosen| older(&chosen)) {
+            return Some(crate::fmt(
+                tl!("Going back to an older version of {app} isn't available for this kind of install yet."),
+                &[("app", entry.app.name)],
+            ));
+        }
+        if installed.source != Msi {
+            return None;
+        }
+        let releases = self.version_lists.get(entry.app.id)?.as_ref().ok()?;
+        let chosen = releases.iter().find(|r| r.tag == tag)?;
+        // The UI can't see the launcher's record of the copy; the backend refuses that case itself.
+        (older(chosen.version.as_ref()?) && restore_point(releases, installed, chosen, false) == RestorePoint::None).then(|| {
+            crate::fmt(
+                tl!("{app} {version} isn't published any more, so it couldn't be put back if going back fails."),
+                &[("app", entry.app.name), ("version", &have.to_string())],
+            )
+        })
     }
 
     pub(crate) fn version_combo(&mut self, ui: &mut Ui, id: &str, app: &CraftApp, width: f32, label: egui::Id) -> bool {
@@ -191,19 +263,14 @@ impl LauncherUi {
         let mut picked = None;
         // The newest stable release that installs here is labelled as the latest, and choosing it
         // follows new releases. Until the list is in, a plain "Latest release" row keeps that choice.
-        let latest = list
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .and_then(|releases| choose_version(releases, &VersionTrack::Stable))
-            .filter(|r| self.has_version_download(app, r))
-            .map(|r| r.tag);
+        let latest = self.listed_latest(app);
         let latest_label = |tag: &str| crate::fmt(tl!("{version} (latest release)"), &[("version", tag)]);
         let summary = match &choice {
             VersionTrack::Stable => latest.as_deref().map_or_else(|| tl!("Latest release").to_string(), latest_label),
             VersionTrack::Nightly => tl!("Nightly").to_string(),
             VersionTrack::Pinned(tag) => tag.clone(),
         };
-        craft_ui::ComboBox::from_id_salt(("version", id))
+        egui::ComboBox::from_id_salt(("version", id))
             .selected_text(summary)
             .width(width)
             .height(390.0)
@@ -479,30 +546,35 @@ mod tests {
     fn picker(id: &'static str, saved: VersionTrack) -> (egui_kittest::Harness<'static, Option<LauncherUi>>, PickerRecorder) {
         let sent = PickerRecorder(Default::default());
         let recorder = sent.clone();
-        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(700.0, 700.0)).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                let launcher = state.get_or_insert_with(|| {
-                    let mut settings = crate::settings::Settings { language: "en".into(), notify: false, ..Default::default() };
-                    settings.versions.insert(id.into(), saved.clone());
-                    let mut launcher = LauncherUi::new(ui.ctx(), Box::new(recorder.clone()), settings);
-                    let app = CraftApp::by_id(id).unwrap();
-                    launcher
-                        .version_lists
-                        .insert(id.into(), Ok(vec![picker_release(app, "v1.0.0-dev.nightly.1", true), picker_release(app, "v0.9.0", false)]));
-                    launcher
-                });
-                let label = ui.label("Version").id;
-                launcher.version_combo(ui, id, CraftApp::by_id(id).unwrap(), 500.0, label);
-            },
-            None,
-        );
+        let mut harness = egui_kittest::Harness::builder()
+            .with_context_setup(crate::framework::install_headless)
+            .with_size(egui::vec2(700.0, 700.0))
+            .build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    let launcher = state.get_or_insert_with(|| {
+                        let mut settings = crate::settings::Settings { language: "en".into(), notify: false, ..Default::default() };
+                        settings.versions.insert(id.into(), saved.clone());
+                        let mut launcher = LauncherUi::new(ui.ctx(), Box::new(recorder.clone()), settings);
+                        let app = CraftApp::by_id(id).unwrap();
+                        launcher
+                            .version_lists
+                            .insert(id.into(), Ok(vec![picker_release(app, "v1.0.0-dev.nightly.1", true), picker_release(app, "v0.9.0", false)]));
+                        launcher
+                    });
+                    let label = ui.label("Version").id;
+                    launcher.version_combo(ui, id, CraftApp::by_id(id).unwrap(), 500.0, label);
+                },
+                None,
+            );
         harness.run_steps(3);
         (harness, sent)
     }
     #[test]
     fn shared_selection_legacy_picker_really_follows_and_pins_main_supported_nightlies() {
         use egui_kittest::kittest::Queryable;
-        for id in ["solidcraft", "filmcraft"] {
+        // Apps without their own Nightly channel keep main's ordinary picker behaviour.
+        for id in ["solidcraft", "pdfcraft"] {
+            assert!(!CraftApp::by_id(id).unwrap().has_separate_nightly_channel(), "{id} must stay an app without its own Nightly channel");
             let (mut harness, sent) = picker(id, VersionTrack::Stable);
             harness.get_by_value("v0.9.0 (latest release)").click();
             harness.run_steps(3);
