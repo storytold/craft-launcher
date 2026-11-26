@@ -2255,7 +2255,8 @@ fn pinning_an_app_keeps_it_on_top_until_unpinned() {
     h.state_mut().as_mut().unwrap().settings.sort_descending = false;
     h.run_steps(2);
     // Card/row pin button (menu Pin to top is covered by pinned_app_menu_offers_unpin).
-    h.get_by_label("Pin PhotoCraft to top").click();
+    // Through the accessibility tree: its row can be behind the footer, where a pointer would miss it.
+    h.get_by_label("Pin PhotoCraft to top").click_accesskit();
     h.run_steps(4);
     assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
     let ids = h.state().as_ref().unwrap().visible_ids_for_test();

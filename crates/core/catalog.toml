@@ -1044,3 +1044,48 @@ title = "Files"
 [[apps.details.features]]
 text = "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."
 title = "Desktop, web and agents"
+
+[[apps]]
+bundle = "it.mauromazzieri.cashcraft"
+color = [31, 122, 106]
+former_bundles = []
+former_ids = []
+former_names = []
+id = "cashcraft"
+binary = "cashcraft"
+flatpak_id = "it.mauromazzieri.cashcraft"
+mac_bundle_id = "it.mauromazzieri.cashcraft"
+mac_bundle_name = "CashCraft"
+website = "https://github.com/mmazzieri/CashCraft"
+windows_msi_publisher = "Mauro Mazzieri"
+deb_package = "cashcraft"
+rpm_package = "cashcraft"
+desktop_categories = ["Office"]
+startup_wm_class = "it.mauromazzieri.cashcraft"
+icon_url = "https://getartcraft.com/launcher-app-icons/cashcraft-56207647771614d8f4749219779de1b69001e5e85c82f48181b087b20a52dd9d.png"
+icon_sha256 = "56207647771614d8f4749219779de1b69001e5e85c82f48181b087b20a52dd9d"
+ink_dark = [126, 208, 189]
+ink_light = [21, 92, 76]
+kind = "community"
+msi_publisher = "Mauro Mazzieri"
+name = "CashCraft"
+publisher = "Mauro Mazzieri"
+repo = "mmazzieri/CashCraft"
+site = "https://github.com/mmazzieri/CashCraft"
+tagline = "Personal finance"
+[apps.details]
+headline = "Your accounts, budgets and reports, in one file on your computer."
+about = "A personal finance app by Mauro Mazzieri, with import of the CSV statements of Italian banks. Local and offline: nothing is sent anywhere. Early alpha, and it can be driven by AI agents through its MCP server."
+platforms = "macOS, Windows, Linux"
+[[apps.details.features]]
+text = "Current accounts, cash, cards, savings and loans, with running balances, transfers and recurring transactions."
+title = "Accounts"
+[[apps.details.features]]
+text = "Italian bank CSV files: encoding, separator and columns are detected, and nothing is imported twice."
+title = "Bank statements"
+[[apps.details.features]]
+text = "Monthly budgets, spending by category, income against spending and net worth over time."
+title = "Budgets and reports"
+[[apps.details.features]]
+text = "A desktop app, a CLI and an MCP server, all running the same operations."
+title = "Desktop and agents"
