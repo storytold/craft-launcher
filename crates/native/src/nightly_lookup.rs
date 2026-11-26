@@ -51,6 +51,13 @@ fn failure(why: impl Into<String>) -> NightlyHttpError {
     NightlyHttpError { over_budget: false, why: why.into(), retry_at: None }
 }
 
+/// The launcher's own limit stopped the request: the GitHub budget, or the sweep's shared deadline.
+/// The app did nothing wrong, so the sweep defers it and the apps behind it instead of recording a
+/// failure that would cost them their queue position.
+fn withheld(why: &str) -> NightlyHttpError {
+    NightlyHttpError { over_budget: true, why: why.into(), retry_at: None }
+}
+
 impl Budget<'_> {
     fn get(&mut self, url: &str, max: usize) -> Result<Vec<u8>, NightlyHttpError> {
         if !(self.enabled)() {
@@ -59,7 +66,7 @@ impl Budget<'_> {
         let remaining = MAX_TIME
             .checked_sub((self.elapsed)())
             .filter(|time| !time.is_zero())
-            .ok_or_else(|| failure("The Nightly discovery elapsed-time budget was exhausted."))?;
+            .ok_or_else(|| withheld("The Nightly discovery elapsed-time budget was exhausted."))?;
         if self.requests >= MAX_REQUESTS || self.bytes >= MAX_BYTES {
             return Err(failure("The Nightly discovery request or returned-byte budget was exhausted."));
         }
@@ -73,7 +80,7 @@ impl Budget<'_> {
         }
         self.bytes += body.len();
         if (self.elapsed)() >= MAX_TIME {
-            return Err(failure("The Nightly discovery elapsed-time budget was exhausted."));
+            return Err(withheld("The Nightly discovery elapsed-time budget was exhausted."));
         }
         if !(self.enabled)() {
             return Err(failure("Developer build discovery was turned off."));
@@ -420,6 +427,9 @@ impl State {
 
     pub(crate) fn invalidate(&mut self) {
         self.generation = self.generation.wrapping_add(1);
+        // A sweep that started in the old generation must not restore a record's `complete` through
+        // `defer` after this: with no snapshot, its deferrals leave the record incomplete.
+        self.deferred_from.clear();
         for record in self.records.values_mut() {
             record.complete = false;
         }

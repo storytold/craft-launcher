@@ -112,6 +112,50 @@ fn a_deferred_key_keeps_its_place_and_finish_forgets_its_old_values() {
     assert_eq!(state.begin(&keys, &installed, NOW + 60, false, true), vec!["b", "c", "d"]);
 }
 
+/// The sweep's shared deadline is the launcher's own limit, not a failure of the app whose turn it
+/// ended: the outcome must be marked the way a budget refusal is, so the sweep defers that app and
+/// everyone behind it instead of recording failures that cost them their place.
+#[test]
+fn an_exhausted_sweep_deadline_is_a_launcher_refusal_the_sweep_can_defer() {
+    let elapsed = Cell::new(MAX_TIME);
+    let mut calls = 0;
+    let outcome = lookup(
+        app(),
+        platform(),
+        NOW,
+        &mut |_, _, _, _| {
+            calls += 1;
+            Ok(Some(b"[]".to_vec()))
+        },
+        &|| elapsed.get(),
+        &|| true,
+    );
+    match outcome {
+        Outcome::Indeterminate(error) => {
+            assert!(error.over_budget, "a deadline refusal is deferred, not saved as this app's failure");
+            assert!(error.why.contains("elapsed-time budget"), "{}", error.why);
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    assert_eq!(calls, 0, "the deadline is checked before any request is made");
+}
+
+/// A sweep that began before Nightly was switched off must not put a record back through `defer`:
+/// `invalidate` forgets the snapshot, so the record stays incomplete until a real lookup verifies it.
+#[test]
+fn invalidate_forgets_a_sweeps_deferred_snapshot() {
+    let installed = BTreeSet::new();
+    let keys: Vec<String> = ["a", "b"].iter().map(|key| key.to_string()).collect();
+    let mut state = State::default();
+    state.records.insert("a".into(), Record { verified_at: Some(NOW - 60), complete: true, ..Record::default() });
+    assert!(state.begin(&keys, &installed, NOW, true, true).contains(&"a".to_string()));
+    state.invalidate();
+    state.defer("a");
+    let record = state.records.get("a").unwrap();
+    assert!(!record.complete, "a deferral cannot revive a record across a generation change");
+    assert_eq!(record.attempted_at, Some(NOW), "and it does not restore the older attempt either");
+}
+
 #[test]
 fn persisted_scheduling_keys_keep_each_apps_existing_identity() {
     assert_eq!(
