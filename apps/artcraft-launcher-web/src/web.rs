@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use artcraft_launcher_core::details::{AppDetails, MAX_SCREENSHOT_BYTES, looks_like_jpeg};
 use artcraft_launcher_core::protocol::{Backend, Capabilities, Command, Event, LatestRelease, Origin, Source};
-use artcraft_launcher_core::release::{self, Release};
+use artcraft_launcher_core::release;
 use artcraft_launcher_core::{Arch, Os, Platform, catalog, version};
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, i18n};
 use wasm_bindgen::JsCast;
