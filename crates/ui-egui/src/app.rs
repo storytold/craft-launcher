@@ -1024,7 +1024,8 @@ impl LauncherUi {
             #[cfg(not(target_arch = "wasm32"))]
             if self.page == Page::Fonts {
                 egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| {
-                    self.fonts.ui(ui, &self.framework.host, &mut self.settings.fonts);
+                    let language = drawable_lang(&self.settings.language, self.cjk_font).code();
+                    self.fonts.ui(ui, &self.framework.host, &mut self.settings.fonts, language);
                 });
                 return;
             }

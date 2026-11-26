@@ -74,6 +74,8 @@ pub(crate) struct FontsTab {
     preview: Option<PreviewField>,
     /// Repaints the page when the catalog changes while the window is idle.
     watch: Option<Watch>,
+    /// Whether the panel has been given the launcher's default filters.
+    default_filters: bool,
 }
 
 /// The launcher's defaults for the shared store: previews from the default server, and downloads
@@ -90,7 +92,7 @@ impl FontsTab {
             Some(store) => Arc::new(with_launcher_defaults(store)),
             None => Arc::new(NoStore),
         };
-        FontsTab { catalog, installer, panel: None, options: None, consent: None, preview: None, watch: None }
+        FontsTab { catalog, installer, panel: None, options: None, consent: None, preview: None, watch: None, default_filters: false }
     }
 
     /// A page built from `options` (tests: a font folder, a fake store and a small index).
@@ -103,6 +105,7 @@ impl FontsTab {
             consent: None,
             preview: None,
             watch: None,
+            default_filters: false,
         }
     }
 
@@ -149,6 +152,14 @@ impl FontsTab {
         }
     }
 
+    /// The panel reads the preview settings again on its next frame.
+    fn preview_settings_changed(&mut self, now: f64) {
+        if let Some(panel) = self.panel.as_mut() {
+            panel.reload_preview_settings();
+        }
+        self.preview = Some(self.read_preview_field(now));
+    }
+
     fn preview_error(&mut self, error: String) {
         if let Some(field) = self.preview.as_mut() {
             field.error = Some(error);
@@ -166,7 +177,7 @@ impl FontsTab {
             return;
         }
         match self.installer.set_preview_service(url) {
-            Ok(()) => self.preview = Some(self.read_preview_field(now)),
+            Ok(()) => self.preview_settings_changed(now),
             Err(e) => self.preview_error(fmt(tl!("Couldn't use this server: {e}"), &[("e", &e.to_string())])),
         }
     }
@@ -222,7 +233,12 @@ impl FontsTab {
         if toggled {
             match self.installer.set_previews_enabled(enabled) {
                 // Only the switch changed: a refused address typed meanwhile stays, with its error.
-                Ok(()) => field.enabled = enabled,
+                Ok(()) => {
+                    field.enabled = enabled;
+                    if let Some(panel) = self.panel.as_mut() {
+                        panel.reload_preview_settings();
+                    }
+                }
                 Err(e) => self.preview_error(fmt(tl!("Couldn't change the font previews setting: {e}"), &[("e", &e.to_string())])),
             }
         }
@@ -262,9 +278,13 @@ impl FontsTab {
     }
 
     /// Draws the page into `ui`.
-    pub(crate) fn ui(&mut self, ui: &mut egui::Ui, host: &craft_host::Host, settings: &mut FontSettings) {
+    pub(crate) fn ui(&mut self, ui: &mut egui::Ui, host: &craft_host::Host, settings: &mut FontSettings, language: &str) {
         self.watch_catalog(ui.ctx());
+        let first = !std::mem::replace(&mut self.default_filters, true);
         let panel = self.panel_mut(host, settings);
+        if first {
+            panel.use_default_filters(language);
+        }
         FontsPanelView::new(panel).show(ui);
         let saved = from_panel(panel.settings());
         if saved != *settings {
