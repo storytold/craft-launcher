@@ -812,8 +812,9 @@ impl LauncherUi {
                     self.chosen_retry_allowed.remove(&app);
                 }
                 if let Some(e) = self.entry_mut(&app)
-                    && let Some(LatestRelease::Found(current)) = &e.latest
-                    && (named_attempt || (current.tag == release.tag && current.version == release.version && current.assets == release.assets))
+                    && (named_attempt
+                        || matches!(&e.latest, Some(LatestRelease::Found(current))
+                            if current.tag == release.tag && current.version == release.version && current.assets == release.assets))
                 {
                     e.blocked = failure;
                 }

@@ -1040,6 +1040,33 @@ fn an_ordinary_install_failure_replaces_a_previous_named_retry() {
 }
 
 #[test]
+fn a_named_retry_keeps_failure_details_without_a_latest_release() {
+    let (rc, latest) = rc_and_latest();
+    let attempted = latest.clone();
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0-rc.1"), latest.clone(), vec![rc, latest]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().unwrap().click();
+    h.run_steps(4);
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    queue.borrow_mut().extend([
+        Event::Latest { app: "photocraft".into(), latest: LatestRelease::None, from: Origin::GitHub },
+        Event::BlockedForRelease {
+            app: "photocraft".into(),
+            release: attempted,
+            retry_allowed: Some(true),
+            failure: Some(InstallFailure { blocker: Blocker::InstallerFailed, details: "Named release MSI 1603".into() }),
+        },
+        Event::JobFinished { app: "photocraft".into(), result: Err("The installer failed.".into()) },
+    ]);
+    h.run_steps(6);
+    assert!(h.query_by_label("Details: Named release MSI 1603").is_some());
+    sent.borrow_mut().clear();
+    h.get_by_label("Retry install of version v0.23.1").click();
+    h.run_steps(4);
+    assert_eq!(installs(&sent), [Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: None }]);
+}
+
+#[test]
 /// A copy Windows registered as 0.24.0, with no record of which release it was, can go back to the
 /// latest release once the person agrees that a failure puts the 0.24.0 release candidate back.
 fn a_stuck_copy_goes_back_to_the_latest_release_after_a_warning() {
