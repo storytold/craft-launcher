@@ -228,7 +228,14 @@ impl NightlyState {
 
     pub fn send(&mut self, command: Command, enabled: bool) {
         if !self.discovering(enabled)
-            && matches!(&command, Command::Install { .. } | Command::InstallAll { .. } | Command::Replace { .. } | Command::CheckForUpdates { .. })
+            && matches!(
+                &command,
+                Command::Install { .. }
+                    | Command::InstallChosen { .. }
+                    | Command::InstallAll { .. }
+                    | Command::Replace { .. }
+                    | Command::CheckForUpdates { .. }
+            )
         {
             return; // Consent is not inferred from installed copies or from an old pending click.
         }
