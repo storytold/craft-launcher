@@ -1071,16 +1071,19 @@ impl Adapter {
     }
 
     /// The program a Linux launcher script starts, beside it.
+    #[cfg(any(unix, test))]
     pub(crate) fn binary(self) -> Option<&'static Path> {
         self.0.binary.map(Path::new)
     }
 
     /// The Nightly badge the payload must carry, when the row declares one.
+    #[cfg(any(unix, test))]
     pub(crate) fn badge(self) -> Option<&'static Path> {
         self.0.badge.map(Path::new)
     }
 
     /// macOS: the `.app` folder at the payload's root and its Nightly bundle identifier.
+    #[cfg(any(unix, test))]
     pub(crate) fn bundle(self) -> Option<(&'static str, &'static str)> {
         self.0.bundle
     }

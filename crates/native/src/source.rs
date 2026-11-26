@@ -1053,15 +1053,9 @@ mod tests {
         // lookup reads one page further and stops there when nothing ordinary is behind them.
         let page = |url: &str, asked: &mut usize, repo: &str, per_page: usize| {
             *asked += 1;
-            Ok(Fetched::Body {
-                text: if url.ends_with("&page=2") { "[]".to_string() } else { crowded_page(repo, per_page, 0) },
-                etag: None,
-            })
+            Ok(Fetched::Body { text: if url.ends_with("&page=2") { "[]".to_string() } else { crowded_page(repo, per_page, 0) }, etag: None })
         };
-        let answer = source
-            .ask_api_with(&q(repo), true, |url, _| page(url, &mut asked, repo, LIST_PAGE))
-            .unwrap()
-            .unwrap();
+        let answer = source.ask_api_with(&q(repo), true, |url, _| page(url, &mut asked, repo, LIST_PAGE)).unwrap().unwrap();
         assert!(matches!(answer.latest, LatestRelease::None), "a Nightly is never an ordinary or pre-release candidate");
         assert_eq!(asked, 2, "one page, then one look past a page of nightlies");
         let list = source.versions_with(&q(repo), |url, _| page(url, &mut asked, repo, VERSIONS_PAGE)).unwrap();
