@@ -23,6 +23,7 @@ log = { workspace = true }
 craft-font-manager = { workspace = true }
 # The runtime the panel runs on.
 craft-host = { workspace = true }
+craft-i18n = { workspace = true }
 craft-theme = { workspace = true }
 craft-ui = { workspace = true }
 craft-window = { workspace = true }

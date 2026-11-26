@@ -382,7 +382,7 @@ impl LauncherUi {
             motion::unsmooth_wheel(ctx, raw);
         }
         #[cfg(not(target_arch = "wasm32"))]
-        self.framework.before_input(ctx, self.reduce_motion);
+        self.framework.before_input(ctx, self.reduce_motion, drawable_lang(&self.settings.language, self.cjk_font).code());
     }
 
     /// The interface zoom.

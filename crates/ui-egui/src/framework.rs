@@ -9,8 +9,10 @@
 
 use std::sync::Arc;
 
+use craft_font_manager::CATALOGS;
 use craft_host::target::{Backend, ShellInfo};
 use craft_host::{AppInfo, Host, MemorySections};
+use craft_i18n::{I18n, Lang};
 use craft_theme::{ColorToken, ContrastIntent, Mode, ModePins, ModeSeeds, Pins, RadiusSet, Rgba, SeedOverrides, Seeds, ShapeSeed, Status};
 use craft_theme::{ThemeDef, ThemeId, Variants};
 use craft_ui::fonts::{I18nScripts, SystemFonts, UiFonts};
@@ -59,6 +61,8 @@ pub fn close_path(ctx: &egui::Context) {
 pub(crate) struct Framework {
     /// The Fonts page's settings section lives in memory: the launcher keeps the same values in its own settings.
     pub(crate) host: Arc<Host>,
+    /// The panel's catalogs; the Host's language follows the launcher's (see [`Framework::before_input`]).
+    i18n: Arc<I18n>,
     theme: Arc<ThemeDef>,
     /// The interface zoom, which the runtime writes to the context each frame; the context's own (egui saves it with
     /// the window) until the first frame.
@@ -68,12 +72,20 @@ pub(crate) struct Framework {
 impl Framework {
     pub(crate) fn new() -> Framework {
         let app = AppInfo { id: "artcraft-launcher", name: "ArtCraft Launcher", version: env!("CARGO_PKG_VERSION") };
-        let host = Host::builder(app).settings(Arc::new(MemorySections::default())).build();
-        Framework { host: Arc::new(host), theme: Arc::new(theme()), zoom: None }
+        // Only the languages the panel has words for: a launcher language without a row set shows the panel in English.
+        let (i18n, _) = I18n::new(CATALOGS, &["ja"]);
+        let i18n = Arc::new(i18n);
+        let host = Host::builder(app).settings(Arc::new(MemorySections::default())).i18n(Arc::clone(&i18n)).lang(Lang::EN).build();
+        Framework { host: Arc::new(host), i18n, theme: Arc::new(theme()), zoom: None }
     }
 
-    /// The root values of this frame: the launcher's appearance and zoom.
-    pub(crate) fn before_input(&mut self, ctx: &egui::Context, reduce_motion: bool) {
+    /// The root values of this frame: the launcher's appearance, zoom and language. `lang_code` is the code of the
+    /// language the launcher draws in; the Host is installed again only when that language changes.
+    pub(crate) fn before_input(&mut self, ctx: &egui::Context, reduce_motion: bool, lang_code: &str) {
+        let lang = self.i18n.from_code(lang_code).unwrap_or(Lang::EN);
+        if lang != self.host.lang() {
+            self.host = Arc::new(self.host.with_lang(lang));
+        }
         let zoom = *self.zoom.get_or_insert_with(|| ctx.zoom_factor());
         let mode = if ctx.theme() == egui::Theme::Dark { Mode::Dark } else { Mode::Light };
         let mut root = RootEnv::new().library_theme(Arc::clone(&self.theme)).mode(mode).scale(Scale::new(zoom));
