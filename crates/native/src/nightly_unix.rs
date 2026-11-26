@@ -591,13 +591,16 @@ pub(crate) fn install_with_checkpoints(
     let root = paths.apps().join(adapter.app());
     let prepared = (|| {
         preparation.directories(Path::new("unpacked"))?;
-        let inventory = match adapter.os() {
+        // On FreeBSD there is no admitted Nightly archive format. Keep the result typed
+        // even when both extraction arms are compiled out, and refuse through the same
+        // preparation-abort path as an extraction error on Linux or macOS.
+        let inventory: Inventory = match adapter.os() {
             #[cfg(target_os = "linux")]
-            Os::Linux => extract_tar(file, &mut preparation)?,
+            Os::Linux => extract_tar(file, &mut preparation),
             #[cfg(target_os = "macos")]
-            Os::MacOs => extract_zip(file, &mut preparation)?,
-            _ => return Err("The Nightly archive format is unsupported on this platform.".into()),
-        };
+            Os::MacOs => extract_zip(file, &mut preparation),
+            _ => Err(String::from("The Nightly archive format is unsupported on this platform.")),
+        }?;
         let unpacked = preparation.path().join("unpacked");
         layout(adapter, &inventory.files, &inventory.entries)?;
         verify_content(adapter, &unpacked, &inventory.files)?;
