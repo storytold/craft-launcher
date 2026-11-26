@@ -30,6 +30,8 @@ mod nightly_transaction;
 mod nightly_trust;
 #[cfg(unix)]
 mod nightly_unix;
+#[cfg(any(windows, test))]
+mod nightly_windows_fence;
 #[cfg(all(test, windows))]
 mod nightly_windows_mechanics_tests;
 pub mod notices;

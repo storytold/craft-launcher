@@ -14,6 +14,11 @@ use crate::nightly::VerifiedRelease;
 use crate::paths::Paths;
 
 pub(crate) const EVERY: i64 = 6 * 60 * 60;
+/// An installed app's Nightly is checked every hour: that is the copy its user is running.
+const INSTALLED_EVERY: i64 = 60 * 60;
+/// At most this many apps nobody has installed are looked up in one automatic sweep, so the whole
+/// roster stays inside its six-hour cadence without spending an hour's GitHub budget at once.
+const DISCOVERY_PER_SWEEP: usize = 3;
 const MANUAL_COALESCE: i64 = 60;
 const PER_PAGE: usize = 100;
 const MAX_PAGES: usize = 5;
@@ -43,7 +48,14 @@ struct Budget<'a> {
 }
 
 fn failure(why: impl Into<String>) -> NightlyHttpError {
-    NightlyHttpError { why: why.into(), retry_at: None }
+    NightlyHttpError { over_budget: false, why: why.into(), retry_at: None }
+}
+
+/// The launcher's own limit stopped this app before it made a request: the GitHub budget, or a
+/// deadline earlier apps in the sweep had already used up. It is not a failure of this app, so the
+/// sweep defers it and the apps behind it instead of costing them their queue position.
+fn withheld(why: &str) -> NightlyHttpError {
+    NightlyHttpError { over_budget: true, why: why.into(), retry_at: None }
 }
 
 impl Budget<'_> {
@@ -51,10 +63,18 @@ impl Budget<'_> {
         if !(self.enabled)() {
             return Err(failure("Developer build discovery was turned off."));
         }
-        let remaining = MAX_TIME
-            .checked_sub((self.elapsed)())
-            .filter(|time| !time.is_zero())
-            .ok_or_else(|| failure("The Nightly discovery elapsed-time budget was exhausted."))?;
+        // A deadline used up before this app asked for anything was spent by the apps ahead of it, so
+        // this app keeps its turn. One it spends itself is this app's own failure: it records that and
+        // waits its normal cadence, which is what stops a slow app from taking the deadline every
+        // sweep and starving everyone behind it.
+        let deadline = || {
+            if self.requests == 0 {
+                withheld("The Nightly discovery elapsed-time budget was exhausted before this lookup started.")
+            } else {
+                failure("The Nightly discovery elapsed-time budget was exhausted.")
+            }
+        };
+        let remaining = MAX_TIME.checked_sub((self.elapsed)()).filter(|time| !time.is_zero()).ok_or_else(deadline)?;
         if self.requests >= MAX_REQUESTS || self.bytes >= MAX_BYTES {
             return Err(failure("The Nightly discovery request or returned-byte budget was exhausted."));
         }
@@ -217,11 +237,17 @@ impl Record {
         }
     }
 
-    fn due(&self, now: i64, manual: bool) -> bool {
+    fn due(&self, now: i64, manual: bool, installed: bool) -> bool {
         if self.retry_at.is_some_and(|at| now < at) {
             return false;
         }
-        let wait = if manual { MANUAL_COALESCE } else { EVERY };
+        let wait = if manual {
+            MANUAL_COALESCE
+        } else if installed {
+            INSTALLED_EVERY
+        } else {
+            EVERY
+        };
         // A future attempt after clock rollback is stale, not an indefinite cadence lockout.
         self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= wait)
     }
@@ -240,6 +266,10 @@ pub(crate) struct State {
     in_flight: bool,
     load_error: Option<String>,
     pending_save: bool,
+    /// For each key this sweep chose, its `(attempted_at, complete)` before `begin` stamped it. A
+    /// key the GitHub budget refused goes back to those values, so it keeps its place in the queue
+    /// instead of waiting out a full cadence for a request that was never made.
+    deferred_from: BTreeMap<String, (Option<i64>, bool)>,
 }
 
 pub(crate) fn key(app: &CraftApp, platform: Platform) -> String {
@@ -339,7 +369,7 @@ impl State {
         record
     }
 
-    pub(crate) fn begin(&mut self, keys: &[String], now: i64, manual: bool, enabled: bool) -> Vec<String> {
+    pub(crate) fn begin(&mut self, keys: &[String], installed: &BTreeSet<String>, now: i64, manual: bool, enabled: bool) -> Vec<String> {
         if !enabled || self.in_flight || self.load_error.is_some() || self.pending_save {
             return Vec::new();
         }
@@ -348,11 +378,35 @@ impl State {
         if self.backoff(now).is_some() {
             return Vec::new();
         }
-        let chosen: Vec<_> = keys.iter().filter(|key| self.record(key).due(now, manual)).take(MAX_RECORDS).cloned().collect();
+        // Installed copies first (their user is running the Nightly and expects it hourly), then apps
+        // never looked up, then the longest-waiting, so every sweep keeps taking the front of the queue.
+        let mut due: Vec<&String> = keys.iter().filter(|key| self.record(key).due(now, manual, installed.contains(*key))).collect();
+        due.sort_by_key(|key| {
+            let attempted_at = self.records.get(*key).and_then(|record| record.attempted_at);
+            (!installed.contains(*key), attempted_at, (*key).clone())
+        });
+        let mut chosen = Vec::new();
+        let mut discovered = 0;
+        for key in due {
+            if !manual && !installed.contains(key) {
+                // The roster is sorted installed-first, so the cap ends the sweep here.
+                if discovered >= DISCOVERY_PER_SWEEP {
+                    break;
+                }
+                discovered += 1;
+            }
+            chosen.push(key.clone());
+            if chosen.len() >= MAX_RECORDS {
+                break;
+            }
+        }
         if chosen.is_empty() {
             return chosen;
         }
+        self.deferred_from.clear();
         for key in &chosen {
+            let previous = self.records.get(key).cloned().unwrap_or_default();
+            self.deferred_from.insert(key.clone(), (previous.attempted_at, previous.complete));
             let record = self.records.entry(key.clone()).or_default();
             record.attempted_at = Some(now);
             record.complete = false;
@@ -361,16 +415,29 @@ impl State {
         chosen
     }
 
+    /// Puts a key this sweep chose back where it was: a budget refusal never happened, so it must not
+    /// cost the app its turn or leave a failure behind. Keys `begin` did not choose are left alone.
+    pub(crate) fn defer(&mut self, key: &str) {
+        let Some((attempted_at, complete)) = self.deferred_from.get(key).copied() else { return };
+        let record = self.records.entry(key.to_string()).or_default();
+        record.attempted_at = attempted_at;
+        record.complete = complete;
+    }
+
     pub(crate) fn backoff(&self, now: i64) -> Option<i64> {
         self.records.values().filter_map(|record| record.retry_at).filter(|at| *at > now).max()
     }
 
     pub(crate) fn finish(&mut self) {
         self.in_flight = false;
+        self.deferred_from.clear();
     }
 
     pub(crate) fn invalidate(&mut self) {
         self.generation = self.generation.wrapping_add(1);
+        // A sweep that started in the old generation must not restore a record's `complete` through
+        // `defer` after this: with no snapshot, its deferrals leave the record incomplete.
+        self.deferred_from.clear();
         for record in self.records.values_mut() {
             record.complete = false;
         }
@@ -390,6 +457,7 @@ impl State {
                 key,
                 now,
                 &Outcome::Indeterminate(NightlyHttpError {
+                    over_budget: false,
                     why: format!("Could not persist Nightly result metadata: {error}"),
                     retry_at: record.retry_at,
                 }),

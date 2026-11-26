@@ -515,3 +515,9 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Announcements	公告
 	No announcements	目前沒有公告
 @plural	Announcements, {n} unread|Announcements, {n} unread	公告，{n} 則未讀
+# Going back from a copy whose version has no release of its own (English fallback; translations are maintained in craft-i18n).
+	Go back to {version}?	Go back to {version}?
+	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.
+	Go back	Go back
+	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
+	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.

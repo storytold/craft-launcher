@@ -525,6 +525,8 @@ const SPLIT_SEAM: f32 = 1.0;
 pub struct Half<'a> {
     pub label: &'a str,
     pub kind: Kind,
+    /// A disabled half is drawn faded and reports itself disabled; the other half still works.
+    pub enabled: bool,
 }
 
 /// The labels of a side-by-side [`split_button`], and the width each half takes.
@@ -593,8 +595,8 @@ pub fn split_button(ui: &mut Ui, left: Half<'_>, right: Half<'_>, split: Split<'
     ui.scope(|ui| match split {
         Split::Side(fit) => {
             ui.spacing_mut().item_spacing.x = SPLIT_SEAM;
-            let l = labelled_button(ui, fit.left, left.label, left.kind, fit.left_w);
-            let r = labelled_button(ui, fit.right, right.label, right.kind, fit.right_w);
+            let l = ui.add_enabled_ui(left.enabled, |ui| labelled_button(ui, fit.left, left.label, left.kind, fit.left_w)).inner;
+            let r = ui.add_enabled_ui(right.enabled, |ui| labelled_button(ui, fit.right, right.label, right.kind, fit.right_w)).inner;
             (l, r)
         }
         // Its exact size, so the row centres the pair on its line like any other control (a plain
@@ -602,8 +604,8 @@ pub fn split_button(ui: &mut Ui, left: Half<'_>, right: Half<'_>, split: Split<'
         Split::Stacked { top, bottom, width } => {
             ui.allocate_ui_with_layout(vec2(width, STACKED_H), egui::Layout::top_down(egui::Align::Min), |ui| {
                 ui.spacing_mut().item_spacing.y = SPLIT_SEAM;
-                let l = labelled_button(ui, top, left.label, left.kind, width);
-                let r = labelled_button(ui, bottom, right.label, right.kind, width);
+                let l = ui.add_enabled_ui(left.enabled, |ui| labelled_button(ui, top, left.label, left.kind, width)).inner;
+                let r = ui.add_enabled_ui(right.enabled, |ui| labelled_button(ui, bottom, right.label, right.kind, width)).inner;
                 (l, r)
             })
             .inner

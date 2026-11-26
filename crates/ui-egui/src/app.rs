@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
+    is_paused,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -123,13 +124,33 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
-    UnlockVersion { app: String, tag: String },
-    Install { app: String, folder: String },
-    Replace { app: String, path: String },
+    UnlockVersion {
+        app: String,
+        tag: String,
+    },
+    Install {
+        app: String,
+        folder: String,
+    },
+    Replace {
+        app: String,
+        path: String,
+    },
+    /// Going back to `chosen` can only put `fallback` back if it fails (see
+    /// [`Event::GoBackFallback`](artcraft_launcher_core::protocol::Event::GoBackFallback)).
+    GoBackFallback {
+        app: String,
+        installed: String,
+        chosen: String,
+        fallback: String,
+    },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
-    LaunchFlags { app: String, flags: String },
+    LaunchFlags {
+        app: String,
+        flags: String,
+    },
 }
 
 impl Dialog {
@@ -142,6 +163,7 @@ impl Dialog {
             Dialog::UnlockVersion { app, .. } => ("unlock-version", app),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
+            Dialog::GoBackFallback { app, .. } => ("go-back-fallback", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
             Dialog::Versions(id) => ("versions", id),
@@ -173,6 +195,9 @@ pub struct LauncherUi {
     /// While the Choose version dialog is open: its app and the choice it had before, put back
     /// unless the dialog's Install keeps the new one.
     pub(crate) version_before: Option<(String, artcraft_launcher_core::protocol::VersionTrack)>,
+    /// The `InstallChosen` last sent for an app, while its job runs or its download is paused, so
+    /// Resume asks for the same release by name again rather than the track's.
+    pub(crate) chosen_installs: std::collections::HashMap<String, Command>,
     /// The launcher's own update, while it downloads and installs.
     pub(crate) launcher_job: Option<artcraft_launcher_core::protocol::JobPhase>,
     /// The new launcher is in place: quit so it can start.
@@ -310,6 +335,7 @@ impl LauncherUi {
             version_lists: std::collections::HashMap::new(),
             version_requests: std::collections::HashSet::new(),
             version_before: None,
+            chosen_installs: std::collections::HashMap::new(),
             launcher_job: None,
             restart_requested: false,
             announcements: Vec::new(),
@@ -567,6 +593,22 @@ impl LauncherUi {
             Some(Dialog::Install { app: id.to_string(), folder: self.settings.install_locations.per_app.get(id).cloned().unwrap_or_default() });
     }
 
+    /// Installs the release `tag` the person picked by name ([`Command::InstallChosen`]), and keeps
+    /// the request so Resume repeats it.
+    pub(crate) fn install_chosen(&mut self, id: &str, tag: String, fallback: Option<String>) {
+        let command = Command::InstallChosen { app: id.to_string(), tag, fallback };
+        self.chosen_installs.insert(id.to_string(), command.clone());
+        self.act_command(command);
+    }
+
+    /// Resumes `id`'s paused download: as the request by name that started it, else as an install.
+    pub(crate) fn resume_app(&mut self, id: &str) {
+        match self.chosen_installs.get(id).cloned() {
+            Some(command) => self.act_command(command),
+            None => self.install_app(id),
+        }
+    }
+
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         // Messages made here (toasts, alerts) are drawn later, so use the language the UI can
@@ -690,6 +732,10 @@ impl LauncherUi {
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
             }
+            Event::GoBackFallback { app, installed, chosen, fallback } => {
+                self.dialog = Some(Dialog::GoBackFallback { app, installed, chosen, fallback });
+                false
+            }
             Event::JobFinished { app, result } => {
                 self.on_job_finished(app, result);
                 true
@@ -755,6 +801,11 @@ impl LauncherUi {
             e.job = None;
         }
         let kept = self.entry(&app).is_some_and(|e| e.ready);
+        // A paused job is resumed by the same request, so the request is kept: every pause
+        // outcome, the connection-caused one included (is_paused), not just the plain PAUSED.
+        if !matches!(&result, Err(e) if is_paused(e)) {
+            self.chosen_installs.remove(&app);
+        }
         match result {
             Ok(msg) => self.toast(msg, false),
             // The paused card says it all.
@@ -770,8 +821,8 @@ impl LauncherUi {
                 self.toast(tl!("Install cancelled. The download is kept for the next try."), false);
             }
             Err(e) if e == INSTALL_CANCELLED => self.toast(tl!("Install cancelled"), false),
-            // The Replace dialog says it all.
-            Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. }) if *a == app) => {}
+            // The Replace dialog, or the question about going back, says it all.
+            Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. } | Dialog::GoBackFallback { app: a, .. }) if *a == app) => {}
             Err(e) => self.toast(e, true),
         }
     }

@@ -284,7 +284,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
 name = "artcraft-launcher"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-native",
@@ -310,7 +310,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-core"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -324,14 +324,14 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-mcp"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
  "craft-ai-mcp",
 ]
 
 [[package]]
 name = "artcraft-launcher-native"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
  "artcraft-launcher-core",
  "craft-ai-agents",
@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-ui-egui"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
  "artcraft-launcher-core",
  "craft-font-manager",
@@ -382,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-web"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-ui-egui",
@@ -1062,7 +1062,7 @@ dependencies = [
 [[package]]
 name = "craft-atomic"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "rustix 1.1.5",
 ]
@@ -1070,7 +1070,7 @@ dependencies = [
 [[package]]
 name = "craft-flags"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "craft-atomic",
  "dirs 7.0.0",
@@ -1080,7 +1080,7 @@ dependencies = [
 [[package]]
 name = "craft-font-catalog"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "fontique",
  "harfrust 0.13.3",
@@ -1095,7 +1095,7 @@ dependencies = [
 [[package]]
 name = "craft-font-manager"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "craft-font-catalog",
  "craft-font-store",
@@ -1109,13 +1109,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-font-os-windows"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
+dependencies = [
+ "windows-registry",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "craft-font-store"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "cap-primitives",
  "craft-atomic",
  "craft-font-catalog",
+ "craft-font-os-windows",
  "flate2",
  "log",
  "ruzstd",
@@ -1132,12 +1142,12 @@ dependencies = [
 [[package]]
 name = "craft-fonts-build"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 
 [[package]]
 name = "craft-i18n"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "fixed_decimal",
  "icu_decimal",
@@ -1160,7 +1170,7 @@ dependencies = [
 [[package]]
 name = "craft-quit"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "dispatch2",
  "egui",
@@ -1171,7 +1181,7 @@ dependencies = [
 [[package]]
 name = "craft-ui"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "craft-fonts-build",
  "craft-i18n",
@@ -1191,7 +1201,7 @@ dependencies = [
 [[package]]
 name = "craft-update"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=eeb5b26198865182463ceba31c8b64394793d22b#eeb5b26198865182463ceba31c8b64394793d22b"
+source = "git+https://github.com/storytold/craft-libs?rev=05b99ee5dcd64f2c954a693ef361301214ddc3c7#05b99ee5dcd64f2c954a693ef361301214ddc3c7"
 dependencies = [
  "chrono",
  "dunce",
@@ -2023,7 +2033,7 @@ checksum = "94e7099f6313ecacbe1256e8ff9d617b75d1bcb16a6fddef94866d225a01a14a"
 dependencies = [
  "io-lifetimes 2.0.4",
  "rustix 1.1.5",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2837,7 +2847,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20fd6de4ccfcc187e38bc21cfa543cb5a302cb86a8b114eb7f0bf0dc9f8ac00f"
 dependencies = [
  "io-lifetimes 3.0.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6577,7 +6587,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f3fd376f71958b862e7afb20cfe5a22830e1963462f3a17f49d82a6c1d1f42d"
 dependencies = [
  "bitflags 2.13.2",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6700,7 +6710,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.20.0"
+version = "0.20.2"
 dependencies = [
  "jiff",
  "semver",
