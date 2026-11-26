@@ -11,6 +11,8 @@ use sha2::{Digest, Sha256};
 const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"));
 /// Largest JSON or text answer we read.
 const MAX_SMALL: u64 = 4 << 20;
+/// Largest release history read from our release API (every release of an app, with its files).
+const MAX_HISTORY: u64 = 32 << 20;
 
 #[derive(Clone)]
 pub struct Http {
@@ -191,14 +193,29 @@ impl Http {
 
     /// ArtCraft's release feed, or why it couldn't be read. Never takes more than ~10 seconds.
     pub fn get_feed(&self, url: &str) -> Result<String, FeedError> {
+        self.get_json(url, if is_loopback(url) { &self.direct } else { &self.feed }, MAX_SMALL)
+    }
+
+    /// One app's release history from our release API, or why it couldn't be read: larger than the
+    /// feed (every release with its files), so a longer wait and a higher cap.
+    pub fn get_history(&self, url: &str) -> Result<String, FeedError> {
+        self.get_json(url, if is_loopback(url) { &self.direct } else { &self.small }, MAX_HISTORY)
+    }
+
+    /// GET a JSON answer of our release API with `default` (the Nightly test transport, when set,
+    /// maps it like every other Nightly request), capped at `max` bytes.
+    fn get_json(&self, url: &str, default: &ureq::Agent, max: u64) -> Result<String, FeedError> {
         let failed = |why: String| FeedError { why, throttled: false, retry_after: None };
-        let agent = if is_loopback(url) { &self.direct } else { &self.feed };
-        let mut resp =
-            agent.get(url).header("Accept", "application/json").call().map_err(|e| failed(format!("{UNREACHABLE} {} ({e})", host(url))))?;
+        let (physical, agent) = self.request(url, default).map_err(failed)?;
+        let mut resp = agent
+            .get(physical.as_ref())
+            .header("Accept", "application/json")
+            .call()
+            .map_err(|e| failed(format!("{UNREACHABLE} {} ({e})", host(url))))?;
         // Seconds only; an HTTP date falls back to our own backoff.
         let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|r| r.trim().parse::<i64>().ok());
         match resp.status().as_u16() {
-            200 => read_text_capped(&mut resp, MAX_SMALL).map_err(|e| failed(format!("unreadable answer ({e})"))),
+            200 => read_text_capped(&mut resp, max).map_err(|e| failed(format!("unreadable answer ({e})"))),
             s => Err(FeedError { why: format!("{} answered HTTP {s}", host(url)), throttled: s == 429, retry_after }),
         }
     }
@@ -866,6 +883,31 @@ pub(crate) mod tests {
         client.read_to_end(&mut response).unwrap();
         assert!(response.ends_with(b"ok"));
         assert!(seen.recv_timeout(Duration::from_secs(2)).unwrap().starts_with("GET /delayed HTTP/1.1"));
+        worker.join().unwrap();
+    }
+
+    /// With the Nightly test transport, the app's history from our release API comes from the
+    /// loopback fixture like its downloads, never from the live service.
+    #[test]
+    fn the_nightly_test_transport_serves_the_release_history_too() {
+        let body = br#"{"releases": []}"#;
+        let (base, seen, worker) = nightly_fixture(vec![(
+            Duration::ZERO,
+            nightly_response(
+                "200 OK",
+                &format!(
+                    "Content-Length: {}
+",
+                    body.len()
+                ),
+                body,
+            ),
+        )]);
+        let mut http = Http::new().unwrap();
+        http.nightly_mirror = Some(NightlyMirror::new(&base).unwrap());
+        assert_eq!(http.get_history("https://api.storyteller.ai/v1/craft_apps/photocraft/releases").unwrap().as_bytes(), body);
+        let request = seen.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(request.contains("/nightly/photocraft/releases.json"), "{request}");
         worker.join().unwrap();
     }
 

@@ -37,8 +37,8 @@ A message shown by the operating system, outside the launcher's window. Never us
 
 **Release feed**:
 ArtCraft's own list of each app's latest stable release, beta and nightly: the launcher's only
-source for which release is current. Each app's whole history, for choosing a version, comes from
-the same service.
+source for which release is current. Each app's available release history, for choosing a
+version, comes from the same service.
 _Avoid_: release info, ArtCraft API
 
 **Update check**:

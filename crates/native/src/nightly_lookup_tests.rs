@@ -20,8 +20,8 @@ fn tag(run: u64) -> String {
 const HISTORY: &str = "history";
 
 /// The complete release history `data` holds, as the lookup gets it from our API.
-fn history(data: &BTreeMap<String, Vec<u8>>) -> Result<AppReleases, String> {
-    let items: Vec<Value> = serde_json::from_slice(data.get(HISTORY).ok_or("no history")?).map_err(|e| e.to_string())?;
+fn history(data: &BTreeMap<String, Vec<u8>>) -> Result<AppReleases, NightlyHttpError> {
+    let items: Vec<Value> = serde_json::from_slice(data.get(HISTORY).ok_or_else(|| failure("no history"))?).map_err(|e| failure(e.to_string()))?;
     Ok(history_of(items))
 }
 
@@ -31,7 +31,7 @@ fn history_of(items: Vec<Value>) -> AppReleases {
         .filter(|item| !item["draft"].as_bool().unwrap_or(false))
         .filter_map(|item| artcraft_launcher_core::release::parse_github_release(&item.to_string(), app().repo).ok())
         .collect();
-    AppReleases { complete: true, releases }
+    AppReleases { complete: true, releases, fetched_at: Some(NOW) }
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn a_deadline_used_up_before_a_lookup_starts_is_a_launcher_refusal() {
         app(),
         platform(),
         NOW,
-        Ok(history_of(vec![candidate(&tag(20), true).0])),
+        &mut || Ok(history_of(vec![candidate(&tag(20), true).0])),
         &mut |_, _, _, _| {
             calls += 1;
             Ok(Some(b"[]".to_vec()))
@@ -119,7 +119,7 @@ fn a_deadline_an_app_spends_itself_is_its_own_failure() {
         app(),
         platform(),
         NOW,
-        Ok(history_of(vec![candidate(&tag(20), true).0])),
+        &mut || Ok(history_of(vec![candidate(&tag(20), true).0])),
         &mut |_, _, _, _| {
             calls += 1;
             elapsed.set(MAX_TIME);
@@ -214,7 +214,7 @@ fn fixtures(items: Vec<Value>, resources: Vec<(String, Vec<u8>)>) -> BTreeMap<St
     data
 }
 fn ask(data: &BTreeMap<String, Vec<u8>>) -> Outcome {
-    lookup(app(), platform(), NOW, history(data), &mut |url, _, _, _| Ok(data.get(url).cloned()), &|| Duration::ZERO, &|| true)
+    lookup(app(), platform(), NOW, &mut || history(data), &mut |url, _, _, _| Ok(data.get(url).cloned()), &|| Duration::ZERO, &|| true)
 }
 pub(crate) fn verified(run: u64) -> VerifiedRelease {
     let (item, _, body) = candidate(&tag(run), true);
@@ -262,7 +262,7 @@ fn descriptor_request_budget_is_indeterminate_before_a_compatible_winner() {
         app(),
         platform(),
         NOW,
-        history(&data),
+        &mut || history(&data),
         &mut |url, _, _, _| {
             requests += 1;
             Ok(data.get(url).cloned())
@@ -271,7 +271,7 @@ fn descriptor_request_budget_is_indeterminate_before_a_compatible_winner() {
         &|| true,
     );
     assert!(matches!(outcome, Outcome::Indeterminate(_)));
-    assert_eq!(requests, MAX_REQUESTS);
+    assert_eq!(requests, MAX_REQUESTS - 1, "the history request is the lookup's first");
 }
 
 #[test]
@@ -281,7 +281,7 @@ fn fresh_off_and_off_during_a_response_make_no_followup_request_or_selection() {
         app(),
         platform(),
         NOW,
-        Ok(history_of(Vec::new())),
+        &mut || Ok(history_of(Vec::new())),
         &mut |_, _, _, _| {
             calls += 1;
             Ok(Some(b"[]".to_vec()))
@@ -298,7 +298,7 @@ fn fresh_off_and_off_during_a_response_make_no_followup_request_or_selection() {
         app(),
         platform(),
         NOW,
-        Ok(history_of(vec![item.clone()])),
+        &mut || Ok(history_of(vec![item.clone()])),
         &mut |_, _, _, _| {
             calls += 1;
             enabled.set(false);
@@ -436,7 +436,7 @@ fn retained_two_resource_history_is_order_independent_and_only_verifies_the_winn
             app(),
             platform(),
             NOW,
-            history(&data),
+            &mut || history(&data),
             &mut |url, _, _, _| {
                 asked.push(url.to_owned());
                 Ok(data.get(url).cloned())
@@ -462,7 +462,7 @@ fn higher_unsupported_contenders_are_verified_before_the_compatible_winner() {
         app(),
         platform(),
         NOW,
-        history(&data),
+        &mut || history(&data),
         &mut |url, _, _, _| {
             asked.push(url.to_owned());
             Ok(data.get(url).cloned())
@@ -491,7 +491,7 @@ fn invalid_potential_winner_refuses_but_dominated_descriptor_body_is_unnecessary
             app(),
             platform(),
             NOW,
-            history(&data),
+            &mut || history(&data),
             &mut |url, _, _, _| {
                 asked.push(url.to_owned());
                 Ok(data.get(url).cloned())
@@ -620,7 +620,7 @@ fn shared_selection_unconfigured_platform_lookup_refuses_before_any_network_body
         // Intel Macs have no Nightly row; Apple silicon is admitted by its pinned signing team.
         Platform { os: Os::MacOs, arch: Arch::X64 },
         NOW,
-        Ok(history_of(vec![candidate(&tag(20), true).0])),
+        &mut || Ok(history_of(vec![candidate(&tag(20), true).0])),
         &mut |_, _, _, _| {
             requests += 1;
             Ok(None)

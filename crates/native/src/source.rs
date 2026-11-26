@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
-use artcraft_launcher_core::feed::{self, AppReleases};
+use artcraft_launcher_core::feed::{self, AppReleases, MAX_AGE};
 use artcraft_launcher_core::protocol::{LatestRelease, VersionTrack};
 use artcraft_launcher_core::release::{self, Release, ReleaseQuery};
 
@@ -38,10 +38,15 @@ pub trait ReleaseSource: Send + Sync {
     }
 
     /// The release `track` follows (the chosen nightly or exact version) in a history no older than
-    /// `max_age` seconds, with no fallback to another.
+    /// `max_age` seconds, with no fallback to another. Not found in an incomplete history is not
+    /// "none": it may be older than the history reaches.
     fn chosen_within(&self, query: &ReleaseQuery, track: &VersionTrack, max_age: i64) -> LatestRelease {
-        match self.versions_within(query, max_age) {
-            Ok(list) => release::choose_version_for(&list, track, query.separate_nightly).map_or(LatestRelease::None, LatestRelease::Found),
+        match self.history_within(query, max_age) {
+            Ok(history) => match release::choose_version_for(&history.releases, track, query.separate_nightly) {
+                Some(found) => LatestRelease::Found(found),
+                None if history.complete => LatestRelease::None,
+                None => LatestRelease::Failed(BEYOND_HISTORY.into()),
+            },
             Err(why) => LatestRelease::Failed(why),
         }
     }
@@ -55,6 +60,7 @@ pub trait ReleaseSource: Send + Sync {
 /// Why an app's releases couldn't be read, as the launcher shows it.
 pub(crate) const UNREACHABLE: &str = "ArtCraft's release service couldn't be reached. Try again later.";
 const NOT_LISTED: &str = "ArtCraft's release service has no releases for this app.";
+const BEYOND_HISTORY: &str = "This version isn't among the releases ArtCraft's release service lists for this app.";
 
 /// Our release API, next to the release feed at `feed_url`.
 pub struct ApiSource {
@@ -74,14 +80,16 @@ impl ReleaseSource for ApiSource {
     fn history_within(&self, query: &ReleaseQuery, max_age: i64) -> Result<AppReleases, String> {
         let key = (query.app.clone(), query.repo.clone());
         let now = crate::now();
+        // Kept while it is younger than `max_age` here and the server's own fetch is still fresh.
         if let Some((at, history)) = self.saved.lock().unwrap_or_else(PoisonError::into_inner).get(&key)
             && max_age > 0
             && (0..max_age).contains(&now.saturating_sub(*at))
+            && history.fetched_at.is_some_and(|fetched| now.saturating_sub(fetched) <= MAX_AGE)
         {
             return Ok(history.clone());
         }
         let url = feed::app_releases_url(&self.feed_url, &query.app).ok_or(NOT_LISTED)?;
-        let json = self.http.get_feed(&url).map_err(|e| {
+        let json = self.http.get_history(&url).map_err(|e| {
             log::warn!("release history of {}: {}", query.app, e.why);
             UNREACHABLE.to_string()
         })?;
@@ -91,21 +99,30 @@ impl ReleaseSource for ApiSource {
     }
 }
 
-/// `query`'s app's release history, asked of our API next to `feed_url` now, with no saved copy:
-/// for the Developer Builds copy, which keeps no [`ApiSource`].
-pub(crate) fn fetch_history(http: &Http, feed_url: &str, query: &ReleaseQuery) -> Result<AppReleases, String> {
-    ApiSource::new(http.clone(), feed_url.to_string()).history_within(query, 0)
+/// `query`'s app's release history, asked of our API next to `feed_url` at `now`, with no saved
+/// copy: for Developer Builds discovery, which keeps no [`ApiSource`]. A server's `Retry-After`
+/// (or a 429 without one) becomes the scheduler's backoff.
+pub(crate) fn fetch_history(http: &Http, feed_url: &str, query: &ReleaseQuery, now: i64) -> Result<AppReleases, crate::http::NightlyHttpError> {
+    let error = |why: &str, retry_at: Option<i64>| crate::http::NightlyHttpError { over_budget: false, why: why.into(), retry_at };
+    let url = feed::app_releases_url(feed_url, &query.app).ok_or_else(|| error(NOT_LISTED, None))?;
+    let json = http.get_history(&url).map_err(|e| {
+        log::warn!("release history of {}: {}", query.app, e.why);
+        let retry_at =
+            e.retry_after.map(|secs| now.saturating_add(secs.clamp(0, 24 * 60 * 60))).or_else(|| e.throttled.then(|| now.saturating_add(60)));
+        error(UNREACHABLE, retry_at)
+    })?;
+    AppReleases::parse(&json, &query.repo, query.former_repo.as_deref(), now).ok_or_else(|| error(NOT_LISTED, None))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// A source answering from `releases`.
-    struct Fixed(Vec<Release>);
+    /// A source answering from `releases`, a complete history or not.
+    struct Fixed(Vec<Release>, bool);
     impl ReleaseSource for Fixed {
         fn history_within(&self, _query: &ReleaseQuery, _max_age: i64) -> Result<AppReleases, String> {
-            Ok(AppReleases { complete: true, releases: self.0.clone() })
+            Ok(AppReleases { complete: self.1, releases: self.0.clone(), fetched_at: None })
         }
     }
 
@@ -119,10 +136,13 @@ mod tests {
 
     #[test]
     fn a_pinned_version_is_chosen_from_the_history_with_no_fallback() {
-        let source = Fixed(vec![release("v0.6.0"), release("v0.5.0")]);
+        let source = Fixed(vec![release("v0.6.0"), release("v0.5.0")], true);
         let pinned = |tag: &str| source.chosen(&query(), &VersionTrack::Pinned(tag.into()));
         assert!(matches!(pinned("v0.5.0"), LatestRelease::Found(r) if r.tag == "v0.5.0"));
         assert_eq!(pinned("v0.4.0"), LatestRelease::None, "not published: no other version stands in");
+        // In a history that doesn't reach back to it, a version isn't known to be gone.
+        let partial = Fixed(vec![release("v0.6.0")], false);
+        assert!(matches!(partial.chosen(&query(), &VersionTrack::Pinned("v0.5.0".into())), LatestRelease::Failed(_)));
     }
 
     #[test]

@@ -51,6 +51,9 @@ pub struct FeedApp {
     pub repo: Option<String>,
     /// Present when the repo has a published release. Meaningless unless `fetched_at` is set.
     pub release: Option<FeedRelease>,
+    /// The entry sent a `latest_release` that can't be read: unlike `null`, that says nothing about
+    /// whether the app has a release.
+    pub release_unreadable: bool,
     /// When storyteller-web last fetched this app (Unix seconds).
     pub fetched_at: Option<i64>,
     /// Whether the entry carries a usable pre-release channel: the `releases` version list, and a
@@ -144,7 +147,9 @@ impl Feed {
 
     /// What the feed says about `app` at `now`.
     pub fn answer(&self, app: &CraftApp, now: i64) -> FeedAnswer {
-        let Some((entry, repo)) = self.checked(app, now) else { return FeedAnswer::Unknown };
+        let Some((entry, repo)) = self.checked(app, now).filter(|(entry, _)| !entry.release_unreadable) else {
+            return FeedAnswer::Unknown;
+        };
         match &entry.release {
             None => FeedAnswer::Fresh(None),
             Some(r) => match r.to_release(&repo, self.mirror.as_deref()) {
@@ -220,6 +225,9 @@ pub struct AppReleases {
     pub complete: bool,
     /// Newest first, nightlies included: every release that holds up for the app's repo.
     pub releases: Vec<Release>,
+    /// When storyteller-web fetched it (Unix seconds): a saved copy older than [`MAX_AGE`] is as
+    /// unknown as a stale answer.
+    pub fetched_at: Option<i64>,
 }
 
 /// The most releases read from one app's history (storyteller-web sends at most 1000).
@@ -238,7 +246,7 @@ impl AppReleases {
     /// Reads an app's history (answer of [`app_releases_url`]). Its repo must be `repo` or the
     /// app's `former_repo`, as in [`Feed::answer`], and every release goes through the same download
     /// checks. `None` when it isn't such an answer, or was never fetched or is older than
-    /// [`MAX_AGE`] at `now`: the history is then unknown.
+    /// [`MAX_AGE`] at `now`, or has no release list: the history is then unknown.
     pub fn parse(json: &str, repo: &str, former_repo: Option<&str>, now: i64) -> Option<Self> {
         let raw: RawAppReleases = serde_json::from_str(json).ok()?;
         let fetched_at = raw.app_last_fetched.as_deref().and_then(parse_rfc3339)?;
@@ -247,9 +255,16 @@ impl AppReleases {
         }
         let served = raw.repo?;
         let repo = if served.eq_ignore_ascii_case(repo) { repo } else { former_repo.filter(|former| served.eq_ignore_ascii_case(former))? };
-        let releases =
-            raw.releases.into_iter().take(MAX_HISTORY).filter_map(RawRelease::into_release).filter_map(|r| r.to_release(repo, None)).collect();
-        Some(Self { complete: raw.complete, releases })
+        // No list at all is no answer, never a complete empty history.
+        let serde_json::Value::Array(items) = raw.releases? else { return None };
+        let releases = items
+            .into_iter()
+            .take(MAX_HISTORY)
+            .filter_map(|item| RawRelease::deserialize(item).ok())
+            .filter_map(RawRelease::into_release)
+            .filter_map(|r| r.to_release(repo, None))
+            .collect();
+        Some(Self { complete: raw.complete, releases, fetched_at: Some(fetched_at) })
     }
 }
 
@@ -341,8 +356,9 @@ struct RawReleaseInfo {
 struct RawApp {
     #[serde(default, deserialize_with = "lenient")]
     repo: Option<String>,
-    #[serde(default, deserialize_with = "lenient")]
-    latest_release: Option<RawRelease>,
+    /// Kept raw: a release that is there but can't be read is not the same as none.
+    #[serde(default)]
+    latest_release: Option<serde_json::Value>,
     #[serde(default, deserialize_with = "lenient")]
     app_last_fetched: Option<String>,
     /// Kept raw: a beta that is there but can't be read is not the same as none.
@@ -351,6 +367,14 @@ struct RawApp {
     /// Kept raw: whether it is a list at all says whether the server knows the channels.
     #[serde(default)]
     releases: Option<serde_json::Value>,
+}
+
+/// A release field as sent: absent or `null` is no release, `Err` one that is there but can't be read.
+fn read_release(value: Option<serde_json::Value>) -> Result<Option<FeedRelease>, ()> {
+    match value {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(value) => RawRelease::deserialize(value).ok().and_then(RawRelease::into_release).map(Some).ok_or(()),
+    }
 }
 
 /// The most entries read from an app's version list (storyteller-web sends at most 30).
@@ -368,13 +392,12 @@ impl RawApp {
             ),
             _ => None,
         };
-        let prerelease = match self.latest_prerelease {
-            None | Some(serde_json::Value::Null) => Ok(None),
-            Some(value) => RawRelease::deserialize(value).ok().and_then(RawRelease::into_release).map(Some).ok_or(()),
-        };
+        let prerelease = read_release(self.latest_prerelease);
+        let release = read_release(self.latest_release);
         FeedApp {
             repo: self.repo.filter(|r| r.split('/').count() == 2 && r.split('/').all(|part| !part.is_empty() && part != "." && part != "..")),
-            release: self.latest_release.and_then(RawRelease::into_release),
+            release_unreadable: release.is_err(),
+            release: release.unwrap_or_default(),
             fetched_at: self.app_last_fetched.as_deref().and_then(parse_rfc3339),
             channels: versions.is_some() && prerelease.is_ok(),
             prerelease: prerelease.unwrap_or_default(),
@@ -424,8 +447,9 @@ struct RawAppReleases {
     app_last_fetched: Option<String>,
     #[serde(default, deserialize_with = "lenient")]
     complete: bool,
-    #[serde(default, deserialize_with = "lenient_vec")]
-    releases: Vec<RawRelease>,
+    /// Kept raw: it must be a list, so a missing one isn't read as an empty history.
+    #[serde(default)]
+    releases: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Default)]
@@ -617,6 +641,22 @@ mod tests {
         assert_eq!(tag(feed.answer_with_prereleases(app("photocraft"), NOW)).as_deref(), Some("v0.7.0-rc.1"));
     }
 
+    /// A stable release that is there but can't be read says nothing; `null` says "none yet".
+    #[test]
+    fn an_unreadable_stable_release_is_unknown_not_none() {
+        let entry = |release: &str| {
+            Feed::parse(&format!(
+                r#"{{"release_info": {{"apps": {{"photocraft": {{"repo": "storytold/photocraft", "app_last_fetched": "2026-10-09T13:00:00Z", "latest_release": {release}}}}}}}}}"#
+            ))
+            .unwrap()
+        };
+        let photo = app("photocraft");
+        for unreadable in [r#"{"tag": ""}"#, r#"{"name": "x"}"#, "5", r#""v1.0.0""#] {
+            assert_eq!(entry(unreadable).answer(photo, NOW), FeedAnswer::Unknown, "{unreadable}");
+        }
+        assert_eq!(entry("null").answer(photo, NOW), FeedAnswer::Fresh(None));
+    }
+
     #[test]
     fn reads_the_channels_leniently() {
         let feed = Feed::parse(
@@ -707,6 +747,7 @@ mod tests {
         let json = history(photo.repo, r#""2026-10-09T13:00:00Z""#, &releases.join(","));
         let read = AppReleases::parse(&json, photo.repo, None, NOW).unwrap();
         assert!(read.complete);
+        assert_eq!(read.fetched_at, parse_rfc3339("2026-10-09T13:00:00Z"));
         let tags: Vec<&str> = read.releases.iter().map(|r| r.tag.as_str()).collect();
         assert_eq!(tags, ["v0.7.0-nightly.20261126.1.1", "v0.6.0", "v0.5.0"], "newest first, nightlies kept, a tagless one dropped");
         assert_eq!(read.releases[1].assets.len(), 1);
@@ -715,6 +756,9 @@ mod tests {
         assert!(AppReleases::parse(&history("someone/photocraft", r#""2026-10-09T13:00:00Z""#, ""), photo.repo, None, NOW).is_none());
         assert!(AppReleases::parse(&history(photo.repo, "null", ""), photo.repo, None, NOW).is_none());
         assert!(AppReleases::parse(&json, photo.repo, None, NOW + 2 * MAX_AGE).is_none());
+        // A "complete" history that sends no list at all is no answer.
+        let no_list = json.replace(r#", "releases": ["#, r#", "missing": ["#);
+        assert!(AppReleases::parse(&no_list, photo.repo, None, NOW).is_none());
         for junk in ["", "[]", "<html>", r#"{"repo": 5}"#] {
             assert!(AppReleases::parse(junk, photo.repo, None, NOW).is_none(), "{junk}");
         }

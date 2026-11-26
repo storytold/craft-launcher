@@ -784,12 +784,14 @@ impl NativeBackend {
                         retry_at: Some(retry_at),
                     })
                 } else if let Some(http) = &http {
-                    let history = crate::source::fetch_history(http, &feed_url, &ReleaseQuery::for_app(&app, app.repo));
+                    // Developer Builds are pinned to the catalog's repository (`nightly_trust`): a feed
+                    // rename doesn't move where signed nightlies come from.
+                    let query = ReleaseQuery::for_app(&app, app.repo);
                     crate::nightly_lookup::lookup(
                         &app,
                         platform,
                         now,
-                        history,
+                        &mut || crate::source::fetch_history(http, &feed_url, &query, crate::now()),
                         &mut |url, max, timeout, now| http.nightly_get(url, max, timeout, now),
                         &|| started.elapsed(),
                         &enabled,
@@ -3070,7 +3072,7 @@ mod tests {
         struct Published;
         impl ReleaseSource for Published {
             fn history_within(&self, _query: &ReleaseQuery, _max_age: i64) -> Result<AppReleases, String> {
-                Ok(AppReleases { complete: true, releases: vec![tagged("0.6.0"), tagged("0.5.0")] })
+                Ok(AppReleases { complete: true, releases: vec![tagged("0.6.0"), tagged("0.5.0")], fetched_at: None })
             }
         }
         let Some(platform) = native_platform() else {
@@ -4186,7 +4188,7 @@ mod tests {
         impl ReleaseSource for Unchanged {
             fn history_within(&self, query: &ReleaseQuery, _max_age: i64) -> Result<AppReleases, String> {
                 if query.app == APP {
-                    return Ok(AppReleases { complete: true, releases: vec![release("0.5.0")] });
+                    return Ok(AppReleases { complete: true, releases: vec![release("0.5.0")], fetched_at: None });
                 }
                 // Another app holds the check open: APP's answer is out, the batch isn't done.
                 let _ = self.saving.send(());
@@ -4289,7 +4291,7 @@ mod tests {
         impl ReleaseSource for Newer {
             fn history_within(&self, query: &ReleaseQuery, _max_age: i64) -> Result<AppReleases, String> {
                 let releases = if query.app == APP { vec![release("0.6.0")] } else { Vec::new() };
-                Ok(AppReleases { complete: true, releases })
+                Ok(AppReleases { complete: true, releases, fetched_at: None })
             }
         }
         let Some(platform) = native_platform() else {

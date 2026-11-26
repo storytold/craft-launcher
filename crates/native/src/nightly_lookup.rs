@@ -103,12 +103,7 @@ impl Budget<'_> {
             return Err(failure("Developer build discovery was turned off."));
         }
         if (self.elapsed)() >= MAX_TIME {
-            // Spent before this lookup asked anything: by the apps ahead of it, not by this one.
-            return Err(if self.requests == 0 {
-                withheld("The Nightly discovery elapsed-time budget was exhausted before this lookup started.")
-            } else {
-                failure("The Nightly discovery elapsed-time budget was exhausted before final coverage.")
-            });
+            return Err(failure("The Nightly discovery elapsed-time budget was exhausted before final coverage."));
         }
         Ok(())
     }
@@ -145,19 +140,30 @@ impl Budget<'_> {
 /// Invalid potentially winning evidence is indeterminate; a compatible winner proves dominated
 /// descriptor bodies unnecessary. An incomplete history never proves coverage, and one that
 /// couldn't be read is indeterminate.
+///
+/// `history` asks our release API for the app's history: this lookup's first request, under the
+/// same deadline and request count as the downloads after it.
 pub(crate) fn lookup<'a>(
     app: &CraftApp,
     platform: Platform,
     now: i64,
-    history: Result<artcraft_launcher_core::feed::AppReleases, String>,
+    history: &mut dyn FnMut() -> Result<artcraft_launcher_core::feed::AppReleases, NightlyHttpError>,
     fetch: &'a mut Fetch<'a>,
     elapsed: &'a dyn Fn() -> Duration,
     enabled: &'a dyn Fn() -> bool,
 ) -> Outcome {
     let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
-    let history = match history {
+    if !(budget.enabled)() {
+        return Outcome::Indeterminate(failure("Developer build discovery was turned off."));
+    }
+    // A deadline spent before this lookup asked anything was spent by the apps ahead of it.
+    if (budget.elapsed)() >= MAX_TIME {
+        return Outcome::Indeterminate(withheld("The Nightly discovery elapsed-time budget was exhausted before this lookup started."));
+    }
+    budget.requests += 1;
+    let history = match history() {
         Ok(history) => history,
-        Err(why) => return Outcome::Indeterminate(failure(why)),
+        Err(error) => return Outcome::Indeterminate(error),
     };
     match scan(app, platform, history, &mut budget) {
         Ok(Some(verified)) => Outcome::Verified(Box::new(verified)),

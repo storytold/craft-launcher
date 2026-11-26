@@ -22,7 +22,7 @@ fn representative(app: &CraftApp, tag: &str, at: i64) -> Release {
 struct Published(Vec<Release>);
 impl ReleaseSource for Published {
     fn history_within(&self, _query: &ReleaseQuery, _max_age: i64) -> Result<AppReleases, String> {
-        Ok(AppReleases { complete: true, releases: self.0.clone() })
+        Ok(AppReleases { complete: true, releases: self.0.clone(), fetched_at: None })
     }
 }
 #[test]
