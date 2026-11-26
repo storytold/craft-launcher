@@ -13,12 +13,21 @@ const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"))
 const MAX_SMALL: u64 = 4 << 20;
 /// Largest release history read from our release API (every release of an app, with its files).
 const MAX_HISTORY: u64 = 32 << 20;
+/// Our release API's history (and GitHub's release list in its place): how long to wait for a
+/// connection, for the answer to start, and for the whole body.
+const HISTORY_CONNECT: Duration = Duration::from_secs(5);
+const HISTORY_FIRST_BYTE: Duration = Duration::from_secs(10);
+const HISTORY_BODY: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct Http {
     small: ureq::Agent,
     /// ArtCraft's release feed: a short timeout, so a slow server never holds up a check.
     feed: ureq::Agent,
+    /// An app's release history from our API, and GitHub's release list when that can't answer:
+    /// short connect and first-byte timeouts, so an outage never holds up Choose version, and a
+    /// longer one for the body, which can be a few megabytes.
+    history: ureq::Agent,
     /// Follows no redirects: the hosted catalog must come from the pinned website itself.
     no_redirect: ureq::Agent,
     download: ureq::Agent,
@@ -37,8 +46,15 @@ pub(crate) struct NightlyHttpError {
     pub over_budget: bool,
 }
 
+/// Why GitHub's REST API gave no answer, and until when it asked to be left alone (Unix seconds).
+#[derive(Clone, Debug)]
+pub struct GitHubApiError {
+    pub why: String,
+    pub limited_until: Option<i64>,
+}
+
 /// Why ArtCraft's release feed couldn't be read.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FeedError {
     pub why: String,
     /// The server answered HTTP 429 Too Many Requests.
@@ -132,6 +148,16 @@ impl Http {
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
+        let history = ureq::Agent::config_builder()
+            .tls_config(tls())
+            .proxy(proxy.clone())
+            .timeout_connect(Some(HISTORY_CONNECT))
+            .timeout_recv_response(Some(HISTORY_FIRST_BYTE))
+            .timeout_recv_body(Some(HISTORY_BODY))
+            .http_status_as_error(false)
+            .user_agent(USER_AGENT)
+            .build()
+            .new_agent();
         let no_redirect = ureq::Agent::config_builder()
             .tls_config(tls())
             .proxy(proxy.clone())
@@ -172,7 +198,7 @@ impl Http {
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
-        Ok(Self { small, feed, no_redirect, download, direct, direct_download, nightly_mirror: None })
+        Ok(Self { small, feed, history, no_redirect, download, direct, direct_download, nightly_mirror: None })
     }
 
     /// Production/default builds ignore the staging environment, including malformed values.
@@ -201,7 +227,39 @@ impl Http {
     /// One app's release history from our release API, or why it couldn't be read: larger than the
     /// feed (every release with its files), so a longer wait and a higher cap.
     pub fn get_history(&self, url: &str) -> Result<String, FeedError> {
-        self.get_json(url, if is_loopback(url) { &self.direct } else { &self.small }, MAX_HISTORY)
+        self.get_json(url, if is_loopback(url) { &self.direct } else { &self.history }, MAX_HISTORY)
+    }
+
+    /// GitHub's REST API (`api.github.com`), without a token: only asked when our release API
+    /// can't answer. A refusal (403 or 429) says until when GitHub holds further requests back,
+    /// from `Retry-After` or `X-RateLimit-Reset`.
+    pub fn get_github_api(&self, url: &str) -> Result<String, GitHubApiError> {
+        let failed = |why: String| GitHubApiError { why, limited_until: None };
+        if !url.starts_with("https://api.github.com/") {
+            return Err(failed("not a GitHub API address".into()));
+        }
+        let (physical, agent) = self.request(url, &self.history).map_err(failed)?;
+        let mut resp = agent
+            .get(physical.as_ref())
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .call()
+            .map_err(|e| failed(format!("{UNREACHABLE} {} ({e})", host(url))))?;
+        let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<i64>().ok());
+        let retry_after = header("retry-after");
+        let remaining = header("x-ratelimit-remaining");
+        let reset = header("x-ratelimit-reset");
+        match resp.status().as_u16() {
+            200 => read_text_capped(&mut resp, MAX_HISTORY).map_err(|e| failed(format!("unreadable answer ({e})"))),
+            s @ (403 | 429) => {
+                let now = crate::now();
+                let until = retry_after
+                    .map(|secs| now.saturating_add(secs.clamp(0, 3600)))
+                    .or_else(|| (s == 429 || remaining == Some(0)).then(|| reset.map_or(now + 3600, |r| r.clamp(now, now + 3600))));
+                Err(GitHubApiError { why: format!("{} answered HTTP {s}", host(url)), limited_until: until.or(Some(now + 60)) })
+            }
+            s => Err(failed(format!("{} answered HTTP {s}", host(url)))),
+        }
     }
 
     /// GET a JSON answer of our release API with `default` (the Nightly test transport, when set,

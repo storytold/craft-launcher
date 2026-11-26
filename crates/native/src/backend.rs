@@ -459,7 +459,11 @@ impl NativeBackend {
             }
         };
         let source: Option<Arc<dyn ReleaseSource>> = if channel == artcraft_launcher_core::nightly::InstallChannel::Stable {
-            http.clone().map(|h| Arc::new(ApiSource::new(h, feed_url())) as Arc<dyn ReleaseSource>)
+            http.clone().map(|h| {
+                // A local mirror's releases come only from it, never from GitHub.
+                let api = ApiSource::new(h, feed_url());
+                Arc::new(if local_mirror().is_some() { api.without_github() } else { api }) as Arc<dyn ReleaseSource>
+            })
         } else {
             None
         }; // Nightly discovery asks for each app's history on its own (`check_nightly_at`).
@@ -2149,7 +2153,14 @@ fn sweep(
                     let latest = match mirror {
                         Some(_) => mirror_chosen(app, feed, now, track),
                         None if *track != VersionTrack::Stable => track_answer(app, track, feed, source.as_ref(), force),
-                        None => latest_for(app, feed, options.prereleases, now),
+                        // When the feed has no answer for the app (it couldn't be read, is stale,
+                        // or doesn't list it), the app's history stands in: our API, then GitHub.
+                        None => latest_for(app, feed, options.prereleases, now).map(|answer| match answer {
+                            LatestRelease::Failed(why) => {
+                                source.latest_fallback(&release_query(feed, app), options.prereleases).unwrap_or(LatestRelease::Failed(why))
+                            }
+                            other => other,
+                        }),
                     };
                     let latest = if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
                         latest.map(|answer| match (answer, http, platform) {
@@ -2502,8 +2513,9 @@ impl Backend for NativeBackend {
                     // CHOOSER_FRESH ago is asked for again, as before the list moved to disk.
                     let result = source
                         .ok_or("secure connections aren't available on this system".to_string())
-                        .and_then(|s| s.versions_within(&query, crate::source::CHOOSER_FRESH));
-                    shared.emit(Event::Versions { app, result });
+                        .and_then(|s| s.picker_versions(&query, crate::source::CHOOSER_FRESH));
+                    let stale = result.as_ref().is_ok_and(|(_, stale)| *stale);
+                    shared.emit(Event::Versions { app, result: result.map(|(list, _)| list), stale });
                 });
             }
             Command::Install { app } => {

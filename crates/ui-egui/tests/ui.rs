@@ -420,7 +420,7 @@ fn version_choices_have_room_and_nightly_scrolls_with_the_versions() {
         })
         .collect();
     let mut ev = events();
-    ev.push(Event::Versions { app: artcraft_launcher_core::catalog::LAUNCHER_ID.into(), result: Ok(releases) });
+    ev.push(Event::Versions { app: artcraft_launcher_core::catalog::LAUNCHER_ID.into(), result: Ok(releases), stale: false });
     let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.set_size(egui::vec2(1180.0, 1100.0));
     h.run_steps(6);
@@ -448,6 +448,32 @@ fn version_choices_have_room_and_nightly_scrolls_with_the_versions() {
     assert!(nightly_after.top() < nightly_before.top() - 80.0, "Nightly must scroll with release rows: {nightly_before:?} -> {nightly_after:?}");
 }
 
+/// A saved list that no release source could confirm just now is still shown, says it may be out
+/// of date, and offers to ask again.
+#[test]
+fn a_stale_version_list_is_shown_with_a_note_and_a_way_to_ask_again() {
+    let mut r = release("artcraft-launcher", "0.3.0", NOW);
+    r.assets[0].sha256 = Some("0".repeat(64));
+    let mut ev = events();
+    ev.push(Event::Versions { app: artcraft_launcher_core::catalog::LAUNCHER_ID.into(), result: Ok(vec![r]), stale: true });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.set_size(egui::vec2(1180.0, 1100.0));
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
+    h.run_steps(5);
+    h.get_by_label("v0.3.0 (latest release)");
+    h.get_by_label("This list may be out of date.");
+    let asked = |sent: &RefCell<Vec<Command>>| {
+        sent.borrow().iter().filter(|c| matches!(c, Command::ListVersions { app } if app == artcraft_launcher_core::catalog::LAUNCHER_ID)).count()
+    };
+    let before = asked(&sent);
+    h.get_by_label("Try again").click();
+    h.run_steps(4);
+    assert_eq!(asked(&sent), before + 1, "Try again asks for the list again");
+}
+
 /// A backend that answers ListVersions, unlike the shared Fake: the dialog clears the cached
 /// list when it opens, so the choice only appears once the reply arrives.
 struct VersionsFake {
@@ -461,7 +487,7 @@ struct VersionsFake {
 impl Backend for VersionsFake {
     fn send(&mut self, command: Command) {
         if let Command::ListVersions { app } = &command {
-            self.events.borrow_mut().push(Event::Versions { app: app.clone(), result: Ok(self.answer.clone()) });
+            self.events.borrow_mut().push(Event::Versions { app: app.clone(), result: Ok(self.answer.clone()), stale: false });
         }
         self.sent.borrow_mut().push(command);
     }
@@ -807,7 +833,7 @@ fn the_launcher_version_list_sizes_the_launchers_download() {
     let mut r = release("artcraft-launcher", "0.9.0", NOW);
     r.assets[0].sha256 = Some("0".repeat(64));
     let mut ev = events();
-    ev.push(Event::Versions { app: artcraft_launcher_core::catalog::LAUNCHER_ID.into(), result: Ok(vec![r]) });
+    ev.push(Event::Versions { app: artcraft_launcher_core::catalog::LAUNCHER_ID.into(), result: Ok(vec![r]), stale: false });
     let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run_steps(6);
     h.get_by_label("Settings").click();

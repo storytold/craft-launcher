@@ -189,6 +189,8 @@ pub struct LauncherUi {
     pub(crate) launcher_update: Option<Release>,
     pub(crate) version_lists: std::collections::HashMap<String, Result<Vec<Release>, String>>,
     pub(crate) version_requests: std::collections::HashSet<String>,
+    /// Apps whose list in [`Self::version_lists`] is a saved one no source could confirm just now.
+    pub(crate) version_lists_stale: std::collections::HashSet<String>,
     /// While the Choose version dialog is open: its app and the choice it had before, put back
     /// unless the dialog's Install keeps the new one.
     pub(crate) version_before: Option<(String, artcraft_launcher_core::protocol::VersionTrack)>,
@@ -331,6 +333,7 @@ impl LauncherUi {
             launcher_update: None,
             version_lists: std::collections::HashMap::new(),
             version_requests: std::collections::HashSet::new(),
+            version_lists_stale: std::collections::HashSet::new(),
             version_before: None,
             chosen_installs: std::collections::HashMap::new(),
             launcher_job: None,
@@ -599,6 +602,13 @@ impl LauncherUi {
         }
     }
 
+    /// Asks for `id`'s version list again, after a saved one stood in.
+    pub(crate) fn retry_versions(&mut self, id: &str) {
+        self.version_lists.remove(id);
+        self.version_requests.remove(id);
+        self.request_versions(id);
+    }
+
     pub(crate) fn open_versions(&mut self, id: &str) {
         self.version_lists.remove(id);
         self.version_requests.remove(id);
@@ -704,8 +714,13 @@ impl LauncherUi {
                 self.on_latest(app, latest);
                 true
             }
-            Event::Versions { app, result } => {
+            Event::Versions { app, result, stale } => {
                 self.version_requests.remove(&app);
+                if stale {
+                    self.version_lists_stale.insert(app.clone());
+                } else {
+                    self.version_lists_stale.remove(&app);
+                }
                 self.version_lists.insert(app, result);
                 false
             }

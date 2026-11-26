@@ -260,7 +260,9 @@ impl LauncherUi {
         let choice =
             if id == LAUNCHER_ID { self.settings.launcher_version.clone() } else { self.settings.versions.get(id).cloned().unwrap_or_default() };
         let list = self.version_lists.get(id).cloned();
+        let stale = self.version_lists_stale.contains(id);
         let mut picked = None;
+        let mut retry = false;
         // The newest stable release that installs here is labelled as the latest, and choosing it
         // follows new releases. Until the list is in, a plain "Latest release" row keeps that choice.
         let latest = self.listed_latest(app);
@@ -304,6 +306,11 @@ impl LauncherUi {
                         ui.label(RichText::new(why).color(t.bad));
                     }
                     Some(Ok(releases)) => {
+                        if stale {
+                            // A saved list stands in: say so, and offer to ask again.
+                            ui.label(RichText::new(tl!("This list may be out of date.")).color(t.muted));
+                            retry = widgets::button(ui, tl!("Try again"), Kind::Secondary, 100.0).clicked();
+                        }
                         if releases.is_empty() {
                             ui.label(tl!("No release published yet"));
                         }
@@ -328,6 +335,9 @@ impl LauncherUi {
             })
             .response
             .labelled_by(label);
+        if retry {
+            self.retry_versions(id);
+        }
         if let Some(track) = picked {
             if id == LAUNCHER_ID {
                 self.settings.launcher_version = track;

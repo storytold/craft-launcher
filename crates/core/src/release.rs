@@ -177,8 +177,9 @@ pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
     release_from_value(&v, repo)
 }
 
-/// Releases in a GitHub release list (as test fixtures carry them), in its order. Drafts and
-/// unparseable tags are left out.
+/// Releases in a GitHub release list (`GET /repos/<repo>/releases`, which the launcher reads
+/// only when our release API can't answer), in its order. Drafts and unparseable tags are left
+/// out.
 ///
 /// # Errors
 ///
@@ -193,6 +194,54 @@ pub fn parse_github_versions(json: &str, repo: &str) -> Result<Vec<Release>, Str
         .filter(|r| r.version.is_some())
         .take(100)
         .collect())
+}
+
+/// A release known only from its tag and `SHA256SUMS.txt` (the quota-free route on github.com:
+/// `releases.atom` names the tag, and the sums list every file with its checksum). Whether it is a
+/// pre-release is read from its version, as nothing else says.
+pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Release {
+    let prefix = download_prefix(repo);
+    let mut assets: Vec<Asset> = sums
+        .iter()
+        .map(|(hash, name)| Asset { name: name.clone(), size: 0, url: format!("{prefix}{tag}/{name}"), sha256: Some(hash.clone()) })
+        .collect();
+    assets.push(Asset { name: "SHA256SUMS.txt".into(), size: 0, url: format!("{prefix}{tag}/SHA256SUMS.txt"), sha256: None });
+    let version = version::parse(tag);
+    Release {
+        tag: tag.to_string(),
+        prerelease: version.as_ref().is_some_and(|v| !v.pre.is_empty()),
+        version,
+        name: tag.to_string(),
+        published_at: None,
+        html_url: format!("https://github.com/{repo}/releases/tag/{tag}"),
+        notes: String::new(),
+        assets,
+    }
+}
+
+/// The release tags a repo's `releases.atom` feed on github.com lists, newest first: each entry's
+/// `https://github.com/<repo>/releases/tag/<tag>` link. The feed costs no API quota. Links inside
+/// an entry's notes are escaped (`href=&quot;…`), so they never count; a tag that isn't a plain
+/// [`valid_tag`] is dropped.
+pub fn tags_from_atom(atom: &str, repo: &str) -> Vec<String> {
+    // ASCII lower-casing keeps byte offsets, so a match in `lower` cuts `atom` at the same place.
+    let lower = atom.to_ascii_lowercase();
+    let prefix = format!("href=\"https://github.com/{}/releases/tag/", repo.to_ascii_lowercase());
+    let mut tags: Vec<String> = Vec::new();
+    for (start, _) in lower.match_indices("<entry>") {
+        let entry_end = lower[start..].find("</entry>").map_or(lower.len(), |end| start + end);
+        let Some(at) = lower[start..entry_end].find(&prefix) else { continue };
+        let tag_start = start + at + prefix.len();
+        let Some(len) = atom[tag_start..entry_end].find('"') else { continue };
+        let tag = &atom[tag_start..tag_start + len];
+        if valid_tag(tag) && !tags.iter().any(|t| t == tag) {
+            tags.push(tag.to_string());
+        }
+        if tags.len() >= 100 {
+            break;
+        }
+    }
+    tags
 }
 
 /// A published, explicitly marked nightly build, not merely a beta or release candidate.
@@ -423,6 +472,37 @@ mod tests {
     use super::*;
 
     const REPO: &str = "storytold/photocraft";
+
+    /// Each entry's own tag link counts, newest first; escaped links in release notes, other
+    /// repos' links and tags that aren't plain names don't.
+    #[test]
+    fn the_releases_feed_names_each_entrys_tag() {
+        let atom = format!(
+            r#"<feed><link type="text/html" rel="alternate" href="https://github.com/{REPO}/releases"/>
+<entry><id>tag:github.com,2008:Repository/1/v0.24.0-rc.2</id>
+<link rel="alternate" type="text/html" href="https://github.com/{REPO}/releases/tag/v0.24.0-rc.2"/>
+<content type="html">&lt;a href=&quot;https://github.com/{REPO}/releases/tag/v9.9.9&quot;&gt;</content></entry>
+<entry><link rel="alternate" type="text/html" href="https://github.com/Storytold/PhotoCraft/releases/tag/v0.23.1"/></entry>
+<entry><link rel="alternate" type="text/html" href="https://github.com/someone/else/releases/tag/v0.23.0"/></entry>
+<entry><link rel="alternate" type="text/html" href="https://github.com/{REPO}/releases/tag/../v1"/></entry>
+</feed>"#
+        );
+        assert_eq!(tags_from_atom(&atom, REPO), ["v0.24.0-rc.2", "v0.23.1"]);
+        assert!(tags_from_atom("not a feed", REPO).is_empty());
+    }
+
+    /// A release built from its checksums downloads only from its own tag, carries each file's
+    /// checksum, and is a pre-release exactly when its version says so.
+    #[test]
+    fn a_release_from_its_checksums_downloads_from_its_own_tag() {
+        let sums = vec![("a".repeat(64), "photocraft-0.6.0-x86_64.AppImage".to_string())];
+        let r = release_from_sums(REPO, "v0.6.0", &sums);
+        assert!(!r.prerelease && r.version.is_some());
+        assert_eq!(r.assets[0].url, format!("https://github.com/{REPO}/releases/download/v0.6.0/photocraft-0.6.0-x86_64.AppImage"));
+        assert_eq!(r.assets[0].sha256.as_deref(), Some("a".repeat(64).as_str()));
+        assert!(r.sums_asset().is_some());
+        assert!(release_from_sums(REPO, "v0.7.0-rc.1", &sums).prerelease);
+    }
 
     #[test]
     fn truncate_keeps_whole_characters() {

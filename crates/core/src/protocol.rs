@@ -235,6 +235,9 @@ pub enum Event {
     Versions {
         app: String,
         result: Result<Vec<Release>, String>,
+        /// A saved list stands in because no source answered just now: it may be out of date, so
+        /// the dialog says so and offers to try again.
+        stale: bool,
     },
     /// The latest ArtCraft Launcher release, when it's newer than this one.
     LauncherUpdate(Release),
