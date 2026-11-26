@@ -325,11 +325,15 @@ impl NightlyState {
         // the final gate, including the budget, server backoff and manual request coalescing.
         let now = backend.now();
         // Like Native, treat an attempt in the future after clock rollback as stale.
-        // A budget hold the launcher imposed is a reason to ask again as soon as it passes: the sweep
-        // that set it never ran, so waiting out the hourly gate would leave the apps it deferred
-        // untouched for up to another hour. Consent, coalescing and server backoff still guard it.
-        let hold_expired = self.held_back_until.is_some_and(|until| now >= until);
-        let due = hold_expired || self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60 * 60);
+        let hourly_due = self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60 * 60);
+        // A hold the launcher's own budget imposed decides the next check by itself: while it runs,
+        // nothing is asked even if the hourly gate would say yes; once it passes, ask at once rather
+        // than wait out the hour of a sweep that never ran. Consent, coalescing and server backoff
+        // still guard the request. A sweep that completed without a hold keeps the hourly gate.
+        let due = match self.held_back_until {
+            Some(until) => now >= until,
+            None => hourly_due,
+        };
         // Unacknowledged requests are coalesced briefly, not treated as actual attempts.
         // A future request permits one replacement, which resets this baseline to now.
         let request_allowed = self.requested_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60);
@@ -1404,6 +1408,29 @@ mod status_tests {
         fake.now.set(4600);
         later.logic(&enabled);
         assert_eq!(checks(&fake), 1, "and asking resumes when it passes");
+    }
+
+    #[test]
+    fn a_future_hold_holds_even_when_the_hourly_gate_would_ask() {
+        // Two shapes of an already-due page: an attempt long enough ago, and no attempt at all.
+        for attempt in [Some(-2600), None] {
+            let fake = FakeBackend::default();
+            fake.now.set(1000);
+            let mut events = vec![Event::CheckStarted];
+            if let Some(at) = attempt {
+                events.push(status(at, at, false, None));
+            }
+            events.push(Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1600) });
+            fake.events.borrow_mut().extend(events);
+            let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+            let enabled = Settings { nightly_enabled: true, ..Default::default() };
+            fake.now.set(1599);
+            state.logic(&enabled);
+            assert_eq!(checks(&fake), 0, "{attempt:?}: a running hold is honoured though the hourly gate says yes");
+            fake.now.set(1600);
+            state.logic(&enabled);
+            assert_eq!(checks(&fake), 1, "{attempt:?}: and asking resumes the moment it passes");
+        }
     }
 
     #[test]

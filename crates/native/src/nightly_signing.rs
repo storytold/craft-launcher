@@ -748,7 +748,20 @@ mod tests {
             return;
         }
         if let Some(path) = production {
-            check(path).expect("the released PhotoCraft executable must pass the production publisher check");
+            let directory = tempfile::tempdir().unwrap();
+            let staged = directory.path().join(adapter.executable());
+            std::fs::copy(&path, &staged).expect("supplied executable must be readable");
+            // The version is readable before the hold, and must still be readable while the handle
+            // denies writes, replacement and deletion: that is the read Open relies on after
+            // authenticate_windows, so a failure here would refuse every Nightly launch on Windows.
+            let before = crate::detect::windows::executable_version(&staged);
+            assert!(before.is_some(), "the released PhotoCraft executable carries a ProductVersion");
+            let held = authenticate_windows(adapter, directory.path(), &[adapter.executable().to_path_buf()])
+                .expect("the released PhotoCraft executable must pass the production publisher check");
+            let under_hold = crate::detect::windows::executable_version(&staged);
+            assert_eq!(under_hold, before, "ProductVersion must read the same through the FILE_SHARE_READ hold");
+            writeln!(std::io::stdout().lock(), "PASS version readable under the hold").unwrap();
+            drop(held);
             writeln!(std::io::stdout().lock(), "PASS production executable accepted").unwrap();
         }
         if let Some(path) = foreign {
