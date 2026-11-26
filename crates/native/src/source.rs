@@ -121,7 +121,7 @@ const LIST_PAGE: usize = 30;
 const VERSIONS_PAGE: usize = 100;
 /// The most pages read past a page full of a separately channelled app's nightlies. Those apps read
 /// [`VERSIONS_PAGE`] releases a page in both the lookup and the version list, so both reach as far.
-const ORDINARY_PAGES: usize = 5;
+const ORDINARY_PAGES: usize = release::ORDINARY_PAGES;
 
 /// The number of entries GitHub returned on one list page, drafts included.
 fn page_len(text: &str) -> Result<usize, String> {
@@ -169,10 +169,7 @@ impl GitHubSource {
         let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
         // New files keep one row per setting (`repo` and `repo+pre`). Old files stored one
         // row under `repo`, so that key is still read when it matches this setting.
-        let allowed = |entry: &Entry| {
-            entry.prereleases == prereleases
-                && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(query.separate_nightly, release))
-        };
+        let allowed = |entry: &Entry| entry.prereleases == prereleases && entry.release.as_ref().is_none_or(release::ordinary_release_allowed);
         cache.entries.get(&cache_key(&query.repo, prereleases)).or_else(|| cache.entries.get(&query.repo)).filter(|entry| allowed(entry)).cloned()
     }
 
@@ -221,11 +218,11 @@ impl GitHubSource {
             Fetched::Body { text, etag } => {
                 let mut multi_page = false;
                 let release = if prereleases {
-                    let mut release = release::parse_github_release_list(&text, repo, true, separate)?;
-                    // Nightlies of a separately channelled app are not ordinary releases, so a page
-                    // full of them proves nothing: look further, and report an incomplete answer
-                    // rather than caching "no release" when the bounded search ends early.
-                    if release.is_none() && separate {
+                    let mut release = release::parse_github_release_list(&text, repo, true)?;
+                    // A Nightly is never an ordinary release for any app, so a page full of them
+                    // proves nothing: look further, and report an incomplete answer rather than
+                    // caching "no release" when the bounded search ends early.
+                    if release.is_none() {
                         // Page 1's ETag does not cover later pages: a 304 on it could replay an
                         // answer whose page has since changed, so a multi-page answer keeps none.
                         multi_page = true;
@@ -239,7 +236,7 @@ impl GitHubSource {
                             }
                             match fetch(&format!("{url}&page={page}"), None)? {
                                 Fetched::Body { text, .. } => {
-                                    release = release::parse_github_release_list(&text, repo, true, separate)?;
+                                    release = release::parse_github_release_list(&text, repo, true)?;
                                     full = page_len(&text)? >= per_page;
                                 }
                                 Fetched::RateLimited { reset } => {
@@ -261,8 +258,8 @@ impl GitHubSource {
                 } else {
                     Some(release::parse_github_release(&text, repo)?)
                 };
-                if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(separate, release)) {
-                    return Err("This Nightly belongs to the separate developer channel, not the ordinary release cache.".into());
+                if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(release)) {
+                    return Err("A Nightly is not an ordinary release, so it was not cached here.".into());
                 }
                 let etag = if multi_page { None } else { etag };
                 self.store(repo, Entry { etag, release: release.clone(), prereleases, fetched_at: crate::now() });
@@ -294,8 +291,8 @@ impl GitHubSource {
         *self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(until);
     }
 
-    /// The version list. For an app whose nightlies have their own channel, pages full of them are
-    /// read past (bounded) so the ordinary versions the picker offers cannot be crowded out.
+    /// The version list. Nightlies are never ordinary versions for any app, so pages full of them
+    /// are read past (bounded) so the ordinary versions the picker offers cannot be crowded out.
     fn versions_with(
         &self,
         query: &ReleaseQuery,
@@ -323,7 +320,7 @@ impl GitHubSource {
                 }
                 Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
             };
-            let crowded = query.separate_nightly && !list.iter().any(|r| release::ordinary_release_allowed(true, r));
+            let crowded = !list.iter().any(release::ordinary_release_allowed);
             if !full || !crowded {
                 return Ok(list);
             }
@@ -379,7 +376,7 @@ impl GitHubSource {
         // nothing about whether github.com itself can be reached for the next app.
         let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
         let r = release::release_from_sums(repo, &tag, &sums);
-        if !release::ordinary_release_allowed(query.separate_nightly, &r) {
+        if !release::ordinary_release_allowed(&r) {
             return Err("The latest release is a Nightly of the separate developer channel, not an ordinary release.".into());
         }
         self.store(repo, Entry { etag: None, release: Some(r.clone()), prereleases: false, fetched_at: crate::now() });
@@ -933,19 +930,20 @@ mod tests {
         assert_eq!(tag_of(&unchanged), Some("v0.9.0-beta.1"));
     }
     #[test]
-    fn shared_selection_legacy_nightly_cache_and_etag_replay_remain_main_compatible() {
+    fn shared_selection_legacy_nightly_cache_and_etag_replay_never_offer_a_nightly_on_the_ordinary_track() {
+        // Main kept a third-party app's saved Nightly as an ordinary answer; no app is offered a
+        // Nightly on its ordinary track now, so the same cache is neither served nor replayable.
         for id in ["solidcraft", "filmcraft"] {
             let repo = artcraft_launcher_core::CraftApp::by_id(id).unwrap().repo;
-            let (_temp, source, release) = shared_selection_saved_source(repo, "v1.0.0-dev.nightly.1");
-            assert_eq!(source.cached(&q(repo), true), Some(LatestRelease::Found(release.clone())));
-            let answer = source
-                .ask_api_with(&q(repo), true, |_, etag| {
-                    assert_eq!(etag, Some("old-etag"));
-                    Ok(Fetched::NotModified)
-                })
-                .unwrap()
-                .unwrap();
-            assert_eq!(answer.latest, LatestRelease::Found(release));
+            let (_temp, source, _release) = shared_selection_saved_source(repo, "v1.0.0-dev.nightly.1");
+            assert_eq!(source.cached(&q(repo), true), None, "{id}: a Nightly is not an ordinary answer");
+            let mut sent_etag = Some("not called".to_string());
+            let replay = source.ask_api_with(&q(repo), true, |_, etag| {
+                sent_etag = etag.map(str::to_owned);
+                Ok(Fetched::NotModified)
+            });
+            assert!(replay.is_err(), "{id}: a saved Nightly cannot replay as an unchanged ordinary answer");
+            assert_eq!(sent_etag, None, "{id}: force a real body instead of accepting the Nightly's stale ETag");
         }
     }
     fn crowded_page(repo: &str, count: usize, offset: usize) -> String {
@@ -1014,26 +1012,55 @@ mod tests {
         assert_eq!(asked, 2);
     }
     #[test]
-    fn third_party_lookups_keep_mains_single_page_with_its_nightlies() {
+    fn a_nightly_only_first_page_still_reaches_the_ordinary_release_for_any_app() {
+        // PhotoCraft has its own channel and solidcraft does not; since no app offers a Nightly on
+        // its ordinary track, both must look past a page of them rather than cache "no release".
+        for id in ["solidcraft", "filmcraft"] {
+            let repo = artcraft_launcher_core::CraftApp::by_id(id).unwrap().repo;
+            let (_temp, source) = fresh_source();
+            let mut asked = 0;
+            let answer = source
+                .ask_api_with(&q(repo), true, |url, _| {
+                    asked += 1;
+                    Ok(Fetched::Body {
+                        text: if url.ends_with("&page=2") {
+                            r#"[{"tag_name":"v0.9.0","prerelease":false}]"#.to_string()
+                        } else {
+                            crowded_page(repo, LIST_PAGE, 0)
+                        },
+                        etag: Some("page-1".into()),
+                    })
+                })
+                .unwrap()
+                .unwrap();
+            assert_eq!(tag_of(&answer), Some("v0.9.0"), "{id}: the stable release behind a page of nightlies");
+            assert_eq!(asked, 2, "{id}: one page, then one look past it");
+            let cache = source.cache.lock().unwrap();
+            assert_eq!(
+                cache.entries.get(&cache_key(repo, true)).and_then(|entry| entry.etag.as_deref()),
+                None,
+                "{id}: a multi-page answer keeps no page-1 ETag"
+            );
+        }
+    }
+
+    #[test]
+    fn third_party_lookups_offer_no_nightly_and_stop_one_page_past_them() {
         let repo = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap().repo;
         let (_temp, source) = fresh_source();
         let mut asked = 0;
-        let answer = source
-            .ask_api_with(&q(repo), true, |_, _| {
-                asked += 1;
-                Ok(Fetched::Body { text: crowded_page(repo, LIST_PAGE, 0), etag: None })
-            })
-            .unwrap()
-            .unwrap();
-        assert!(tag_of(&answer).is_some_and(|tag| tag.contains("nightly")));
-        let list = source
-            .versions_with(&q(repo), |_, _| {
-                asked += 1;
-                Ok(Fetched::Body { text: crowded_page(repo, VERSIONS_PAGE, 0), etag: None })
-            })
-            .unwrap();
+        // Main offered a third-party app's Nightly here; no app's ordinary track does now, so the
+        // lookup reads one page further and stops there when nothing ordinary is behind them.
+        let page = |url: &str, asked: &mut usize, repo: &str, per_page: usize| {
+            *asked += 1;
+            Ok(Fetched::Body { text: if url.ends_with("&page=2") { "[]".to_string() } else { crowded_page(repo, per_page, 0) }, etag: None })
+        };
+        let answer = source.ask_api_with(&q(repo), true, |url, _| page(url, &mut asked, repo, LIST_PAGE)).unwrap().unwrap();
+        assert!(matches!(answer.latest, LatestRelease::None), "a Nightly is never an ordinary or pre-release candidate");
+        assert_eq!(asked, 2, "one page, then one look past a page of nightlies");
+        let list = source.versions_with(&q(repo), |url, _| page(url, &mut asked, repo, VERSIONS_PAGE)).unwrap();
         assert_eq!(list.len(), VERSIONS_PAGE);
-        assert_eq!(asked, 2, "one request each, as on main");
+        assert_eq!(asked, 4, "one page each, plus the one look past the nightlies");
     }
     #[test]
     fn a_multi_page_answer_is_revalidated_when_only_a_later_page_changes() {
