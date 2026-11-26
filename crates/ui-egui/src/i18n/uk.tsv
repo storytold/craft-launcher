@@ -218,6 +218,7 @@ month	Nov	лист.
 month	Dec	груд.
 	Not checked yet	Ще не перевірено
 	Next GitHub check at {time}	Наступна перевірка GitHub о {time}
+	Waiting for GitHub's hourly limit. Checking again at {time}.	Очікування годинного ліміту GitHub. Наступна перевірка о {time}.
 	Next check at {time}	Наступна перевірка о {time}
 	Installing for {platform}	Встановлення для {platform}
 	Downloads for {platform}	Завантаження для {platform}

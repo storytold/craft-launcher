@@ -786,6 +786,9 @@ impl NativeBackend {
             // `begin` decided the order: installed copies first, then the front of the queue.
             let by_key: std::collections::BTreeMap<String, CraftApp> =
                 apps.into_iter().map(|app| (crate::nightly_lookup::key(&app, platform), app)).collect();
+            // When the launcher's own budget held this sweep back, so the page can say it is waiting
+            // for GitHub instead of reporting a finished check that found nothing.
+            let mut held_back_until = None;
             for (index, key) in chosen.iter().enumerate() {
                 let Some(app) = by_key.get(key).copied() else { continue };
                 let enabled = || {
@@ -840,13 +843,19 @@ impl NativeBackend {
                     if let Err(error) = state.save(&paths) {
                         log::warn!("Could not persist deferred Nightly scheduling: {error}");
                     }
+                    held_back_until = http.as_ref().and_then(|http| http.nightly_budget_retry_at(priority, crate::now()));
                     break;
                 }
                 finish_nightly_result(&app, platform, generation, outcome, &shared, &paths);
             }
             drop(lease);
             let retry = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
-            shared.emit(Event::CheckFinished { at: crate::now(), source: Source::GitHubApi, rate_limited_until: retry });
+            shared.emit(Event::CheckFinished {
+                at: crate::now(),
+                source: Source::GitHubApi,
+                // A server's backoff, or the launcher's own budget: both mean "ask again at this time".
+                rate_limited_until: retry.or(held_back_until),
+            });
         }));
     }
 

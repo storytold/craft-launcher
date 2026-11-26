@@ -224,6 +224,7 @@ month	Nov	Nov.
 month	Dec	Dez.
 	Not checked yet	Noch nicht geprüft
 	Next GitHub check at {time}	Nächste GitHub-Prüfung um {time}
+	Waiting for GitHub's hourly limit. Checking again at {time}.	Warte auf GitHubs Stundenlimit. Nächste Prüfung um {time}.
 	Next check at {time}	Nächste Prüfung um {time}
 	Installing for {platform}	Installation für {platform}
 	Downloads for {platform}	Downloads für {platform}

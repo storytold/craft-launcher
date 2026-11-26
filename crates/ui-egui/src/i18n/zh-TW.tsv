@@ -128,6 +128,7 @@ month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未檢查
 	Next GitHub check at {time}	下次檢查 GitHub：{time}
+	Waiting for GitHub's hourly limit. Checking again at {time}.	正在等待 GitHub 的每小時限制。將於 {time} 再次檢查。
 	Next check at {time}	下次檢查：{time}
 	Installing for {platform}	正在為 {platform} 安裝
 	Downloads for {platform}	{platform} 適用的下載項目

@@ -212,6 +212,7 @@ month	Nov	nov.
 month	Dec	dez.
 	Not checked yet	Ainda não verificado
 	Next GitHub check at {time}	Próxima verificação do GitHub às {time}
+	Waiting for GitHub's hourly limit. Checking again at {time}.	Aguardando o limite horário do GitHub. Verificando novamente às {time}.
 	Next check at {time}	Próxima verificação às {time}
 	Installing for {platform}	Instalando para {platform}
 	Downloads for {platform}	Downloads para {platform}

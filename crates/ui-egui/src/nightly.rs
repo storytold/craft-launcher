@@ -77,6 +77,15 @@ fn nightly_job_progress(phase: JobPhase) -> (Option<f32>, String) {
     }
 }
 
+/// The line the Developer Builds page shows while the launcher's own GitHub budget is holding the
+/// next check back: `None` when there is no hold in the future, so the page says what it knows.
+fn held_back_line(until: Option<i64>, now: i64) -> Option<String> {
+    use crate::i18n::fmt;
+    let until = until.filter(|until| *until > now)?;
+    let (hour, minute) = crate::local_time::clock(until);
+    Some(fmt(tl!("Waiting for GitHub's hourly limit. Checking again at {time}."), &[("time", &format!("{hour:02}:{minute:02}"))]))
+}
+
 fn nightly_ago(at: i64, now: i64) -> String {
     use crate::i18n::tn;
     use artcraft_launcher_core::time::{TimeAgo, ago_kind};
@@ -137,6 +146,9 @@ pub(crate) struct NightlyState {
     pub entries: Vec<AppEntry>,
     options: Option<BackendOptions>,
     checked_at: Option<i64>,
+    /// When the launcher's own GitHub budget will let the next sweep ask again, from the backend's
+    /// `CheckFinished`. The page says it is waiting for GitHub instead of reporting "nothing found".
+    held_back_until: Option<i64>,
     attempted_at: Option<i64>,
     // Request throttling is not evidence that Native actually attempted a lookup.
     requested_at: Option<i64>,
@@ -167,6 +179,7 @@ impl NightlyState {
                 .collect(),
             options: None,
             checked_at: None,
+            held_back_until: None,
             attempted_at: None,
             requested_at: None,
             statuses: BTreeMap::new(),
@@ -231,8 +244,16 @@ impl NightlyState {
         let events = self.backend.as_mut().map_or_else(Vec::new, |backend| backend.poll());
         for event in events {
             match event {
-                Event::CheckStarted => self.checking = true,
-                Event::CheckFinished { .. } => self.checking = false,
+                Event::CheckStarted => {
+                    self.checking = true;
+                    self.held_back_until = None;
+                }
+                Event::CheckFinished { rate_limited_until, .. } => {
+                    self.checking = false;
+                    // Only a launcher-budget hold is worth saying out loud on this page: a server's
+                    // own backoff arrives through each app's status.
+                    self.held_back_until = rate_limited_until;
+                }
                 Event::NightlyStatus { app, mut status } => {
                     if self.entries.iter().any(|entry| entry.app.id == app) {
                         status.message = status.message.map(|message| message.chars().take(512).collect());
@@ -435,6 +456,12 @@ impl LauncherUi {
                     ui.label(tl!("Could not check for developer builds."));
                     let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
                     nightly_status_labels(ui, status, now);
+                } else if enabled
+                    && let Some(line) = held_back_line(self.nightly.held_back_until, self.nightly.backend.as_ref().map_or(0, |backend| backend.now()))
+                {
+                    // Nothing was asked this time, so nothing was found: say the check is waiting for
+                    // GitHub rather than stamping a verification that did not happen.
+                    ui.add(egui::Label::new(line).wrap());
                 } else if enabled
                     && self.nightly.checked_at.is_some()
                     && entries.iter().any(|entry| matches!(entry.latest, Some(LatestRelease::None)))
@@ -1247,6 +1274,26 @@ mod status_tests {
         assert_eq!(state.attempted_at, Some(200));
         assert!(state.statuses["photocraft"].stale);
         assert_eq!(state.statuses["photocraft"].message.as_deref(), Some("offline"));
+    }
+
+    #[test]
+    fn a_budget_hold_is_shown_as_waiting_and_cleared_by_the_next_check() {
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        let hold = Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1000 + 60 * 60) };
+        fake.events.borrow_mut().extend([Event::CheckStarted, hold]);
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        state.logic(&Settings::default());
+        assert_eq!(state.held_back_until, Some(1000 + 60 * 60), "a held-back sweep says when GitHub is asked again");
+        let (hour, minute) = crate::local_time::clock(1000 + 60 * 60);
+        assert_eq!(
+            held_back_line(state.held_back_until, 1000).as_deref(),
+            Some(format!("Waiting for GitHub's hourly limit. Checking again at {hour:02}:{minute:02}.").as_str())
+        );
+        assert_eq!(held_back_line(state.held_back_until, 1000 + 60 * 60), None, "a hold that has passed says nothing");
+        fake.events.borrow_mut().push(Event::CheckStarted);
+        state.logic(&Settings::default());
+        assert_eq!(state.held_back_until, None, "the next check clears it");
     }
 
     #[test]

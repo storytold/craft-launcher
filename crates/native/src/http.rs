@@ -339,6 +339,12 @@ impl Http {
         self.nightly_get_as(url, max, timeout, lookup_now, artcraft_launcher_core::release::Priority::Discovery)
     }
 
+    /// When the launcher's own GitHub budget would let a Nightly request of `priority` go again,
+    /// if it cannot go now. Not a server backoff: nothing persists it.
+    pub(crate) fn nightly_budget_retry_at(&self, priority: artcraft_launcher_core::release::Priority, now: i64) -> Option<i64> {
+        self.budget.next_free(priority, now)
+    }
+
     /// [`nightly_get`](Self::nightly_get), with an API request counted against the GitHub budget
     /// for `priority`.
     pub(crate) fn nightly_get_as(

@@ -228,6 +228,7 @@ month	Nov	ნოე
 month	Dec	დეკ
 	Not checked yet	ჯერ არ შემოწმებულა
 	Next GitHub check at {time}	GitHub-ის შემდეგი შემოწმება: {time}
+	Waiting for GitHub's hourly limit. Checking again at {time}.	GitHub-ის საათობრივი ლიმიტის ლოდინი. შემდეგი შემოწმება {time}-ზე.
 	Next check at {time}	შემდეგი შემოწმება: {time}
 	Installing for {platform}	ინსტალაცია პლატფორმისთვის: {platform}
 	Downloads for {platform}	ჩამოტვირთვები პლატფორმისთვის: {platform}
