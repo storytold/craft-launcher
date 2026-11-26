@@ -2742,7 +2742,7 @@ impl Backend for NativeBackend {
         // An unavailable home or aliased namespace is not an ephemeral Nightly profile and
         // must never silently select the stable context or temporary storage.
         let channel = artcraft_launcher_core::nightly::InstallChannel::Nightly;
-        self.nightly_context_with_paths(Paths::new().map(|paths| paths.for_channel(channel)))
+        self.nightly_context_with_paths(Paths::new_resolved().map(|paths| paths.for_channel(channel)))
     }
 
     /// Carries out a command from the UI. Long work (checks, installs, removals) runs on its own

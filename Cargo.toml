@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
-version = "0.20.2"
+version = "0.20.3"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -34,15 +34,21 @@ log = "0.4"
 # All date/time conversion goes through jiff (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
 jiff = "0.2"
 # Feature flags (craft-libs#1118, merged in craft-libs#1119).
-craft-flags = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "05b99ee5dcd64f2c954a693ef361301214ddc3c7" }
+craft-flags = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
 # The agents switch and app list (Settings › AI agents), shared with the craft-ai-mcp gateway and
 # every Craft app. Pinned to the merge of storytold/craft-ai-integrations#197.
 craft-ai-agents = { git = "https://github.com/storytold/craft-ai-integrations", rev = "0d76ea02a06299a5a6eee1993863fbcafe9c2cc3" }
-craft-update = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "05b99ee5dcd64f2c954a693ef361301214ddc3c7" }
-craft-ui = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "05b99ee5dcd64f2c954a693ef361301214ddc3c7" }
+craft-update = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-ui = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
 # The Fonts page: Craft Font Manager's panel, the font store and the installed fonts.
-craft-font-store = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "05b99ee5dcd64f2c954a693ef361301214ddc3c7" }
-craft-font-manager = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "05b99ee5dcd64f2c954a693ef361301214ddc3c7", features = ["egui"] }
+craft-font-store = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-font-manager = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4", features = ["ui"] }
+# The craft-ui runtime the Fonts page runs on (crates/ui-egui/src/framework.rs): the app's shared services, its theme and
+# the window system.
+craft-i18n = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-host = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-theme = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-window = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
 
 [profile.dev.package."*"]
 opt-level = 2
@@ -67,18 +73,18 @@ strip = "debuginfo"
 
 # Keep the complete egui family and native event bridge on reviewed fork commits.
 [patch.crates-io]
-ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_extras = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_system_font_provider = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+ecolor = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+emath = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+epaint = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui-winit = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_glow = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_extras = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_system_font_provider = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+eframe = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
+egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "b9770908e0f304896f9658d239a7b29cf8af1564" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }

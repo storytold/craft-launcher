@@ -254,6 +254,8 @@ pub struct LauncherUi {
     pub(crate) page: Page,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fonts: crate::fonts::FontsTab,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) framework: crate::framework::Framework,
     /// UI actions drawn in this pass, not sent yet.
     pending: Vec<UiAction>,
     /// The `egui::Context::cumulative_frame_nr` those actions belong to.
@@ -367,6 +369,8 @@ impl LauncherUi {
             page: Page::Apps,
             #[cfg(not(target_arch = "wasm32"))]
             fonts: crate::fonts::FontsTab::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            framework: crate::framework::Framework::new(),
             pending: Vec::new(),
             frame: None,
             flushed: Vec::new(),
@@ -385,6 +389,10 @@ impl LauncherUi {
         self.applied_theme = None;
         self.applied_motion = None;
         self.motion_recheck = 0.0;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.framework.zoom = None;
+        }
         self.toasts.clear();
         // Actions belong to the old context's frame; messages waiting to be shown do not.
         self.pending.clear();
@@ -393,11 +401,34 @@ impl LauncherUi {
     }
 
     /// Input on its way to egui (the shell's `raw_input_hook`): with fewer animations asked for,
-    /// a mouse wheel scrolls at once instead of gliding.
-    pub fn raw_input(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+    /// a mouse wheel scrolls at once instead of gliding. The desktop's craft-ui runtime also gets the
+    /// coming frame's root values.
+    pub fn raw_input(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if self.reduce_motion {
             motion::unsmooth_wheel(ctx, raw);
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.framework.before_input(ctx, self.reduce_motion, drawable_lang(&self.settings.language, self.cjk_font).code());
+    }
+
+    /// The interface zoom.
+    fn zoom(&self, ctx: &egui::Context) -> f32 {
+        #[cfg(not(target_arch = "wasm32"))]
+        let zoom = self.framework.zoom.unwrap_or_else(|| ctx.zoom_factor());
+        #[cfg(target_arch = "wasm32")]
+        let zoom = ctx.zoom_factor();
+        zoom
+    }
+
+    /// Sets the interface zoom: on the desktop the runtime writes it to the context as the next frame starts.
+    fn set_zoom(&mut self, ctx: &egui::Context, zoom: f32) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.framework.zoom = Some(zoom);
+            ctx.request_repaint();
+        }
+        #[cfg(target_arch = "wasm32")]
+        ctx.set_zoom_factor(zoom);
     }
 
     /// Installed apps with an update waiting (the tray shows the count). Hidden apps are left out,
@@ -939,23 +970,31 @@ impl LauncherUi {
     fn zoom_input(&mut self, ctx: &egui::Context) {
         use egui::gui_zoom::kb_shortcuts;
         let notes_open = matches!(self.dialog, Some(Dialog::Notes(_)));
+        // The interface's zoom keys are egui's own in the browser; the desktop's runtime turns those off.
+        let keys = notes_open || cfg!(not(target_arch = "wasm32"));
         let (delta, zoom_in, zoom_out, reset) = ctx.input_mut(|i| {
             let delta = i.zoom_delta();
-            let reset = notes_open && i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
-            let zoom_in = notes_open && (i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY));
-            let zoom_out = notes_open && i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);
+            let reset = keys && i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
+            let zoom_in = keys && (i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY));
+            let zoom_out = keys && i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);
             (delta, zoom_in, zoom_out, reset)
         });
         let delta = if delta.is_finite() && delta > 0.0 { delta } else { 1.0 };
+        let step = match (zoom_in, zoom_out) {
+            (true, false) => 0.1,
+            (false, true) => -0.1,
+            _ => 0.0,
+        };
         if notes_open {
-            let step = match (zoom_in, zoom_out) {
-                (true, false) => 0.1,
-                (false, true) => -0.1,
-                _ => 0.0,
-            };
             self.notes_zoom = if reset { 1.0 } else { ((self.notes_zoom + step) * delta).clamp(0.5, 3.0) };
-        } else if delta != 1.0 {
-            ctx.set_zoom_factor((ctx.zoom_factor() * delta).clamp(0.2, 5.0));
+        } else if reset {
+            self.set_zoom(ctx, 1.0);
+        } else if step != 0.0 || delta != 1.0 {
+            let mut zoom = self.zoom(ctx);
+            if step != 0.0 {
+                zoom = ((zoom + step) * 10.0).round() / 10.0;
+            }
+            self.set_zoom(ctx, (zoom * delta).clamp(0.2, 5.0));
         }
     }
 
@@ -963,6 +1002,11 @@ impl LauncherUi {
     pub fn ui(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) {
         let ctx = ui.ctx().clone();
         self.begin_ui_frame(&ctx);
+        // The Fonts page's own sheet and prompt read their Escape from the runtime.
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.page != Page::Fonts || self.nightly.active || self.dialog.is_some() {
+            crate::framework::return_window_escape(&ctx);
+        }
         if host.title_bar() == TitleBar::MacOs && ctx.input_mut(|i| i.consume_key(egui::Modifiers::MAC_CMD, egui::Key::M)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
@@ -1028,10 +1072,12 @@ impl LauncherUi {
                 return;
             }
             egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| self.toolbar(ui));
-            // The panel keeps its own margins.
             #[cfg(not(target_arch = "wasm32"))]
             if self.page == Page::Fonts {
-                self.fonts.ui(ui, &mut self.settings.fonts, lang.code());
+                egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| {
+                    let language = drawable_lang(&self.settings.language, self.cjk_font).code();
+                    self.fonts.ui(ui, &self.framework.host, &mut self.settings.fonts, language);
+                });
                 return;
             }
             #[cfg(not(target_arch = "wasm32"))]
@@ -1343,6 +1389,7 @@ mod tests {
         // A fixed language keeps `effective_lang` away from the machine's locale.
         let settings = Settings { language: "en".into(), notify: false, ..Settings::default() };
         let ctx = egui::Context::default();
+        crate::framework::install_headless(&ctx);
         (LauncherUi::new(&ctx, Box::new(backend), settings), sent, ctx)
     }
 
@@ -1578,24 +1625,29 @@ mod tests {
         let sent = Rc::new(RefCell::new(Vec::new()));
         let mut backend = Some(Recorder { sent });
         let settings = Settings { language: "en".into(), notify: false, ..Settings::default() };
-        Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(egui::Theme::Dark).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                if state.is_none()
-                    && let Some(backend) = backend.take()
-                {
-                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings.clone()));
-                }
-                if let Some(launcher) = state.as_mut() {
-                    launcher.logic(&ui.ctx().clone(), &mut NoHost);
-                    // The strict policy covers drawing passes only: translation is what asks the
-                    // fonts for glyphs. Logic may set the current language ahead of the gate, but
-                    // it draws nothing.
-                    let _strict = crate::i18n::StrictCjkDrawing::on(launcher.cjk_font);
-                    launcher.ui(ui, &mut NoHost);
-                }
-            },
-            None,
-        )
+        Harness::builder()
+            .with_context_setup(crate::framework::install_headless)
+            .with_size(egui::vec2(1180.0, 900.0))
+            .with_theme(egui::Theme::Dark)
+            .allow_missing_glyphs()
+            .build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    if state.is_none()
+                        && let Some(backend) = backend.take()
+                    {
+                        *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings.clone()));
+                    }
+                    if let Some(launcher) = state.as_mut() {
+                        launcher.logic(&ui.ctx().clone(), &mut NoHost);
+                        // The strict policy covers drawing passes only: translation is what asks the
+                        // fonts for glyphs. Logic may set the current language ahead of the gate, but
+                        // it draws nothing.
+                        let _strict = crate::i18n::StrictCjkDrawing::on(launcher.cjk_font);
+                        launcher.ui(ui, &mut NoHost);
+                    }
+                },
+                None,
+            )
     }
 
     /// Opens Settings and its language combo through visible labels, leaving the picker open for a
@@ -1648,14 +1700,14 @@ mod tests {
             let inter: &[u8] = include_bytes!("../../../assets/fonts/Inter-Variable.ttf");
             assert_eq!(marker.bytes(), inter, "the available marker must be the real Inter face, not a CJK face");
 
-            // Exactly one gate pass: it installs the face and draws nothing. We stop here and do
-            // not run the following pass, which would panic on missing Chinese glyphs in the Inter stand-in.
+            // The gate pass installs the face and draws nothing; the runtime discards it and runs the frame's
+            // second pass with the face in place, so the frame on screen is Chinese.
             h.step();
             {
                 let launcher = h.state().as_ref().expect("harness state");
                 assert_eq!(launcher.cjk_font, Some(Lang::ZH_CN), "the gate must install the face");
             }
-            assert!(!crate::i18n::drew_cjk(), "the gate pass must not draw CJK text");
+            assert_eq!(crate::i18n::current(), Lang::ZH_CN, "the frame that installs the face draws with it");
         }
 
         // Unavailable: no face at all, so every frame stays English and the gate installs nothing.
