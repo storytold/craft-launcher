@@ -494,6 +494,31 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Set by {name} in the environment.	Défini par {name} dans l'environnement.
 	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Les polices non installées affichent leur aperçu depuis ce serveur, et les installations l'essaient en premier. Vide : le serveur par défaut.
 
+	Cloud	Cloud
+	Sign in	Se connecter
+	Sign out	Se déconnecter
+	Files	Fichiers
+	Account	Compte
+	Save to cloud	Enregistrer dans le cloud
+	Save to device	Enregistrer sur l’appareil
+	No files yet	Aucun fichier pour l’instant
+	Save a copy to continue	Enregistrez une copie pour continuer
+	Could not save the file	Impossible d’enregistrer le fichier
+	Could not confirm the save	Impossible de confirmer l’enregistrement
+	Saved	Enregistré
+	A newer version was saved	Une version plus récente a été enregistrée
+	Cloud storage is full	Le stockage dans le cloud est plein
+	Source commit	Commit du code source
+	Source tree	Arbre du code source
+	Prepare version	Préparer la version
+	Roll back	Revenir à la version précédente
+	Activate	Activer
+	Queued	En file d’attente
+	Preparing	En préparation
+	Ready	Prêt
+	Cancelled	Annulé
+	Failed	Échec
+	Interrupted	Interrompu
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
 	Enable developer builds	Enable developer builds
 	Enable developer builds?	Enable developer builds?

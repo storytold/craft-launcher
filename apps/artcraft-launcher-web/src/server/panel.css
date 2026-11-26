@@ -1,0 +1,227 @@
+.artcraft-cloud-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    pointer-events: none;
+    color: var(--ac-cloud-ink);
+    font: 400 0.9375rem/1.4 Inter, system-ui, sans-serif;
+}
+
+.artcraft-cloud-control,
+.artcraft-cloud-panel {
+    position: absolute;
+    box-sizing: border-box;
+    pointer-events: auto;
+}
+
+.artcraft-cloud-control {
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--ac-cloud-line-strong);
+    border-radius: 50%;
+    background: var(--ac-cloud-bg);
+    color: var(--ac-cloud-accent-ink);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.artcraft-cloud-control[aria-expanded="true"],
+.artcraft-cloud-control:hover {
+    background: var(--ac-cloud-sunken);
+    border-color: var(--ac-cloud-accent-ink);
+}
+
+.artcraft-cloud-control[data-dragging] {
+    cursor: grabbing;
+}
+
+.artcraft-cloud-control svg {
+    display: block;
+    width: 52%;
+    height: 52%;
+    pointer-events: none;
+}
+
+.artcraft-cloud-panel {
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--ac-cloud-line-strong);
+    border-radius: 0;
+    background: var(--ac-cloud-bg);
+    color: var(--ac-cloud-ink);
+}
+
+.artcraft-cloud-panel[hidden] {
+    display: none;
+}
+
+.artcraft-cloud-header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+    border-bottom: 1px solid var(--ac-cloud-line);
+}
+
+.artcraft-cloud-heading {
+    min-width: 0;
+    margin: 0;
+    color: var(--ac-cloud-ink-strong);
+    font: 620 1rem/1.2 Archivo, Inter, system-ui, sans-serif;
+    overflow-wrap: anywhere;
+}
+
+.artcraft-cloud-close {
+    flex: 0 0 auto;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    max-width: 55%;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--ac-cloud-line);
+    border-radius: 0;
+    background: var(--ac-cloud-bg);
+    color: var(--ac-cloud-ink);
+    cursor: pointer;
+    font: inherit;
+    overflow-wrap: anywhere;
+}
+
+.artcraft-cloud-close:hover {
+    background: var(--ac-cloud-sunken);
+    border-color: var(--ac-cloud-line-strong);
+}
+
+.artcraft-cloud-control:focus-visible,
+.artcraft-cloud-close:focus-visible {
+    outline: 2px solid var(--ac-cloud-accent-ink);
+    outline-offset: -3px;
+}
+
+.artcraft-cloud-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    padding: 0.75rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .artcraft-cloud-control,
+    .artcraft-cloud-panel,
+    .artcraft-cloud-close {
+        animation: none;
+        transition: none;
+    }
+}
+
+.craft-cloud-view {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.craft-cloud-view p,
+.craft-cloud-files {
+    margin: 0;
+}
+
+.craft-cloud-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+}
+
+.craft-cloud-button,
+.craft-cloud-view :is(input, select) {
+    box-sizing: border-box;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--ac-cloud-line-strong);
+    border-radius: 0;
+    background: var(--ac-cloud-bg);
+    color: var(--ac-cloud-ink);
+    font: inherit;
+}
+
+.craft-cloud-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.craft-cloud-button:hover,
+.craft-cloud-button[aria-pressed="true"] {
+    background: var(--ac-cloud-sunken);
+    border-color: var(--ac-cloud-accent-ink);
+}
+
+.craft-cloud-view :is(a, button, input, select):focus-visible {
+    outline: 2px solid var(--ac-cloud-accent-ink);
+    outline-offset: -3px;
+}
+
+.craft-cloud-view input {
+    width: 100%;
+}
+
+.craft-cloud-update-fields {
+    display: grid;
+    gap: 0.375rem;
+}
+
+.craft-cloud-files {
+    padding: 0;
+    list-style: none;
+}
+
+.craft-cloud-file {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--ac-cloud-line);
+}
+
+.craft-cloud-file-name {
+    flex-basis: 100%;
+    color: var(--ac-cloud-ink-strong);
+    font-weight: 600;
+}
+
+.craft-cloud-file-app {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--ac-cloud-muted);
+    font-size: 0.8125rem;
+}
+
+.craft-cloud-file .craft-cloud-button {
+    min-height: 2.25rem;
+    font-size: 0.8125rem;
+}
+
+.craft-cloud-empty,
+.craft-cloud-status {
+    color: var(--ac-cloud-muted);
+}
+
+.craft-cloud-status {
+    padding: 0.5rem;
+    border-left: 2px solid var(--ac-cloud-accent-ink);
+    background: var(--ac-cloud-sunken);
+}
