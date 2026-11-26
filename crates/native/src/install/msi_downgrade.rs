@@ -5,7 +5,9 @@
 //! gone. The person asked for this version by name; going back is never offered on its own.
 //!
 //! Before anything changes, both packages are downloaded and checked against their published
-//! checksums: the chosen one, and the installed version's own, to put back. Then:
+//! checksums: the chosen one, and the installed version's own, to put back (or, for a copy whose
+//! version has no release of its own, the pre-release with its numbers that the person agreed to).
+//! Then:
 //! 1. The installed copy is removed. If that fails, nothing has changed.
 //! 2. The chosen version is installed in the same folder and context. If that fails, the
 //!    installed version goes back in from its package.
@@ -48,19 +50,68 @@ pub(super) struct Removal {
     pub partly: bool,
 }
 
+/// A downgrade that didn't finish: what to tell the person, and what happened to the previous
+/// package. Which registration the put-back is worked out by the caller, only after a completed
+/// removal, from the registrations Windows Installer lists afterwards ([`put_back_registration`]).
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Failed {
+    pub error: String,
+    pub put_back: PutBack,
+}
+
+/// Whether a failed downgrade put the previous package back, and whether the removal step got
+/// through every registration it covers before that: only the second kind of put-back can be
+/// recorded, because a removal that stopped partway leaves registrations behind that cannot be
+/// told apart from the restore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PutBack {
+    /// The previous package was not put back (nothing needed it, or putting it back failed too),
+    /// so no registration was created that could be recorded.
+    Not,
+    /// The removal step removed every registration it covers, and the checked previous package
+    /// then went back in. Windows Installer gives a package the same product code every time, so
+    /// the restore can carry a code the machine already listed before the downgrade. What the step
+    /// covers depends on the route: an all-users downgrade removes the machine-wide records and
+    /// deliberately leaves the account's own per-user record out, so that one can sit beside the
+    /// restore.
+    AfterRemoval,
+    /// A removal failed after another registration was already gone, so the app was only partly
+    /// removed. What is still registered cannot be told apart from the restore — a registration
+    /// that appeared since the snapshot can carry the previous numbers just as the restore does —
+    /// so nothing is recorded and the person is told the app is still installed.
+    AfterPartialRemoval,
+}
+
+impl Failed {
+    fn without_put_back(error: String) -> Self {
+        Self { error, put_back: PutBack::Not }
+    }
+
+    /// The previous package is back after the removal step removed every registration it covers.
+    fn completed_removal_put_back(error: String) -> Self {
+        Self { error, put_back: PutBack::AfterRemoval }
+    }
+
+    /// The previous package is back after a removal that stopped once part of the app was gone: the
+    /// app is partly gone too, and nothing is recorded for it.
+    fn partial_removal_put_back(error: String) -> Self {
+        Self { error, put_back: PutBack::AfterPartialRemoval }
+    }
+}
+
 /// Removes the installed copy, installs the chosen version, and puts the previous one back if
 /// that install does not finish, one step after another. A removal that stops after removing
 /// something also puts the previous version back.
-pub(super) fn run(steps: Steps<'_>) -> Result<(), String> {
+pub(super) fn run(steps: Steps<'_>) -> Result<(), Failed> {
     let Steps { app, chosen, previous, remove, install_chosen, reinstall_previous } = steps;
     if let Err(Removal { error, partly }) = remove() {
         if !partly {
-            return Err(error);
+            return Err(Failed::without_put_back(error));
         }
         let why = reason(&error);
         return match reinstall_previous() {
-            Ok(()) => Err(partly_removed_put_back(app, previous, &why)),
-            Err(again) => Err(partly_removed_not_put_back(app, previous, &why, &reason(&again))),
+            Ok(()) => Err(Failed::partial_removal_put_back(partly_removed_put_back(app, previous, &why))),
+            Err(again) => Err(Failed::without_put_back(partly_removed_not_put_back(app, previous, &why, &reason(&again)))),
         };
     }
     let why = match install_chosen() {
@@ -68,8 +119,8 @@ pub(super) fn run(steps: Steps<'_>) -> Result<(), String> {
         Err(e) => reason(&e),
     };
     match reinstall_previous() {
-        Ok(()) => Err(put_back(app, chosen, previous, &why)),
-        Err(again) => Err(not_put_back(app, chosen, previous, &why, &reason(&again))),
+        Ok(()) => Err(Failed::completed_removal_put_back(put_back(app, chosen, previous, &why))),
+        Err(again) => Err(Failed::without_put_back(not_put_back(app, chosen, previous, &why, &reason(&again)))),
     }
 }
 
@@ -189,7 +240,7 @@ pub(super) fn ended(code: Option<i32>) -> Ended {
 
 /// What a finished elevated downgrade means for the person. `LaunchFailed` is not passed here:
 /// the caller reports [`no_session`] instead.
-pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> Result<(), String> {
+pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> Result<(), Failed> {
     // Inside the session permission was already given: a cancel there is the progress window's.
     let msiexec = |code: i32| match super::explain(Some(code)).err().unwrap_or_default() {
         e if e == CANCELLED => "it was cancelled".to_string(),
@@ -197,20 +248,58 @@ pub(super) fn report(ended: Ended, app: &str, chosen: &str, previous: &str) -> R
     };
     match ended {
         Ended::Done => Ok(()),
-        Ended::Declined => Err(CANCELLED.to_string()),
-        Ended::RemovalFailed(code) => Err(format!("{app} {previous} couldn't be removed ({}), so nothing was changed.", msiexec(code))),
-        Ended::PutBack(code) => Err(put_back(app, chosen, previous, &msiexec(code))),
-        Ended::NotPutBack { install, back } => Err(not_put_back(app, chosen, previous, &msiexec(install), &msiexec(back))),
-        Ended::PartlyRemovedPutBack(code) => Err(partly_removed_put_back(app, previous, &msiexec(code))),
-        Ended::PartlyRemovedNotPutBack { removal, back } => Err(partly_removed_not_put_back(app, previous, &msiexec(removal), &msiexec(back))),
+        Ended::Declined => Err(Failed::without_put_back(CANCELLED.to_string())),
+        Ended::RemovalFailed(code) => {
+            Err(Failed::without_put_back(format!("{app} {previous} couldn't be removed ({}), so nothing was changed.", msiexec(code))))
+        }
+        Ended::PutBack(code) => Err(Failed::completed_removal_put_back(put_back(app, chosen, previous, &msiexec(code)))),
+        Ended::NotPutBack { install, back } => Err(Failed::without_put_back(not_put_back(app, chosen, previous, &msiexec(install), &msiexec(back)))),
+        Ended::PartlyRemovedPutBack(code) => Err(Failed::partial_removal_put_back(partly_removed_put_back(app, previous, &msiexec(code)))),
+        Ended::PartlyRemovedNotPutBack { removal, back } => {
+            Err(Failed::without_put_back(partly_removed_not_put_back(app, previous, &msiexec(removal), &msiexec(back))))
+        }
         Ended::LaunchFailed | Ended::Other(_) => {
             let code = match ended {
                 Ended::Other(Some(code)) => code.to_string(),
                 _ => "none".to_string(),
             };
-            Err(format!("going back to {app} {chosen} stopped unexpectedly (code {code}). Check which version of {app} is installed."))
+            Err(Failed::without_put_back(format!(
+                "going back to {app} {chosen} stopped unexpectedly (code {code}). Check which version of {app} is installed."
+            )))
         }
     }
+}
+
+/// The registration a put-back is, from the registrations Windows Installer lists now (`after`),
+/// each with the version it reports, and what the downgrade said about the removal ([`PutBack`]).
+/// Windows Installer keeps only the numbers, so they are compared without any pre-release part.
+///
+/// Only a put-back after a completed removal ([`PutBack::AfterRemoval`]) is recorded: every
+/// registration the removal step covers is gone, so the one registration carrying `previous`'s
+/// numbers is the package that just went back in — whether or not Windows Installer reused a
+/// product code the machine already had, and even when a registration the step never covers (such
+/// as an account's own per-user record) sits beside it with other numbers.
+///
+/// A partial removal ([`PutBack::AfterPartialRemoval`]) records nothing: the registrations it left
+/// behind cannot be told apart from the restore, and a registration that appeared since the
+/// snapshot can carry the previous numbers just as the restore does. Neither does [`PutBack::Not`].
+///
+/// `None` unless there is exactly one registration with `previous`'s numbers: nothing is ever
+/// guessed from rows.
+pub(super) fn put_back_registration(
+    put_back: PutBack,
+    after: &[(String, Option<super::version::Version>)],
+    previous: Option<&super::version::Version>,
+) -> Option<String> {
+    let previous = previous?;
+    if put_back != PutBack::AfterRemoval {
+        return None;
+    }
+    let mut restored = after
+        .iter()
+        .filter(|(_, numbers)| numbers.as_ref().is_some_and(|n| (n.major, n.minor, n.patch) == (previous.major, previous.minor, previous.patch)));
+    let (code, _) = restored.next()?;
+    restored.next().is_none().then(|| code.clone())
 }
 
 /// The `msiexec` arguments that remove one registration. Product codes come from the registry, so
