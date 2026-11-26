@@ -270,7 +270,7 @@ impl LauncherUi {
             VersionTrack::Nightly => tl!("Nightly").to_string(),
             VersionTrack::Pinned(tag) => tag.clone(),
         };
-        craft_ui::ComboBox::from_id_salt(("version", id))
+        egui::ComboBox::from_id_salt(("version", id))
             .selected_text(summary)
             .width(width)
             .height(390.0)
@@ -546,23 +546,26 @@ mod tests {
     fn picker(id: &'static str, saved: VersionTrack) -> (egui_kittest::Harness<'static, Option<LauncherUi>>, PickerRecorder) {
         let sent = PickerRecorder(Default::default());
         let recorder = sent.clone();
-        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(700.0, 700.0)).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                let launcher = state.get_or_insert_with(|| {
-                    let mut settings = crate::settings::Settings { language: "en".into(), notify: false, ..Default::default() };
-                    settings.versions.insert(id.into(), saved.clone());
-                    let mut launcher = LauncherUi::new(ui.ctx(), Box::new(recorder.clone()), settings);
-                    let app = CraftApp::by_id(id).unwrap();
-                    launcher
-                        .version_lists
-                        .insert(id.into(), Ok(vec![picker_release(app, "v1.0.0-dev.nightly.1", true), picker_release(app, "v0.9.0", false)]));
-                    launcher
-                });
-                let label = ui.label("Version").id;
-                launcher.version_combo(ui, id, CraftApp::by_id(id).unwrap(), 500.0, label);
-            },
-            None,
-        );
+        let mut harness = egui_kittest::Harness::builder()
+            .with_context_setup(crate::framework::install_headless)
+            .with_size(egui::vec2(700.0, 700.0))
+            .build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    let launcher = state.get_or_insert_with(|| {
+                        let mut settings = crate::settings::Settings { language: "en".into(), notify: false, ..Default::default() };
+                        settings.versions.insert(id.into(), saved.clone());
+                        let mut launcher = LauncherUi::new(ui.ctx(), Box::new(recorder.clone()), settings);
+                        let app = CraftApp::by_id(id).unwrap();
+                        launcher
+                            .version_lists
+                            .insert(id.into(), Ok(vec![picker_release(app, "v1.0.0-dev.nightly.1", true), picker_release(app, "v0.9.0", false)]));
+                        launcher
+                    });
+                    let label = ui.label("Version").id;
+                    launcher.version_combo(ui, id, CraftApp::by_id(id).unwrap(), 500.0, label);
+                },
+                None,
+            );
         harness.run_steps(3);
         (harness, sent)
     }

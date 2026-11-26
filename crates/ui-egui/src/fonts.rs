@@ -1,4 +1,4 @@
-//! The Fonts page: Craft Font Manager's panel in the launcher's look, and the download consent and
+//! The Fonts page: Craft Font Manager's panel, and the download consent and
 //! preview settings the Settings dialog shows. Desktop only: the web build has no font store.
 
 use std::sync::Arc;
@@ -6,30 +6,30 @@ use std::time::Duration;
 
 use crate::i18n::fmt;
 use crate::settings::FontSettings;
-use crate::theme::{self, Tokens};
+use crate::theme::Tokens;
 use craft_font_manager::craft_font_catalog::Watch;
 use craft_font_manager::store::{Installer, NoStore, PREVIEW_SERVICE_ENV, PreviewServiceSource, SuiteStore};
-use craft_font_manager::{Catalog, FontsPanel, Look, Options, Palette, Preset, Runner};
+use craft_font_manager::{Catalog, FontSources, FontsPanel, FontsPanelSettings, FontsPanelView, Options, Preset};
 
-fn to_panel(settings: &FontSettings) -> craft_font_manager::Settings {
+fn to_panel(settings: &FontSettings) -> FontsPanelSettings {
     let preset = match settings.preset.as_str() {
         "alphabet" => Preset::Alphabet,
         "numerals" => Preset::Numerals,
         _ => Preset::Sentence,
     };
-    craft_font_manager::Settings {
-        sample: settings.sample.clone(),
-        preset,
-        size: f32::from(settings.size.clamp(8, 200)),
-        hide_download_note: settings.hide_download_note,
-    }
+    let mut panel = FontsPanelSettings::default();
+    panel.sample = settings.sample.clone();
+    panel.preset = preset;
+    panel.size = f32::from(settings.size.clamp(8, 200));
+    panel.hide_download_note = settings.hide_download_note;
+    panel
 }
 
-fn from_panel(panel: &craft_font_manager::Settings) -> FontSettings {
+fn from_panel(panel: &FontsPanelSettings) -> FontSettings {
     let preset = match panel.preset {
-        Preset::Sentence => "sentence",
         Preset::Alphabet => "alphabet",
         Preset::Numerals => "numerals",
+        _ => "sentence",
     };
     FontSettings {
         sample: panel.sample.clone(),
@@ -74,7 +74,7 @@ pub(crate) struct FontsTab {
     preview: Option<PreviewField>,
     /// Repaints the page when the catalog changes while the window is idle.
     watch: Option<Watch>,
-    /// The sans-serif and system-language filters are set once, when the page first shows.
+    /// Whether the panel has been given the launcher's default filters.
     default_filters: bool,
 }
 
@@ -261,20 +261,16 @@ impl FontsTab {
     }
 
     /// The panel, built on the first call: reading the indexes and scanning the installed fonts
-    /// wait until then.
-    fn panel_mut(&mut self, settings: &FontSettings) -> &mut FontsPanel {
+    /// wait until then. Its settings start as the launcher's, through the host's section it reads them from.
+    fn panel_mut(&mut self, host: &craft_host::Host, settings: &FontSettings) -> &mut FontsPanel {
         self.panel.get_or_insert_with(|| {
             let options = self.options.take().unwrap_or_else(|| {
                 self.catalog.scan_in_background();
-                Options {
-                    catalog: Arc::clone(&self.catalog),
-                    installer: Arc::clone(&self.installer),
-                    index: self.installer.indexes().map_err(|e| e.to_string()),
-                    runner: Runner::Thread,
-                }
+                let index = self.installer.indexes().map_err(|e| e.to_string());
+                Options::new(Arc::clone(&self.catalog), Arc::clone(&self.installer), index)
             });
-            let mut panel = FontsPanel::new(options, to_panel(settings));
-            panel.set_look(look());
+            host.set_setting(&to_panel(settings));
+            let mut panel = FontsPanel::new(options);
             // The launcher's Settings has the download switch.
             panel.show_downloads_switch(false);
             panel
@@ -282,15 +278,14 @@ impl FontsTab {
     }
 
     /// Draws the page into `ui`.
-    pub(crate) fn ui(&mut self, ui: &mut egui::Ui, settings: &mut FontSettings, language: &str) {
+    pub(crate) fn ui(&mut self, ui: &mut egui::Ui, host: &craft_host::Host, settings: &mut FontSettings, language: &str) {
         self.watch_catalog(ui.ctx());
         let first = !std::mem::replace(&mut self.default_filters, true);
-        let panel = self.panel_mut(settings);
-        panel.set_language(language);
+        let panel = self.panel_mut(host, settings);
         if first {
             panel.use_default_filters(language);
         }
-        panel.ui(ui);
+        FontsPanelView::new(panel).show(ui);
         let saved = from_panel(panel.settings());
         if saved != *settings {
             *settings = saved;
@@ -298,51 +293,13 @@ impl FontsTab {
     }
 
     /// The font sources, for the Settings dialog.
-    pub(crate) fn sources_ui(&mut self, ui: &mut egui::Ui, settings: &FontSettings, language: &str) {
-        let panel = self.panel_mut(settings);
-        panel.set_language(language);
-        panel.sources_ui(ui);
+    pub(crate) fn sources_ui(&mut self, ui: &mut egui::Ui, host: &craft_host::Host, settings: &FontSettings) {
+        FontSources::new(self.panel_mut(host, settings)).show(ui);
     }
 
     /// The panel, once the page has shown.
     pub(crate) fn panel(&self) -> Option<&FontsPanel> {
         self.panel.as_ref()
-    }
-}
-
-fn palette(t: &Tokens) -> Palette {
-    Palette {
-        bg: t.bg,
-        sunken: t.sunken,
-        ink: t.ink,
-        ink_strong: t.ink_strong,
-        muted: t.muted,
-        faint: t.faint,
-        line: t.line,
-        line_strong: t.line_strong,
-        accent: t.accent,
-        accent_ink: t.accent_ink,
-        invert_bg: t.invert_bg,
-        invert_fg: t.invert_fg,
-        good: t.good,
-        warn: t.warn,
-        bad: t.bad,
-    }
-}
-
-/// The launcher's colours and faces: Archivo titles, Inter names, upper-case Geist Mono labels
-/// and buttons, hard corners.
-fn look() -> Look {
-    Look {
-        dark: Some(palette(&Tokens::DARK)),
-        light: Some(palette(&Tokens::LIGHT)),
-        display: theme::display(),
-        strong: theme::semibold(),
-        label: theme::mono(),
-        button: theme::mono_bold(),
-        caps: true,
-        corner: egui::CornerRadius::ZERO,
-        control_height: theme::CONTROL_H,
     }
 }
 
