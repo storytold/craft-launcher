@@ -36,7 +36,9 @@ A message shown by the operating system, outside the launcher's window. Never us
 ## Checking for releases
 
 **Release feed**:
-ArtCraft's own list of each app's latest stable release, asked before GitHub.
+ArtCraft's own list of each app's latest stable release, beta and nightly: the launcher's only
+source for which release is current. Each app's whole history, for choosing a version, comes from
+the same service.
 _Avoid_: release info, ArtCraft API
 
 **Update check**:
@@ -59,10 +61,3 @@ _Avoid_: locked version, kept version
 A beta or release candidate published before a stable release. Never a nightly.
 _Avoid_: preview, nightly
 
-**GitHub rate limit**:
-GitHub's own ceiling on API requests from one network address, shared by everything on that network.
-_Avoid_: quota
-
-**GitHub budget**:
-The ceiling one launcher sets itself on GitHub API requests per hour, below the GitHub rate limit.
-_Avoid_: rate limit, allowance

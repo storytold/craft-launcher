@@ -207,9 +207,8 @@ fn builder(sink: Arc<Mutex<Sink>>, stderr: bool) -> env_logger::Builder {
 }
 
 /// Whether a record is a raw HTTP wire dump. `ureq_proto` traces every byte it sends and
-/// receives as hex-and-ASCII rows, `Authorization` header included (the optional
-/// `ARTCRAFT_LAUNCHER_GITHUB_TOKEN`). The rows split the header across lines, so
-/// [`redact_credentials`] can't find the token in them.
+/// receives as hex-and-ASCII rows, any `Authorization` header included. The rows split a header
+/// across lines, so [`redact_credentials`] can't find a credential in them.
 fn is_wire_dump(metadata: &log::Metadata<'_>) -> bool {
     let target = metadata.target();
     metadata.level() == log::Level::Trace && (target == "ureq_proto" || target.starts_with("ureq_proto::"))

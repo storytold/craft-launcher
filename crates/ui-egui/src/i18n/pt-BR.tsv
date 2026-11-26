@@ -137,8 +137,6 @@
 	Unhide App	Mostrar aplicativo
 	Hidden Apps	Aplicativos ocultos
 	Apps you hid	Aplicativos que você ocultou
-	Checked {ago} · using {sources}	Verificado {ago} · via {sources}
-	{a} and {b}	{a} e {b}
 	Join the Discord	Entrar no Discord
 	Learn more	Saiba mais
 	Minimize	Minimizar
@@ -211,8 +209,6 @@ month	Oct	out.
 month	Nov	nov.
 month	Dec	dez.
 	Not checked yet	Ainda não verificado
-	Next GitHub check at {time}	Próxima verificação do GitHub às {time}
-	Next check at {time}	Próxima verificação às {time}
 	Installing for {platform}	Instalando para {platform}
 	Downloads for {platform}	Downloads para {platform}
 	No downloads for this system	Nenhum download disponível para este sistema
@@ -274,7 +270,6 @@ month	Dec	dez.
 	Open ArtCraft Launcher to update.	Abra o ArtCraft Launcher para atualizar.
 	{name} {v} is available	{name} {v} está disponível
 	{count} updates are available	{count} atualizações estão disponíveis
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Estas notas não foram carregadas (o limite de requisições do GitHub foi atingido). Elas estão na página de lançamentos.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Quando ativado, abrir o launcher pela barra de menus traz a janela para a área de trabalho atual. Quando desativado, o macOS alterna para a área de trabalho onde a janela estava.
 	Couldn't change the login item: {e}	Não foi possível alterar o item de inicialização no login: {e}
 

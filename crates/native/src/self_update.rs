@@ -174,6 +174,26 @@ pub fn finish(args: &[OsString]) -> Option<Result<(), String>> {
 mod tests {
     use super::*;
 
+    /// A release of `repo` at `tag` with one file per `(sha256, name)`.
+    fn release_with(repo: &str, tag: &str, files: &[(String, String)]) -> artcraft_launcher_core::release::Release {
+        let prefix = artcraft_launcher_core::release::download_prefix(repo);
+        artcraft_launcher_core::release::Release {
+            tag: tag.to_string(),
+            version: artcraft_launcher_core::version::parse(tag),
+            name: tag.to_string(),
+            assets: files
+                .iter()
+                .map(|(hash, name)| artcraft_launcher_core::release::Asset {
+                    name: name.clone(),
+                    size: 0,
+                    url: format!("{prefix}{tag}/{name}"),
+                    sha256: Some(hash.clone()),
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
     /// craft-update downloads only links in the repository the release was read from: a release
     /// read from the repository the feed renamed the launcher's to passes when it carries that
     /// repository, and is refused as the launcher's own.
@@ -181,17 +201,13 @@ mod tests {
     fn the_update_checks_links_against_the_repo_the_release_came_from() {
         let app = &craft_update::suite::LAUNCHER;
         let sums = |name: &str| [("a".repeat(64), name.to_string())];
-        let renamed = artcraft_launcher_core::release::release_from_sums(
-            "storytold/artcraft-launcher-next",
-            "v0.9.0",
-            &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"),
-        );
+        let renamed = release_with("storytold/artcraft-launcher-next", "v0.9.0", &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"));
         let carried = to_update_release(&renamed, "storytold/artcraft-launcher-next");
         assert!(craft_update::install::check_download_link(app, &carried, &carried.assets[0]).is_ok());
         let own = to_update_release(&renamed, "");
         assert!(craft_update::install::check_download_link(app, &own, &own.assets[0]).is_err());
 
-        let launcher = artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"));
+        let launcher = release_with(app.repo, "v0.9.0", &sums("artcraft-launcher-0.9.0-linux-x86_64.AppImage"));
         let launcher = to_update_release(&launcher, app.repo);
         assert!(craft_update::install::check_download_link(app, &launcher, &launcher.assets[0]).is_ok());
     }
@@ -206,7 +222,7 @@ mod tests {
         let app = &craft_update::suite::LAUNCHER;
         let release = |names: &[&str]| {
             let sums: Vec<(String, String)> = names.iter().map(|n| ("a".repeat(64), (*n).to_string())).collect();
-            artcraft_launcher_core::release::release_from_sums(app.repo, "v0.9.0", &sums)
+            release_with(app.repo, "v0.9.0", &sums)
         };
         let windows_x64 = Platform { os: Os::Windows, arch: Arch::X64 };
         let msi = Install::Msi(PathBuf::new());

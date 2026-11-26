@@ -59,13 +59,10 @@ impl Paths {
         self.cache.join("downloads")
     }
 
-    pub fn release_cache(&self) -> PathBuf {
-        self.cache.join("releases.json")
-    }
-
-    /// The GitHub API requests of the last hour, kept beside the release cache.
-    pub fn github_budget(&self) -> PathBuf {
-        self.cache.join("github-budget.json")
+    /// Files older launchers kept while they asked GitHub themselves (its answers and its request
+    /// budget). Nothing reads them any more; the backend removes them.
+    pub fn legacy_github_files(&self) -> [PathBuf; 2] {
+        [self.cache.join("releases.json"), self.cache.join("github-budget.json")]
     }
 
     /// The last answer from ArtCraft's release feed, for an instant first paint and as a fallback.

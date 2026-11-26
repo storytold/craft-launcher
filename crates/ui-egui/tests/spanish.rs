@@ -5,7 +5,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use artcraft_launcher_core::protocol::{Backend, Capabilities, Command, Event, JobPhase, LatestRelease, Origin, Source};
+use artcraft_launcher_core::protocol::{Backend, Capabilities, Command, Event, JobPhase, LatestRelease};
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
 use artcraft_launcher_core::{Arch, Installed, Os, Platform, SUITE, version};
@@ -63,7 +63,7 @@ fn events() -> Vec<Event> {
     let mut ev = Vec::new();
     for (i, app) in SUITE.iter().enumerate() {
         let latest = LatestRelease::Found(release(app.id, "0.5.0", NOW - 40 * 86_400 - i as i64 * 600));
-        ev.push(Event::Latest { app: app.id.into(), latest, from: Origin::ArtCraftApi });
+        ev.push(Event::Latest { app: app.id.into(), latest });
         let installed = matches!(app.id, "photocraft" | "lightcraft").then(|| Installed {
             version: version::parse(if app.id == "photocraft" { "0.4.1" } else { "0.5.0" }),
             source: InstallSource::MacApp,
@@ -76,7 +76,7 @@ fn events() -> Vec<Event> {
         ev.push(Event::Detected { app: app.id.into(), installed });
     }
     ev.push(Event::Progress { app: "filmcraft".into(), phase: JobPhase::Verifying });
-    ev.push(Event::CheckFinished { at: NOW - 180, source: Source::Feed, rate_limited_until: None });
+    ev.push(Event::CheckFinished { at: NOW - 180 });
     // A backend message, translated through its `@msg` template where it's shown.
     ev.push(Event::JobFinished { app: "lightcraft".into(), result: Ok("LightCraft updated to 0.5.0".into()) });
     ev
@@ -125,7 +125,7 @@ fn spanish_ui_translates_labels_dates_and_messages() {
     h.get_by_label("Edición de imágenes");
     h.get_by_label("Actualizar a 0.5.0");
     h.get_by_label_contains("Verificando la suma de comprobación…");
-    h.get_by_label_contains("Comprobado hace 3 min · con ArtCraft API");
+    h.get_by_label_contains("Comprobado hace 3 min");
     h.get_by_label("LightCraft actualizada a 0.5.0");
 
     let mut table = harness(ViewMode::Table);

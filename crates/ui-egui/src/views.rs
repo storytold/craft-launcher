@@ -447,24 +447,10 @@ impl LauncherUi {
         let status = if self.checking {
             tl!("Checking for updates…").to_string()
         } else if let Some(at) = self.settings.last_check {
-            let ago = ago_text(at, now);
-            match self.sources_label() {
-                Some(using) => fmt(tl!("Checked {ago} · using {sources}"), &[("ago", &ago), ("sources", &using)]),
-                None => fmt(tl!("Checked {ago}"), &[("ago", &ago)]),
-            }
+            fmt(tl!("Checked {ago}"), &[("ago", &ago_text(at, now))])
         } else {
             tl!("Not checked yet").to_string()
         };
-        // The full notice, and a short one for a narrow window.
-        // Saved answers stand in until then, whether GitHub refused or the launcher's own budget
-        // held the request back (#713).
-        let notice = self.rate_limited_until.filter(|u| *u > now).map(|until| {
-            let (hour, minute) = crate::local_time::clock(until);
-            let time = format!("{hour:02}:{minute:02}");
-            let full = fmt(tl!("Next GitHub check at {time}"), &[("time", &time)]);
-            let short = fmt(tl!("Next check at {time}"), &[("time", &time)]);
-            (format!("· {full}"), format!("· {short}"))
-        });
         use artcraft_launcher_core::catalog::{GITHUB_URL, SOCIAL, WEBSITE_URL};
         // Every link is an icon, reading Website, GitHub, Discord, then the social accounts.
         let named =
@@ -486,33 +472,13 @@ impl LauncherUi {
             url,
         }));
         let icon = 13.0;
-        let spacing = ui.spacing().item_spacing.x;
         // The icons on the right keep their size; the status on the left gets what is left and
         // is cut short with "…", never drawn under them.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             widgets::icon_links(ui, icon, &links);
             ui.add_space(8.0);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                // While GitHub is rate limited, saying so matters more than when we last checked.
-                let avail = ui.available_width();
-                let text = |s: &str| RichText::new(s).size(12.0).color(t.warn);
-                let width = |ui: &Ui, s: &str| {
-                    egui::WidgetText::from(text(s)).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body).size().x
-                        + spacing
-                };
-                // The short notice once the full one would leave the status under a third.
-                let notice = notice.map(|(full, short)| {
-                    let w = width(ui, &full);
-                    if w <= avail * 0.7 { (full, None, w) } else { (short.clone(), Some(full), width(ui, &short)) }
-                });
-                let notice_w = notice.as_ref().map_or(0.0, |(_, _, w)| *w);
-                widgets::hud_elided(ui, &status, t.faint, (avail - notice_w).max(avail * 0.3));
-                if let Some((shown, full, _)) = notice {
-                    let resp = ui.add(egui::Label::new(text(&shown)).truncate());
-                    if let Some(full) = full {
-                        resp.on_hover_text(full);
-                    }
-                }
+                widgets::hud_elided(ui, &status, t.faint, ui.available_width());
             });
         });
     }

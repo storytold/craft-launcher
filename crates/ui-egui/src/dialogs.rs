@@ -145,7 +145,7 @@ impl LauncherUi {
             egui::Frame::new().inner_margin(egui::Margin::same(theme::PAD as i8)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if release.notes.is_empty() {
-                    ui.label(tl!("These notes weren't fetched (GitHub's request limit was reached). They're on the release page."));
+                    ui.label(tl!("No notes were published with this release."));
                 } else {
                     crate::notes::show_scaled(ui, &release.notes, self.notes_zoom);
                 }

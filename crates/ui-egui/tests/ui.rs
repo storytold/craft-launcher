@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 
 use artcraft_launcher_core::details::AppDetails;
 use artcraft_launcher_core::protocol::{
-    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PausedDownload, Source,
+    Backend, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, PausedDownload,
 };
 use artcraft_launcher_core::release::{Asset, Release};
 use artcraft_launcher_core::status::InstallSource;
@@ -191,13 +191,9 @@ fn events() -> Vec<Event> {
         ("cadcraft", "0.3.0"),
     ];
     for (i, (id, v)) in versions.iter().enumerate() {
-        ev.push(Event::Latest {
-            app: (*id).into(),
-            latest: LatestRelease::Found(release(id, v, NOW - 86_400 - i as i64 * 600)),
-            from: Origin::ArtCraftApi,
-        });
+        ev.push(Event::Latest { app: (*id).into(), latest: LatestRelease::Found(release(id, v, NOW - 86_400 - i as i64 * 600)) });
     }
-    ev.push(Event::Latest { app: "soundcraft".into(), latest: LatestRelease::None, from: Origin::ArtCraftApi });
+    ev.push(Event::Latest { app: "soundcraft".into(), latest: LatestRelease::None });
     let installed = [("photocraft", "0.4.1"), ("lightcraft", "0.4.0"), ("wordcraft", "0.3.0"), ("effectcraft", "0.5.0")];
     for app in &SUITE {
         let inst = installed.iter().find(|(id, _)| *id == app.id).map(|(_, v)| Installed {
@@ -215,7 +211,7 @@ fn events() -> Vec<Event> {
     ev.push(Event::Paused { app: "deckcraft".into(), download: Some(PausedDownload { done: 30 << 20, total: 120 << 20 }) });
     ev.push(Event::Progress { app: "gridcraft".into(), phase: JobPhase::Reconnecting { done: 10 << 20, total: 90 << 20 } });
     ev.push(Event::ReadyToInstall { app: "cadcraft".into(), ready: true });
-    ev.push(Event::CheckFinished { at: NOW - 180, source: Source::GitHubApi, rate_limited_until: None });
+    ev.push(Event::CheckFinished { at: NOW - 180 });
     ev
 }
 
@@ -360,7 +356,7 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
     let sent = Rc::new(RefCell::new(Vec::new()));
     let mut backend = Some(Fake {
         events: vec![
-            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)), from: Origin::GitHub },
+            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)) },
             Event::Detected { app: "photocraft".into(), installed: None },
         ],
         sent: sent.clone(),
@@ -527,7 +523,7 @@ fn versions_harness(machine: Machine, latest: Option<Release>, answer: Vec<Relea
     let mut ev = events();
     ev.extend(more);
     if let Some(latest) = latest {
-        ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+        ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest) });
     }
     let sent = Rc::new(RefCell::new(Vec::new()));
     let queue = Rc::new(RefCell::new(ev));
@@ -959,7 +955,7 @@ fn going_back_to_the_latest_release_keeps_following_releases() {
     assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), None, "still following the latest release");
     // Rolled back, and a newer release comes out: it is an update again.
     let mut back = windows_with_msi_photocraft("0.23.1").more;
-    back.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(windows_photocraft("0.23.2")), from: Origin::GitHub });
+    back.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(windows_photocraft("0.23.2")) });
     queue.borrow_mut().extend(back);
     h.run_steps(6);
     h.get_by_label_contains("Update to 0.23.2");
@@ -1064,7 +1060,7 @@ fn the_dialog_waits_for_the_latest_release_it_names() {
     h.run_steps(4);
     assert!(dialog_button(&h, "Install version v0.23.1").accesskit_node().is_disabled(), "v0.23.0 is still the checked release");
     assert!(h.query_by_label("Install version v0.23.0").is_none(), "the older checked release is never offered");
-    queue.borrow_mut().push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    queue.borrow_mut().push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest) });
     h.run_steps(4);
     sent.borrow_mut().clear();
     dialog_button(&h, "Install version v0.23.1").click();
@@ -1089,7 +1085,7 @@ fn a_system_package_cant_go_back_and_says_why() {
             installation: None,
         }),
     });
-    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.4.0", NOW)), from: Origin::GitHub });
+    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.4.0", NOW)) });
     let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.state_mut()
         .as_mut()
@@ -1216,7 +1212,7 @@ fn the_install_folder_fields_default_to_the_hosts_answer() {
     let mut backend = Some(Fake {
         downloads: Default::default(),
         events: vec![
-            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)), from: Origin::GitHub },
+            Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)) },
             Event::Detected { app: "photocraft".into(), installed: None },
         ],
         sent: sent.clone(),
@@ -1299,7 +1295,7 @@ fn windows_package_harness(
     for (id, assets) in apps {
         let mut latest = release(id, "0.6.0", NOW);
         latest.assets = assets.iter().map(|name| Asset { name: (*name).into(), size: 1, url: format!("https://x/{name}"), sha256: None }).collect();
-        events.push(Event::Latest { app: (*id).into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+        events.push(Event::Latest { app: (*id).into(), latest: LatestRelease::Found(latest) });
         events.push(Event::Detected { app: (*id).into(), installed: None });
     }
     let fake = Fake {
@@ -2145,11 +2141,7 @@ fn a_retry_update_button_keeps_to_its_slot_and_leaves_room_for_the_menu() {
     for view in [ViewMode::Table, ViewMode::Grid] {
         let mut ev = events();
         // Two-digit minor, as in the report: "Retry update to 0.12.0".
-        ev.push(Event::Latest {
-            app: "effectcraft".into(),
-            latest: LatestRelease::Found(release("effectcraft", "0.12.0", NOW)),
-            from: Origin::ArtCraftApi,
-        });
+        ev.push(Event::Latest { app: "effectcraft".into(), latest: LatestRelease::Found(release("effectcraft", "0.12.0", NOW)) });
         ev.push(Event::ReadyToInstall { app: "effectcraft".into(), ready: true });
         let (mut h, _) = harness_with(ev, view, egui::Theme::Dark, true, 1.0);
         h.run_steps(8);
@@ -3226,13 +3218,13 @@ fn a_freebsd_system_binary_is_not_offered_an_update_it_would_refuse() {
         origin: None,
         installation: None,
     };
-    let mut ev = vec![Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(tarball), from: Origin::ArtCraftApi }];
+    let mut ev = vec![Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(tarball) }];
     for app in &SUITE {
         ev.push(Event::Detected { app: app.id.into(), installed: (app.id == "photocraft").then(|| system.clone()) });
     }
     // What the native backend answers for this copy: an install would refuse it.
     ev.push(Event::Installable { app: "photocraft".into(), installable: false });
-    ev.push(Event::CheckFinished { at: NOW - 180, source: Source::GitHubApi, rate_limited_until: None });
+    ev.push(Event::CheckFinished { at: NOW - 180 });
 
     let sent = Rc::new(RefCell::new(Vec::new()));
     let notices = Rc::new(RefCell::new(Vec::new()));
@@ -3319,9 +3311,9 @@ fn automatic_updates_are_disabled_by_default() {
 }
 
 #[test]
-/// The footer names the release origins actually in use, adding GitHub only when some release
-/// came from there.
-fn the_footer_names_the_services_behind_what_is_on_screen() {
+/// The footer says when the launcher last checked, and nothing about where it asked: all release
+/// information comes from one place.
+fn the_footer_says_when_it_last_checked() {
     let footer = |extra: Vec<Event>| {
         let mut evs = events();
         evs.extend(extra);
@@ -3354,10 +3346,7 @@ fn the_footer_names_the_services_behind_what_is_on_screen() {
             h.get_by_label_contains("Checked ").accesskit_node().label().or_else(|| h.get_by_label_contains("Checked ").accesskit_node().value());
         label.unwrap_or_default()
     };
-    assert_eq!(footer(Vec::new()), "Checked 3 min ago · using ArtCraft API");
-    let from_github =
-        vec![Event::Latest { app: "wordcraft".into(), latest: LatestRelease::Found(release("wordcraft", "0.3.1", NOW)), from: Origin::GitHub }];
-    assert_eq!(footer(from_github), "Checked 3 min ago · using ArtCraft API and GitHub");
+    assert_eq!(footer(Vec::new()), "Checked 3 min ago");
 }
 
 #[test]
@@ -3978,12 +3967,11 @@ fn the_drawer_and_the_enlarged_picture_survive_any_window_size() {
 }
 
 #[test]
-/// At 720–1180 px the rate-limit notice stays readable and clear of the footer's checked time
-/// and eight right-side links.
-fn the_rate_limit_notice_never_runs_under_the_footer_links() {
+/// At 720–1180 px the footer's checked time stays clear of its eight right-side links.
+fn the_check_time_never_runs_under_the_footer_links() {
     for width in [720.0, 960.0, 1180.0] {
         let mut evs = events();
-        evs.push(Event::CheckFinished { at: NOW - 180, source: Source::GitHubApi, rate_limited_until: Some(NOW + 1800) });
+        evs.push(Event::CheckFinished { at: NOW - 180 });
         let mut backend = Some(Fake {
             events: evs,
             sent: Rc::new(RefCell::new(Vec::new())),
@@ -4008,21 +3996,16 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
             None,
         );
         h.run_steps(6);
-        snapshot(&mut h, &format!("footer-rate-limited-{width}"));
-        // Full or short, the notice says when GitHub can be asked again.
-        let notice = h.get_by_label_contains("check at").rect();
+        snapshot(&mut h, &format!("footer-{width}"));
         let checked = h.get_by_label_contains("Checked ").rect();
-        // Cut short in a narrow window, but enough of it left to read.
-        assert!(notice.width() >= 120.0 && notice.right() <= width, "{width}: notice {notice:?}");
         // Everything on the footer's right: the website, GitHub and Discord icons and the social icons.
         let mut right = Vec::new();
         for label in ["Website", "GitHub", "Discord", "X", "YouTube", "TikTok", "Instagram", "LinkedIn"] {
-            right.extend(h.query_all_by_label(label).map(|n| n.rect()).filter(|r| (r.center().y - notice.center().y).abs() < 12.0));
+            right.extend(h.query_all_by_label(label).map(|n| n.rect()).filter(|r| (r.center().y - checked.center().y).abs() < 12.0));
         }
         assert_eq!(right.len(), 8, "{width}: {right:?}");
         assert!(h.query_by_label_contains("Installing for").is_none(), "{width}: the footer no longer names the platform");
         for r in right {
-            assert!(!r.intersects(notice), "{width}: notice {notice:?} overlaps {r:?}");
             assert!(!r.intersects(checked), "{width}: check time {checked:?} overlaps {r:?}");
         }
     }
@@ -4404,9 +4387,9 @@ fn download_size_preview_uses_the_managed_plan_or_manual_platform_formats() {
         let mut backend = Some(Windows(
             Fake {
                 events: vec![
-                    Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(r), from: Origin::ArtCraftApi },
+                    Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(r) },
                     Event::Detected { app: "photocraft".into(), installed: None },
-                    Event::CheckFinished { at: NOW, source: Source::GitHubApi, rate_limited_until: None },
+                    Event::CheckFinished { at: NOW },
                 ],
                 sent: Rc::default(),
                 manage,

@@ -3,8 +3,7 @@
 use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
-    is_paused,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, is_paused,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -187,8 +186,6 @@ pub struct LauncherUi {
     pub(crate) caps: Capabilities,
     pub(crate) platform: Option<Platform>,
     pub(crate) checking: bool,
-    pub(crate) last_source: Option<Source>,
-    pub(crate) rate_limited_until: Option<i64>,
     pub(crate) launcher_update: Option<Release>,
     pub(crate) version_lists: std::collections::HashMap<String, Result<Vec<Release>, String>>,
     pub(crate) version_requests: std::collections::HashSet<String>,
@@ -331,8 +328,6 @@ impl LauncherUi {
             caps,
             platform,
             checking: false,
-            last_source: None,
-            rate_limited_until: None,
             launcher_update: None,
             version_lists: std::collections::HashMap::new(),
             version_requests: std::collections::HashSet::new(),
@@ -705,8 +700,8 @@ impl LauncherUi {
                 self.backend.send(Command::Detect);
                 true
             }
-            Event::Latest { app, latest, from } => {
-                self.on_latest(app, latest, from);
+            Event::Latest { app, latest } => {
+                self.on_latest(app, latest);
                 true
             }
             Event::Versions { app, result } => {
@@ -781,11 +776,9 @@ impl LauncherUi {
                 self.checking = true;
                 false
             }
-            Event::CheckFinished { at, source, rate_limited_until } => {
+            Event::CheckFinished { at } => {
                 self.checking = false;
                 self.settings.last_check = Some(at);
-                self.last_source = Some(source);
-                self.rate_limited_until = rate_limited_until;
                 true
             }
             Event::Mcp { agents } => {
@@ -801,13 +794,12 @@ impl LauncherUi {
         }
     }
 
-    // A failed check keeps the release we already know about (and where it came from).
-    fn on_latest(&mut self, app: String, latest: LatestRelease, from: artcraft_launcher_core::protocol::Origin) {
+    // A failed check keeps the release we already know about.
+    fn on_latest(&mut self, app: String, latest: LatestRelease) {
         if let Some(e) = self.entry_mut(&app)
             && !(matches!(latest, LatestRelease::Failed(_)) && matches!(e.latest, Some(LatestRelease::Found(_))))
         {
             e.latest = Some(latest);
-            e.origin = Some(from);
         }
     }
 
@@ -1246,29 +1238,6 @@ impl LauncherUi {
     /// Whether the app on screen under `id` is installed on this computer.
     pub(crate) fn is_installed(&self, id: &str) -> bool {
         self.entry(id).is_some_and(|e| e.status(self.platform, self.caps.manage_apps).is_installed())
-    }
-
-    /// "ArtCraft API", "GitHub" or "ArtCraft API and GitHub": the services behind the releases on
-    /// screen right now. `None` until something has loaded.
-    pub(crate) fn sources_label(&self) -> Option<String> {
-        use artcraft_launcher_core::protocol::Origin;
-        let mut api = false;
-        let mut github = false;
-        for e in &self.entries {
-            if matches!(e.latest, Some(LatestRelease::Found(_) | LatestRelease::None)) {
-                match e.origin {
-                    Some(Origin::ArtCraftApi) => api = true,
-                    Some(Origin::GitHub) => github = true,
-                    None => {}
-                }
-            }
-        }
-        match (api, github) {
-            (true, true) => Some(crate::i18n::fmt(tl!("{a} and {b}"), &[("a", Origin::ArtCraftApi.label()), ("b", Origin::GitHub.label())])),
-            (true, false) => Some(Origin::ArtCraftApi.label().to_string()),
-            (false, true) => Some(Origin::GitHub.label().to_string()),
-            (false, false) => None,
-        }
     }
 
     pub(crate) fn count(&self, filter: Filter) -> usize {

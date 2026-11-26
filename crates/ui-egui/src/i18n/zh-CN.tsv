@@ -126,8 +126,6 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未检查
-	Next GitHub check at {time}	下次检查 GitHub：{time}
-	Next check at {time}	下次检查：{time}
 	Installing for {platform}	安装平台：{platform}
 	Downloads for {platform}	下载平台：{platform}
 	No downloads for this system	此系统暂无可用下载
@@ -185,7 +183,6 @@ month	Dec	12月
 	Open ArtCraft Launcher to update.	打开 ArtCraft Launcher 进行更新。
 	{name} {v} is available	{name} {v} 已可更新
 	{count} updates are available	有 {count} 个可用更新
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	未能获取更新说明（已达到 GitHub 请求上限）。可前往版本发布页面查看。
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	开启后，从菜单栏打开启动器时，窗口会显示在当前桌面。关闭后，macOS 会切换到窗口原来所在的桌面。
 	Couldn't change the login item: {e}	无法更改登录启动项：{e}
 column	App	应用
@@ -276,8 +273,6 @@ figcraft	Interface design and prototyping	界面设计与原型制作
 	Loading ArtCraft Launcher…	正在加载 ArtCraft Launcher…
 	Download cancelled	下载已取消
 	Automatically	自动
-	Checked {ago} · using {sources}	上次检查：{ago} · 来源：{sources}
-	{a} and {b}	{a} 和 {b}
 	Learn more	了解更多
 	OK	确定
 	Open link	打开链接

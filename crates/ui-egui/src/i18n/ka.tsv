@@ -144,8 +144,6 @@
 	Unhide App	აპლიკაციის გამოჩენა
 	Hidden Apps	დამალული აპლიკაციები
 	Apps you hid	თქვენ მიერ დამალული აპლიკაციები
-	Checked {ago} · using {sources}	შემოწმდა {ago} · წყარო: {sources}
-	{a} and {b}	{a} და {b}
 	Join the Discord	შემოუერთდით Discord-ს
 	Learn more	დაწვრილებით
 	Minimize	ჩაკეცვა
@@ -227,8 +225,6 @@ month	Oct	ოქტ
 month	Nov	ნოე
 month	Dec	დეკ
 	Not checked yet	ჯერ არ შემოწმებულა
-	Next GitHub check at {time}	GitHub-ის შემდეგი შემოწმება: {time}
-	Next check at {time}	შემდეგი შემოწმება: {time}
 	Installing for {platform}	ინსტალაცია პლატფორმისთვის: {platform}
 	Downloads for {platform}	ჩამოტვირთვები პლატფორმისთვის: {platform}
 	No downloads for this system	ამ სისტემისთვის ჩამოსატვირთი არაფერია
@@ -290,7 +286,6 @@ month	Dec	დეკ
 	Open ArtCraft Launcher to update.	განახლებისთვის გახსენით ArtCraft Launcher.
 	{name} {v} is available	ხელმისაწვდომია {name} {v}
 	{count} updates are available	ხელმისაწვდომია {count} განახლება
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	ეს შენიშვნები ვერ ჩაიტვირთა (GitHub-ის მოთხოვნების ლიმიტი ამოიწურა). ისინი გამოშვების გვერდზეა.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	ჩართვისას მენიუს ზოლიდან გახსნილი ArtCraft Launcher-ის ფანჯარა იმ სამუშაო მაგიდაზე გამოჩნდება, რომელზეც ახლა ხართ. გამორთვისას macOS გადაგიყვანთ იმ სამუშაო მაგიდაზე, სადაც ფანჯარა იყო.
 	Couldn't change the login item: {e}	სისტემაში შესვლისას გაშვების შეცვლა ვერ მოხერხდა: {e}
 

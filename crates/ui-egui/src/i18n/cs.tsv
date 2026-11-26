@@ -135,8 +135,6 @@
 	Unhide App	Zobrazit aplikaci
 	Hidden Apps	Skryté aplikace
 	Apps you hid	Aplikace, které jste skryli
-	Checked {ago} · using {sources}	Zkontrolováno {ago} · zdroje: {sources}
-	{a} and {b}	{a} a {b}
 	Join the Discord	Připojit se na Discord
 	Learn more	Další informace
 	Minimize	Minimalizovat
@@ -203,8 +201,6 @@ month	Oct	10.
 month	Nov	11.
 month	Dec	12.
 	Not checked yet	Zatím nezkontrolováno
-	Next GitHub check at {time}	Další kontrola GitHubu v {time}
-	Next check at {time}	Další kontrola v {time}
 	Installing for {platform}	Instalace pro {platform}
 	Downloads for {platform}	Stažení pro {platform}
 	No downloads for this system	Pro tento systém nejsou k dispozici žádné soubory ke stažení
@@ -267,7 +263,6 @@ month	Dec	12.
 	Open ArtCraft Launcher to update.	Aktualizujte otevřením aplikace ArtCraft Launcher.
 	{name} {v} is available	Je k dispozici {name} {v}
 	{count} updates are available	Počet dostupných aktualizací: {count}
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Tyto poznámky se nepodařilo načíst (byl dosažen limit požadavků GitHubu). Najdete je na stránce vydání.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Je-li tato volba zapnutá, otevření launcheru z řádku nabídek zobrazí jeho okno na aktuální ploše. Je-li vypnutá, macOS přepne na plochu, na které se okno nacházelo.
 	Couldn't change the login item: {e}	Položku po přihlášení nelze změnit: {e}
 column	App	Aplikace

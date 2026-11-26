@@ -17,9 +17,10 @@ that serves static files.
 
 In the browser the launcher can't install anything: it shows the Craft App Suite catalog, the
 latest release of each app and the right download for the visitor's platform, and links to the
-files on GitHub. Release data comes straight from the GitHub REST API (`api.github.com` allows
-cross-origin requests), so the page needs no backend. Unauthenticated visitors share GitHub's
-limit of 60 API requests per hour per IP address.
+files on GitHub. Release data comes from ArtCraft's release feed
+(`https://api.storyteller.ai/v1/craft_apps/release_info`), in one request; the page needs no
+backend of its own. The feed answers cross-origin requests from `getartcraft.com`: a copy hosted
+on another domain needs that origin allowed by the feed's server.
 
 ## Any path works
 
@@ -39,7 +40,7 @@ reject any single file over 25 MiB).
 - **Compression:** turn on gzip or Brotli for `.wasm`, `.js` and `.html`.
 - **Caching:** `Cache-Control: public, max-age=31536000, immutable` on the hashed `.wasm` and
   `.js` files, and `no-cache` on `index.html`.
-- **Content Security Policy:** if you send one, allow `connect-src https://api.github.com` (and
+- **Content Security Policy:** if you send one, allow `connect-src https://api.storyteller.ai` (and
   `https://raw.githubusercontent.com` for the app icons) plus `'wasm-unsafe-eval'` in `script-src`.
 - **No special isolation headers:** the app doesn't use `SharedArrayBuffer`, so it doesn't need
   `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy`.

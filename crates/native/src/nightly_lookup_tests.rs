@@ -1,5 +1,5 @@
 use super::*;
-use artcraft_launcher_core::release::Priority;
+use artcraft_launcher_core::feed::AppReleases;
 use artcraft_launcher_core::{Arch, Os};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -15,55 +15,23 @@ fn platform() -> Platform {
 fn tag(run: u64) -> String {
     format!("v1.0.0-nightly.20261120.{run}.1.gabcdefabcdef")
 }
-fn api(page: usize) -> String {
-    if page == 1 {
-        format!("https://api.github.com/repos/{}/releases?per_page=100", app().repo)
-    } else {
-        format!("https://api.github.com/repos/{}/releases?per_page=100&page={page}", app().repo)
-    }
+/// Where a fixture keeps the app's release history (GitHub-shaped release objects), which our
+/// release API serves the lookup before it runs: not a URL the lookup ever asks for.
+const HISTORY: &str = "history";
+
+/// The complete release history `data` holds, as the lookup gets it from our API.
+fn history(data: &BTreeMap<String, Vec<u8>>) -> Result<AppReleases, String> {
+    let items: Vec<Value> = serde_json::from_slice(data.get(HISTORY).ok_or("no history")?).map_err(|e| e.to_string())?;
+    Ok(history_of(items))
 }
 
-/// `key()` is what the Nightly scheduling state is saved under, and it contains the adapter's
-/// Debug name. PhotoCraft's three keys read exactly as they did before the adapter became a table
-/// row; a changed Debug name would silently drop every existing user's saved scheduling state.
-#[test]
-fn every_app_is_verified_within_six_hours_under_the_developers_budget() {
-    // The real Developer Builds budget, no token, every sweep automatic: a refused request must
-    // never cost an app its turn, or the apps late in the roster would never be looked up. Ten of
-    // the hour's fifteen requests are already spent, so the first sweep is refused outright and
-    // the five sweeps after it still cover all fifteen apps.
-    let budget = crate::github_budget::GitHubBudget::in_memory(crate::github_budget::DEVELOPER_BUILDS);
-    for _ in 0..10 {
-        assert!(budget.take(Priority::User, NOW).is_ok(), "the user's own checks spend the hour first");
-    }
-    let keys: Vec<String> = (0..15).map(|index| format!("key-{index:02}")).collect();
-    let installed = BTreeSet::new();
-    let mut state = State::default();
-    let mut now = NOW;
-    let mut refusals = 0;
-    for _ in 0..6 {
-        let chosen = state.begin(&keys, &installed, now, false, true);
-        let mut refused = false;
-        for key in &chosen {
-            if refused || budget.take(Priority::Discovery, now).is_err() {
-                refused = true;
-                refusals += 1;
-                state.defer(key);
-                assert_eq!(state.records.get(key).and_then(|record| record.attempted_at), None, "a refusal leaves the key where it was");
-                continue;
-            }
-            state.outcome(key, now, &Outcome::NoCompatibleBuild);
-        }
-        state.finish();
-        now += 60 * 60;
-    }
-    for key in &keys {
-        assert!(
-            state.records.get(key).and_then(|record| record.verified_at).is_some_and(|at| at < NOW + 6 * 60 * 60),
-            "{key} was verified within six hours"
-        );
-    }
-    assert_eq!(refusals, DISCOVERY_PER_SWEEP, "the refused sweep deferred its whole choice");
+fn history_of(items: Vec<Value>) -> AppReleases {
+    let releases = items
+        .iter()
+        .filter(|item| !item["draft"].as_bool().unwrap_or(false))
+        .filter_map(|item| artcraft_launcher_core::release::parse_github_release(&item.to_string(), app().repo).ok())
+        .collect();
+    AppReleases { complete: true, releases }
 }
 
 #[test]
@@ -123,6 +91,7 @@ fn a_deadline_used_up_before_a_lookup_starts_is_a_launcher_refusal() {
         app(),
         platform(),
         NOW,
+        Ok(history_of(vec![candidate(&tag(20), true).0])),
         &mut |_, _, _, _| {
             calls += 1;
             Ok(Some(b"[]".to_vec()))
@@ -150,6 +119,7 @@ fn a_deadline_an_app_spends_itself_is_its_own_failure() {
         app(),
         platform(),
         NOW,
+        Ok(history_of(vec![candidate(&tag(20), true).0])),
         &mut |_, _, _, _| {
             calls += 1;
             elapsed.set(MAX_TIME);
@@ -240,11 +210,11 @@ fn ordinary(index: usize) -> Value {
 }
 fn fixtures(items: Vec<Value>, resources: Vec<(String, Vec<u8>)>) -> BTreeMap<String, Vec<u8>> {
     let mut data: BTreeMap<_, _> = resources.into_iter().collect();
-    data.insert(api(1), serde_json::to_vec(&items).unwrap());
+    data.insert(HISTORY.into(), serde_json::to_vec(&items).unwrap());
     data
 }
 fn ask(data: &BTreeMap<String, Vec<u8>>) -> Outcome {
-    lookup(app(), platform(), NOW, &mut |url, _, _, _| Ok(data.get(url).cloned()), &|| Duration::ZERO, &|| true)
+    lookup(app(), platform(), NOW, history(data), &mut |url, _, _, _| Ok(data.get(url).cloned()), &|| Duration::ZERO, &|| true)
 }
 pub(crate) fn verified(run: u64) -> VerifiedRelease {
     let (item, _, body) = candidate(&tag(run), true);
@@ -278,34 +248,6 @@ fn valid_unsupported_descriptor_is_authoritative_but_invalid_higher_is_indetermi
 }
 
 #[test]
-fn mixed_full_pages_continue_until_complete_and_budget_exhaustion_discards_seen_candidate() {
-    let (item, url, body) = candidate(&tag(20), true);
-    let mut data = fixtures((0..100).map(ordinary).collect(), vec![(url.clone(), body.clone())]);
-    data.insert(api(2), serde_json::to_vec(&vec![item.clone()]).unwrap());
-    assert!(matches!(ask(&data), Outcome::Verified(_)));
-    let mut first: Vec<_> = (0..99).map(ordinary).collect();
-    first.push(item);
-    data.insert(api(1), serde_json::to_vec(&first).unwrap());
-    for page in 2..=MAX_PAGES {
-        data.insert(api(page), serde_json::to_vec(&(0..100).map(|i| ordinary(i + page * 100)).collect::<Vec<_>>()).unwrap());
-    }
-    let mut requests = 0;
-    let outcome = lookup(
-        app(),
-        platform(),
-        NOW,
-        &mut |url, _, _, _| {
-            requests += 1;
-            Ok(data.get(url).cloned())
-        },
-        &|| Duration::ZERO,
-        &|| true,
-    );
-    assert!(matches!(outcome, Outcome::Indeterminate(_)));
-    assert_eq!(requests, MAX_PAGES, "all bounded pages, no unseen sixth page or premature descriptor fetch");
-}
-
-#[test]
 fn descriptor_request_budget_is_indeterminate_before_a_compatible_winner() {
     let mut items = Vec::new();
     let mut resources = Vec::new();
@@ -320,6 +262,7 @@ fn descriptor_request_budget_is_indeterminate_before_a_compatible_winner() {
         app(),
         platform(),
         NOW,
+        history(&data),
         &mut |url, _, _, _| {
             requests += 1;
             Ok(data.get(url).cloned())
@@ -332,74 +275,13 @@ fn descriptor_request_budget_is_indeterminate_before_a_compatible_winner() {
 }
 
 #[test]
-fn elapsed_and_returned_byte_limits_discard_partial_answers() {
-    let elapsed = Cell::new(Duration::ZERO);
-    let mut calls = 0;
-    let result = lookup(
-        app(),
-        platform(),
-        NOW,
-        &mut |_, _, remaining, _| {
-            assert!(remaining <= MAX_TIME);
-            calls += 1;
-            elapsed.set(MAX_TIME);
-            Ok(Some(b"[]".to_vec()))
-        },
-        &|| elapsed.get(),
-        &|| true,
-    );
-    assert!(matches!(result, Outcome::Indeterminate(_)));
-    assert_eq!(calls, 1);
-    let result = lookup(app(), platform(), NOW, &mut |_, max, _, _| Ok(Some(vec![b' '; max + 1])), &|| Duration::ZERO, &|| true);
-    assert!(matches!(result, Outcome::Indeterminate(_)));
-}
-
-#[test]
-fn cumulative_returned_byte_budget_is_indeterminate_with_candidate_metadata_and_incomplete_coverage() {
-    let (item, descriptor_url, _) = candidate(&tag(20), true);
-    let mut first: Vec<_> = (0..99).map(ordinary).collect();
-    first.push(item);
-    let remainder = 1024;
-    let mut calls = 0;
-    let mut returned_bytes = 0;
-    let mut caps = Vec::new();
-    let outcome = lookup(
-        app(),
-        platform(),
-        NOW,
-        &mut |url, max, _, _| {
-            calls += 1;
-            assert_ne!(url, descriptor_url, "incomplete page coverage must not fetch a descriptor");
-            assert_eq!(url, api(calls), "all requests must cover release pages in order");
-            caps.push(max);
-            if calls == MAX_PAGES {
-                assert_eq!(max, remainder, "the fifth page receives the positive remaining total budget");
-                assert_eq!(returned_bytes, MAX_BYTES - remainder);
-                return Err(failure("The remaining total byte budget cannot cover this page."));
-            }
-            let items = if url == api(1) { first.clone() } else { (0..100).map(ordinary).collect() };
-            let mut body = serde_json::to_vec(&items).unwrap();
-            body.resize(if calls == 1 { MAX_PAGE_BYTES - remainder } else { MAX_PAGE_BYTES }, b' ');
-            returned_bytes += body.len();
-            Ok(Some(body))
-        },
-        &|| Duration::ZERO,
-        &|| true,
-    );
-    assert!(matches!(outcome, Outcome::Indeterminate(_)));
-    assert_eq!(calls, MAX_PAGES);
-    assert_eq!(returned_bytes, MAX_BYTES - remainder);
-    assert!(caps[..MAX_PAGES - 1].iter().all(|max| *max == MAX_PAGE_BYTES));
-    assert_eq!(caps.last(), Some(&remainder));
-}
-
-#[test]
 fn fresh_off_and_off_during_a_response_make_no_followup_request_or_selection() {
     let mut calls = 0;
     let off = lookup(
         app(),
         platform(),
         NOW,
+        Ok(history_of(Vec::new())),
         &mut |_, _, _, _| {
             calls += 1;
             Ok(Some(b"[]".to_vec()))
@@ -416,6 +298,7 @@ fn fresh_off_and_off_during_a_response_make_no_followup_request_or_selection() {
         app(),
         platform(),
         NOW,
+        Ok(history_of(vec![item.clone()])),
         &mut |_, _, _, _| {
             calls += 1;
             enabled.set(false);
@@ -454,7 +337,7 @@ fn metadata_keeps_attempt_and_verified_success_distinct_without_body_or_token_ca
     let disk = std::fs::read_to_string(paths.nightly_checks()).unwrap();
     assert!(!disk.contains("assets"));
     assert!(!disk.contains("source_commit"));
-    assert!(!paths.release_cache().exists());
+    assert!(paths.legacy_github_files().iter().all(|file| !file.exists()));
 }
 
 #[test]
@@ -521,39 +404,6 @@ fn scheduling_write_refuses_shared_or_aliased_files_without_touching_stable_data
     assert_eq!(std::fs::read(stable.manifest()).unwrap(), b"stable sentinel");
 }
 
-#[test]
-fn final_coverage_checks_deadline_after_the_last_descriptor_validation_boundary() {
-    let (item, url, body) = candidate(&tag(20), true);
-    let data = fixtures(vec![item], vec![(url.clone(), body)]);
-    let elapsed = Cell::new(Duration::ZERO);
-    let final_response = Cell::new(false);
-    let outcome = lookup(
-        app(),
-        platform(),
-        NOW,
-        &mut |asked, _, _, _| {
-            if asked == url {
-                final_response.set(true);
-            }
-            Ok(data.get(asked).cloned())
-        },
-        &|| elapsed.get(),
-        &|| {
-            if final_response.replace(false) {
-                elapsed.set(MAX_TIME);
-            }
-            true
-        },
-    );
-    assert!(matches!(outcome, Outcome::Indeterminate(_)));
-}
-
-#[test]
-fn unknown_publication_or_channel_flags_never_become_authoritative_absence() {
-    let unknown = json!({"tag_name":"v1.0.0-nightly.20261120.20.1.gabcdefabcdef","assets":[]});
-    assert!(matches!(ask(&fixtures(vec![unknown], vec![])), Outcome::Indeterminate(_)));
-}
-
 /// Authored normal producer fixture: checksums plus isolation descriptor are distinct GETs.
 fn producer_candidate(tag: &str, linux: bool) -> (Value, Vec<(String, Vec<u8>)>) {
     let (mut item, descriptor_url, body) = candidate(tag, linux);
@@ -586,6 +436,7 @@ fn retained_two_resource_history_is_order_independent_and_only_verifies_the_winn
             app(),
             platform(),
             NOW,
+            history(&data),
             &mut |url, _, _, _| {
                 asked.push(url.to_owned());
                 Ok(data.get(url).cloned())
@@ -595,8 +446,8 @@ fn retained_two_resource_history_is_order_independent_and_only_verifies_the_winn
         );
         let Outcome::Verified(winner) = outcome else { panic!("normal retained history must remain discoverable") };
         assert_eq!(winner.release().tag, tag(20));
-        assert_eq!(asked.len(), 3, "one complete page and the winning checksums/descriptor, not every older body");
-        assert!(asked[1..].iter().all(|url| url.contains(&format!("/{}/", tag(20)))));
+        assert_eq!(asked.len(), 2, "the winning checksums and descriptor, not every older body");
+        assert!(asked.iter().all(|url| url.contains(&format!("/{}/", tag(20)))));
     }
 }
 
@@ -611,6 +462,7 @@ fn higher_unsupported_contenders_are_verified_before_the_compatible_winner() {
         app(),
         platform(),
         NOW,
+        history(&data),
         &mut |url, _, _, _| {
             asked.push(url.to_owned());
             Ok(data.get(url).cloned())
@@ -620,10 +472,10 @@ fn higher_unsupported_contenders_are_verified_before_the_compatible_winner() {
     );
     let Outcome::Verified(winner) = outcome else { panic!("valid unsupported row cannot hide a compatible lower version") };
     assert_eq!(winner.release().tag, tag(20));
-    assert_eq!(asked.len(), 5);
+    assert_eq!(asked.len(), 4);
     assert!(!asked.iter().any(|url| url.contains(&format!("/{}/", tag(10)))));
-    assert!(asked[1].contains(&tag(30)));
-    assert!(asked[3].contains(&tag(20)));
+    assert!(asked[0].contains(&tag(30)));
+    assert!(asked[2].contains(&tag(20)));
 }
 
 #[test]
@@ -639,6 +491,7 @@ fn invalid_potential_winner_refuses_but_dominated_descriptor_body_is_unnecessary
             app(),
             platform(),
             NOW,
+            history(&data),
             &mut |url, _, _, _| {
                 asked.push(url.to_owned());
                 Ok(data.get(url).cloned())
@@ -709,14 +562,6 @@ fn review_probe_ordinary_release_tags_do_not_poison_nightly_lookup() {
     let data = fixtures(vec![ordinary, nightly], vec![(url, body)]);
     let outcome = ask(&data);
     assert!(matches!(outcome, Outcome::Verified(_)), "an explicitly ordinary tag must not poison compatible Nightly coverage");
-    for uncertain in
-        [json!({"draft":false,"tag_name":"release/2026","assets":[]}), json!({"draft":false,"prerelease":true,"tag_name":"release/2026","assets":[]})]
-    {
-        assert!(
-            matches!(ask(&fixtures(vec![uncertain], vec![])), Outcome::Indeterminate(_)),
-            "a missing flag or malformed potential pre-release remains indeterminate"
-        );
-    }
 }
 
 #[test]
@@ -775,6 +620,7 @@ fn shared_selection_unconfigured_platform_lookup_refuses_before_any_network_body
         // Intel Macs have no Nightly row; Apple silicon is admitted by its pinned signing team.
         Platform { os: Os::MacOs, arch: Arch::X64 },
         NOW,
+        Ok(history_of(vec![candidate(&tag(20), true).0])),
         &mut |_, _, _, _| {
             requests += 1;
             Ok(None)

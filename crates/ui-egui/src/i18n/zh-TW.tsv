@@ -127,8 +127,6 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未檢查
-	Next GitHub check at {time}	下次檢查 GitHub：{time}
-	Next check at {time}	下次檢查：{time}
 	Installing for {platform}	正在為 {platform} 安裝
 	Downloads for {platform}	{platform} 適用的下載項目
 	No downloads for this system	此系統沒有可下載的項目
@@ -186,7 +184,6 @@ month	Dec	12月
 	Open ArtCraft Launcher to update.	開啟 ArtCraft Launcher 以進行更新。
 	{name} {v} is available	{name} {v} 已推出
 	{count} updates are available	有 {count} 項更新可用
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	無法擷取這些說明（已達到 GitHub 的請求上限）。請至發行頁面查看。
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	開啟時，從選單列開啟啟動器會將其視窗帶到你目前所在的桌面。關閉時，macOS 會將你切換到視窗所在的桌面。
 	Couldn't change the login item: {e}	無法變更登入項目：{e}
 column	App	應用程式
@@ -276,8 +273,6 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	Loading ArtCraft Launcher…	正在載入 ArtCraft Launcher…
 	Download cancelled	已取消下載
 	Automatically	自動
-	Checked {ago} · using {sources}	上次檢查：{ago} · 使用 {sources}
-	{a} and {b}	{a} 與 {b}
 	Learn more	瞭解更多
 	OK	確定
 	Open link	開啟連結

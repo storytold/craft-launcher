@@ -1,4 +1,5 @@
-//! GitHub releases: reading the API's answer and `SHA256SUMS.txt`.
+//! Releases: choosing one, checking their download links, and reading `SHA256SUMS.txt` (and,
+//! for test fixtures, a GitHub release object).
 //!
 //! Everything here is untrusted input. Sizes are bounded by the caller, download links must point
 //! at the app's own release downloads, and checksums must look like checksums.
@@ -176,15 +177,15 @@ pub fn parse_github_release(json: &str, repo: &str) -> Result<Release, String> {
     release_from_value(&v, repo)
 }
 
-/// Published releases offered for manual selection, in GitHub's order.
-/// Drafts and unparseable tags cannot be installed.
+/// Releases in a GitHub release list (as test fixtures carry them), in its order. Drafts and
+/// unparseable tags are left out.
 ///
 /// # Errors
 ///
 /// Returns an error if the JSON is malformed or its top level is not an array.
 pub fn parse_github_versions(json: &str, repo: &str) -> Result<Vec<Release>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
-    let list = v.as_array().ok_or("unexpected answer from GitHub")?;
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable release list ({e})"))?;
+    let list = v.as_array().ok_or("unexpected release list")?;
     Ok(list
         .iter()
         .filter(|item| !item["draft"].as_bool().unwrap_or(false))
@@ -259,54 +260,27 @@ pub fn ranked_nightly_candidates<'a>(releases: impl IntoIterator<Item = &'a Rele
     ordered.into_iter()
 }
 
-/// What to ask GitHub about one app's releases. `repo` may follow the feed's repo renames, so
-/// whether the app's nightlies have their own channel is decided by the app, never by `repo`.
+/// Which app's releases are wanted, from our release API. `repo` may follow the feed's repo
+/// renames, so whether the app's nightlies have their own channel is decided by the app, never by
+/// `repo`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReleaseQuery {
+    /// The app's id, which names it in our release API (`photocraft`).
+    pub app: String,
     pub repo: String,
     pub separate_nightly: bool,
-    /// The app's [`former_repo`](crate::CraftApp::former_repo), asked when `repo` has no release.
+    /// The app's [`former_repo`](crate::CraftApp::former_repo): its downloads may still be there.
     pub former_repo: Option<String>,
-    /// Who is waiting for the answer, when the GitHub budget runs short.
-    pub priority: Priority,
-}
-
-/// Who a GitHub request is for, most urgent first. When the GitHub budget runs short, the less
-/// urgent ones wait so something the user just asked for still gets an answer.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Priority {
-    /// Something the user just did: Choose version, an install, a check they pressed.
-    #[default]
-    User,
-    /// A background check of an app that is installed.
-    Installed,
-    /// A background check of an app that isn't installed.
-    NotInstalled,
-    /// A background check of an app following the nightly.
-    NightlyTrack,
-    /// Finding new builds for the Developer Builds page.
-    Discovery,
 }
 
 impl ReleaseQuery {
     pub fn for_app(app: &crate::CraftApp, repo: impl Into<String>) -> Self {
         Self {
+            app: app.id.to_string(),
             repo: repo.into(),
             separate_nightly: app.has_separate_nightly_channel(),
             former_repo: app.former_repo.map(str::to_string),
-            priority: Priority::User,
         }
-    }
-
-    /// The same question, asked on behalf of `priority`.
-    pub fn with_priority(self, priority: Priority) -> Self {
-        Self { priority, ..self }
-    }
-
-    /// The same question about the former repo, when there is one. Its answer's downloads must be
-    /// under the former repo, as for any repo asked.
-    pub fn former(&self) -> Option<Self> {
-        self.former_repo.clone().map(|repo| Self { repo, separate_nightly: self.separate_nightly, former_repo: None, priority: self.priority })
     }
 }
 
@@ -336,11 +310,6 @@ pub fn ordinary_track_allowed(app: &crate::CraftApp, track: &crate::protocol::Ve
     !app.has_separate_nightly_channel() || !is_nightly_track(track)
 }
 
-/// The most release pages an ordinary lookup reads past one that holds no ordinary release, so a
-/// page full of Nightlies cannot hide the versions behind it. Shared by every client that makes the
-/// same promise: the desktop's API and version-list lookups, and the browser's pre-release lookup.
-pub const ORDINARY_PAGES: usize = 5;
-
 /// Ordinary release and cache paths never offer a Nightly, for any app: a pre-release means a
 /// beta or release candidate. Nightlies have their own channel, or the explicit Nightly track.
 pub fn ordinary_release_allowed(release: &Release) -> bool {
@@ -364,37 +333,6 @@ fn choose_version_with_policy(releases: &[Release], track: &crate::protocol::Ver
         VersionTrack::Nightly => ranked_nightly_candidates(releases.iter().filter(|release| has_published_checksum(release)), policy).next().cloned(),
         VersionTrack::Pinned(tag) => releases.iter().find(|r| r.tag == *tag).cloned(),
     }
-}
-
-/// Reads `GET /repos/<repo>/releases` and returns the newest stable (or any, with
-/// `allow_prerelease`) published release. Nightlies are never part of it.
-///
-/// # Errors
-///
-/// Returns an error if the JSON is malformed or its top level is not an array.
-pub fn parse_github_release_list(json: &str, repo: &str, allow_prerelease: bool) -> Result<Option<Release>, String> {
-    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
-    let list = v.as_array().ok_or("unexpected answer from GitHub")?;
-    let mut best: Option<Release> = None;
-    for item in list {
-        if item["draft"].as_bool().unwrap_or(false) {
-            continue;
-        }
-        let Ok(r) = release_from_value(item, repo) else {
-            continue;
-        };
-        let Some(ver) = r.version.as_ref() else {
-            continue;
-        };
-        if !ordinary_release_allowed(&r) || (!allow_prerelease && (r.prerelease || !version::is_stable(ver))) {
-            continue;
-        }
-        let newer = best.as_ref().and_then(|b| b.version.as_ref()).is_none_or(|b| version::is_newer(ver, b));
-        if newer {
-            best = Some(r);
-        }
-    }
-    Ok(best)
 }
 
 fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, String> {
@@ -431,33 +369,6 @@ fn release_from_value(v: &serde_json::Value, repo: &str) -> Result<Release, Stri
         prerelease: v["prerelease"].as_bool().unwrap_or(false),
         assets,
     })
-}
-
-/// A release known only from its tag and `SHA256SUMS.txt` (the quota-free route: the
-/// `releases/latest` redirect names the tag, and the sums list every file).
-pub fn release_from_sums(repo: &str, tag: &str, sums: &[(String, String)]) -> Release {
-    let prefix = download_prefix(repo);
-    let mut assets: Vec<Asset> = sums
-        .iter()
-        .map(|(hash, name)| Asset { name: name.clone(), size: 0, url: format!("{prefix}{tag}/{name}"), sha256: Some(hash.clone()) })
-        .collect();
-    assets.push(Asset { name: "SHA256SUMS.txt".into(), size: 0, url: format!("{prefix}{tag}/SHA256SUMS.txt"), sha256: None });
-    Release {
-        tag: tag.to_string(),
-        version: version::parse(tag),
-        name: tag.to_string(),
-        published_at: None,
-        html_url: format!("https://github.com/{repo}/releases/tag/{tag}"),
-        notes: String::new(),
-        prerelease: false,
-        assets,
-    }
-}
-
-/// The tag in a `https://github.com/<repo>/releases/tag/<tag>` redirect target.
-pub fn tag_from_redirect(location: &str, repo: &str) -> Option<String> {
-    let rest = location.strip_prefix(&format!("https://github.com/{repo}/releases/tag/"))?;
-    valid_tag(rest).then(|| rest.to_string())
 }
 
 /// A release tag we'd put in a URL, a file or the UI: up to 64 of `[A-Za-z0-9._+-]`, not
@@ -512,18 +423,6 @@ mod tests {
     use super::*;
 
     const REPO: &str = "storytold/photocraft";
-
-    #[test]
-    fn generic_prerelease_updates_cannot_select_a_separate_nightly() {
-        let json = r#"[
-            {"tag_name":"v9.0.0-nightly.20261120","prerelease":true},
-            {"tag_name":"v1.0.0-beta.1","prerelease":true},
-            {"tag_name":"v0.9.0","prerelease":false}
-        ]"#;
-        let release = parse_github_release_list(json, "storytold/photocraft", true).unwrap().unwrap();
-        assert!(!is_nightly(&release));
-        assert_eq!(release.version, crate::version::parse("v1.0.0-beta.1"));
-    }
 
     #[test]
     fn truncate_keeps_whole_characters() {
@@ -780,8 +679,6 @@ mod tests {
         assert_eq!(choose_version(&list, &VersionTrack::Pinned("v0.1.99".into())).unwrap().tag, "v0.1.99");
         assert!(choose_version(&list, &VersionTrack::Pinned("v0.1.100".into())).is_none());
         assert!(choose_version(&list, &VersionTrack::Pinned("0.1.99".into())).is_none());
-        assert_eq!(parse_github_release_list(&json, REPO, false).unwrap().unwrap().tag, "v0.1.104");
-        assert_eq!(parse_github_release_list(&json, REPO, true).unwrap().unwrap().tag, "v9.0.0-beta.1");
     }
 
     #[test]
@@ -817,28 +714,9 @@ mod tests {
     }
 
     #[test]
-    fn list_picks_the_newest_stable_release() {
-        let json = r#"[
-            {"tag_name":"v0.6.0-rc.1","prerelease":false,"draft":false,"assets":[]},
-            {"tag_name":"v0.5.1","prerelease":true,"draft":false,"assets":[]},
-            {"tag_name":"v0.7.0","draft":true,"assets":[]},
-            {"tag_name":"v0.5.0","prerelease":false,"draft":false,"assets":[]},
-            {"tag_name":"v0.4.0","prerelease":false,"draft":false,"assets":[]}]"#;
-        assert_eq!(parse_github_release_list(json, REPO, false).unwrap().unwrap().tag, "v0.5.0");
-        assert_eq!(parse_github_release_list(json, REPO, true).unwrap().unwrap().tag, "v0.6.0-rc.1");
-        assert_eq!(parse_github_release_list("[]", REPO, false).unwrap(), None);
-    }
-
-    #[test]
-    fn reads_checksums_and_redirects() {
+    fn reads_checksums() {
         let sums = parse_sha256sums(&format!("{HASH}  photocraft-0.5.0-macos-universal.dmg\n{HASH} *b.zip\nnot a line\n{HASH}  ../escape\n"));
         assert_eq!(sums, [(HASH.to_string(), "photocraft-0.5.0-macos-universal.dmg".to_string()), (HASH.to_string(), "b.zip".to_string())]);
-        assert_eq!(tag_from_redirect("https://github.com/storytold/photocraft/releases/tag/v0.5.0", REPO).as_deref(), Some("v0.5.0"));
-        assert_eq!(tag_from_redirect("https://github.com/storytold/photocraft/releases", REPO), None);
-        assert_eq!(tag_from_redirect("https://evil/storytold/photocraft/releases/tag/v1", REPO), None);
-        let r = release_from_sums(REPO, "v0.5.0", &sums);
-        assert_eq!(r.assets[0].url, "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-macos-universal.dmg");
-        assert_eq!(r.version, Some(Version::new(0, 5, 0)));
     }
 
     #[test]
@@ -893,33 +771,16 @@ mod tests {
         assert!(download_url_under(&format!("{prefix}v1/a.dmg"), &prefix));
         assert!(!download_url_under(&format!("{prefix}v1\u{202e}/a.dmg"), &prefix), "an odd tag in a download link");
         assert!(!download_url_under(&format!("{prefix}v1/a\u{202e}.dmg"), &prefix), "an odd name in a download link");
-        assert_eq!(tag_from_redirect(&format!("https://github.com/{REPO}/releases/tag/v1\u{202e}"), REPO), None);
     }
-    /// A pre-release is a beta or release candidate, never a Nightly, for every app: one without
-    /// its own Nightly channel (a community app) as much as one with it.
+    /// A feed's repo rename moves where the app is looked up, never which channel its nightlies
+    /// belong to.
     #[test]
-    fn ordinary_prerelease_lookup_never_offers_a_nightly_for_any_app() {
-        // Authored representative metadata; not a claim about live SolidCraft releases.
-        let json = r#"[{"tag_name":"v2.0.0-dev.nightly.1","prerelease":true},{"tag_name":"v1.0.0-beta.1","prerelease":true},{"tag_name":"v0.9.0","prerelease":false}]"#;
-        for id in ["solidcraft", "filmcraft", "photocraft"] {
-            let repo = crate::CraftApp::by_id(id).unwrap().repo;
-            assert_eq!(parse_github_release_list(json, repo, true).unwrap().unwrap().tag, "v1.0.0-beta.1", "{id}");
-            assert_eq!(parse_github_release_list(json, repo, false).unwrap().unwrap().tag, "v0.9.0", "{id}");
-        }
-    }
-    #[test]
-    fn a_feed_repo_rename_or_a_missing_prerelease_flag_cannot_bring_photocraft_nightlies_back() {
+    fn a_feed_repo_rename_keeps_photocraft_nightlies_in_their_own_channel() {
         let app = crate::CraftApp::by_id("photocraft").unwrap();
         let feed =
             crate::feed::Feed::parse(r#"{"repo_renames":[{"old_name":"storytold/photocraft","new_name":"storytold/photocraft-studio"}]}"#).unwrap();
         let query = ReleaseQuery::for_app(app, feed.repo_for(app));
-        assert_eq!(query.repo, "storytold/photocraft-studio");
-        let flagged =
-            r#"[{"tag_name":"v2.0.0-nightly.20261123.1.1.gabcdefabcdef","prerelease":true},{"tag_name":"v1.0.0-beta.1","prerelease":true}]"#;
-        assert_eq!(parse_github_release_list(flagged, &query.repo, true).unwrap().unwrap().tag, "v1.0.0-beta.1");
-        let unflagged = r#"[{"tag_name":"v2.0.0-nightly.20261123.1.1.gabcdefabcdef","prerelease":false},{"tag_name":"v1.0.0","prerelease":false}]"#;
-        assert_eq!(parse_github_release_list(unflagged, app.repo, true).unwrap().unwrap().tag, "v1.0.0");
-        // Any other repo leaves nightlies out of ordinary lookups too.
-        assert_eq!(parse_github_release_list(flagged, "storytold/photocraft-studio", true).unwrap().unwrap().tag, "v1.0.0-beta.1");
+        assert_eq!((query.app.as_str(), query.repo.as_str()), ("photocraft", "storytold/photocraft-studio"));
+        assert!(query.separate_nightly);
     }
 }

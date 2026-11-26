@@ -11,42 +11,18 @@ use sha2::{Digest, Sha256};
 const USER_AGENT: &str = concat!("ArtCraftLauncher/", env!("CARGO_PKG_VERSION"));
 /// Largest JSON or text answer we read.
 const MAX_SMALL: u64 = 4 << 20;
-/// Largest GitHub API answer we read: 100 releases of an app with 49 assets are about 10 MB.
-const MAX_API: u64 = 16 << 20;
-
-/// What a GET of a small resource produced.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Fetched {
-    Body {
-        text: String,
-        etag: Option<String>,
-    },
-    /// `If-None-Match` matched: the saved copy is current.
-    NotModified,
-    NotFound,
-    /// GitHub's API refused: out of quota until `reset` (Unix seconds), if it said.
-    RateLimited {
-        reset: Option<i64>,
-    },
-    /// Not asked: the launcher's own GitHub budget is spent for this priority until `until`.
-    OverBudget {
-        until: i64,
-    },
-}
 
 #[derive(Clone)]
 pub struct Http {
     small: ureq::Agent,
     /// ArtCraft's release feed: a short timeout, so a slow server never holds up a check.
     feed: ureq::Agent,
+    /// Follows no redirects: the hosted catalog must come from the pinned website itself.
     no_redirect: ureq::Agent,
     download: ureq::Agent,
     direct: ureq::Agent,
     direct_download: ureq::Agent,
-    token: Option<String>,
     nightly_mirror: Option<NightlyMirror>,
-    /// Shared by every clone, so every GitHub API request counts against the one budget.
-    budget: std::sync::Arc<crate::github_budget::GitHubBudget>,
 }
 
 /// An indeterminate Nightly lookup; a server-supplied backoff applies to every resource kind.
@@ -54,8 +30,8 @@ pub struct Http {
 pub(crate) struct NightlyHttpError {
     pub why: String,
     pub retry_at: Option<i64>,
-    /// The launcher's own GitHub budget refused the request: no server was asked, nothing should be
-    /// persisted as a failure, and the app keeps its place in the queue.
+    /// The sweep's own time limit stopped the lookup before it asked anything: no server was asked,
+    /// nothing should be persisted as a failure, and the app keeps its place in the queue.
     pub over_budget: bool,
 }
 
@@ -107,13 +83,8 @@ impl NightlyMirror {
     }
 
     fn request_url(&self, logical: &str) -> Result<String, String> {
-        if logical == "https://api.github.com/repos/storytold/photocraft/releases?per_page=100" {
+        if logical == "https://api.storyteller.ai/v1/craft_apps/photocraft/releases" {
             return Ok(format!("{}nightly/photocraft/releases.json", self.base));
-        }
-        for page in 2..=5 {
-            if logical == format!("https://api.github.com/repos/storytold/photocraft/releases?per_page=100&page={page}") {
-                return Ok(format!("{}nightly/photocraft/releases-page-{page}.json", self.base));
-            }
         }
         let suffix = logical
             .strip_prefix("https://github.com/storytold/photocraft/releases/download/")
@@ -197,17 +168,7 @@ impl Http {
             .user_agent(USER_AGENT)
             .build()
             .new_agent();
-        // An optional token raises GitHub's limit from 60 to 5000 requests an hour. Only ever sent
-        // to api.github.com.
-        let token = std::env::var("ARTCRAFT_LAUNCHER_GITHUB_TOKEN").ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-        let budget = std::sync::Arc::new(crate::github_budget::GitHubBudget::in_memory(crate::github_budget::STABLE));
-        Ok(Self { small, feed, no_redirect, download, direct, direct_download, token, nightly_mirror: None, budget })
-    }
-
-    /// Counts GitHub API requests against `budget` instead of a fresh one.
-    pub(crate) fn with_budget(mut self, budget: crate::github_budget::GitHubBudget) -> Self {
-        self.budget = std::sync::Arc::new(budget);
-        self
+        Ok(Self { small, feed, no_redirect, download, direct, direct_download, nightly_mirror: None })
     }
 
     /// Production/default builds ignore the staging environment, including malformed values.
@@ -225,73 +186,6 @@ impl Http {
         match &self.nightly_mirror {
             Some(mirror) => Ok((std::borrow::Cow::Owned(mirror.request_url(logical)?), &mirror.agent)),
             None => Ok((std::borrow::Cow::Borrowed(logical), default)),
-        }
-    }
-
-    /// This client without the user's GitHub token, for tests that must not depend on the
-    /// environment's `ARTCRAFT_LAUNCHER_GITHUB_TOKEN`.
-    #[cfg(test)]
-    pub(crate) fn without_token(mut self) -> Self {
-        self.token = None;
-        self
-    }
-
-    /// Whether a request to `url` counts against the GitHub budget: GitHub API requests made
-    /// without a token. A token has its own, far larger limit (5000 an hour) that isn't shared
-    /// with the network, so the budget doesn't cap it.
-    fn budgeted(&self, url: &str) -> bool {
-        self.token.is_none() && url.starts_with("https://api.github.com/")
-    }
-
-    /// GET a GitHub API resource, revalidating with `etag` when given, for the user.
-    pub fn get_api(&self, url: &str, etag: Option<&str>) -> Result<Fetched, String> {
-        self.get_api_as(url, etag, artcraft_launcher_core::release::Priority::User)
-    }
-
-    /// [`get_api`](Self::get_api), counted against the GitHub budget for `priority`.
-    pub fn get_api_as(&self, url: &str, etag: Option<&str>, priority: artcraft_launcher_core::release::Priority) -> Result<Fetched, String> {
-        if self.budgeted(url)
-            && let Err(until) = self.budget.take(priority, crate::now())
-        {
-            return Ok(Fetched::OverBudget { until });
-        }
-        // A request carrying the token must not follow a redirect: a cross-origin `Location`
-        // could otherwise forward the bearer token. Requests without one keep the old behaviour.
-        let agent = if self.token.is_some() && url.starts_with("https://api.github.com/") { &self.no_redirect } else { &self.small };
-        let (physical, agent) = self.request(url, agent)?;
-        let mut req = agent.get(physical.as_ref()).header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
-        if let Some(tag) = etag {
-            req = req.header("If-None-Match", tag);
-        }
-        if let Some(token) = &self.token
-            && physical == url
-            && url.starts_with("https://api.github.com/")
-        {
-            req = req.header("Authorization", &format!("Bearer {token}"));
-        }
-        let mut resp = req.call().map_err(|e| format!("{UNREACHABLE} GitHub ({e})"))?;
-        let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
-        let status = resp.status().as_u16();
-        let count = |name: &str| header(name).and_then(|v| v.trim().parse::<i64>().ok());
-        self.budget.observe(count("x-ratelimit-remaining"), count("x-ratelimit-reset"), crate::now());
-        match status {
-            200 => {
-                let etag = header("etag");
-                let text = read_text_capped(&mut resp, MAX_API).map_err(|e| format!("unreadable answer from GitHub ({e})"))?;
-                Ok(Fetched::Body { text, etag })
-            }
-            304 => Ok(Fetched::NotModified),
-            404 => Ok(Fetched::NotFound),
-            403 | 429 => {
-                let remaining = header("x-ratelimit-remaining");
-                let reset = header("x-ratelimit-reset").and_then(|r| r.trim().parse::<i64>().ok());
-                let retry_after = header("retry-after").and_then(|r| r.trim().parse::<i64>().ok());
-                match refused_until(status, remaining.as_deref(), reset, retry_after, crate::now()) {
-                    Some(reset) => Ok(Fetched::RateLimited { reset }),
-                    None => Err(format!("GitHub refused the request (HTTP {status})")),
-                }
-            }
-            s => Err(format!("GitHub answered HTTP {s}")),
         }
     }
 
@@ -334,35 +228,7 @@ impl Http {
     /// redirects and body reads. Callers own logical URLs and the overall discovery budget;
     /// this method owns transport failure/backoff, not authoritative absence (except HTTP 404).
     /// Stable's helpers deliberately keep their existing policies.
-    #[cfg(test)]
-    pub(crate) fn nightly_get(&self, url: &str, max: usize, timeout: Duration, lookup_now: i64) -> Result<Option<Vec<u8>>, NightlyHttpError> {
-        self.nightly_get_as(url, max, timeout, lookup_now, artcraft_launcher_core::release::Priority::Discovery)
-    }
-
-    /// When the launcher's own GitHub budget would let a Nightly request of `priority` go again,
-    /// if it cannot go now. Not a server backoff: nothing persists it.
-    pub(crate) fn nightly_budget_retry_at(&self, priority: artcraft_launcher_core::release::Priority, now: i64) -> Option<i64> {
-        self.budget.next_free(priority, now)
-    }
-
-    /// [`nightly_get`](Self::nightly_get), with an API request counted against the GitHub budget
-    /// for `priority`.
-    pub(crate) fn nightly_get_as(
-        &self,
-        url: &str,
-        max: usize,
-        timeout: Duration,
-        _lookup_now: i64,
-        priority: artcraft_launcher_core::release::Priority,
-    ) -> Result<Option<Vec<u8>>, NightlyHttpError> {
-        if self.budgeted(url)
-            && let Err(until) = self.budget.take(priority, crate::now())
-        {
-            // Not a server backoff: no `retry_at`, so the refusal isn't saved as one and a later
-            // check the user asks for still goes to the budget at its own priority (#713).
-            log::info!("GitHub budget: nightly discovery held back until {until}");
-            return Err(NightlyHttpError { over_budget: true, why: "The launcher's GitHub budget is spent for now.".into(), retry_at: None });
-        }
+    pub(crate) fn nightly_get(&self, url: &str, max: usize, timeout: Duration, _lookup_now: i64) -> Result<Option<Vec<u8>>, NightlyHttpError> {
         // The lookup timestamp predates admission/queueing and network I/O. It cannot anchor
         // a server's relative wait. Sample the wall clock only after receiving its response.
         self.nightly_get_with_receipt_clock(url, max, timeout, crate::now)
@@ -377,7 +243,6 @@ impl Http {
     ) -> Result<Option<Vec<u8>>, NightlyHttpError> {
         let started = std::time::Instant::now();
         let failed = |why: String| NightlyHttpError { over_budget: false, why, retry_at: None };
-        let api = url.starts_with("https://api.github.com/");
         let default = if is_loopback(url) { &self.direct } else { &self.small };
         let (physical, agent) = self.request(url, default).map_err(failed)?;
         let mut current = physical.to_string();
@@ -386,22 +251,9 @@ impl Http {
             nightly_safe_url(&current).map_err(failed)?;
             let remaining =
                 timeout.checked_sub(started.elapsed()).filter(|d| !d.is_zero()).ok_or_else(|| failed("Nightly request timed out".into()))?;
-            let mut req = agent.get(&current).config().timeout_global(Some(remaining)).max_redirects(0).build();
-            if api {
-                req = req.header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28");
-                if physical == url
-                    && current == url
-                    && let Some(token) = &self.token
-                {
-                    req = req.header("Authorization", &format!("Bearer {token}"));
-                }
-            }
+            let req = agent.get(&current).config().timeout_global(Some(remaining)).max_redirects(0).build();
             let mut resp = req.call().map_err(|e| failed(format!("{UNREACHABLE} Nightly resource ({e})")))?;
             let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok());
-            if api {
-                let count = |name: &str| header(name).and_then(|v| v.trim().parse::<i64>().ok());
-                self.budget.observe(count("x-ratelimit-remaining"), count("x-ratelimit-reset"), crate::now());
-            }
             match resp.status().as_u16() {
                 200 => {
                     let announced = header("content-length").and_then(|v| v.parse::<u64>().ok());
@@ -428,9 +280,9 @@ impl Http {
                     return Err(NightlyHttpError { over_budget: false, why: format!("Nightly resource answered HTTP {status}"), retry_at });
                 }
                 status @ (301 | 302 | 303 | 307 | 308) => {
-                    // API redirects are refused even without a token. The fixed debug mirror
-                    // also cannot widen its allowlist through a physical Location response.
-                    if api || self.nightly_mirror.is_some() || redirects == 3 {
+                    // The fixed debug mirror cannot widen its allowlist through a physical Location
+                    // response.
+                    if self.nightly_mirror.is_some() || redirects == 3 {
                         return Err(failed(format!("Nightly resource refused redirect (HTTP {status})")));
                     }
                     let target = header("location").ok_or_else(|| failed("Nightly redirect has no Location".into()))?;
@@ -468,16 +320,6 @@ impl Http {
                     .map_err(|e| if e.contains("larger than") { too_big() } else { format!("unreadable answer ({e})") })?;
                 Ok(Some(body))
             }
-            404 => Ok(None),
-            s => Err(format!("{} answered HTTP {s}", host(url))),
-        }
-    }
-
-    /// Where `url` redirects to, without following it.
-    pub fn redirect_target(&self, url: &str) -> Result<Option<String>, String> {
-        let resp = self.no_redirect.head(url).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
-        match resp.status().as_u16() {
-            300..=399 => Ok(resp.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string)),
             404 => Ok(None),
             s => Err(format!("{} answered HTTP {s}", host(url))),
         }
@@ -807,25 +649,6 @@ pub fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(hex(&hasher.finalize()))
 }
 
-/// Whether a 403 or 429 from GitHub's API means "slow down", and until when (Unix seconds, when
-/// it says). `None`: refused for some other reason.
-///
-/// GitHub sends `x-ratelimit-reset` with every answer: it's when the hourly quota refills, which
-/// only matters once `x-ratelimit-remaining` is 0. A secondary limit says how long to wait in
-/// `Retry-After` (seconds) and leaves the hourly quota alone; without either, GitHub's advice is
-/// to wait a minute.
-fn refused_until(status: u16, remaining: Option<&str>, reset: Option<i64>, retry_after: Option<i64>, now: i64) -> Option<Option<i64>> {
-    let retry = retry_after.map(|secs| now.saturating_add(secs.max(0)));
-    if remaining.map(str::trim) == Some("0") {
-        // `None` sorts first: whichever of the two is known, and the later if both are.
-        return Some(reset.max(retry));
-    }
-    if retry.is_some() {
-        return Some(retry);
-    }
-    (status == 429).then_some(Some(now.saturating_add(60)))
-}
-
 /// Reject implicit credentials and non-HTTP transports before ureq sees a URL.
 fn nightly_safe_url(url: &str) -> Result<(), String> {
     let uri = url.parse::<ureq::http::Uri>().map_err(|_| "Invalid Nightly resource URL")?;
@@ -944,45 +767,6 @@ fn read_bytes_capped(resp: &mut ureq::http::Response<ureq::Body>, max: usize) ->
 pub(crate) mod tests {
     use super::*;
 
-    /// The launcher's own budget holding back nightly discovery isn't a server backoff: it isn't
-    /// saved as one, so the user's own check on the Developer Builds page still runs (#713).
-    #[test]
-    fn a_held_back_nightly_discovery_doesnt_block_the_users_check() {
-        let now = crate::now();
-        // Two requests this hour leave too few for discovery, which holds the most back.
-        let budget = crate::github_budget::GitHubBudget::in_memory(10);
-        for _ in 0..2 {
-            assert!(budget.take(artcraft_launcher_core::release::Priority::User, now).is_ok());
-        }
-        let http = Http::new().unwrap().with_budget(budget).without_token();
-        let url = "https://api.github.com/repos/storytold/photocraft/releases?per_page=1";
-        let refused = http.nightly_get_as(url, 1024, Duration::from_secs(1), now, artcraft_launcher_core::release::Priority::Discovery).unwrap_err();
-        assert!(refused.over_budget, "the sweep stops on the launcher's own budget");
-        assert_eq!(refused.retry_at, None, "a budget refusal is not a server backoff");
-        // Every other refusal is a real answer or a real failure, never the budget.
-        let unreachable = http
-            .nightly_get_as("http://127.0.0.1:1/none", 1024, Duration::from_secs(1), now, artcraft_launcher_core::release::Priority::Discovery)
-            .unwrap_err();
-        assert!(!unreachable.over_budget, "a transport failure is not a budget refusal");
-        let mut state = crate::nightly_lookup::State::default();
-        let key = "photocraft".to_string();
-        state.outcome(&key, now, &crate::nightly_lookup::Outcome::Indeterminate(refused));
-        assert_eq!(state.backoff(now), None, "no backoff saved");
-        assert_eq!(state.begin(std::slice::from_ref(&key), &Default::default(), now + 60, true, true), vec![key], "the user's check goes ahead");
-    }
-
-    /// A token has its own limit, so the launcher's budget doesn't cap requests that carry one.
-    #[test]
-    fn requests_with_a_token_skip_the_budget() {
-        let mut http = Http::new().unwrap();
-        http.token = None;
-        let url = "https://api.github.com/repos/storytold/photocraft/releases/latest";
-        assert!(http.budgeted(url));
-        http.token = Some("test-only-not-a-real-token".into());
-        assert!(!http.budgeted(url));
-        assert!(!http.budgeted("https://github.com/storytold/photocraft/releases"), "only the API counts");
-    }
-
     #[test]
     fn nightly_test_mirror_rejects_raw_and_encoded_dot_base_paths() {
         assert!(NightlyMirror::new("http://127.0.0.1:1/fixtures").is_ok());
@@ -995,7 +779,7 @@ pub(crate) mod tests {
     fn nightly_test_transport_cannot_change_the_logical_repository_or_escape_its_asset_path() {
         let mirror = NightlyMirror::new("http://127.0.0.1:9021/fixture").unwrap();
         assert_eq!(
-            mirror.request_url("https://api.github.com/repos/storytold/photocraft/releases?per_page=100").unwrap(),
+            mirror.request_url("https://api.storyteller.ai/v1/craft_apps/photocraft/releases").unwrap(),
             "http://127.0.0.1:9021/fixture/nightly/photocraft/releases.json"
         );
         assert_eq!(
@@ -1003,7 +787,7 @@ pub(crate) mod tests {
             "http://127.0.0.1:9021/fixture/nightly/photocraft/assets/v1.0.0-nightly.1/NIGHTLY.json"
         );
         for logical in [
-            "https://api.github.com/repos/storytold/filmcraft/releases?per_page=100",
+            "https://api.storyteller.ai/v1/craft_apps/filmcraft/releases",
             "https://github.com/storytold/photocraft/releases/download/../NIGHTLY.json",
             "https://github.com/storytold/photocraft/releases/download/v1/%2e%2e",
             "https://github.com/storytold/photocraft/releases/download/v1/a/b.zip",
@@ -1015,39 +799,6 @@ pub(crate) mod tests {
         for base in ["https://github.com/", "http://127.0.0.1.evil:9021/", "http://user@localhost:9021/", "http://localhost:9021/#fragment"] {
             assert!(NightlyMirror::new(base).is_err(), "{base}");
         }
-    }
-
-    #[test]
-    fn nightly_mirror_api_requests_never_forward_a_github_token_or_follow_redirects() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let (send, receive) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-            let mut captured = String::new();
-            for line in std::io::BufRead::lines(std::io::BufReader::new(&stream)) {
-                let line = line.unwrap();
-                if line.is_empty() {
-                    break;
-                }
-                captured.push_str(&line);
-                captured.push('\n');
-            }
-            send.send(captured).unwrap();
-            stream
-                .write_all(b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:9/not-followed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-                .unwrap();
-        });
-        let mut http = Http::new().unwrap();
-        http.token = Some("test-only-not-a-real-token".into());
-        http.nightly_mirror = Some(NightlyMirror::new(&base).unwrap());
-        let error = http.get_api("https://api.github.com/repos/storytold/photocraft/releases?per_page=100", None).unwrap_err();
-        assert!(error.contains("HTTP 302"), "{error}");
-        let request = receive.recv_timeout(Duration::from_secs(3)).unwrap();
-        assert!(request.starts_with("GET /nightly/photocraft/releases.json "));
-        assert!(!request.to_ascii_lowercase().contains("authorization:"));
-        assert!(!request.contains("test-only-not-a-real-token"));
     }
 
     // These synthetic HTTP responses and payloads are authored here, not copied from a feed.
@@ -1232,48 +983,14 @@ pub(crate) mod tests {
     fn nightly_get_stops_redirects_after_three_and_never_attaches_asset_credentials() {
         let redirect = nightly_response("302 Found", "Location: /again\r\nContent-Length: 0\r\n", b"");
         let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, redirect); 4]);
-        let mut http = Http::new().unwrap();
-        http.token = Some("test-only-not-a-real-token".into());
+        let http = Http::new().unwrap();
         let error = http.nightly_get(&base, 8, Duration::from_secs(2), 0).unwrap_err();
         assert!(error.why.contains("refused redirect"), "{}", error.why);
         for _ in 0..4 {
             let request = seen.recv_timeout(Duration::from_secs(2)).unwrap().to_ascii_lowercase();
             assert!(!request.contains("authorization:"));
-            assert!(!request.contains("test-only-not-a-real-token"));
         }
         worker.join().unwrap();
-    }
-
-    #[test]
-    fn nightly_mirror_api_redirects_are_refused_with_or_without_a_token() {
-        for token in [None, Some("test-only-not-a-real-token".to_string())] {
-            let (base, seen, worker) = nightly_fixture(vec![(Duration::ZERO, nightly_response("302 Found", "Location: /unexpected\r\n", b""))]);
-            let mut http = Http::new().unwrap();
-            http.token = token;
-            http.nightly_mirror = Some(NightlyMirror::new(&base).unwrap());
-            let error = http
-                .nightly_get("https://api.github.com/repos/storytold/photocraft/releases?per_page=100", 8, Duration::from_secs(2), 0)
-                .unwrap_err();
-            assert!(error.why.contains("refused redirect"), "{}", error.why);
-            let request = seen.recv_timeout(Duration::from_secs(2)).unwrap();
-            assert!(request.starts_with("GET /nightly/photocraft/releases.json "));
-            assert!(!request.to_ascii_lowercase().contains("authorization:"));
-            worker.join().unwrap();
-        }
-    }
-
-    #[test]
-    fn nightly_mirror_pagination_stays_in_the_fixed_fixture_allowlist() {
-        let mirror = NightlyMirror::new("http://127.0.0.1:9021/fixture").unwrap();
-        for page in 2..=5 {
-            assert_eq!(
-                mirror.request_url(&format!("https://api.github.com/repos/storytold/photocraft/releases?per_page=100&page={page}")).unwrap(),
-                format!("http://127.0.0.1:9021/fixture/nightly/photocraft/releases-page-{page}.json")
-            );
-        }
-        for query in ["per_page=100&page=1", "per_page=100&page=6", "per_page=100&page=02", "page=2&per_page=100", "per_page=100&page=2&extra=1"] {
-            assert!(mirror.request_url(&format!("https://api.github.com/repos/storytold/photocraft/releases?{query}")).is_err());
-        }
     }
 
     #[test]
@@ -1367,7 +1084,6 @@ pub(crate) mod tests {
         let refused = http.get_text(&format!("http://{gone}/file.txt")).unwrap_err();
         assert!(is_unreachable(&refused), "{refused}");
         assert!(is_unreachable(&http.get_feed(&format!("http://{gone}/feed.json")).unwrap_err().why));
-        assert!(is_unreachable(&http.redirect_target(&format!("http://{gone}/latest")).unwrap_err()));
         // A refusal is an answer, and so is a body that can't be read.
         assert!(!is_unreachable("GitHub refused the request (HTTP 403)"));
         assert!(!is_unreachable(&format!("{} answered HTTP 503", host("https://github.com/storytold/photocraft/releases/latest"))));
@@ -1727,19 +1443,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_long_release_list_is_read_up_to_the_api_cap() {
-        // SolidCraft's list was 6.5 MB, past MAX_SMALL (#1021).
-        let long = vec![b' '; (MAX_SMALL as usize) + 1024];
-        let (url, _) = serve(long.clone(), vec![Reply::Full]);
-        let http = Http::new().unwrap();
-        assert!(matches!(http.get_api(&url, None), Ok(Fetched::Body { text, .. }) if text.len() == long.len()));
-        // Past MAX_API it is refused outright, not truncated and parsed.
-        let (url, _) = serve(vec![b' '; (MAX_API as usize) + 1024], vec![Reply::Full]);
-        let err = http.get_api(&url, None).unwrap_err();
-        assert!(err.contains("larger than"), "{err}");
-    }
-
-    #[test]
     fn a_gzip_bomb_answer_is_refused_before_parsing() {
         // A few hundred bytes on the wire that decode to more than MAX_SMALL. ureq's own limit
         // sits below the transparent gzip decoder, so only a cap on the decoded stream (CWE-409)
@@ -1761,80 +1464,6 @@ pub(crate) mod tests {
         let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         enc.write_all(data).unwrap();
         enc.finish().unwrap()
-    }
-
-    /// Live: a real Craft App release asset (`cargo test -p artcraft-launcher-native -- --ignored`).
-    #[test]
-    #[ignore = "needs network access"]
-    fn downloads_a_real_release_asset() {
-        let http = Http::new().unwrap();
-        let Fetched::Body { text, .. } = http.get_api("https://api.github.com/repos/storytold/wordcraft/releases/latest", None).unwrap() else {
-            panic!("no release")
-        };
-        let release = artcraft_launcher_core::release::parse_github_release(&text, "storytold/wordcraft").unwrap();
-        let sums_url = &release.sums_asset().unwrap().url;
-        let sums = artcraft_launcher_core::release::parse_sha256sums(&http.get_text(sums_url).unwrap().unwrap());
-        let asset = release.assets.iter().find(|a| a.name.ends_with("freebsd-x86_64.tar.gz")).unwrap();
-        let sha = asset.sha256.clone().or_else(|| sums.iter().find(|(_, n)| *n == asset.name).map(|(h, _)| h.clone())).unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join(&asset.name);
-        http.download(&asset.url, &dest, asset.size, &sha, &Stop::default(), &mut |_| {}).unwrap();
-        assert_eq!(std::fs::metadata(&dest).unwrap().len(), asset.size);
-    }
-
-    /// Answers one request with `head` (status line and headers) and an empty body.
-    fn answer_once(head: String) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/repos/storytold/photocraft/releases/latest", listener.local_addr().unwrap());
-        std::thread::spawn(move || {
-            let Ok((mut stream, _)) = listener.accept() else { return };
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            loop {
-                let mut line = String::new();
-                if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
-                    break;
-                }
-            }
-            let _ = write!(stream, "{head}Content-Length: 0\r\nConnection: close\r\n\r\n");
-        });
-        url
-    }
-
-    #[test]
-    fn a_secondary_limit_waits_for_retry_after_not_the_hourly_reset() {
-        // GitHub's secondary limit: quota left, an hourly reset 50 minutes away, and "try again
-        // in a minute". That's a minute, not 50 minutes of "the hourly limit was reached".
-        let now = crate::now();
-        let url = answer_once(format!(
-            "HTTP/1.1 403 Forbidden\r\nx-ratelimit-remaining: 41\r\nx-ratelimit-reset: {}\r\nretry-after: 60\r\n",
-            now + 50 * 60
-        ));
-        let Fetched::RateLimited { reset: Some(until) } = Http::new().unwrap().get_api(&url, None).unwrap() else { panic!("not rate limited") };
-        assert!((now + 60..now + 120).contains(&until), "limited for {} s", until - now);
-    }
-
-    #[test]
-    fn an_empty_hourly_quota_waits_for_the_reset() {
-        let now = crate::now();
-        let reset = now + 31 * 60;
-        let url = answer_once(format!("HTTP/1.1 403 Forbidden\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: {reset}\r\n"));
-        assert_eq!(Http::new().unwrap().get_api(&url, None).unwrap(), Fetched::RateLimited { reset: Some(reset) });
-    }
-
-    #[test]
-    fn github_refusals_are_read_the_way_github_documents_them() {
-        const NOW: i64 = 1_791_500_000;
-        // Out of quota: until the reset, or Retry-After if that's later.
-        assert_eq!(refused_until(403, Some("0"), Some(NOW + 1800), None, NOW), Some(Some(NOW + 1800)));
-        assert_eq!(refused_until(403, Some("0"), Some(NOW + 30), Some(90), NOW), Some(Some(NOW + 90)));
-        assert_eq!(refused_until(403, Some("0"), None, None, NOW), Some(None));
-        // A secondary limit: Retry-After, never the hourly reset.
-        assert_eq!(refused_until(429, Some("12"), Some(NOW + 1800), Some(30), NOW), Some(Some(NOW + 30)));
-        // A 429 that doesn't say: a minute.
-        assert_eq!(refused_until(429, Some("12"), Some(NOW + 1800), None, NOW), Some(Some(NOW + 60)));
-        // A plain 403 (blocked, private, …) isn't a rate limit.
-        assert_eq!(refused_until(403, Some("12"), Some(NOW + 1800), None, NOW), None);
-        assert_eq!(refused_until(403, None, None, None, NOW), None);
     }
 
     #[test]

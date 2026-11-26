@@ -222,49 +222,6 @@ pub fn is_paused(error: &str) -> bool {
     error == PAUSED || error == PAUSED_BY_CONNECTION
 }
 
-/// Which service an app's release information came from (the footer names them).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Origin {
-    /// ArtCraft's release feed (storyteller-web), which polls GitHub for everyone.
-    ArtCraftApi,
-    /// GitHub directly: the fallback.
-    GitHub,
-}
-
-impl Origin {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::ArtCraftApi => "ArtCraft API",
-            Self::GitHub => "GitHub",
-        }
-    }
-}
-
-/// Where release information came from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Source {
-    /// ArtCraft's release feed (storyteller-web), which polls GitHub for everyone.
-    Feed,
-    /// The GitHub REST API.
-    GitHubApi,
-    /// github.com release pages (no API quota; used whenever the API gave no answer, whether it
-    /// was out of quota or couldn't be reached).
-    GitHubPages,
-    /// Saved answers from an earlier check.
-    Cache,
-}
-
-impl Source {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Feed => "ArtCraft",
-            Self::GitHubApi => "GitHub",
-            Self::GitHubPages => "GitHub (release pages)",
-            Self::Cache => "saved results",
-        }
-    }
-}
-
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
@@ -273,8 +230,6 @@ pub enum Event {
     Latest {
         app: String,
         latest: LatestRelease,
-        /// The service this answer came from.
-        from: Origin,
     },
     /// The published versions of an app (or the launcher), bounded to the latest 100.
     Versions {
@@ -366,9 +321,6 @@ pub enum Event {
     CheckFinished {
         /// Unix seconds.
         at: i64,
-        source: Source,
-        /// GitHub refused more API calls until this time (Unix seconds).
-        rate_limited_until: Option<i64>,
     },
 
     /// The AI agents state: the gateway, the switch and the MCP clients. Sent when Settings asks,

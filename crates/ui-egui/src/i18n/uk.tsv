@@ -148,8 +148,6 @@
 	Reorder {name}	Змінити порядок: {name}
 	Move up	Вище
 	Move down	Нижче
-	Checked {ago} · using {sources}	Перевірено {ago} · джерела: {sources}
-	{a} and {b}	{a} і {b}
 	Join the Discord	Приєднатися до Discord
 	Learn more	Докладніше
 	Minimize	Згорнути
@@ -217,8 +215,6 @@ month	Oct	жовт.
 month	Nov	лист.
 month	Dec	груд.
 	Not checked yet	Ще не перевірено
-	Next GitHub check at {time}	Наступна перевірка GitHub о {time}
-	Next check at {time}	Наступна перевірка о {time}
 	Installing for {platform}	Встановлення для {platform}
 	Downloads for {platform}	Завантаження для {platform}
 	No downloads for this system	Немає завантажень для цієї системи
@@ -279,7 +275,6 @@ month	Dec	груд.
 	Open ArtCraft Launcher to update.	Відкрийте ArtCraft Launcher, щоб оновити.
 	{name} {v} is available	Доступне оновлення {name} {v}
 	{count} updates are available	Доступні оновлення ({count})
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Ці примітки не вдалося отримати (вичерпано ліміт запитів GitHub). Вони є на сторінці випуску.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Якщо ввімкнено, відкриття лаунчера з рядка меню переносить його вікно на поточний робочий стіл. Якщо вимкнено, macOS перемикає вас на робочий стіл, де було вікно.
 	Couldn't change the login item: {e}	Не вдалося змінити елемент автозапуску: {e}
 

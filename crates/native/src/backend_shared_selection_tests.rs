@@ -1,6 +1,6 @@
 //! Authored representative main-supported release shapes, not live third-party metadata or payloads.
 use super::*;
-use crate::source::Answer;
+use artcraft_launcher_core::feed::AppReleases;
 
 fn representative(app: &CraftApp, tag: &str, at: i64) -> Release {
     let parsed = version::parse(tag).unwrap();
@@ -21,19 +21,9 @@ fn representative(app: &CraftApp, tag: &str, at: i64) -> Release {
 }
 struct Published(Vec<Release>);
 impl ReleaseSource for Published {
-    fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
-        Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+    fn history_within(&self, _query: &ReleaseQuery, _max_age: i64) -> Result<AppReleases, String> {
+        Ok(AppReleases { complete: true, releases: self.0.clone() })
     }
-    fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
-        Ok(self.0.clone())
-    }
-    fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
-        None
-    }
-    fn rate_limited_until(&self) -> Option<i64> {
-        None
-    }
-    fn save(&self) {}
 }
 #[test]
 fn shared_selection_legacy_native_follow_and_pin_keep_main_tag_checksums_and_publication_order() {
@@ -52,16 +42,16 @@ fn shared_selection_legacy_native_follow_and_pin_keep_main_tag_checksums_and_pub
             for releases in [vec![newer.clone(), older.clone()], vec![older.clone(), newer.clone()]] {
                 let published = Published(releases);
                 let answer = published.chosen(&ReleaseQuery::for_app(app, app.repo), &VersionTrack::Nightly);
-                let LatestRelease::Found(chosen) = answer.latest else { panic!("main-supported Nightly must remain selectable for {id}") };
+                let LatestRelease::Found(chosen) = answer else { panic!("main-supported Nightly must remain selectable for {id}") };
                 assert_eq!(chosen, older, "legacy follows publication time, not first-party canonical order");
                 let pin = published.chosen(&ReleaseQuery::for_app(app, app.repo), &VersionTrack::Pinned(newer.tag.clone()));
-                assert!(matches!(pin.latest, LatestRelease::Found(ref selected) if selected==&newer));
+                assert!(matches!(pin, LatestRelease::Found(ref selected) if selected==&newer));
                 let mut equal = newer.clone();
                 equal.published_at = older.published_at;
                 for tied in [vec![older.clone(), equal.clone()], vec![equal, older.clone()]] {
                     let expected = tied.last().unwrap().clone();
                     let selected = Published(tied).chosen(&ReleaseQuery::for_app(app, app.repo), &VersionTrack::Nightly);
-                    assert_eq!(selected.latest, LatestRelease::Found(expected), "main keeps the last input on equal publication timestamps");
+                    assert_eq!(selected, LatestRelease::Found(expected), "main keeps the last input on equal publication timestamps");
                 }
             }
         }

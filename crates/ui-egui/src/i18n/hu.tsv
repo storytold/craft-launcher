@@ -149,8 +149,6 @@
 	Unhide App	Alkalmazás megjelenítése
 	Hidden Apps	Rejtett alkalmazások
 	Apps you hid	Az általad elrejtett alkalmazások
-	Checked {ago} · using {sources}	Ellenőrizve: {ago} · {sources}
-	{a} and {b}	{a} és {b}
 	Join the Discord	Csatlakozás a Discordhoz
 	Learn more	További információ
 	Minimize	Kis méret
@@ -223,8 +221,6 @@ month	Oct	okt.
 month	Nov	nov.
 month	Dec	dec.
 	Not checked yet	Még nem történt ellenőrzés
-	Next GitHub check at {time}	Következő GitHub-ellenőrzés: {time}
-	Next check at {time}	Következő ellenőrzés: {time}
 	Installing for {platform}	Telepítés {platform} rendszerre
 	Downloads for {platform}	Letöltések {platform} rendszerre
 	No downloads for this system	Nincsenek letöltések ehhez a rendszerhez
@@ -287,7 +283,6 @@ month	Dec	dec.
 	Open ArtCraft Launcher to update.	Nyisd meg az ArtCraft Launchert a frissítéshez.
 	{name} {v} is available	Elérhető: {name} {v}
 	{count} updates are available	{count} frissítés elérhető
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	A kiadási információkat nem sikerült betölteni, mert elértük a GitHub lekérdezési korlátját. A kiadás oldalán megtalálod őket.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Ha be van kapcsolva, a menüsorból megnyitott ArtCraft Launcher ablaka az aktuális asztalon jelenik meg. Ha ki van kapcsolva, a macOS arra az asztalra vált, ahol az ablak található.
 	Couldn't change the login item: {e}	Az automatikus indítás beállítását nem sikerült módosítani: {e}
 

@@ -1176,7 +1176,7 @@ mod tests {
     use std::sync::mpsc::Sender;
     use std::time::Instant;
 
-    use artcraft_launcher_core::protocol::{Capabilities, Command, Event, Source};
+    use artcraft_launcher_core::protocol::{Capabilities, Command, Event};
     use eframe::wgpu::rwh::{AppKitDisplayHandle, WaylandDisplayHandle, WindowsDisplayHandle, XcbDisplayHandle, XlibDisplayHandle};
 
     use super::*;
@@ -1428,11 +1428,7 @@ mod tests {
         let mut launcher = Launcher::new(Box::new(Quiet(seen.clone())), show_requests, Some(path.clone()));
         let (_wake, woken) = sync_channel(1);
         // A check finishes in the same tick as the user quits from the tray.
-        seen.news.lock().unwrap_or_else(PoisonError::into_inner).push(Event::CheckFinished {
-            at: NOW - 5,
-            source: Source::Feed,
-            rate_limited_until: None,
-        });
+        seen.news.lock().unwrap_or_else(PoisonError::into_inner).push(Event::CheckFinished { at: NOW - 5 });
         launcher.host.quit();
         assert!(!launcher.wait_in_tray(&woken));
         let saved: Option<Settings> = settings_file::load(&path, SETTINGS_KEY);

@@ -147,8 +147,6 @@
 	Unhide App	Показать приложение
 	Hidden Apps	Скрытые приложения
 	Apps you hid	Приложения, которые вы скрыли
-	Checked {ago} · using {sources}	Проверено {ago} · через {sources}
-	{a} and {b}	{a} и {b}
 	Join the Discord	Присоединиться к Discord
 	Learn more	Подробнее
 	Minimize	Свернуть
@@ -221,8 +219,6 @@ month	Oct	окт.
 month	Nov	нояб.
 month	Dec	дек.
 	Not checked yet	Ещё не проверялось
-	Next GitHub check at {time}	Следующая проверка GitHub в {time}
-	Next check at {time}	Следующая проверка в {time}
 	Installing for {platform}	Установка для {platform}
 	Downloads for {platform}	Скачивание для {platform}
 	No downloads for this system	Нет загрузок для этой системы
@@ -283,7 +279,6 @@ month	Dec	дек.
 	Open ArtCraft Launcher to update.	Откройте ArtCraft Launcher, чтобы обновить.
 	{name} {v} is available	Доступно обновление {name} {v}
 	{count} updates are available	Доступны обновления ({count})
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Заметки не были загружены (достигнут лимит запросов GitHub). Они есть на странице релиза.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Когда включено, открытие лаунчера из строки меню переносит его окно на текущий рабочий стол. Когда выключено, macOS переключает вас на рабочий стол, где находилось окно.
 	Couldn't change the login item: {e}	Не удалось изменить пункт автозагрузки: {e}
 

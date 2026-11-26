@@ -1,9 +1,12 @@
-//! The release feed from storyteller-web: `GET https://api.storyteller.ai/v1/craft_apps/release_info`.
+//! Our release API, from storyteller-web: `GET https://api.storyteller.ai/v1/craft_apps/release_info`
+//! (the release feed: every app's latest stable release, beta and nightly) and
+//! `GET https://api.storyteller.ai/v1/craft_apps/{app}/releases` (one app's whole release history,
+//! [`AppReleases`]).
 //!
-//! storyteller-web polls GitHub for every Craft App on a schedule and serves the result, so the
-//! launcher doesn't have to (GitHub allows 60 unauthenticated requests an hour). GitHub stays the
-//! fallback: for apps the feed doesn't list, apps it hasn't fetched within [`MAX_AGE`], or when
-//! the feed doesn't answer.
+//! storyteller-web polls GitHub for every Craft App on a schedule and serves the result. It is
+//! the launcher's only source of release information: an app the feed doesn't list, or hasn't
+//! fetched within [`MAX_AGE`], is [`FeedAnswer::Unknown`], and the launcher says it couldn't check.
+//! Downloads still come from each app's GitHub releases.
 //!
 //! The feed is input like any other: every field is optional, unknown fields are ignored, a field
 //! of the wrong type reads as missing, one bad entry never spoils the others, and download links
@@ -96,8 +99,8 @@ pub struct RepoRename {
 pub enum FeedAnswer {
     /// Fresh: the app's latest release, or `None` when it has none.
     Fresh(Option<Release>),
-    /// Not listed, never fetched, or older than [`MAX_AGE`]: ask GitHub.
-    AskGitHub,
+    /// Not listed, never fetched, older than [`MAX_AGE`], or not holding up: unknown.
+    Unknown,
 }
 
 /// The most text kept from one rename's description.
@@ -125,7 +128,7 @@ impl Feed {
         self
     }
 
-    /// The repo to ask GitHub about for `app`, following the feed's repo renames. Always under
+    /// The repo `app`'s downloads come from, following the feed's repo renames. Always under
     /// [`GITHUB_OWNER`]: the feed can move an app within ArtCraft's account, never out of it.
     pub fn repo_for(&self, app: &CraftApp) -> String {
         let mut repo = app.repo.to_string();
@@ -141,33 +144,31 @@ impl Feed {
 
     /// What the feed says about `app` at `now`.
     pub fn answer(&self, app: &CraftApp, now: i64) -> FeedAnswer {
-        let Some((entry, repo)) = self.checked(app, now) else { return FeedAnswer::AskGitHub };
+        let Some((entry, repo)) = self.checked(app, now) else { return FeedAnswer::Unknown };
         match &entry.release {
-            // The app's other name may have the release: GitHub is asked about both.
-            None if app.former_repo.is_some() => FeedAnswer::AskGitHub,
             None => FeedAnswer::Fresh(None),
             Some(r) => match r.to_release(&repo, self.mirror.as_deref()) {
                 Some(release) => FeedAnswer::Fresh(Some(release)),
-                None => FeedAnswer::AskGitHub,
+                None => FeedAnswer::Unknown,
             },
         }
     }
 
     /// What the feed says about `app` at `now` with pre-releases on: the higher of its stable
-    /// release and its newest beta or RC, the release GitHub's list would name. GitHub is asked
-    /// whenever the entry can't settle that: no stable answer (see [`Feed::answer`]), an entry
+    /// release and its newest beta or RC, the higher version of the two. Unknown whenever the
+    /// entry can't settle that: no stable answer (see [`Feed::answer`]), an entry
     /// without the pre-release channel (an older server), a beta that doesn't hold up, or a
     /// version list naming a higher ordinary version than the two the feed sent in full.
     pub fn answer_with_prereleases(&self, app: &CraftApp, now: i64) -> FeedAnswer {
-        let FeedAnswer::Fresh(stable) = self.answer(app, now) else { return FeedAnswer::AskGitHub };
+        let FeedAnswer::Fresh(stable) = self.answer(app, now) else { return FeedAnswer::Unknown };
         let Some((entry, repo)) = self.checked(app, now).filter(|(entry, _)| entry.channels) else {
-            return FeedAnswer::AskGitHub;
+            return FeedAnswer::Unknown;
         };
         let beta = match &entry.prerelease {
             None => None,
             Some(r) => match r.to_release(&repo, self.mirror.as_deref()).filter(release::ordinary_release_allowed) {
                 Some(beta) => Some(beta),
-                None => return FeedAnswer::AskGitHub,
+                None => return FeedAnswer::Unknown,
             },
         };
         let best = [stable, beta].into_iter().flatten().reduce(|a, b| if newer_release(&b, &a) { b } else { a });
@@ -177,7 +178,7 @@ impl Feed {
             .iter()
             .filter_map(|tag| version::parse(tag).filter(|v| release::valid_tag(tag) && !release::nightly_version(v)))
             .any(|listed| best_version.is_none_or(|best| version::is_newer(&listed, best)));
-        if listed_higher { FeedAnswer::AskGitHub } else { FeedAnswer::Fresh(best) }
+        if listed_higher { FeedAnswer::Unknown } else { FeedAnswer::Fresh(best) }
     }
 
     /// `app`'s entry and the repo its downloads must belong to, when the entry is fresh and its
@@ -202,13 +203,53 @@ impl Feed {
     }
 }
 
-/// Whether `a` is a higher version than `b`, as GitHub's list is ranked; a release without a
+/// Whether `a` is a higher version than `b`; a release without a
 /// version never is.
 fn newer_release(a: &Release, b: &Release) -> bool {
     match (a.version.as_ref(), b.version.as_ref()) {
         (Some(a), Some(b)) => version::is_newer(a, b),
         (Some(_), None) => true,
         (None, _) => false,
+    }
+}
+
+/// One app's release history, from `GET /v1/craft_apps/{app}/releases`, checked like the feed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AppReleases {
+    /// Whether `releases` is every release the app has; when not, older ones exist.
+    pub complete: bool,
+    /// Newest first, nightlies included: every release that holds up for the app's repo.
+    pub releases: Vec<Release>,
+}
+
+/// The most releases read from one app's history (storyteller-web sends at most 1000).
+const MAX_HISTORY: usize = 1000;
+
+/// The address of `app`'s release history, next to the feed at `feed_url`
+/// (`…/craft_apps/release_info` → `…/craft_apps/{app}/releases`). `None` for a feed elsewhere
+/// (a local mirror), which has no histories, and for an id that isn't a plain name.
+pub fn app_releases_url(feed_url: &str, app: &str) -> Option<String> {
+    let base = feed_url.strip_suffix("/release_info")?;
+    let plain = !app.is_empty() && app.len() <= 64 && app.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    plain.then(|| format!("{base}/{app}/releases"))
+}
+
+impl AppReleases {
+    /// Reads an app's history (answer of [`app_releases_url`]). Its repo must be `repo` or the
+    /// app's `former_repo`, as in [`Feed::answer`], and every release goes through the same download
+    /// checks. `None` when it isn't such an answer, or was never fetched or is older than
+    /// [`MAX_AGE`] at `now`: the history is then unknown.
+    pub fn parse(json: &str, repo: &str, former_repo: Option<&str>, now: i64) -> Option<Self> {
+        let raw: RawAppReleases = serde_json::from_str(json).ok()?;
+        let fetched_at = raw.app_last_fetched.as_deref().and_then(parse_rfc3339)?;
+        if now.saturating_sub(fetched_at) > MAX_AGE {
+            return None;
+        }
+        let served = raw.repo?;
+        let repo = if served.eq_ignore_ascii_case(repo) { repo } else { former_repo.filter(|former| served.eq_ignore_ascii_case(former))? };
+        let releases =
+            raw.releases.into_iter().take(MAX_HISTORY).filter_map(RawRelease::into_release).filter_map(|r| r.to_release(repo, None)).collect();
+        Some(Self { complete: raw.complete, releases })
     }
 }
 
@@ -376,6 +417,18 @@ impl RawRelease {
 }
 
 #[derive(Deserialize, Default)]
+struct RawAppReleases {
+    #[serde(default, deserialize_with = "lenient")]
+    repo: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
+    app_last_fetched: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
+    complete: bool,
+    #[serde(default, deserialize_with = "lenient_vec")]
+    releases: Vec<RawRelease>,
+}
+
+#[derive(Deserialize, Default)]
 struct RawAsset {
     #[serde(default, deserialize_with = "lenient")]
     name: Option<String>,
@@ -520,7 +573,7 @@ mod tests {
     fn tag(answer: FeedAnswer) -> Option<String> {
         match answer {
             FeedAnswer::Fresh(found) => Some(found.map_or("none".into(), |r| r.tag)),
-            FeedAnswer::AskGitHub => None,
+            FeedAnswer::Unknown => None,
         }
     }
 
@@ -538,28 +591,28 @@ mod tests {
     }
 
     #[test]
-    fn with_pre_releases_github_is_asked_whenever_the_feed_cant_settle_it() {
+    fn with_pre_releases_the_answer_is_unknown_whenever_the_feed_cant_settle_it() {
         let photo = app("photocraft");
         // A server from before the channels: its silence says nothing about betas.
         let old_server = with_channels(None, None);
-        assert_eq!(old_server.answer_with_prereleases(photo, NOW), FeedAnswer::AskGitHub);
+        assert_eq!(old_server.answer_with_prereleases(photo, NOW), FeedAnswer::Unknown);
         assert_eq!(tag(old_server.answer(photo, NOW)).as_deref(), Some("v0.6.0"));
         // The version list names a higher version than the two sent in full.
         let behind = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.7.0", "v0.7.0-rc.1", "v0.6.0"]));
-        assert_eq!(behind.answer_with_prereleases(photo, NOW), FeedAnswer::AskGitHub);
+        assert_eq!(behind.answer_with_prereleases(photo, NOW), FeedAnswer::Unknown);
         // A "beta" that is really a nightly, whose tag isn't a version, or that has no tag: it is
         // there, so it isn't "no beta".
         for beta in ["v0.7.0-nightly.20261126.1.1", "latest", ""] {
             let feed = with_channels(Some(beta), Some(&["v0.6.0"]));
-            assert_eq!(feed.answer_with_prereleases(photo, NOW), FeedAnswer::AskGitHub, "{beta}");
+            assert_eq!(feed.answer_with_prereleases(photo, NOW), FeedAnswer::Unknown, "{beta}");
         }
-        // Stale entries ask GitHub with pre-releases on too.
+        // Stale entries are unknown with pre-releases on too.
         let fresh = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.7.0-rc.1"]));
-        assert_eq!(fresh.answer_with_prereleases(photo, NOW + 2 * MAX_AGE), FeedAnswer::AskGitHub);
+        assert_eq!(fresh.answer_with_prereleases(photo, NOW + 2 * MAX_AGE), FeedAnswer::Unknown);
     }
 
     #[test]
-    fn a_nightly_in_the_version_list_does_not_send_the_launcher_to_github() {
+    fn a_nightly_in_the_version_list_does_not_make_the_answer_unknown() {
         let feed = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.8.0-nightly.1", "v0.7.0-rc.1", "v0.6.0"]));
         assert_eq!(tag(feed.answer_with_prereleases(app("photocraft"), NOW)).as_deref(), Some("v0.7.0-rc.1"));
     }
@@ -593,11 +646,11 @@ mod tests {
         assert_eq!(r.published_at, parse_rfc3339("2026-10-09T10:00:00Z"));
         // Fresh, and no release yet.
         assert_eq!(feed.answer(app("soundcraft"), NOW), FeedAnswer::Fresh(None));
-        // Never fetched, more than a day old, or not listed: ask GitHub.
-        assert_eq!(feed.answer(app("filmcraft"), NOW), FeedAnswer::AskGitHub);
-        assert_eq!(feed.answer(app("vectorcraft"), NOW), FeedAnswer::AskGitHub);
-        assert_eq!(feed.answer(app("wordcraft"), NOW), FeedAnswer::AskGitHub);
-        assert_eq!(feed.answer(&LAUNCHER, NOW), FeedAnswer::AskGitHub);
+        // Never fetched, more than a day old, or not listed: unknown.
+        assert_eq!(feed.answer(app("filmcraft"), NOW), FeedAnswer::Unknown);
+        assert_eq!(feed.answer(app("vectorcraft"), NOW), FeedAnswer::Unknown);
+        assert_eq!(feed.answer(app("wordcraft"), NOW), FeedAnswer::Unknown);
+        assert_eq!(feed.answer(&LAUNCHER, NOW), FeedAnswer::Unknown);
         // An app the launcher doesn't know is simply carried along.
         assert!(feed.apps.contains_key("brandnewcraft"));
     }
@@ -605,8 +658,7 @@ mod tests {
     #[test]
     fn an_app_with_a_former_repo_is_matched_under_either_name() {
         // MailCraft moved from `UCS-Care-Group` to `UCSLabs` (#1593): a feed still naming the former
-        // repo is used, with downloads checked against that repo, and "no release" under one name
-        // sends the launcher to GitHub, where the other name is asked too.
+        // repo is used, with downloads checked against that repo.
         let mailcraft = app("mailcraft");
         let former = mailcraft.former_repo.unwrap();
         let entry = |repo: &str, release: &str| {
@@ -624,9 +676,57 @@ mod tests {
         assert_eq!(r.assets.len(), 1);
         assert!(r.assets[0].url.starts_with(&release::download_prefix(former)));
         for repo in [mailcraft.repo, former] {
-            assert_eq!(Feed::parse(&entry(repo, "null")).unwrap().answer(mailcraft, NOW), FeedAnswer::AskGitHub, "{repo}");
+            assert_eq!(Feed::parse(&entry(repo, "null")).unwrap().answer(mailcraft, NOW), FeedAnswer::Fresh(None), "{repo}");
         }
-        assert_eq!(Feed::parse(&entry("someone/mailcraft", &release)).unwrap().answer(mailcraft, NOW), FeedAnswer::AskGitHub);
+        assert_eq!(Feed::parse(&entry("someone/mailcraft", &release)).unwrap().answer(mailcraft, NOW), FeedAnswer::Unknown);
+    }
+
+    /// What `GET /v1/craft_apps/photocraft/releases` serves, with `releases` and its fetch time.
+    fn history(repo: &str, fetched: &str, releases: &str) -> String {
+        format!(
+            r#"{{"success": true, "app_key": "photocraft", "repo": "{repo}", "app_last_fetched": {fetched}, "complete": true, "releases": [{releases}]}}"#
+        )
+    }
+
+    #[test]
+    fn reads_an_apps_history_with_the_feeds_checks() {
+        let photo = app("photocraft");
+        let release = |tag: &str, repo: &str| {
+            format!(
+                r#"{{"tag": "{tag}", "prerelease": {}, "assets": [{{"name": "a.dmg", "size_bytes": 1, "sha256": "{HASH}",
+                    "download_url": "https://github.com/{repo}/releases/download/{tag}/a.dmg"}}]}}"#,
+                tag.contains('-')
+            )
+        };
+        let releases = [
+            release("v0.7.0-nightly.20261126.1.1", photo.repo),
+            release("v0.6.0", photo.repo),
+            release("v0.5.0", "evil/repo"),
+            r#"{"tag": ""}"#.into(),
+        ];
+        let json = history(photo.repo, r#""2026-10-09T13:00:00Z""#, &releases.join(","));
+        let read = AppReleases::parse(&json, photo.repo, None, NOW).unwrap();
+        assert!(read.complete);
+        let tags: Vec<&str> = read.releases.iter().map(|r| r.tag.as_str()).collect();
+        assert_eq!(tags, ["v0.7.0-nightly.20261126.1.1", "v0.6.0", "v0.5.0"], "newest first, nightlies kept, a tagless one dropped");
+        assert_eq!(read.releases[1].assets.len(), 1);
+        assert!(read.releases[2].assets.is_empty(), "a download from another repo is dropped");
+        // Another repo's history, one never fetched, a stale one, and junk are unknown.
+        assert!(AppReleases::parse(&history("someone/photocraft", r#""2026-10-09T13:00:00Z""#, ""), photo.repo, None, NOW).is_none());
+        assert!(AppReleases::parse(&history(photo.repo, "null", ""), photo.repo, None, NOW).is_none());
+        assert!(AppReleases::parse(&json, photo.repo, None, NOW + 2 * MAX_AGE).is_none());
+        for junk in ["", "[]", "<html>", r#"{"repo": 5}"#] {
+            assert!(AppReleases::parse(junk, photo.repo, None, NOW).is_none(), "{junk}");
+        }
+    }
+
+    #[test]
+    fn an_apps_history_lives_next_to_the_feed() {
+        assert_eq!(app_releases_url(FEED_URL, "photocraft").as_deref(), Some("https://api.storyteller.ai/v1/craft_apps/photocraft/releases"));
+        assert_eq!(app_releases_url("http://127.0.0.1:8787/release_info.json", "photocraft"), None, "a local mirror has none");
+        for odd in ["", "../x", "a/b", "Photo", "a?b"] {
+            assert_eq!(app_releases_url(FEED_URL, odd), None, "{odd}");
+        }
     }
 
     #[test]
@@ -643,7 +743,7 @@ mod tests {
         "app_renames": "none", "repo_renames": [1, {"old_name": "a/b"}],
         "important_notices": {"announcements": [null, {"title": 3}], "alerts": "x"}}"#;
         let feed = Feed::parse(weird).unwrap();
-        assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
+        assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::Unknown);
         assert!(feed.repo_renames.is_empty());
         // An empty object is a feed that knows nothing.
         assert_eq!(Feed::parse("{}").unwrap(), Feed::default());
@@ -665,10 +765,10 @@ mod tests {
         assert_eq!(feed.repo_for(app("photocraft")), "storytold/photocraft-app");
         let FeedAnswer::Fresh(Some(r)) = feed.answer(app("photocraft"), NOW) else { panic!() };
         assert!(r.assets[0].url.starts_with("https://github.com/storytold/photocraft-app/releases/download/"));
-        // The same entry without the rename: the repo doesn't match, so GitHub decides.
+        // The same entry without the rename: the repo doesn't match, so the answer is unknown.
         let unannounced = moved.replace(r#"{"old_name": "Storytold/photocraft", "new_name": "storytold/photocraft-app", "renamed_at": null}"#, "");
         let feed = Feed::parse(&unannounced).unwrap();
-        assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
+        assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::Unknown);
     }
 
     #[test]
@@ -687,7 +787,7 @@ mod tests {
         let feed = Feed::parse(&moved).unwrap();
         assert!(feed.repo_renames.is_empty(), "{:?}", feed.repo_renames);
         assert_eq!(feed.repo_for(app("photocraft")), "storytold/photocraft");
-        assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
+        assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::Unknown);
     }
 
     #[test]
@@ -747,10 +847,10 @@ mod tests {
     }
 
     #[test]
-    fn a_feed_release_with_an_odd_tag_asks_github() {
+    fn a_feed_release_with_an_odd_tag_is_unknown() {
         for odd in ["v0.6.0~beta-\\u202e", "v0.6.0~beta-a/b"] {
             let feed = sample().replace("\"tag\": \"v0.6.0\"", &format!("\"tag\": \"{odd}\""));
-            assert_eq!(Feed::parse(&feed).unwrap().answer(app("photocraft"), NOW), FeedAnswer::AskGitHub, "{odd:?}");
+            assert_eq!(Feed::parse(&feed).unwrap().answer(app("photocraft"), NOW), FeedAnswer::Unknown, "{odd:?}");
         }
     }
 }

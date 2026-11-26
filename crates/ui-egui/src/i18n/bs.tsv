@@ -119,8 +119,6 @@
 	Unhide App	Otkrij aplikaciju
 	Hidden Apps	Skrivene aplikacije
 	Apps you hid	Aplikacije koje ste sakrili
-	Checked {ago} · using {sources}	Provjereno {ago} · koristeći {sources}
-	{a} and {b}	{a} i {b}
 	Join the Discord	Pridružite se Discordu
 	Learn more	Saznajte više
 	Minimize	Minimiziraj
@@ -181,8 +179,6 @@ month	Oct	okt
 month	Nov	nov
 month	Dec	dec
 	Not checked yet	Još nije provjereno
-	Next GitHub check at {time}	Sljedeća provjera GitHuba u {time}
-	Next check at {time}	Sljedeća provjera u {time}
 	Installing for {platform}	Instalacija za {platform}
 	Downloads for {platform}	Preuzimanja za {platform}
 	No downloads for this system	Nema preuzimanja za ovaj sistem
@@ -245,7 +241,6 @@ month	Dec	dec
 	Open ArtCraft Launcher to update.	Otvorite ArtCraft Launcher za ažuriranje.
 	{name} {v} is available	Dostupno je {name} {v}
 	{count} updates are available	Dostupno je ažuriranja: {count}
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Ove bilješke nisu preuzete (dostignuto je ograničenje zahtjeva GitHuba). Nalaze se na stranici izdanja.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Kad je uključeno, otvaranje pokretača iz trake menija dovodi njegov prozor na radnu površinu na kojoj se nalazite. Kad je isključeno, macOS vas prebacuje na radnu površinu na kojoj je bio prozor.
 	Couldn't change the login item: {e}	Nije moguće promijeniti stavku prijave: {e}
 column	App	Aplikacija

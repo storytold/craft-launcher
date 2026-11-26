@@ -77,13 +77,6 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
     Some(date.duration_since(jiff::civil::Date::constant(1970, 1, 1)).as_secs() / 86_400)
 }
 
-/// `(hour, minute)` of the Unix time `secs` on a UTC clock. jiff wraps the seconds onto the
-/// 24-hour clock, so every `i64` has an answer.
-pub fn clock_from_unix(secs: i64) -> (i8, i8) {
-    let time = jiff::civil::Time::midnight().wrapping_add(jiff::SignedDuration::from_secs(secs));
-    (time.hour(), time.minute())
-}
-
 /// (year, month, day) for a Unix time (UTC). jiff's civil calendar only spans years -9999..=9999,
 /// far narrower than the whole `i64` the old hand-rolled `Hinnant` code converted, so the instant is
 /// first moved into range by whole 400-year Gregorian cycles (the calendar repeats every 400 years
@@ -156,15 +149,6 @@ pub fn format_ago(secs: i64, now: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_clock_reads_any_unix_time() {
-        assert_eq!(clock_from_unix(0), (0, 0));
-        assert_eq!(clock_from_unix(13 * 3600 + 7 * 60 + 59), (13, 7));
-        assert_eq!(clock_from_unix(-60), (23, 59), "before 1970 the clock runs back from midnight");
-        assert_eq!(clock_from_unix(i64::MAX), (15, 30));
-        assert_eq!(clock_from_unix(i64::MIN), (8, 29));
-    }
 
     #[test]
     fn reads_github_timestamps() {

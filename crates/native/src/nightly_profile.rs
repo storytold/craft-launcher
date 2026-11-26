@@ -404,7 +404,7 @@ pub(crate) fn validate_paths(paths: &Paths) -> Result<(), String> {
     for folder in [paths.downloads(), paths.cache.join("staging"), paths.cache.join("screenshots")] {
         validate_tree(&paths.cache, &folder)?;
     }
-    for file in [paths.manifest(), paths.release_cache(), paths.feed_throttle()] {
+    for file in [paths.manifest(), paths.feed_throttle()] {
         validate_file(&file)?;
     }
     Ok(())

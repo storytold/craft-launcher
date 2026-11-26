@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use artcraft_launcher_core::details::{AppDetails, MAX_SCREENSHOT_BYTES, looks_like_jpeg};
-use artcraft_launcher_core::protocol::{Backend, Capabilities, Command, Event, LatestRelease, Origin, Source};
-use artcraft_launcher_core::release;
+use artcraft_launcher_core::feed::{FEED_URL, Feed, FeedAnswer};
+use artcraft_launcher_core::protocol::{Backend, Capabilities, Command, Event, LatestRelease};
 use artcraft_launcher_core::{Arch, Os, Platform, catalog, version};
 use artcraft_launcher_ui_egui::{Host, LauncherUi, Settings, i18n};
 use wasm_bindgen::JsCast;
@@ -176,31 +176,30 @@ impl WebBackend {
             crate::hosted_catalog::refresh_once().await;
             events.borrow_mut().push(Event::CatalogUpdated);
             ctx.request_repaint();
-            let mut limited = None;
+            // Every app's release comes from our release feed, in one request; nothing else is asked.
+            let now = (js_sys::Date::now() / 1000.0) as i64;
+            let feed = release_feed().await;
+            let answer = |app: &catalog::CraftApp, pre: bool| match &feed {
+                None => LatestRelease::Failed("ArtCraft's release service couldn't be reached. Try again later.".into()),
+                Some(feed) => match if pre { feed.answer_with_prereleases(app, now) } else { feed.answer(app, now) } {
+                    FeedAnswer::Fresh(found) => found.map_or(LatestRelease::None, LatestRelease::Found),
+                    FeedAnswer::Unknown => {
+                        LatestRelease::Failed("ArtCraft's release service has no current release information for this app.".into())
+                    }
+                },
+            };
             for app in artcraft_launcher_core::hosted_catalog::apps() {
-                let query = release::ReleaseQuery::for_app(app, app.repo);
-                let mut latest = latest(&query, pre).await;
-                // No release under `repo`: its former name may have one (storytold/craft-launcher#1593).
-                if let (Ok(LatestRelease::None), Some(former)) = (&latest, query.former()) {
-                    latest = self::latest(&former, pre).await;
-                }
-                if let Err(Some(reset)) = &latest {
-                    limited = Some(*reset);
-                }
-                let latest = latest.unwrap_or_else(|e| {
-                    LatestRelease::Failed(if e.is_some() { "GitHub's hourly limit was reached".into() } else { "couldn't reach GitHub".into() })
-                });
-                events.borrow_mut().push(Event::Latest { app: app.id.to_string(), latest, from: Origin::GitHub });
+                events.borrow_mut().push(Event::Latest { app: app.id.to_string(), latest: answer(app, pre) });
                 ctx.request_repaint();
             }
-            if let Ok(LatestRelease::Found(r)) = latest(&release::ReleaseQuery::for_app(&catalog::LAUNCHER, catalog::LAUNCHER_REPO), false).await
+            if let LatestRelease::Found(r) = answer(&catalog::LAUNCHER, false)
                 && let (Some(l), Some(c)) = (r.version.as_ref(), version::parse(env!("CARGO_PKG_VERSION")))
                 && version::is_newer(l, &c)
             {
                 events.borrow_mut().push(Event::LauncherUpdate(r));
             }
             let at = (js_sys::Date::now() / 1000.0) as i64;
-            events.borrow_mut().push(Event::CheckFinished { at, source: Source::GitHubApi, rate_limited_until: limited });
+            events.borrow_mut().push(Event::CheckFinished { at });
             *checking.borrow_mut() = false;
             ctx.request_repaint();
         });
@@ -250,77 +249,21 @@ async fn picture(url: &str) -> Result<Vec<u8>, PictureError> {
     Ok(bytes)
 }
 
-/// Releases per page of the browser's pre-release lookup, as on main.
-const PRERELEASE_PAGE: usize = 30;
-
-/// The body of one GitHub answer, or `None` when the repository has no such release (404).
-/// `Err(Some(reset))` when rate-limited, `Err(None)` on other failures.
-async fn release_answer(url: &str) -> Result<Option<String>, Option<i64>> {
-    let window = web_sys::window().ok_or(None)?;
+/// Our release feed, or `None` when it couldn't be read.
+async fn release_feed() -> Option<Feed> {
+    let window = web_sys::window()?;
     let init = web_sys::RequestInit::new();
     init.set_method("GET");
     init.set_mode(web_sys::RequestMode::Cors);
-    let request = web_sys::Request::new_with_str_and_init(url, &init).map_err(|_| None)?;
-    let _ = request.headers().set("Accept", "application/vnd.github+json");
-    let resp: web_sys::Response = JsFuture::from(window.fetch_with_request(&request)).await.map_err(|_| None)?.dyn_into().map_err(|_| None)?;
-    match resp.status() {
-        200 => {}
-        404 => return Ok(None),
-        403 | 429 => {
-            let reset = resp.headers().get("x-ratelimit-reset").ok().flatten().and_then(|r| r.parse().ok());
-            return Err(Some(reset.unwrap_or(0)));
-        }
-        _ => return Err(None),
+    let request = web_sys::Request::new_with_str_and_init(FEED_URL, &init).ok()?;
+    let _ = request.headers().set("Accept", "application/json");
+    let resp: web_sys::Response = JsFuture::from(window.fetch_with_request(&request)).await.ok()?.dyn_into().ok()?;
+    if resp.status() != 200 {
+        log::warn!("the release feed answered HTTP {}", resp.status());
+        return None;
     }
-    let text = JsFuture::from(resp.text().map_err(|_| None)?).await.map_err(|_| None)?.as_string().ok_or(None)?;
-    Ok(Some(text))
-}
-
-/// How many entries GitHub returned on one list page, drafts included.
-fn page_items(text: &str) -> Result<usize, Option<i64>> {
-    let value: serde_json::Value = serde_json::from_str(text).map_err(|_| None)?;
-    value.as_array().map(Vec::len).ok_or(None)
-}
-
-/// The latest release; `Err(Some(reset))` when rate-limited, `Err(None)` on other failures.
-async fn latest(query: &release::ReleaseQuery, prereleases: bool) -> Result<LatestRelease, Option<i64>> {
-    let repo = query.repo.as_str();
-    if !prereleases {
-        let Some(text) = release_answer(&format!("https://api.github.com/repos/{repo}/releases/latest")).await? else {
-            return Ok(LatestRelease::None);
-        };
-        let found = release::parse_github_release(&text, repo).map_err(|_| None)?;
-        if !release::ordinary_release_allowed(&found) {
-            return Err(None);
-        }
-        return Ok(LatestRelease::Found(found));
-    }
-    // A page full of Nightlies is not "no release": keep looking, to the same bound the desktop
-    // uses, so an ordinary release behind one cannot be reported as absence. An unfinished lookup
-    // is an error, never `None`.
-    for page in 1..=release::ORDINARY_PAGES {
-        let url = if page == 1 {
-            format!("https://api.github.com/repos/{repo}/releases?per_page={PRERELEASE_PAGE}")
-        } else {
-            format!("https://api.github.com/repos/{repo}/releases?per_page={PRERELEASE_PAGE}&page={page}")
-        };
-        let Some(text) = release_answer(&url).await? else {
-            // A first page that is missing means the repository has no releases; a later page that
-            // disappears leaves this lookup unfinished, which is an error, never "no release".
-            return crate::missing_page(page);
-        };
-        if let Some(found) = release::parse_github_release_list(&text, repo, true).map_err(|_| None)? {
-            // A Nightly is never an ordinary latest release, for any app.
-            if !release::ordinary_release_allowed(&found) {
-                return Err(None);
-            }
-            return Ok(LatestRelease::Found(found));
-        }
-        if page_items(&text)? < PRERELEASE_PAGE {
-            return Ok(LatestRelease::None);
-        }
-    }
-    Err(None)
+    let text = JsFuture::from(resp.text().ok()?).await.ok()?.as_string()?;
+    Feed::parse(&text)
 }
 
 /// The visitor's OS and CPU, as far as the browser says.

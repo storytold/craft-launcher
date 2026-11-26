@@ -148,8 +148,6 @@
 	Unhide App	Mostrar aplicación
 	Hidden Apps	Aplicaciones ocultas
 	Apps you hid	Aplicaciones que ocultaste
-	Checked {ago} · using {sources}	Comprobado {ago} · con {sources}
-	{a} and {b}	{a} y {b}
 	Join the Discord	Únete al Discord
 	Learn more	Más información
 	Minimize	Minimizar
@@ -216,8 +214,6 @@ month	Oct	oct.
 month	Nov	nov.
 month	Dec	dic.
 	Not checked yet	Aún sin comprobar
-	Next GitHub check at {time}	Próxima comprobación de GitHub a las {time}
-	Next check at {time}	Próxima comprobación a las {time}
 	Installing for {platform}	Instalación para {platform}
 	Downloads for {platform}	Descargas para {platform}
 	No downloads for this system	No hay descargas para este sistema
@@ -280,7 +276,6 @@ month	Dec	dic.
 	Open ArtCraft Launcher to update.	Abre ArtCraft Launcher para actualizar.
 	{name} {v} is available	{name} {v} está disponible
 	{count} updates are available	Hay {count} actualizaciones disponibles
-	These notes weren't fetched (GitHub's request limit was reached). They're on the release page.	Estas notas no se descargaron (se alcanzó el límite de solicitudes de GitHub). Están en la página de la versión.
 	When on, opening the launcher from the menu bar brings its window to the desktop you're on. When off, macOS switches you to the desktop the window was on.	Si está activado, abrir ArtCraft Launcher desde la barra de menús lleva su ventana al escritorio en el que estás. Si está desactivado, macOS te cambia al escritorio en el que estaba la ventana.
 	Couldn't change the login item: {e}	No se pudo cambiar el elemento de inicio de sesión: {e}
 column	App	Aplicación

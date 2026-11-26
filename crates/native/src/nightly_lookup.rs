@@ -1,5 +1,10 @@
 //! Separate bounded Nightly discovery and metadata-only scheduling. Ordinary versions(),
 //! Stable/beta/Pinned and disk release/descriptor caches do not participate.
+//!
+//! The candidates come from the app's release history in our release API
+//! ([`AppReleases`](artcraft_launcher_core::feed::AppReleases)); only a complete history proves
+//! coverage. Each candidate is verified from its own release downloads (`SHA256SUMS.txt`,
+//! `NIGHTLY.json`), within this module's request, byte and time limits.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -16,14 +21,11 @@ use crate::paths::Paths;
 pub(crate) const EVERY: i64 = 6 * 60 * 60;
 /// An installed app's Nightly is checked every hour: that is the copy its user is running.
 const INSTALLED_EVERY: i64 = 60 * 60;
-/// At most this many apps nobody has installed are looked up in one automatic sweep, so the whole
-/// roster stays inside its six-hour cadence without spending an hour's GitHub budget at once.
+/// At most this many apps nobody has installed are looked up in one automatic sweep, so one sweep
+/// never spends its whole time limit on apps nobody here runs.
 const DISCOVERY_PER_SWEEP: usize = 3;
 const MANUAL_COALESCE: i64 = 60;
-const PER_PAGE: usize = 100;
-const MAX_PAGES: usize = 5;
 const MAX_REQUESTS: usize = 32;
-const MAX_PAGE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 const MAX_TIME: Duration = Duration::from_secs(30);
 const MAX_RECORDS: usize = 64;
@@ -51,8 +53,8 @@ fn failure(why: impl Into<String>) -> NightlyHttpError {
     NightlyHttpError { over_budget: false, why: why.into(), retry_at: None }
 }
 
-/// The launcher's own limit stopped this app before it made a request: the GitHub budget, or a
-/// deadline earlier apps in the sweep had already used up. It is not a failure of this app, so the
+/// The launcher's own limit stopped this app before it made a request: a deadline earlier apps in
+/// the sweep had already used up. It is not a failure of this app, so the
 /// sweep defers it and the apps behind it instead of costing them their queue position.
 fn withheld(why: &str) -> NightlyHttpError {
     NightlyHttpError { over_budget: true, why: why.into(), retry_at: None }
@@ -101,7 +103,12 @@ impl Budget<'_> {
             return Err(failure("Developer build discovery was turned off."));
         }
         if (self.elapsed)() >= MAX_TIME {
-            return Err(failure("The Nightly discovery elapsed-time budget was exhausted before final coverage."));
+            // Spent before this lookup asked anything: by the apps ahead of it, not by this one.
+            return Err(if self.requests == 0 {
+                withheld("The Nightly discovery elapsed-time budget was exhausted before this lookup started.")
+            } else {
+                failure("The Nightly discovery elapsed-time budget was exhausted before final coverage.")
+            });
         }
         Ok(())
     }
@@ -134,72 +141,59 @@ impl Budget<'_> {
     }
 }
 
-/// Complete bounded release-page coverage, then verify candidates in canonical preference
-/// order. Invalid potentially winning evidence is indeterminate; a compatible winner proves
-/// dominated descriptor bodies unnecessary. A full last page never proves complete coverage.
+/// Complete release-history coverage, then verify candidates in canonical preference order.
+/// Invalid potentially winning evidence is indeterminate; a compatible winner proves dominated
+/// descriptor bodies unnecessary. An incomplete history never proves coverage, and one that
+/// couldn't be read is indeterminate.
 pub(crate) fn lookup<'a>(
     app: &CraftApp,
     platform: Platform,
     now: i64,
+    history: Result<artcraft_launcher_core::feed::AppReleases, String>,
     fetch: &'a mut Fetch<'a>,
     elapsed: &'a dyn Fn() -> Duration,
     enabled: &'a dyn Fn() -> bool,
 ) -> Outcome {
     let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
-    match scan(app, platform, &mut budget) {
+    let history = match history {
+        Ok(history) => history,
+        Err(why) => return Outcome::Indeterminate(failure(why)),
+    };
+    match scan(app, platform, history, &mut budget) {
         Ok(Some(verified)) => Outcome::Verified(Box::new(verified)),
         Ok(None) => Outcome::NoCompatibleBuild,
         Err(error) => Outcome::Indeterminate(error),
     }
 }
 
-fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
+fn scan(
+    app: &CraftApp,
+    platform: Platform,
+    history: artcraft_launcher_core::feed::AppReleases,
+    budget: &mut Budget<'_>,
+) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
     crate::nightly_profile::admit_new(app, platform).map_err(failure)?;
+    if !history.complete {
+        return Err(failure("The release history ends before complete supported-target coverage, even if a candidate was seen."));
+    }
     let mut candidates = Vec::new();
     let mut seen = BTreeSet::new();
-    let mut covered = false;
-    for page in 1..=MAX_PAGES {
-        let mut url = format!("https://api.github.com/repos/{}/releases?per_page={PER_PAGE}", app.repo);
-        if page > 1 {
-            url.push_str(&format!("&page={page}"));
+    for release in history.releases {
+        if !release.prerelease {
+            continue; // Ordinary releases need not use the Nightly tag grammar.
         }
-        let body = budget.get(&url, MAX_PAGE_BYTES)?;
-        let json: serde_json::Value = serde_json::from_slice(&body).map_err(|_| failure("Unreadable Nightly release page."))?;
-        let entries =
-            json.as_array().filter(|list| list.len() <= PER_PAGE).ok_or_else(|| failure("The Nightly page was not a bounded release array."))?;
-        for item in entries {
-            match item["draft"].as_bool() {
-                Some(true) => continue,
-                Some(false) => {}
-                None => return Err(failure("The Nightly page has indeterminate publication state.")),
-            }
-            if item["prerelease"].as_bool() == Some(false) {
-                continue; // Ordinary releases need not use the Nightly tag grammar.
-            }
-            if item["prerelease"].as_bool().is_none() {
-                return Err(failure("The Nightly page has indeterminate channel state."));
-            }
-            let release = artcraft_launcher_core::release::parse_github_release(&item.to_string(), app.repo).map_err(failure)?;
-            let declared_nightly = release.prerelease && release.tag.split(['.', '-']).any(|part| part.eq_ignore_ascii_case("nightly"));
-            if !declared_nightly && !artcraft_launcher_core::release::is_nightly(&release) {
-                continue;
-            }
-            artcraft_launcher_core::release::canonical_nightly_version(&release)
-                .ok_or_else(|| failure("A Nightly candidate has a noncanonical or mismatched SemVer identity."))?;
-            if !seen.insert(release.tag.clone()) {
-                return Err(failure("The Nightly pages repeated a release; coverage is indeterminate."));
-            }
-            candidates.push(release);
+        let declared_nightly = release.tag.split(['.', '-']).any(|part| part.eq_ignore_ascii_case("nightly"));
+        if !declared_nightly && !artcraft_launcher_core::release::is_nightly(&release) {
+            continue;
         }
-        if entries.len() < PER_PAGE {
-            budget.coverage_complete()?;
-            covered = true;
-            break;
+        artcraft_launcher_core::release::canonical_nightly_version(&release)
+            .ok_or_else(|| failure("A Nightly candidate has a noncanonical or mismatched SemVer identity."))?;
+        if !seen.insert(release.tag.clone()) {
+            return Err(failure("The release history repeated a release; coverage is indeterminate."));
         }
+        candidates.push(release);
     }
-    if !covered {
-        return Err(failure("The Nightly page budget ended before complete supported-target coverage, even if a candidate was seen."));
-    }
+    budget.coverage_complete()?;
     // Candidate identity errors above stay indeterminate; unlike ordinary selection, missing
     // checksum/descriptor evidence must reach verification instead of silently disappearing.
     for release in
@@ -267,7 +261,7 @@ pub(crate) struct State {
     load_error: Option<String>,
     pending_save: bool,
     /// For each key this sweep chose, its `(attempted_at, complete)` before `begin` stamped it. A
-    /// key the GitHub budget refused goes back to those values, so it keeps its place in the queue
+    /// key the sweep's time limit stopped before it was asked goes back to those values, so it keeps its place in the queue
     /// instead of waiting out a full cadence for a request that was never made.
     deferred_from: BTreeMap<String, (Option<i64>, bool)>,
 }
