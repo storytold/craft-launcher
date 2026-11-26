@@ -121,7 +121,7 @@ const LIST_PAGE: usize = 30;
 const VERSIONS_PAGE: usize = 100;
 /// The most pages read past a page full of a separately channelled app's nightlies. Those apps read
 /// [`VERSIONS_PAGE`] releases a page in both the lookup and the version list, so both reach as far.
-const ORDINARY_PAGES: usize = 5;
+const ORDINARY_PAGES: usize = release::ORDINARY_PAGES;
 
 /// The number of entries GitHub returned on one list page, drafts included.
 fn page_len(text: &str) -> Result<usize, String> {

@@ -336,6 +336,11 @@ pub fn ordinary_track_allowed(app: &crate::CraftApp, track: &crate::protocol::Ve
     !app.has_separate_nightly_channel() || !is_nightly_track(track)
 }
 
+/// The most release pages an ordinary lookup reads past one that holds no ordinary release, so a
+/// page full of Nightlies cannot hide the versions behind it. Shared by every client that makes the
+/// same promise: the desktop's API and version-list lookups, and the browser's pre-release lookup.
+pub const ORDINARY_PAGES: usize = 5;
+
 /// Ordinary release and cache paths never offer a Nightly, for any app: a pre-release means a
 /// beta or release candidate. Nightlies have their own channel, or the explicit Nightly track.
 pub fn ordinary_release_allowed(release: &Release) -> bool {
