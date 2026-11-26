@@ -1024,9 +1024,7 @@ mod tests {
                     asked += 1;
                     Ok(Fetched::Body {
                         text: if url.ends_with("&page=2") {
-                            // Nothing ordinary behind the nightlies either: the answer is "no
-                            // release", reached one page further instead of from page 1 alone.
-                            "[]".to_string()
+                            r#"[{"tag_name":"v0.9.0","prerelease":false}]"#.to_string()
                         } else {
                             crowded_page(repo, LIST_PAGE, 0)
                         },
@@ -1047,29 +1045,28 @@ mod tests {
     }
 
     #[test]
-    fn third_party_lookups_keep_mains_single_page_and_offer_no_nightly() {
+    fn third_party_lookups_offer_no_nightly_and_stop_one_page_past_them() {
         let repo = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap().repo;
         let (_temp, source) = fresh_source();
         let mut asked = 0;
-        let answer = source
-            .ask_api_with(&q(repo), true, |_, _| {
-                asked += 1;
-                Ok(Fetched::Body { text: crowded_page(repo, LIST_PAGE, 0), etag: None })
+        // Main offered a third-party app's Nightly here; no app's ordinary track does now, so the
+        // lookup reads one page further and stops there when nothing ordinary is behind them.
+        let page = |url: &str, asked: &mut usize, repo: &str, per_page: usize| {
+            *asked += 1;
+            Ok(Fetched::Body {
+                text: if url.ends_with("&page=2") { "[]".to_string() } else { crowded_page(repo, per_page, 0) },
+                etag: None,
             })
+        };
+        let answer = source
+            .ask_api_with(&q(repo), true, |url, _| page(url, &mut asked, repo, LIST_PAGE))
             .unwrap()
             .unwrap();
-        // Main offered a third-party app's Nightly here; no app's ordinary track does now, and the
-        // lookup still keeps its one-page shape unless the page is full of nightlies.
         assert!(matches!(answer.latest, LatestRelease::None), "a Nightly is never an ordinary or pre-release candidate");
         assert_eq!(asked, 2, "one page, then one look past a page of nightlies");
-        let list = source
-            .versions_with(&q(repo), |_, _| {
-                asked += 1;
-                Ok(Fetched::Body { text: crowded_page(repo, VERSIONS_PAGE, 0), etag: None })
-            })
-            .unwrap();
+        let list = source.versions_with(&q(repo), |url, _| page(url, &mut asked, repo, VERSIONS_PAGE)).unwrap();
         assert_eq!(list.len(), VERSIONS_PAGE);
-        assert_eq!(asked, 2, "one request each, as on main");
+        assert_eq!(asked, 4, "one page each, plus the one look past the nightlies");
     }
     #[test]
     fn a_multi_page_answer_is_revalidated_when_only_a_later_page_changes() {

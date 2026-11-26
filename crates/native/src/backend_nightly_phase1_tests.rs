@@ -104,9 +104,16 @@ fn actual_backend_fresh_off_schedules_nothing_and_later_off_cancels_queued_sweep
     task();
     assert!(queued.lock().unwrap().is_empty());
     assert!(shared.nightly_verified.lock().unwrap().is_empty());
-    let record = shared.nightly_state.lock().unwrap().record(&nightly_lookup::key(app(), platform));
-    assert!(record.attempted_at.is_some());
-    assert!(record.verified_at.is_none());
+    // An automatic sweep looks at its three-app discovery allowance now, not at the whole roster,
+    // so check the apps it chose rather than assuming a particular one is among them.
+    let state = shared.nightly_state.lock().unwrap();
+    let attempted: Vec<_> = artcraft_launcher_core::hosted_catalog::apps()
+        .iter()
+        .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
+        .filter(|app| state.record(&nightly_lookup::key(app, platform)).attempted_at.is_some())
+        .collect();
+    assert_eq!(attempted.len(), 3, "the sweep marks the apps it chose as attempted");
+    assert!(attempted.iter().all(|app| state.record(&nightly_lookup::key(app, platform)).verified_at.is_none()));
     assert!(!shared.checking.load(Ordering::SeqCst));
 }
 
