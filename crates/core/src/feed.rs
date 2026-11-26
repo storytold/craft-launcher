@@ -50,6 +50,15 @@ pub struct FeedApp {
     pub release: Option<FeedRelease>,
     /// When storyteller-web last fetched this app (Unix seconds).
     pub fetched_at: Option<i64>,
+    /// Whether the entry carries the pre-release channel at all (`latest_prerelease` and the
+    /// `releases` version list). A server from before those existed sends neither, and its silence
+    /// says nothing about betas.
+    pub channels: bool,
+    /// The newest beta or release candidate. Meaningless unless `channels` is set.
+    pub prerelease: Option<FeedRelease>,
+    /// The tags of the recent ordinary releases (stable ones and betas), newest first, from the
+    /// feed's version list. Meaningless unless `channels` is set.
+    pub versions: Vec<String>,
 }
 
 /// A release as the feed describes it, before it's checked against the app's repo.
@@ -131,24 +140,7 @@ impl Feed {
 
     /// What the feed says about `app` at `now`.
     pub fn answer(&self, app: &CraftApp, now: i64) -> FeedAnswer {
-        let Some(entry) = self.apps.get(app.id) else { return FeedAnswer::AskGitHub };
-        let Some(fetched_at) = entry.fetched_at else { return FeedAnswer::AskGitHub };
-        // A timestamp from the future (clock skew) counts as just now; one too old doesn't count.
-        // A local mirror is as fresh as its last sync.
-        if self.mirror.is_none() && now.saturating_sub(fetched_at) > MAX_AGE {
-            return FeedAnswer::AskGitHub;
-        }
-        // The feed's repo must be the app's, one the feed says it moved to, or the app's former repo
-        // (downloads are then checked against that one).
-        let mut repo = self.repo_for(app);
-        if let Some(feed_repo) = &entry.repo
-            && !feed_repo.eq_ignore_ascii_case(&repo)
-        {
-            match app.former_repo.filter(|former| feed_repo.eq_ignore_ascii_case(former)) {
-                Some(former) => repo = former.to_string(),
-                None => return FeedAnswer::AskGitHub,
-            }
-        }
+        let Some((entry, repo)) = self.checked(app, now) else { return FeedAnswer::AskGitHub };
         match &entry.release {
             // The app's other name may have the release: GitHub is asked about both.
             None if app.former_repo.is_some() => FeedAnswer::AskGitHub,
@@ -158,6 +150,64 @@ impl Feed {
                 None => FeedAnswer::AskGitHub,
             },
         }
+    }
+
+    /// What the feed says about `app` at `now` with pre-releases on: the higher of its stable
+    /// release and its newest beta or RC, the release GitHub's list would name. GitHub is asked
+    /// whenever the entry can't settle that: no stable answer (see [`Feed::answer`]), an entry
+    /// without the pre-release channel (an older server), a beta that doesn't hold up, or a
+    /// version list naming a higher ordinary version than the two the feed sent in full.
+    pub fn answer_with_prereleases(&self, app: &CraftApp, now: i64) -> FeedAnswer {
+        let FeedAnswer::Fresh(stable) = self.answer(app, now) else { return FeedAnswer::AskGitHub };
+        let Some((entry, repo)) = self.checked(app, now).filter(|(entry, _)| entry.channels) else {
+            return FeedAnswer::AskGitHub;
+        };
+        let beta = match &entry.prerelease {
+            None => None,
+            Some(r) => match r.to_release(&repo, self.mirror.as_deref()).filter(release::ordinary_release_allowed) {
+                Some(beta) => Some(beta),
+                None => return FeedAnswer::AskGitHub,
+            },
+        };
+        let best = [stable, beta].into_iter().flatten().reduce(|a, b| if newer_release(&b, &a) { b } else { a });
+        let best_version = best.as_ref().and_then(|r| r.version.as_ref());
+        let listed_higher = entry
+            .versions
+            .iter()
+            .filter_map(|tag| version::parse(tag).filter(|v| release::valid_tag(tag) && !release::nightly_version(v)))
+            .any(|listed| best_version.is_none_or(|best| version::is_newer(&listed, best)));
+        if listed_higher { FeedAnswer::AskGitHub } else { FeedAnswer::Fresh(best) }
+    }
+
+    /// `app`'s entry and the repo its downloads must belong to, when the entry is fresh and its
+    /// repo is one the app may use.
+    fn checked(&self, app: &CraftApp, now: i64) -> Option<(&FeedApp, String)> {
+        let entry = self.apps.get(app.id)?;
+        let fetched_at = entry.fetched_at?;
+        // A timestamp from the future (clock skew) counts as just now; one too old doesn't count.
+        // A local mirror is as fresh as its last sync.
+        if self.mirror.is_none() && now.saturating_sub(fetched_at) > MAX_AGE {
+            return None;
+        }
+        // The feed's repo must be the app's, one the feed says it moved to, or the app's former repo
+        // (downloads are then checked against that one).
+        let mut repo = self.repo_for(app);
+        if let Some(feed_repo) = &entry.repo
+            && !feed_repo.eq_ignore_ascii_case(&repo)
+        {
+            repo = app.former_repo.filter(|former| feed_repo.eq_ignore_ascii_case(former))?.to_string();
+        }
+        Some((entry, repo))
+    }
+}
+
+/// Whether `a` is a higher version than `b`, as GitHub's list is ranked; a release without a
+/// version never is.
+fn newer_release(a: &Release, b: &Release) -> bool {
+    match (a.version.as_ref(), b.version.as_ref()) {
+        (Some(a), Some(b)) => version::is_newer(a, b),
+        (Some(_), None) => true,
+        (None, _) => false,
     }
 }
 
@@ -253,14 +303,35 @@ struct RawApp {
     latest_release: Option<RawRelease>,
     #[serde(default, deserialize_with = "lenient")]
     app_last_fetched: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
+    latest_prerelease: Option<RawRelease>,
+    /// Kept raw: whether it is a list at all says whether the server knows the channels.
+    #[serde(default)]
+    releases: Option<serde_json::Value>,
 }
+
+/// The most entries read from an app's version list (storyteller-web sends at most 30).
+const MAX_VERSIONS: usize = 100;
 
 impl RawApp {
     fn into_app(self) -> FeedApp {
+        let versions = match &self.releases {
+            Some(serde_json::Value::Array(items)) => Some(
+                items
+                    .iter()
+                    .filter_map(|item| item.get("tag")?.as_str().filter(|t| !t.is_empty() && t.len() <= 64).map(str::to_string))
+                    .take(MAX_VERSIONS)
+                    .collect(),
+            ),
+            _ => None,
+        };
         FeedApp {
             repo: self.repo.filter(|r| r.split('/').count() == 2 && r.split('/').all(|part| !part.is_empty() && part != "." && part != "..")),
             release: self.latest_release.and_then(RawRelease::into_release),
             fetched_at: self.app_last_fetched.as_deref().and_then(parse_rfc3339),
+            channels: versions.is_some(),
+            prerelease: self.latest_prerelease.and_then(RawRelease::into_release),
+            versions: versions.unwrap_or_default(),
         }
     }
 }
@@ -416,6 +487,90 @@ mod tests {
 
     fn app(id: &str) -> &'static CraftApp {
         CraftApp::by_id(id).unwrap()
+    }
+
+    /// A feed listing PhotoCraft's stable `v0.6.0` and, when given, its channels: the beta
+    /// `beta` (or none) and the version list `versions`.
+    fn with_channels(beta: Option<&str>, versions: Option<&[&str]>) -> Feed {
+        let release = |tag: &str, pre: bool| {
+            format!(
+                r#"{{"tag": "{tag}", "prerelease": {pre}, "assets": [{{"name": "a.dmg", "size_bytes": 1, "sha256": "{HASH}",
+                    "download_url": "https://github.com/storytold/photocraft/releases/download/{tag}/a.dmg"}}]}}"#
+            )
+        };
+        let beta = beta.map_or("null".to_string(), |tag| release(tag, true));
+        let versions = versions.map_or(String::new(), |tags| {
+            let list: Vec<String> = tags.iter().map(|t| format!(r#"{{"tag": "{t}", "prerelease": {}}}"#, t.contains('-'))).collect();
+            format!(r#", "releases": [{}]"#, list.join(","))
+        });
+        Feed::parse(&format!(
+            r#"{{"release_info": {{"apps": {{"photocraft": {{"repo": "storytold/photocraft", "app_last_fetched": "2026-10-09T13:00:00Z",
+                "latest_release": {}, "latest_prerelease": {beta}{versions}}}}}}}}}"#,
+            release("v0.6.0", false)
+        ))
+        .unwrap()
+    }
+
+    fn tag(answer: FeedAnswer) -> Option<String> {
+        match answer {
+            FeedAnswer::Fresh(found) => Some(found.map_or("none".into(), |r| r.tag)),
+            FeedAnswer::AskGitHub => None,
+        }
+    }
+
+    #[test]
+    fn with_pre_releases_the_feed_names_the_higher_of_its_stable_release_and_its_beta() {
+        let photo = app("photocraft");
+        let newer_beta = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.7.0-rc.1", "v0.6.0"]));
+        assert_eq!(tag(newer_beta.answer_with_prereleases(photo, NOW)).as_deref(), Some("v0.7.0-rc.1"));
+        assert_eq!(tag(newer_beta.answer(photo, NOW)).as_deref(), Some("v0.6.0"), "pre-releases off: stable only");
+        // A beta published after a stable release with higher numbers doesn't replace it.
+        let older_beta = with_channels(Some("v0.5.1-rc.1"), Some(&["v0.5.1-rc.1", "v0.6.0"]));
+        assert_eq!(tag(older_beta.answer_with_prereleases(photo, NOW)).as_deref(), Some("v0.6.0"));
+        let no_beta = with_channels(None, Some(&["v0.6.0"]));
+        assert_eq!(tag(no_beta.answer_with_prereleases(photo, NOW)).as_deref(), Some("v0.6.0"));
+    }
+
+    #[test]
+    fn with_pre_releases_github_is_asked_whenever_the_feed_cant_settle_it() {
+        let photo = app("photocraft");
+        // A server from before the channels: its silence says nothing about betas.
+        let old_server = with_channels(None, None);
+        assert_eq!(old_server.answer_with_prereleases(photo, NOW), FeedAnswer::AskGitHub);
+        assert_eq!(tag(old_server.answer(photo, NOW)).as_deref(), Some("v0.6.0"));
+        // The version list names a higher version than the two sent in full.
+        let behind = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.7.0", "v0.7.0-rc.1", "v0.6.0"]));
+        assert_eq!(behind.answer_with_prereleases(photo, NOW), FeedAnswer::AskGitHub);
+        // A "beta" that is really a nightly, or whose tag isn't a version.
+        for beta in ["v0.7.0-nightly.20261126.1.1", "latest"] {
+            let feed = with_channels(Some(beta), Some(&["v0.6.0"]));
+            assert_eq!(feed.answer_with_prereleases(photo, NOW), FeedAnswer::AskGitHub, "{beta}");
+        }
+        // Stale entries ask GitHub with pre-releases on too.
+        let fresh = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.7.0-rc.1"]));
+        assert_eq!(fresh.answer_with_prereleases(photo, NOW + 2 * MAX_AGE), FeedAnswer::AskGitHub);
+    }
+
+    #[test]
+    fn a_nightly_in_the_version_list_does_not_send_the_launcher_to_github() {
+        let feed = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.8.0-nightly.1", "v0.7.0-rc.1", "v0.6.0"]));
+        assert_eq!(tag(feed.answer_with_prereleases(app("photocraft"), NOW)).as_deref(), Some("v0.7.0-rc.1"));
+    }
+
+    #[test]
+    fn reads_the_channels_leniently() {
+        let feed = Feed::parse(
+            r#"{"release_info": {"apps": {
+                "photocraft": {"latest_prerelease": 5, "releases": [{"tag": "v1.0.0"}, {"tag": 7}, "x", {"tag": ""}]},
+                "soundcraft": {"releases": "nope"},
+                "filmcraft": {"releases": null}
+            }}}"#,
+        )
+        .unwrap();
+        let photo = &feed.apps["photocraft"];
+        assert!(photo.channels && photo.prerelease.is_none());
+        assert_eq!(photo.versions, ["v1.0.0"]);
+        assert!(!feed.apps["soundcraft"].channels && !feed.apps["filmcraft"].channels);
     }
 
     #[test]

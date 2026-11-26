@@ -636,10 +636,10 @@ impl NativeBackend {
         }
         let options = self.options();
         let pre = options.prereleases;
-        let feed = if pre { None } else { load_feed(&self.paths) };
+        let feed = load_feed(&self.paths);
         let now = crate::now();
         for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os))) {
-            let answer = match feed.as_ref().map(|f| f.answer(app, now)) {
+            let answer = match feed.as_ref().map(|f| if pre { f.answer_with_prereleases(app, now) } else { f.answer(app, now) }) {
                 Some(FeedAnswer::Fresh(Some(r))) => Some((LatestRelease::Found(r), Origin::ArtCraftApi)),
                 Some(FeedAnswer::Fresh(None)) => Some((LatestRelease::None, Origin::ArtCraftApi)),
                 _ => self.source.as_ref().and_then(|s| s.cached(&release_query(feed.as_ref(), app), pre)).map(|l| (l, Origin::GitHub)),
@@ -902,7 +902,6 @@ impl NativeBackend {
         let paths = self.paths.clone();
         let platform = self.platform;
         let options = self.options();
-        let pre = options.prereleases;
         let mirror = if self.shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable { local_mirror() } else { None };
         std::thread::spawn(move || {
             let busy = busy;
@@ -914,7 +913,7 @@ impl NativeBackend {
             let (feed, fallback) = if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
                 (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY })
             } else {
-                check_plan(&http, mirror.as_ref(), pre, &paths, &shared)
+                check_plan(&http, mirror.as_ref(), &paths, &shared)
             };
             // Notices on their own thread: a slow notices file must never hold up release checks.
             // Stable only: the Pre-Release context has its own storage and never loads notices.
@@ -2169,21 +2168,16 @@ fn planned_download(
 
 /// What one check asks: which feed to poll (a local mirror trumps everything), and how much to
 /// lean on GitHub.
-fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, shared: &Arc<Shared>) -> (Option<Feed>, Fallback) {
+fn check_plan(http: &Http, mirror: Option<&String>, paths: &Paths, shared: &Arc<Shared>) -> (Option<Feed>, Fallback) {
     if let Some(base) = mirror {
         // A local mirror answers for everything: GitHub is never asked.
         (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
     } else {
-        remote_plan(pre, feed_and_fallback(http, paths, shared))
+        // With pre-releases on the feed is trusted as far as it goes: an entry that lists the
+        // app's betas answers, and one that can't (an older server) leaves the app to GitHub at
+        // the feed's own pace (`Feed::answer_with_prereleases`, #713).
+        feed_and_fallback(http, paths, shared)
     }
-}
-
-/// [`check_plan`] without a local mirror, given what the feed said. The feed serves stable
-/// releases only, so with pre-releases on it can't settle an answer that may be a beta or RC. It
-/// still stands in between GitHub's asks, which keep to the feed's own pace (hourly per app once
-/// everything has loaded), not every check (#713).
-fn remote_plan(pre: bool, (feed, fallback): (Option<Feed>, Fallback)) -> (Option<Feed>, Fallback) {
-    if pre { (feed, Fallback { trust_feed: false, ..fallback }) } else { (feed, fallback) }
 }
 
 /// Answers the apps from a shared queue over a few workers, and returns which sources answered.
@@ -2373,7 +2367,7 @@ fn latest_for(
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
     let repo = feed_repo(feed, app);
     if fallback.trust_feed {
-        match feed.map(|f| f.answer(app, now)) {
+        match feed.map(|f| if pre { f.answer_with_prereleases(app, now) } else { f.answer(app, now) }) {
             // The feed can lag GitHub by some minutes after a release. A check the user pressed
             // looks past it when GitHub's quota-free redirect names something newer (#91); one
             // reusing the last forced check's answers then takes GitHub's saved answer.
@@ -3740,13 +3734,35 @@ mod tests {
         fn save(&self) {}
     }
 
-    /// The plan for a check with pre-releases on keeps GitHub to the feed's hourly pace once
-    /// everything has loaded: checks every 12 minutes ask about an app once in the hour (#713).
+    /// With pre-releases on, a feed that lists the app's betas answers on its own: GitHub isn't
+    /// asked at all, and its newer beta is the answer (#713).
     #[test]
-    fn with_pre_releases_the_check_plan_keeps_github_to_the_hourly_pace() {
+    fn with_pre_releases_a_feed_listing_betas_answers_without_github() {
         let photo = CraftApp::by_id("photocraft").unwrap();
-        let (feed, plan) = remote_plan(true, (Some(feed()), LOADED));
-        assert!(!plan.trust_feed, "the feed can't settle a beta or RC");
+        let feed = Feed::parse(
+            r#"{"release_info": {"apps": {
+            "photocraft": {"repo": "storytold/photocraft", "latest_release": {"tag": "v0.6.0"}, "app_last_fetched": "2026-10-09T13:00:00Z",
+                           "latest_prerelease": {"tag": "v0.7.0-rc.1", "prerelease": true},
+                           "releases": [{"tag": "v0.7.0-rc.1", "prerelease": true}, {"tag": "v0.6.0"}]}
+        }}}"#,
+        )
+        .unwrap();
+        let (github, shared) = (CountedAsks(AtomicUsize::new(0)), shared());
+        for minutes in [0, 12, 24, 36, 48, 60, 72] {
+            let (latest, from, used) = latest_for(photo, Some(&feed), LOADED, &github, &shared, true, false, NOW + minutes * 60);
+            assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.7.0-rc.1"), "{latest:?}");
+            assert_eq!((from, used), (Origin::ArtCraftApi, Some(Source::Feed)));
+        }
+        assert_eq!(github.0.load(Ordering::SeqCst), 0);
+    }
+
+    /// With pre-releases on, a feed that doesn't list the app's betas (a server from before it
+    /// did) leaves the app to GitHub, kept to the feed's hourly pace once everything has loaded:
+    /// checks every 12 minutes ask about an app once in the hour (#713).
+    #[test]
+    fn with_pre_releases_a_feed_without_betas_keeps_github_to_the_hourly_pace() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, plan) = (Some(feed()), LOADED);
         let (github, shared) = (CountedAsks(AtomicUsize::new(0)), shared());
         for minutes in [0, 12, 24, 36, 48] {
             latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + minutes * 60);
@@ -3983,7 +3999,7 @@ mod tests {
             fn save(&self) {}
         }
         let photo = CraftApp::by_id("photocraft").unwrap();
-        let plan = remote_plan(true, (None, LOADED)).1;
+        let plan = LOADED;
         let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Refused, &shared(), true, false, NOW);
         assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.6.0"), "{latest:?}");
         assert_eq!(used, Some(Source::Feed));
@@ -4026,7 +4042,7 @@ mod tests {
         reusing.reusing_forced.store(true, Ordering::SeqCst);
         assert_eq!(tag(latest_for(photo, Some(&feed()), LOADED, &Saved("0.5.0"), &reusing, false, false, NOW).0), "v0.6.0");
         // A refused turn answered from a saved RC older than the feed's release.
-        let plan = remote_plan(true, (None, LOADED)).1;
+        let plan = LOADED;
         let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Saved("0.6.0-rc.1"), &shared(), true, false, NOW);
         assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
         // A saved RC newer than the feed's release stands.

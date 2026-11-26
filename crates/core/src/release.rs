@@ -311,7 +311,7 @@ impl ReleaseQuery {
 }
 
 /// A version whose prerelease names a Nightly build, whatever the release's prerelease flag says.
-fn nightly_version(version: &Version) -> bool {
+pub(crate) fn nightly_version(version: &Version) -> bool {
     version.pre.as_str().split('.').any(|part| part.eq_ignore_ascii_case("nightly"))
 }
 
