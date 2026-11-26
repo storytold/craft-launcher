@@ -107,11 +107,17 @@ fn stable_installation(paths: &Paths, app: &str, protected: &mut Vec<PathBuf>) -
     let record = stable_data.join("installed.json");
     // A link, shared hardlink or non-file record is refused rather than followed or adopted.
     crate::nightly_profile::validate_file(&record)?;
-    let bytes = match std::fs::read(&record) {
-        Ok(bytes) => bytes,
+    // Read at most one byte past the limit, as Unix does: a huge record is refused before its
+    // contents are allocated, never after.
+    let mut bytes = Vec::new();
+    match std::fs::File::open(&record) {
+        Ok(file) => {
+            use std::io::Read;
+            file.take(1024 * 1024 + 1).read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(error.to_string()),
-    };
+    }
     if bytes.len() > 1024 * 1024 {
         return Err("The stable ownership record is too large to check safely.".into());
     }
