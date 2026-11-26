@@ -3241,7 +3241,24 @@ mod tests {
         let picked = Chosen { tag: "v0.4.0".into(), fallback: None };
         let (options, stop) = (BackendOptions::default(), Stop::default());
         let paths = Paths::under(dir.path());
-        let result = run_install_with_choice(app, &shared, &paths, None, None, &options, Some(&installed), None, &stop, None, None, None, None, Some(&picked), None, &mut None);
+        let result = run_install_with_choice(
+            app,
+            &shared,
+            &paths,
+            None,
+            None,
+            &options,
+            Some(&installed),
+            None,
+            &stop,
+            None,
+            None,
+            None,
+            None,
+            Some(&picked),
+            None,
+            &mut None,
+        );
         assert!(result.as_ref().is_err_and(|e| e.as_str() != artcraft_launcher_core::protocol::CANCELLED), "{result:?}");
         assert_eq!(*seen.lock().unwrap(), 0, "nothing started: no progress was reported");
     }

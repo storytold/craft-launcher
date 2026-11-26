@@ -144,7 +144,12 @@ pub(crate) enum Dialog {
         chosen: String,
         fallback: String,
     },
-    MsiUpdate { app: String, plan: artcraft_launcher_core::protocol::MsiUpdatePlan, migrate: bool, accepted: bool },
+    MsiUpdate {
+        app: String,
+        plan: artcraft_launcher_core::protocol::MsiUpdatePlan,
+        migrate: bool,
+        accepted: bool,
+    },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
