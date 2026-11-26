@@ -79,7 +79,9 @@ fn a_sweep_takes_installed_first_then_never_attempted_then_the_longest_waiting()
     let installed: BTreeSet<String> = ["installed".to_string()].into();
     let keys: Vec<String> = ["stale", "fresh", "installed", "never"].iter().map(|key| key.to_string()).collect();
     let mut state = State::default();
-    for (key, ago) in [("stale", 3 * 60 * 60), ("fresh", 2 * 60 * 60), ("installed", 2 * 60 * 60)] {
+    // Past the six-hour discovery cadence, or they would not be due at all; the installed copy is
+    // due on its own hourly clock.
+    for (key, ago) in [("stale", 8 * 60 * 60), ("fresh", 7 * 60 * 60), ("installed", 2 * 60 * 60)] {
         state.records.insert(key.to_string(), Record { attempted_at: Some(NOW - ago), ..Record::default() });
     }
     assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["installed", "never", "stale", "fresh"]);

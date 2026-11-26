@@ -298,9 +298,9 @@ impl NightlyState {
             }
         }
         let Some(backend) = &mut self.backend else { return };
-        // Nightly asks on its own hourly clock, independent of Stable's user preference; the backend's
-        // Poll persisted metadata before requesting work. Native remains the final gate,
-        // including server backoff and manual request coalescing.
+        // Nightly asks on its own hourly clock, independent of Stable's preference; the backend
+        // decides which apps are due. Poll persisted metadata before requesting work; Native remains
+        // the final gate, including the budget, server backoff and manual request coalescing.
         let now = backend.now();
         // Like Native, treat an attempt in the future after clock rollback as stale.
         let due = self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60 * 60);

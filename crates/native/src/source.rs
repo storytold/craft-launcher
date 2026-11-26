@@ -259,7 +259,7 @@ impl GitHubSource {
                     Some(release::parse_github_release(&text, repo)?)
                 };
                 if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(release)) {
-                    return Err("This Nightly belongs to the separate developer channel, not the ordinary release cache.".into());
+                    return Err("A Nightly is not an ordinary release, so it was not cached here.".into());
                 }
                 let etag = if multi_page { None } else { etag };
                 self.store(repo, Entry { etag, release: release.clone(), prereleases, fetched_at: crate::now() });
