@@ -112,11 +112,11 @@ fn a_deferred_key_keeps_its_place_and_finish_forgets_its_old_values() {
     assert_eq!(state.begin(&keys, &installed, NOW + 60, false, true), vec!["b", "c", "d"]);
 }
 
-/// The sweep's shared deadline is the launcher's own limit, not a failure of the app whose turn it
-/// ended: the outcome must be marked the way a budget refusal is, so the sweep defers that app and
-/// everyone behind it instead of recording failures that cost them their place.
+/// A deadline the apps ahead of this one used up is the launcher's own limit, not this app's
+/// failure: the outcome is marked the way a budget refusal is, so the sweep defers this app and
+/// everyone behind it instead of costing them their place.
 #[test]
-fn an_exhausted_sweep_deadline_is_a_launcher_refusal_the_sweep_can_defer() {
+fn a_deadline_used_up_before_a_lookup_starts_is_a_launcher_refusal() {
     let elapsed = Cell::new(MAX_TIME);
     let mut calls = 0;
     let outcome = lookup(
@@ -133,11 +133,39 @@ fn an_exhausted_sweep_deadline_is_a_launcher_refusal_the_sweep_can_defer() {
     match outcome {
         Outcome::Indeterminate(error) => {
             assert!(error.over_budget, "a deadline refusal is deferred, not saved as this app's failure");
-            assert!(error.why.contains("elapsed-time budget"), "{}", error.why);
+            assert!(error.why.contains("before this lookup started"), "{}", error.why);
         }
         other => panic!("expected a refusal, got {other:?}"),
     }
     assert_eq!(calls, 0, "the deadline is checked before any request is made");
+}
+
+/// A deadline an app spends itself is its own failure, not the launcher's: it records that and waits
+/// its normal cadence. Deferring it would put a slow app back at the front of the queue every sweep.
+#[test]
+fn a_deadline_an_app_spends_itself_is_its_own_failure() {
+    let elapsed = Cell::new(Duration::ZERO);
+    let mut calls = 0;
+    let outcome = lookup(
+        app(),
+        platform(),
+        NOW,
+        &mut |_, _, _, _| {
+            calls += 1;
+            elapsed.set(MAX_TIME);
+            Ok(Some(b"[]".to_vec()))
+        },
+        &|| elapsed.get(),
+        &|| true,
+    );
+    match outcome {
+        Outcome::Indeterminate(error) => {
+            assert!(!error.over_budget, "the app that spent the deadline is not deferred");
+            assert!(error.why.contains("elapsed-time budget"), "{}", error.why);
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    assert_eq!(calls, 1);
 }
 
 /// A sweep that began before Nightly was switched off must not put a record back through `defer`:

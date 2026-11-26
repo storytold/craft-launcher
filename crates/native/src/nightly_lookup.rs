@@ -51,9 +51,9 @@ fn failure(why: impl Into<String>) -> NightlyHttpError {
     NightlyHttpError { over_budget: false, why: why.into(), retry_at: None }
 }
 
-/// The launcher's own limit stopped the request: the GitHub budget, or the sweep's shared deadline.
-/// The app did nothing wrong, so the sweep defers it and the apps behind it instead of recording a
-/// failure that would cost them their queue position.
+/// The launcher's own limit stopped this app before it made a request: the GitHub budget, or a
+/// deadline earlier apps in the sweep had already used up. It is not a failure of this app, so the
+/// sweep defers it and the apps behind it instead of costing them their queue position.
 fn withheld(why: &str) -> NightlyHttpError {
     NightlyHttpError { over_budget: true, why: why.into(), retry_at: None }
 }
@@ -63,10 +63,18 @@ impl Budget<'_> {
         if !(self.enabled)() {
             return Err(failure("Developer build discovery was turned off."));
         }
-        let remaining = MAX_TIME
-            .checked_sub((self.elapsed)())
-            .filter(|time| !time.is_zero())
-            .ok_or_else(|| withheld("The Nightly discovery elapsed-time budget was exhausted."))?;
+        // A deadline used up before this app asked for anything was spent by the apps ahead of it, so
+        // this app keeps its turn. One it spends itself is this app's own failure: it records that and
+        // waits its normal cadence, which is what stops a slow app from taking the deadline every
+        // sweep and starving everyone behind it.
+        let deadline = || {
+            if self.requests == 0 {
+                withheld("The Nightly discovery elapsed-time budget was exhausted before this lookup started.")
+            } else {
+                failure("The Nightly discovery elapsed-time budget was exhausted.")
+            }
+        };
+        let remaining = MAX_TIME.checked_sub((self.elapsed)()).filter(|time| !time.is_zero()).ok_or_else(deadline)?;
         if self.requests >= MAX_REQUESTS || self.bytes >= MAX_BYTES {
             return Err(failure("The Nightly discovery request or returned-byte budget was exhausted."));
         }
@@ -80,7 +88,7 @@ impl Budget<'_> {
         }
         self.bytes += body.len();
         if (self.elapsed)() >= MAX_TIME {
-            return Err(withheld("The Nightly discovery elapsed-time budget was exhausted."));
+            return Err(failure("The Nightly discovery elapsed-time budget was exhausted."));
         }
         if !(self.enabled)() {
             return Err(failure("Developer build discovery was turned off."));
