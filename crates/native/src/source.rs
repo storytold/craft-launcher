@@ -1024,7 +1024,9 @@ mod tests {
                     asked += 1;
                     Ok(Fetched::Body {
                         text: if url.ends_with("&page=2") {
-                            r#"[{"tag_name":"v0.9.0","prerelease":false}]"#.into()
+                            // Nothing ordinary behind the nightlies either: the answer is "no
+                            // release", reached one page further instead of from page 1 alone.
+                            "[]".to_string()
                         } else {
                             crowded_page(repo, LIST_PAGE, 0)
                         },
@@ -1056,9 +1058,10 @@ mod tests {
             })
             .unwrap()
             .unwrap();
-        // Main offered a third-party app's Nightly here; no app's ordinary track does now.
+        // Main offered a third-party app's Nightly here; no app's ordinary track does now, and the
+        // lookup still keeps its one-page shape unless the page is full of nightlies.
         assert!(matches!(answer.latest, LatestRelease::None), "a Nightly is never an ordinary or pre-release candidate");
-        assert_eq!(asked, 1, "one request, as on main");
+        assert_eq!(asked, 2, "one page, then one look past a page of nightlies");
         let list = source
             .versions_with(&q(repo), |_, _| {
                 asked += 1;
