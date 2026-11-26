@@ -298,12 +298,12 @@ impl NightlyState {
             }
         }
         let Some(backend) = &mut self.backend else { return };
-        // Nightly has its own six-hour policy, independent of Stable's user preference.
+        // Nightly asks on its own hourly clock, independent of Stable's user preference; the backend's
         // Poll persisted metadata before requesting work. Native remains the final gate,
         // including server backoff and manual request coalescing.
         let now = backend.now();
         // Like Native, treat an attempt in the future after clock rollback as stale.
-        let due = self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 6 * 60 * 60);
+        let due = self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60 * 60);
         // Unacknowledged requests are coalesced briefly, not treated as actual attempts.
         // A future request permits one replacement, which resets this baseline to now.
         let request_allowed = self.requested_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60);
@@ -1263,17 +1263,17 @@ mod status_tests {
     }
 
     #[test]
-    fn persisted_attempt_controls_six_hour_boundary_independently_of_stable_and_clock_rollback() {
+    fn persisted_attempt_controls_hourly_boundary_independently_of_stable_and_clock_rollback() {
         for check_every in [crate::settings::CheckEvery::Hour, crate::settings::CheckEvery::Day, crate::settings::CheckEvery::Never] {
             let fake = FakeBackend::default();
             fake.events.borrow_mut().push(status(1000, 500, true, None));
-            fake.now.set(1000 + 6 * 60 * 60 - 1);
+            fake.now.set(1000 + 60 * 60 - 1);
             let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
             let settings = Settings { nightly_enabled: true, check_every, ..Default::default() };
             state.logic(&settings);
             assert_eq!(checks(&fake), 0, "restart polls persisted scheduling metadata before any request");
             assert!(state.entries.iter().all(|entry| entry.latest.is_none()), "metadata never recreates a release body");
-            fake.now.set(1000 + 6 * 60 * 60);
+            fake.now.set(1000 + 60 * 60);
             state.logic(&settings);
             assert_eq!(checks(&fake), 1);
             state.logic(&settings);
@@ -1297,10 +1297,10 @@ mod status_tests {
             state.logic(&settings);
             assert_eq!(state.attempted_at, Some(960));
             assert_eq!(state.checked_at, Some(500));
-            fake.now.set(960 + 6 * 60 * 60 - 1);
+            fake.now.set(960 + 60 * 60 - 1);
             state.logic(&settings);
-            assert_eq!(checks(&fake), 3, "a confirmed actual attempt restores the six-hour policy");
-            fake.now.set(960 + 6 * 60 * 60);
+            assert_eq!(checks(&fake), 3, "a confirmed actual attempt restores the hourly policy");
+            fake.now.set(960 + 60 * 60);
             state.logic(&settings);
             assert_eq!(checks(&fake), 4);
         }

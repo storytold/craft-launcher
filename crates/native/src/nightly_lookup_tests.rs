@@ -1,4 +1,5 @@
 use super::*;
+use artcraft_launcher_core::release::Priority;
 use artcraft_launcher_core::{Arch, Os};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -25,6 +26,85 @@ fn api(page: usize) -> String {
 /// `key()` is what the Nightly scheduling state is saved under, and it contains the adapter's
 /// Debug name. PhotoCraft's three keys read exactly as they did before the adapter became a table
 /// row; a changed Debug name would silently drop every existing user's saved scheduling state.
+#[test]
+fn every_app_is_verified_within_six_hours_under_the_developers_budget() {
+    // The real Developer Builds budget, no token, every sweep automatic: a refused request must
+    // never cost an app its turn, or the apps late in the roster would never be looked up.
+    let budget = crate::github_budget::GitHubBudget::in_memory(crate::github_budget::DEVELOPER_BUILDS);
+    let keys: Vec<String> = (0..15).map(|index| format!("key-{index:02}")).collect();
+    let installed = BTreeSet::new();
+    let mut state = State::default();
+    let mut now = NOW;
+    let mut refusals = 0;
+    for _ in 0..6 {
+        let chosen = state.begin(&keys, &installed, now, false, true);
+        let mut refused = false;
+        for key in &chosen {
+            if refused || budget.take(Priority::Discovery, now).is_err() {
+                refused = true;
+                refusals += 1;
+                state.defer(key);
+                assert_eq!(state.records.get(key).and_then(|record| record.attempted_at), None, "a refusal leaves the key where it was");
+                continue;
+            }
+            state.outcome(key, now, &Outcome::NoCompatibleBuild);
+        }
+        state.finish();
+        now += 60 * 60;
+    }
+    for key in &keys {
+        assert!(
+            state.records.get(key).and_then(|record| record.verified_at).is_some_and(|at| at < NOW + 6 * 60 * 60),
+            "{key} was verified within six hours"
+        );
+    }
+    assert!(refusals > 0, "the sweep has to hit the real budget for this test to mean anything");
+}
+
+#[test]
+fn an_installed_copy_is_due_hourly_while_an_app_nobody_installed_waits_six() {
+    let installed: BTreeSet<String> = ["installed".to_string()].into();
+    let keys: Vec<String> = ["installed", "other"].iter().map(|key| key.to_string()).collect();
+    let mut state = State::default();
+    for key in &keys {
+        state.records.insert(key.clone(), Record { attempted_at: Some(NOW - 61 * 60), ..Record::default() });
+    }
+    assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["installed".to_string()]);
+    state.finish();
+    assert!(state.begin(&keys, &installed, NOW + EVERY, false, true).contains(&"other".to_string()));
+}
+
+#[test]
+fn a_sweep_takes_installed_first_then_never_attempted_then_the_longest_waiting() {
+    let installed: BTreeSet<String> = ["installed".to_string()].into();
+    let keys: Vec<String> = ["stale", "fresh", "installed", "never"].iter().map(|key| key.to_string()).collect();
+    let mut state = State::default();
+    for (key, ago) in [("stale", 3 * 60 * 60), ("fresh", 2 * 60 * 60), ("installed", 2 * 60 * 60)] {
+        state.records.insert(key.to_string(), Record { attempted_at: Some(NOW - ago), ..Record::default() });
+    }
+    assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["installed", "never", "stale", "fresh"]);
+    state.finish();
+    // An automatic sweep stops at its three-app discovery allowance.
+    let mut state = State::default();
+    let keys: Vec<String> = ["a", "b", "c", "d", "e"].iter().map(|key| key.to_string()).collect();
+    assert_eq!(state.begin(&keys, &BTreeSet::new(), NOW, false, true), vec!["a", "b", "c"]);
+}
+
+#[test]
+fn a_deferred_key_keeps_its_place_and_finish_forgets_its_old_values() {
+    let installed = BTreeSet::new();
+    let keys: Vec<String> = ["a", "b", "c", "d"].iter().map(|key| key.to_string()).collect();
+    let mut state = State::default();
+    assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["a", "b", "c"]);
+    state.defer("b");
+    state.defer("c");
+    assert_eq!(state.records.get("b").and_then(|record| record.attempted_at), None, "the refusal never happened");
+    assert!(state.deferred_from.contains_key("b"), "the sweep remembers what it stamped");
+    state.finish();
+    assert!(state.deferred_from.is_empty(), "finish forgets the previous values");
+    assert_eq!(state.begin(&keys, &installed, NOW + 60, false, true), vec!["b", "c", "d"]);
+}
+
 #[test]
 fn persisted_scheduling_keys_keep_each_apps_existing_identity() {
     assert_eq!(
@@ -275,13 +355,13 @@ fn metadata_keeps_attempt_and_verified_success_distinct_without_body_or_token_ca
     let paths = Paths::under(&temp.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
     let key = key(app(), platform());
     let mut state = State::default();
-    assert_eq!(state.begin(std::slice::from_ref(&key), NOW, false, true).as_slice(), std::slice::from_ref(&key));
+    assert_eq!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW, false, true).as_slice(), std::slice::from_ref(&key));
     state.persist_outcome(&paths, &key, NOW, &Outcome::Verified(Box::new(verified(20)))).unwrap();
     state.finish();
     assert!(state.fresh(&key, NOW));
     let later = NOW + EVERY;
-    assert!(!state.begin(std::slice::from_ref(&key), later, false, true).is_empty());
-    let error = Outcome::Indeterminate(NightlyHttpError { why: "offline".into(), retry_at: Some(later + 120) });
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), later, false, true).is_empty());
+    let error = Outcome::Indeterminate(NightlyHttpError { over_budget: false, why: "offline".into(), retry_at: Some(later + 120) });
     let record = state.persist_outcome(&paths, &key, later, &error).unwrap();
     state.finish();
     assert_eq!(record.attempted_at, Some(later));
@@ -302,21 +382,27 @@ fn metadata_keeps_attempt_and_verified_success_distinct_without_body_or_token_ca
 fn six_hour_boundaries_manual_coalescing_and_clock_rollback_are_explicit() {
     let key = key(app(), platform());
     let mut state = State::default();
-    assert!(state.begin(std::slice::from_ref(&key), NOW, false, false).is_empty());
-    assert!(!state.begin(std::slice::from_ref(&key), NOW, false, true).is_empty());
+    assert!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW, false, false).is_empty());
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), NOW, false, true).is_empty());
     state.finish();
-    assert!(state.begin(std::slice::from_ref(&key), NOW + EVERY - 1, false, true).is_empty());
-    assert!(state.begin(std::slice::from_ref(&key), NOW + 59, true, true).is_empty());
-    assert!(!state.begin(std::slice::from_ref(&key), NOW + 60, true, true).is_empty());
+    assert!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW + EVERY - 1, false, true).is_empty());
+    assert!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 59, true, true).is_empty());
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 60, true, true).is_empty());
     state.finish();
-    assert!(!state.begin(std::slice::from_ref(&key), NOW + 60 + EVERY, false, true).is_empty());
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 60 + EVERY, false, true).is_empty());
     state.finish();
-    assert!(!state.begin(std::slice::from_ref(&key), NOW - 60, false, true).is_empty(), "future attempts are stale after rollback");
+    assert!(
+        !state.begin(std::slice::from_ref(&key), &Default::default(), NOW - 60, false, true).is_empty(),
+        "future attempts are stale after rollback"
+    );
     state.finish();
-    state.outcome(&key, NOW, &Outcome::Indeterminate(NightlyHttpError { why: "limited".into(), retry_at: Some(NOW + 120) }));
-    assert!(state.begin(std::slice::from_ref(&key), NOW - 120, true, true).is_empty(), "rollback never bypasses an absolute server backoff");
-    assert!(state.begin(std::slice::from_ref(&key), NOW + 119, true, true).is_empty());
-    assert!(!state.begin(std::slice::from_ref(&key), NOW + 120, true, true).is_empty());
+    state.outcome(&key, NOW, &Outcome::Indeterminate(NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(NOW + 120) }));
+    assert!(
+        state.begin(std::slice::from_ref(&key), &Default::default(), NOW - 120, true, true).is_empty(),
+        "rollback never bypasses an absolute server backoff"
+    );
+    assert!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 119, true, true).is_empty());
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 120, true, true).is_empty());
 }
 
 #[test]
@@ -329,7 +415,7 @@ fn simultaneous_manual_calls_share_one_inflight_lease() {
             let barrier = barrier.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                !state.lock().unwrap().begin(&[key(app(), platform())], NOW, true, true).is_empty()
+                !state.lock().unwrap().begin(&[key(app(), platform())], &Default::default(), NOW, true, true).is_empty()
             })
         })
         .collect();
@@ -518,14 +604,14 @@ fn malformed_existing_metadata_is_not_fresh_absence_and_requires_valid_reload() 
     let paths = Paths::under(&temp.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
     let row = key(app(), platform());
     let mut fresh = State::load(&paths);
-    assert!(!fresh.begin(std::slice::from_ref(&row), NOW, false, true).is_empty());
+    assert!(!fresh.begin(std::slice::from_ref(&row), &Default::default(), NOW, false, true).is_empty());
     fresh.save(&paths).unwrap();
     fresh.finish();
     let valid = std::fs::read(paths.nightly_checks()).unwrap();
     std::fs::write(paths.nightly_checks(), b"malformed existing metadata").unwrap();
     let mut blocked = State::load(&paths);
     assert!(blocked.record(&row).message.is_some());
-    assert!(blocked.begin(std::slice::from_ref(&row), NOW + EVERY, true, true).is_empty());
+    assert!(blocked.begin(std::slice::from_ref(&row), &Default::default(), NOW + EVERY, true, true).is_empty());
     assert!(blocked.save(&paths).is_err());
     assert!(blocked.prepare(&paths).is_err());
     assert_eq!(std::fs::read(paths.nightly_checks()).unwrap(), b"malformed existing metadata");
@@ -534,7 +620,7 @@ fn malformed_existing_metadata_is_not_fresh_absence_and_requires_valid_reload() 
     std::fs::write(paths.nightly_checks(), valid).unwrap();
     blocked.prepare(&paths).unwrap();
     assert!(blocked.record(&row).message.is_none());
-    assert!(!blocked.begin(std::slice::from_ref(&row), NOW + EVERY, true, true).is_empty());
+    assert!(!blocked.begin(std::slice::from_ref(&row), &Default::default(), NOW + EVERY, true, true).is_empty());
 }
 
 #[test]

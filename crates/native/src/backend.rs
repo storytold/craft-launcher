@@ -729,6 +729,12 @@ impl NativeBackend {
         // A scheduling failure covers the whole sweep, so its notice names the first app in it.
         let sweep_app = apps.first().map_or(LAUNCHER_ID, |app| app.id);
         let keys: Vec<_> = apps.iter().map(|app| crate::nightly_lookup::key(app, platform)).collect();
+        // An app with a record in the Nightly manifest is installed here: its own Nightly is the copy
+        // its user is running, so it is refreshed hourly and first in every sweep.
+        let installed: std::collections::BTreeSet<String> = {
+            let manifest = self.shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            apps.iter().filter(|app| manifest.apps.contains_key(app.id)).map(|app| crate::nightly_lookup::key(app, platform)).collect()
+        };
         let (chosen, generation) = {
             let options = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
             if !options.nightly_enabled {
@@ -746,7 +752,7 @@ impl NativeBackend {
                     .emit(Event::Notice { app: sweep_app.into(), result: Err(format!("Nightly scheduling metadata is unavailable: {error}")) });
                 return;
             }
-            let chosen = state.begin(&keys, now, manual, true);
+            let chosen = state.begin(&keys, &installed, now, manual, true);
             if chosen.is_empty() {
                 drop(state);
                 drop(options);
@@ -777,9 +783,11 @@ impl NativeBackend {
             shared.emit(Event::CheckStarted);
             // One sweep and one request at a time. All admitted app lookups share this deadline.
             let started = Instant::now();
-            // Opening the page or pressing its check is the user's own action.
-            let priority = if manual { Priority::User } else { Priority::Discovery };
-            for app in apps.into_iter().filter(|app| chosen.contains(&crate::nightly_lookup::key(app, platform))) {
+            // `begin` decided the order: installed copies first, then the front of the queue.
+            let by_key: std::collections::BTreeMap<String, CraftApp> =
+                apps.into_iter().map(|app| (crate::nightly_lookup::key(&app, platform), app)).collect();
+            for (index, key) in chosen.iter().enumerate() {
+                let Some(app) = by_key.get(key).copied() else { continue };
                 let enabled = || {
                     shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
                         && shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).generation == generation
@@ -787,9 +795,19 @@ impl NativeBackend {
                 if !enabled() {
                     break;
                 }
+                // The user's own check outranks a background one; an installed copy outranks an app
+                // nobody has installed, which is what keeps discovery inside its budget.
+                let priority = if manual {
+                    Priority::User
+                } else if installed.contains(key) {
+                    Priority::Installed
+                } else {
+                    Priority::Discovery
+                };
                 let backoff = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
                 let outcome = if let Some(retry_at) = backoff {
                     crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
+                        over_budget: false,
                         why: "Nightly discovery is waiting for server backoff.".into(),
                         retry_at: Some(retry_at),
                     })
@@ -804,10 +822,26 @@ impl NativeBackend {
                     )
                 } else {
                     crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
+                        over_budget: false,
                         why: "Secure Nightly connections are unavailable.".into(),
                         retry_at: None,
                     })
                 };
+                if let crate::nightly_lookup::Outcome::Indeterminate(error) = &outcome
+                    && error.over_budget
+                {
+                    // The launcher's own budget refused this lookup and the ones behind it: no app
+                    // failed, so every remaining one goes back where it was and keeps its place in
+                    // the queue instead of waiting out a cadence for a request never made.
+                    let mut state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                    for later in &chosen[index..] {
+                        state.defer(later);
+                    }
+                    if let Err(error) = state.save(&paths) {
+                        log::warn!("Could not persist deferred Nightly scheduling: {error}");
+                    }
+                    break;
+                }
                 finish_nightly_result(&app, platform, generation, outcome, &shared, &paths);
             }
             drop(lease);
@@ -1351,6 +1385,7 @@ fn finish_nightly_result(
         let previous = state.record(&key).tag.and_then(|tag| version::parse(&tag));
         if previous.as_ref().zip(next.release().version.as_ref()).is_some_and(|(old, next)| version::is_newer(old, next)) {
             outcome = Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
                 why: "Nightly discovery would regress the previous verified SemVer selection; it was kept stale.".into(),
                 retry_at: None,
             });
@@ -1360,6 +1395,7 @@ fn finish_nightly_result(
         Ok(record) => record,
         Err(error) => {
             outcome = Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
                 why: format!("Could not persist Nightly result metadata: {error}"),
                 retry_at: state.record(&key).retry_at,
             });

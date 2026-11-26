@@ -16,7 +16,7 @@ fn app() -> &'static CraftApp {
 fn complete(shared: &Shared, paths: &Paths, platform: Platform, run: u64) {
     let key = nightly_lookup::key(app(), platform);
     let now = crate::now();
-    shared.nightly_state.lock().unwrap().begin(&[key], now, true, true);
+    shared.nightly_state.lock().unwrap().begin(&[key], &Default::default(), now, true, true);
     finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(run))), shared, paths);
     shared.nightly_state.lock().unwrap().finish();
 }
@@ -34,7 +34,7 @@ fn selection_ui_and_install_gate_agree_and_failed_refresh_retains_stale_success(
         app(),
         platform,
         0,
-        Outcome::Indeterminate(crate::http::NightlyHttpError { why: "offline".into(), retry_at: Some(crate::now() + 120) }),
+        Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "offline".into(), retry_at: Some(crate::now() + 120) }),
         &shared,
         &paths,
     );
@@ -159,7 +159,7 @@ fn failed_result_save_retains_maximum_known_retry_and_flushes_it_before_admissio
         app(),
         platform,
         0,
-        Outcome::Indeterminate(crate::http::NightlyHttpError { why: "limited".into(), retry_at: Some(deadline) }),
+        Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(deadline) }),
         &shared,
         &paths,
     );
@@ -169,7 +169,11 @@ fn failed_result_save_retains_maximum_known_retry_and_flushes_it_before_admissio
         state.outcome(
             &key,
             before.attempted_at.unwrap() + 20,
-            &Outcome::Indeterminate(crate::http::NightlyHttpError { why: "subsequent storage failure".into(), retry_at: Some(deadline - 60) }),
+            &Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
+                why: "subsequent storage failure".into(),
+                retry_at: Some(deadline - 60),
+            }),
         );
         let failed = state.record(&key);
         assert_eq!(failed.retry_at, Some(deadline));
@@ -217,7 +221,7 @@ fn unreadable_existing_metadata_blocks_restart_without_replacement_until_valid_r
         app(),
         platform,
         0,
-        Outcome::Indeterminate(crate::http::NightlyHttpError { why: "limited".into(), retry_at: Some(deadline) }),
+        Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(deadline) }),
         &original,
         &paths,
     );
