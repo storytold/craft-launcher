@@ -839,10 +839,12 @@ mod tests {
                 let prefix = format!("{id}-{{version}}-");
                 let suffix = pattern.strip_prefix(prefix.as_str()).expect("an asset pattern names its app and version").to_string();
                 // The row's extra program is the registry's `binary` only where it isn't the
-                // entrypoint: PhotoCraft's rows name its one GUI program in both fields.
-                let entrypoint = app["entrypoints"][format!("{os}-{arch}")]["entrypoint"].as_str().unwrap().to_string();
-                let binary =
-                    app["entrypoints"][format!("{os}-{arch}")]["binary"].as_str().filter(|binary| *binary != entrypoint.as_str()).map(str::to_string);
+                // entrypoint: PhotoCraft's rows name its one GUI program in both fields. A missing
+                // or non-string `binary` is a malformed registry row, not the same as "no program".
+                let listed = &app["entrypoints"][format!("{os}-{arch}")];
+                let entrypoint = listed["entrypoint"].as_str().expect("a registry entrypoint names its entrypoint").to_string();
+                let binary = listed["binary"].as_str().expect("a registry entrypoint names its binary");
+                let binary = (binary != entrypoint.as_str()).then(|| binary.to_string());
                 let isolation = &target["isolation"];
                 targets.push(RegistryTarget {
                     app: id.clone(),
