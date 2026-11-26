@@ -46,6 +46,9 @@ impl LauncherUi {
             Dialog::UnlockVersion { app, tag } => modal.show(ctx, |ui| close = self.unlock_version_dialog(ui, app, tag)),
             Dialog::Install { app, folder } => modal.show(ctx, |ui| close = self.install_dialog(ui, app, folder, host)),
             Dialog::Replace { app, path } => modal.show(ctx, |ui| close = self.replace_dialog(ui, app, path)),
+            Dialog::GoBackFallback { app, installed, chosen, fallback } => {
+                modal.show(ctx, |ui| close = self.go_back_fallback_dialog(ui, app, installed, chosen, fallback))
+            }
             Dialog::MsiUpdate { app, plan, migrate, accepted } => {
                 modal.show(ctx, |ui| close = self.msi_update_dialog(ui, app, plan, migrate, accepted))
             }
@@ -58,7 +61,7 @@ impl LauncherUi {
             // A control inside a dialog opened a different one; don't restore the old dialog.
             return;
         }
-        if close || response.should_close() {
+        if close || response.should_close() || self.nightly.consent_open {
             if matches!(dialog, Dialog::MsiUpdate { .. }) {
                 // The last pending choice sends the kept updates, even when it was cancelled.
                 self.send_kept_updates();
@@ -77,9 +80,10 @@ impl LauncherUi {
         }
     }
 
-    /// The first alert from the release feed the user hasn't acknowledged, as a popup.
+    /// The first current alert the user hasn't acknowledged, as a popup.
     fn alert_popup(&mut self, ctx: &egui::Context) {
-        let Some(alert) = self.alerts.iter().find(|a| !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
+        let now = self.backend.now();
+        let Some(alert) = self.alerts.iter().find(|a| a.current(now) && !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
         let t = Tokens::get(ctx);
         let modal = egui::Modal::new(egui::Id::unique("feed_alert").with(&alert.id)).frame(
             egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(theme::PAD as i8),
@@ -362,6 +366,41 @@ impl LauncherUi {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::button(ui, tl!("Replace"), Kind::Danger, 110.0).clicked() {
                     self.act_command(Command::Replace { app: id.to_string(), path: path.to_string() });
+                    close = true;
+                }
+                if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
+    }
+
+    /// Says that going back from `installed` to `chosen` can only put the pre-release `fallback`
+    /// back if it fails, and asks whether to go ahead. Returns `true` when the dialog should
+    /// close, including when the app entry is gone. Going ahead is queued at the action boundary.
+    fn go_back_fallback_dialog(&mut self, ui: &mut egui::Ui, id: &str, installed: &str, chosen: &str, fallback: &str) -> bool {
+        let Some(app) = self.entry(id).map(|e| e.app) else { return true };
+        let t = Tokens::get(ui.ctx());
+        let shown = |tag: &str| artcraft_launcher_core::version::parse(tag).map_or_else(|| tag.to_string(), |v| v.to_string());
+        ui.set_width(440.0f32.min(ui.ctx().content_rect().width() - 80.0));
+        Self::title(ui, crate::icons::app(id), &fmt(tl!("Go back to {version}?"), &[("version", &shown(chosen))]), "");
+        ui.add(
+            egui::Label::new(
+                RichText::new(fmt(
+                    tl!("{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have."),
+                    &[("app", app.name), ("installed", installed), ("chosen", &shown(chosen)), ("fallback", &shown(fallback))],
+                ))
+                .color(t.muted),
+            )
+            .wrap(),
+        );
+        ui.add_space(20.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::button(ui, tl!("Go back"), Kind::Primary, 110.0).clicked() {
+                    self.install_chosen(id, chosen.to_string(), Some(fallback.to_string()));
                     close = true;
                 }
                 if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {

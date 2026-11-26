@@ -211,8 +211,8 @@ month	Oct	out.
 month	Nov	nov.
 month	Dec	dez.
 	Not checked yet	Ainda não verificado
-	GitHub's hourly limit was reached; full details return in {min} min	O limite por hora do GitHub foi atingido; detalhes completos voltam em {min} min
-	GitHub limit hit; back in {min} min	Limite do GitHub atingido; volta em {min} min
+	Next GitHub check at {time}	Próxima verificação do GitHub às {time}
+	Next check at {time}	Próxima verificação às {time}
 	Installing for {platform}	Instalando para {platform}
 	Downloads for {platform}	Downloads para {platform}
 	No downloads for this system	Nenhum download disponível para este sistema
@@ -468,6 +468,88 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Added	Adicionado
 	Remove	Remover
 	Add	Adicionar
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Fontes
+	Allow font downloads	Permitir download de fontes
+	Couldn't change the font download setting: {e}	Não foi possível alterar a configuração de download de fontes: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	As fontes são baixadas das suas origens somente quando você instala uma. As prévias de fontes têm uma configuração própria abaixo. Todos os apps Craft compartilham esta configuração.
+	Sources	Origens
+	Apps	Aplicativos
+	Fonts for every Craft app	Fontes para todos os aplicativos Craft
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Mostrar prévias de fontes
+	Font preview server	Servidor de prévias de fontes
+	Couldn't use this server: {e}	Não foi possível usar este servidor: {e}
+	Couldn't change the font previews setting: {e}	Não foi possível alterar a configuração de prévias de fontes: {e}
+	Set by {name} in the environment.	Definido por {name} no ambiente.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	As fontes que você não instalou mostram a prévia a partir deste servidor, e as instalações tentam usá-lo primeiro. Vazio: o servidor padrão.
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	O canal de pré-lançamento é atualizado automaticamente toda noite com o código mais recente. Ele pode ter erros, problemas de desempenho e estabilidade, além de recursos inacabados. Para trabalhos importantes, use o canal estável.
+
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	As versões preliminares permitem experimentar novidades mais cedo, mas terão erros e podem causar a perda de trabalho não salvo.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	Elas são instaladas ao lado dos seus aplicativos estáveis, com configurações e dados próprios, sem alterar seu ambiente estável. Sempre faça uma cópia de segurança dos arquivos importantes antes de abri-los em uma versão preliminar, pois arquivos salvos em versões mais recentes podem não abrir nas versões estáveis.
+	You can turn this off at any time without deleting your installed developer builds or their data.	Você pode desativar esta opção a qualquer momento sem excluir os aplicativos preliminares instalados nem seus dados.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{day}/{month}/{year}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	Compilações nightly
+	Discover nightly builds (Developer Builds page)	Encontrar compilações nightly (página Developer Builds)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Instalações, configurações e dados separados. Desativar mantém as cópias instaladas e seus dados.
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	Betas e versões candidatas podem substituir sua instalação estável.
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	Avisos
+	No announcements	Nenhum aviso
+@plural	Announcements, {n} unread|Announcements, {n} unread	Avisos, {n} não lido|Avisos, {n} não lidos
+# Going back from a copy whose version has no release of its own (English fallback; translations are maintained in craft-i18n).
+	Go back to {version}?	Go back to {version}?
+	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.
+	Go back	Go back
+	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
+	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
 
 # Update installation scope
 	Choose how to update {name}	Escolha como atualizar {name}

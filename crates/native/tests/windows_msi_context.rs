@@ -44,6 +44,7 @@ fn uncertain_msi_updates_do_not_download_or_start_an_installer() {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let result = install::install(app, &release, &asset, PackageKind::Msi, Some(&existing), None, &mut job);
         assert!(matches!(&result, Err(error) if error.contains("could not confirm who this app is installed for")), "{result:?}");

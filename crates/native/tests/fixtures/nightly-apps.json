@@ -1,0 +1,1004 @@
+{
+  "apps": {
+    "anicraft": {
+      "default_branch": "main",
+      "display_name": "AniCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "anicraft-bin",
+          "entrypoint": "anicraft"
+        },
+        "macos-aarch64": {
+          "binary": "AniCraft Nightly.app/Contents/MacOS/AniCraft",
+          "entrypoint": "AniCraft Nightly.app/Contents/MacOS/AniCraft"
+        },
+        "windows-x86_64": {
+          "binary": "anicraft.exe",
+          "entrypoint": "anicraft.exe"
+        }
+      },
+      "env_prefix": "ANICRAFT",
+      "note": "AniCraft nightly-v1 Windows x86_64 GUI ZIP (anicraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (anicraft) with anicraft-bin beside it, and macOS aarch64 notarized app ZIP (AniCraft Nightly.app), published together in one release.",
+      "repository": "storytold/anicraft",
+      "targets": [
+        {
+          "asset_pattern": "anicraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.anicraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "anicraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.anicraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "anicraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.anicraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "artcraft": {
+      "default_branch": "main",
+      "note": "Public Studio uses custom OS publish workflows, not the shared Rust release caller; adapter remains separate/unimplemented.",
+      "repository": "storytold/artcraft",
+      "targets": []
+    },
+    "cadcraft": {
+      "default_branch": "main",
+      "display_name": "CADCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "cadcraft-bin",
+          "entrypoint": "cadcraft"
+        },
+        "macos-aarch64": {
+          "binary": "CADCraft Nightly.app/Contents/MacOS/CADCraft",
+          "entrypoint": "CADCraft Nightly.app/Contents/MacOS/CADCraft"
+        },
+        "windows-x86_64": {
+          "binary": "cadcraft.exe",
+          "entrypoint": "cadcraft.exe"
+        }
+      },
+      "env_prefix": "CADCRAFT",
+      "note": "CADCraft nightly-v1 Windows x86_64 GUI ZIP (cadcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (cadcraft) with cadcraft-bin beside it, and macOS aarch64 notarized app ZIP (CADCraft Nightly.app), published together in one release.",
+      "repository": "storytold/cadcraft",
+      "targets": [
+        {
+          "asset_pattern": "cadcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.cadcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "cadcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.cadcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "cadcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.cadcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "craft-anything": {
+      "default_branch": "main",
+      "note": "No source-vetted isolated package/profile adapter yet; build artifacts are not Launcher-installable.",
+      "repository": "storytold/craft-anything",
+      "targets": []
+    },
+    "craft-launcher": {
+      "default_branch": "main",
+      "note": "No source-vetted isolated package/profile adapter yet; build artifacts are not Launcher-installable.",
+      "repository": "storytold/craft-launcher",
+      "targets": []
+    },
+    "deckcraft": {
+      "default_branch": "main",
+      "display_name": "DeckCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "deckcraft-bin",
+          "entrypoint": "deckcraft"
+        },
+        "macos-aarch64": {
+          "binary": "DeckCraft Nightly.app/Contents/MacOS/DeckCraft",
+          "entrypoint": "DeckCraft Nightly.app/Contents/MacOS/DeckCraft"
+        },
+        "windows-x86_64": {
+          "binary": "deckcraft.exe",
+          "entrypoint": "deckcraft.exe"
+        }
+      },
+      "env_prefix": "DECKCRAFT",
+      "note": "DeckCraft nightly-v1 Windows x86_64 GUI ZIP (deckcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (deckcraft) with deckcraft-bin beside it, and macOS aarch64 notarized app ZIP (DeckCraft Nightly.app), published together in one release.",
+      "repository": "storytold/deckcraft",
+      "targets": [
+        {
+          "asset_pattern": "deckcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.deckcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "deckcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.deckcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "deckcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.deckcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "designcraft": {
+      "default_branch": "main",
+      "display_name": "DesignCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "designcraft-bin",
+          "entrypoint": "designcraft"
+        },
+        "macos-aarch64": {
+          "binary": "DesignCraft Nightly.app/Contents/MacOS/DesignCraft",
+          "entrypoint": "DesignCraft Nightly.app/Contents/MacOS/DesignCraft"
+        },
+        "windows-x86_64": {
+          "binary": "designcraft.exe",
+          "entrypoint": "designcraft.exe"
+        }
+      },
+      "env_prefix": "DESIGNCRAFT",
+      "note": "DesignCraft nightly-v1 Windows x86_64 GUI ZIP (designcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (designcraft) with designcraft-bin beside it, and macOS aarch64 notarized app ZIP (DesignCraft Nightly.app), published together in one release.",
+      "repository": "storytold/designcraft",
+      "targets": [
+        {
+          "asset_pattern": "designcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.designcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "designcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.designcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "designcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.designcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "effectcraft": {
+      "default_branch": "main",
+      "display_name": "EffectCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "effectcraft-bin",
+          "entrypoint": "effectcraft"
+        },
+        "macos-aarch64": {
+          "binary": "EffectCraft Nightly.app/Contents/MacOS/EffectCraft",
+          "entrypoint": "EffectCraft Nightly.app/Contents/MacOS/EffectCraft"
+        },
+        "windows-x86_64": {
+          "binary": "effectcraft.exe",
+          "entrypoint": "effectcraft.exe"
+        }
+      },
+      "env_prefix": "EFFECTCRAFT",
+      "note": "EffectCraft nightly-v1 Windows x86_64 GUI ZIP (effectcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (effectcraft) with effectcraft-bin beside it, and macOS aarch64 notarized app ZIP (EffectCraft Nightly.app), published together in one release.",
+      "repository": "storytold/effectcraft",
+      "targets": [
+        {
+          "asset_pattern": "effectcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.effectcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "effectcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.effectcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "effectcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.effectcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "figcraft": {
+      "default_branch": "main",
+      "display_name": "FigCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "figcraft-bin",
+          "entrypoint": "figcraft"
+        },
+        "macos-aarch64": {
+          "binary": "FigCraft Nightly.app/Contents/MacOS/FigCraft",
+          "entrypoint": "FigCraft Nightly.app/Contents/MacOS/FigCraft"
+        },
+        "windows-x86_64": {
+          "binary": "figcraft.exe",
+          "entrypoint": "figcraft.exe"
+        }
+      },
+      "env_prefix": "FIGCRAFT",
+      "note": "FigCraft nightly-v1 Windows x86_64 GUI ZIP (figcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (figcraft) with figcraft-bin beside it, and macOS aarch64 notarized app ZIP (FigCraft Nightly.app), published together in one release.",
+      "repository": "storytold/figcraft",
+      "targets": [
+        {
+          "asset_pattern": "figcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.figcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "figcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.figcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "figcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.figcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "filmcraft": {
+      "default_branch": "main",
+      "display_name": "FilmCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "filmcraft-bin",
+          "entrypoint": "filmcraft"
+        },
+        "macos-aarch64": {
+          "binary": "FilmCraft Nightly.app/Contents/MacOS/FilmCraft",
+          "entrypoint": "FilmCraft Nightly.app/Contents/MacOS/FilmCraft"
+        },
+        "windows-x86_64": {
+          "binary": "filmcraft.exe",
+          "entrypoint": "filmcraft.exe"
+        }
+      },
+      "env_prefix": "FILMCRAFT",
+      "note": "FilmCraft nightly-v1 Windows x86_64 GUI ZIP (filmcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (filmcraft) with filmcraft-bin beside it, and macOS aarch64 notarized app ZIP (FilmCraft Nightly.app), published together in one release.",
+      "repository": "storytold/filmcraft",
+      "targets": [
+        {
+          "asset_pattern": "filmcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.filmcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "filmcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.filmcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "filmcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.filmcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "gridcraft": {
+      "default_branch": "main",
+      "display_name": "GridCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "gridcraft-bin",
+          "entrypoint": "gridcraft"
+        },
+        "macos-aarch64": {
+          "binary": "GridCraft Nightly.app/Contents/MacOS/GridCraft",
+          "entrypoint": "GridCraft Nightly.app/Contents/MacOS/GridCraft"
+        },
+        "windows-x86_64": {
+          "binary": "gridcraft.exe",
+          "entrypoint": "gridcraft.exe"
+        }
+      },
+      "env_prefix": "GRIDCRAFT",
+      "note": "GridCraft nightly-v1 Windows x86_64 GUI ZIP (gridcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (gridcraft) with gridcraft-bin beside it, and macOS aarch64 notarized app ZIP (GridCraft Nightly.app), published together in one release.",
+      "repository": "storytold/gridcraft",
+      "targets": [
+        {
+          "asset_pattern": "gridcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.gridcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "gridcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.gridcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "gridcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.gridcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "lightcraft": {
+      "default_branch": "main",
+      "display_name": "LightCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "lightcraft-bin",
+          "entrypoint": "lightcraft"
+        },
+        "macos-aarch64": {
+          "binary": "LightCraft Nightly.app/Contents/MacOS/LightCraft",
+          "entrypoint": "LightCraft Nightly.app/Contents/MacOS/LightCraft"
+        },
+        "windows-x86_64": {
+          "binary": "lightcraft.exe",
+          "entrypoint": "lightcraft.exe"
+        }
+      },
+      "env_prefix": "LIGHTCRAFT",
+      "note": "LightCraft nightly-v1 Windows x86_64 GUI ZIP (lightcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (lightcraft) with lightcraft-bin beside it, and macOS aarch64 notarized app ZIP (LightCraft Nightly.app), published together in one release.",
+      "repository": "storytold/lightcraft",
+      "targets": [
+        {
+          "asset_pattern": "lightcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.lightcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "lightcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.lightcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "lightcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.lightcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "materialcraft": {
+      "default_branch": "main",
+      "display_name": "MaterialCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "materialcraft-bin",
+          "entrypoint": "materialcraft"
+        },
+        "macos-aarch64": {
+          "binary": "MaterialCraft Nightly.app/Contents/MacOS/MaterialCraft",
+          "entrypoint": "MaterialCraft Nightly.app/Contents/MacOS/MaterialCraft"
+        },
+        "windows-x86_64": {
+          "binary": "materialcraft.exe",
+          "entrypoint": "materialcraft.exe"
+        }
+      },
+      "env_prefix": "MATERIALCRAFT",
+      "note": "MaterialCraft nightly-v1 Windows x86_64 GUI ZIP (materialcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (materialcraft) with materialcraft-bin beside it, and macOS aarch64 notarized app ZIP (MaterialCraft Nightly.app), published together in one release.",
+      "repository": "storytold/materialcraft",
+      "targets": [
+        {
+          "asset_pattern": "materialcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.materialcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "materialcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.materialcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "materialcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.materialcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "pdfcraft": {
+      "default_branch": "main",
+      "note": "No source-vetted isolated package/profile adapter yet; build artifacts are not Launcher-installable.",
+      "repository": "storytold/pdfcraft",
+      "targets": []
+    },
+    "photocraft": {
+      "default_branch": "main",
+      "display_name": "PhotoCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "photocraft",
+          "entrypoint": "photocraft"
+        },
+        "macos-aarch64": {
+          "binary": "PhotoCraft Nightly.app/Contents/MacOS/PhotoCraft",
+          "entrypoint": "PhotoCraft Nightly.app/Contents/MacOS/PhotoCraft"
+        },
+        "windows-x86_64": {
+          "binary": "photocraft.exe",
+          "entrypoint": "photocraft.exe"
+        }
+      },
+      "env_prefix": "PHOTOCRAFT",
+      "note": "Photo nightly-v1 Windows x86_64 GUI ZIP, Linux x86_64 GUI tar.gz (OpenPGP detached .asc, stable key) and macOS aarch64 notarized app ZIP, published together in one release. Production signing and publication stay off until the app caller opts in.",
+      "repository": "storytold/photocraft",
+      "targets": [
+        {
+          "asset_pattern": "photocraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.photocraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "photocraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.photocraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "photocraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.photocraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "soundcraft": {
+      "default_branch": "main",
+      "display_name": "SoundCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "soundcraft-bin",
+          "entrypoint": "soundcraft"
+        },
+        "macos-aarch64": {
+          "binary": "SoundCraft Nightly.app/Contents/MacOS/SoundCraft",
+          "entrypoint": "SoundCraft Nightly.app/Contents/MacOS/SoundCraft"
+        },
+        "windows-x86_64": {
+          "binary": "soundcraft.exe",
+          "entrypoint": "soundcraft.exe"
+        }
+      },
+      "env_prefix": "SOUNDCRAFT",
+      "note": "SoundCraft nightly-v1 Windows x86_64 GUI ZIP (soundcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (soundcraft) with soundcraft-bin beside it, and macOS aarch64 notarized app ZIP (SoundCraft Nightly.app), published together in one release.",
+      "repository": "storytold/soundcraft",
+      "targets": [
+        {
+          "asset_pattern": "soundcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.soundcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "soundcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.soundcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "soundcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.soundcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "texturecraft": {
+      "default_branch": "main",
+      "display_name": "TextureCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "texturecraft-bin",
+          "entrypoint": "texturecraft"
+        },
+        "macos-aarch64": {
+          "binary": "TextureCraft Nightly.app/Contents/MacOS/TextureCraft",
+          "entrypoint": "TextureCraft Nightly.app/Contents/MacOS/TextureCraft"
+        },
+        "windows-x86_64": {
+          "binary": "texturecraft.exe",
+          "entrypoint": "texturecraft.exe"
+        }
+      },
+      "env_prefix": "TEXTURECRAFT",
+      "note": "TextureCraft nightly-v1 Windows x86_64 GUI ZIP (texturecraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (texturecraft) with texturecraft-bin beside it, and macOS aarch64 notarized app ZIP (TextureCraft Nightly.app), published together in one release.",
+      "repository": "storytold/texturecraft",
+      "targets": [
+        {
+          "asset_pattern": "texturecraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.texturecraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "texturecraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.texturecraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "texturecraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.texturecraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "vectorcraft": {
+      "default_branch": "main",
+      "display_name": "VectorCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "vectorcraft-bin",
+          "entrypoint": "vectorcraft"
+        },
+        "macos-aarch64": {
+          "binary": "VectorCraft Nightly.app/Contents/MacOS/VectorCraft",
+          "entrypoint": "VectorCraft Nightly.app/Contents/MacOS/VectorCraft"
+        },
+        "windows-x86_64": {
+          "binary": "vectorcraft.exe",
+          "entrypoint": "vectorcraft.exe"
+        }
+      },
+      "env_prefix": "VECTORCRAFT",
+      "note": "VectorCraft nightly-v1 Windows x86_64 GUI ZIP (vectorcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (vectorcraft) with vectorcraft-bin beside it, and macOS aarch64 notarized app ZIP (VectorCraft Nightly.app), published together in one release.",
+      "repository": "storytold/vectorcraft",
+      "targets": [
+        {
+          "asset_pattern": "vectorcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.vectorcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "vectorcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.vectorcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "vectorcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.vectorcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    },
+    "wordcraft": {
+      "default_branch": "main",
+      "display_name": "WordCraft",
+      "entrypoints": {
+        "linux-x86_64": {
+          "binary": "wordcraft-bin",
+          "entrypoint": "wordcraft"
+        },
+        "macos-aarch64": {
+          "binary": "WordCraft Nightly.app/Contents/MacOS/WordCraft",
+          "entrypoint": "WordCraft Nightly.app/Contents/MacOS/WordCraft"
+        },
+        "windows-x86_64": {
+          "binary": "wordcraft.exe",
+          "entrypoint": "wordcraft.exe"
+        }
+      },
+      "env_prefix": "WORDCRAFT",
+      "note": "WordCraft nightly-v1 Windows x86_64 GUI ZIP (wordcraft.exe at the archive root), Linux x86_64 GUI tar.gz started through the canonical launcher (wordcraft) with wordcraft-bin beside it, and macOS aarch64 notarized app ZIP (WordCraft Nightly.app), published together in one release.",
+      "repository": "storytold/wordcraft",
+      "targets": [
+        {
+          "asset_pattern": "wordcraft-{version}-windows-x86_64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.wordcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "portable_zip",
+            "os": "windows"
+          }
+        },
+        {
+          "asset_pattern": "wordcraft-{version}-linux-x86_64-nightly.tar.gz",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.wordcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "x86_64",
+            "format": "tar_gz",
+            "os": "linux"
+          }
+        },
+        {
+          "asset_pattern": "wordcraft-{version}-macos-aarch64-nightly.zip",
+          "isolation": {
+            "associations": "none",
+            "package_identity": "ai.storyteller.wordcraft.nightly",
+            "profile_contract": "nightly",
+            "profile_version": 1
+          },
+          "target": {
+            "arch": "aarch64",
+            "format": "portable_zip",
+            "os": "macos"
+          }
+        }
+      ]
+    }
+  },
+  "schema": "craft-nightly-registry/v1"
+}

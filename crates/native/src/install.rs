@@ -52,6 +52,10 @@ pub struct Job<'a> {
     /// The job's place in the download line, taken when it started (none: it takes one when it
     /// gets to its download).
     pub place: Option<crate::downloads::Place<'static>>,
+    /// Set by the install itself, only when a failed Windows Installer downgrade reports that it
+    /// put the previous package back: the product code of the registration that package is in now
+    /// ([`PutBack`]). The backend records the release for exactly that registration.
+    pub put_back: Option<PutBack>,
 }
 
 /// A job's place in its batch (see [`Job::batch`]): the installer queue takes it where the batch
@@ -84,6 +88,27 @@ pub enum Downgrade<'a> {
     /// The installed copy stays until the older one is in place (see [`keeps_old_copy`]). No
     /// older package is needed.
     KeepOldCopy,
+}
+
+/// A failed Windows Installer downgrade that put the previous package back: the product code of
+/// the registration that package is in now, worked out from the ones Windows Installer listed
+/// after it (see `msi_downgrade::put_back_registration`). The same package always installs under
+/// the same product code, so once the removal step removed every registration it covers this is the
+/// one registration carrying the previous release's numbers, even when the machine listed that code
+/// before. A removal that stopped partway records nothing: what it left behind cannot be told apart
+/// from the restore. The backend records the release from this report rather than by comparing rows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PutBack {
+    pub product_code: String,
+}
+
+/// A failed install: what to tell the person, and whether a Windows Installer downgrade put the
+/// previous package back ([`PutBack`]), reported by the install itself.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Debug, PartialEq, Eq)]
+struct Failure {
+    error: String,
+    put_back: Option<PutBack>,
 }
 
 /// Whether going back over `existing` keeps the old copy until the new one is in place, the same
@@ -247,10 +272,70 @@ pub fn install_at(
     job: &mut Job<'_>,
     commit: RecordCommit<'_>,
 ) -> Result<Option<Record>, String> {
-    #[cfg(windows)]
+    install_at_with_profile(InstallRequest { app, release, asset, kind, existing, previous, signature: None }, job, commit, None, None)
+}
+
+pub(crate) fn install_nightly_at(
+    verified: &crate::nightly::VerifiedRelease,
+    existing: Option<&Installed>,
+    previous: Option<&Record>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+    lease: &crate::nightly_transaction::Lease,
+) -> Result<Option<Record>, String> {
+    let profile = verified.adapter();
+    let app = CraftApp::by_id(profile.app()).ok_or("The nightly profile has no known app.")?;
+    let request = InstallRequest {
+        app,
+        release: verified.release(),
+        asset: verified.asset(),
+        kind: profile.kind(),
+        existing,
+        previous,
+        signature: verified.signature(),
+    };
+    install_at_with_profile(request, job, commit, Some(profile), Some(lease))
+}
+
+struct InstallRequest<'a> {
+    app: &'a CraftApp,
+    release: &'a Release,
+    asset: &'a Asset,
+    kind: PackageKind,
+    existing: Option<&'a Installed>,
+    previous: Option<&'a Record>,
+    signature: Option<&'a artcraft_launcher_core::nightly::Download>,
+}
+
+fn install_at_with_profile(
+    request: InstallRequest<'_>,
+    job: &mut Job<'_>,
+    commit: RecordCommit<'_>,
+    profile: Option<crate::nightly_profile::Adapter>,
+    #[allow(unused_variables)] lease: Option<&crate::nightly_transaction::Lease>,
+) -> Result<Option<Record>, String> {
+    let InstallRequest { app, release, asset, kind, existing, previous, signature } = request;
+    if let Some(profile) = profile {
+        // A typed caller cannot accidentally inherit stable destinations, package batches or
+        // unrecorded-file replacement permission. Refuse before download or filesystem writes.
+        if profile.app() != app.id
+            || kind != profile.kind()
+            || job.replace
+            || job.downgrade.is_some()
+            || job.batch.is_some()
+            || job.install_locations.folder(app.id).is_some()
+            || existing.is_some_and(|installed| installed.source != InstallSource::Launcher || previous.is_none())
+        {
+            return Err("The nightly install has no private portable context. No installed copy or data was changed.".into());
+        }
+        profile.validate_profile(job.paths)?;
+        crate::nightly_profile::validate_download(job.paths, asset)?;
+        profile.launch_arguments(job.paths, &[])?;
+        if let Some(previous) = previous {
+            profile.validate_record(job.paths, previous)?;
+        }
+    }
     let mut commit = commit;
-    #[cfg(not(windows))]
-    let _ = commit;
     // Every early way out below gives the job's place in its batch back (see [`BatchPlace`]).
     #[cfg_attr(not(any(target_os = "linux", windows)), allow(unused_mut, unused_variables))]
     let mut batch = BatchPlace(job.batch.take());
@@ -269,7 +354,12 @@ pub fn install_at(
     {
         return Err(managed_elsewhere(app, installed, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
     }
-    bind_artifact_version(app, release, asset)?;
+    match profile {
+        Some(profile) => {
+            profile.admit_new()?.bind_release(release, asset)?;
+        }
+        None => bind_artifact_version(app, release, asset)?,
+    }
     // A feed can't send an app back to an older build; only a version the person chose by name
     // (a downgrade with a way back if it fails) gets past this.
     if !job.replace
@@ -313,6 +403,28 @@ pub fn install_at(
         let (file, sha256) = download(release, asset, job)?;
         (rollback, file, sha256)
     };
+    // Only this signed-v2 route can supply a Linux signature. No cache/feed/debug mode
+    // changes its trust source. The private verified copy, not the mutable download, is unpacked.
+    #[cfg(target_os = "linux")]
+    let authenticated = if profile.is_some() {
+        let signature = signature.ok_or("The signed Nightly archive has no detached signature.")?;
+        // A refused archive can never be installed, so it doesn't wait in the downloads for the
+        // next try. One that couldn't be checked this time (a failed signature fetch, say) stays.
+        Some(crate::nightly_signing::prepare_linux(&file, asset, signature, job.http, job.paths).map_err(|error| {
+            if matches!(error, crate::nightly_signing::LinuxPrepareError::Refused(_)) {
+                let _ = std::fs::remove_file(&file);
+            }
+            String::from(error)
+        })?)
+    } else {
+        None
+    };
+    #[cfg(not(target_os = "linux"))]
+    let _ = signature;
+    #[cfg(target_os = "linux")]
+    let authenticated_file = authenticated.as_ref().map(|archive| archive.file.as_path());
+    #[cfg(all(unix, not(target_os = "linux")))]
+    let authenticated_file = None;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // A fresh install asks the downloaded package whether it can install for one account.
     #[cfg(windows)]
@@ -327,6 +439,26 @@ pub fn install_at(
     (job.phase)(JobPhase::Installing);
     #[allow(unused_variables)]
     let version = release.version_label();
+    #[cfg(unix)]
+    if let Some(profile) = profile {
+        return complete_nightly_install(&file, authenticated_file, |file| {
+            crate::nightly_unix::install(
+                crate::nightly_unix::Package {
+                    adapter: profile,
+                    file,
+                    version: &version,
+                    previous,
+                    paths: job.paths,
+                    archive_sha256: sha256.clone(),
+                    lease,
+                },
+                &mut |record| match commit.as_deref_mut() {
+                    Some(commit) => commit(record),
+                    None => Ok(()),
+                },
+            )
+        });
+    }
     let result = match kind {
         // No team to check the signature against: refuse rather than install it unchecked.
         #[cfg(target_os = "macos")]
@@ -349,7 +481,7 @@ pub fn install_at(
             // An update lands in the same Windows Installer context as the copy being replaced:
             // per-machine needs elevation, per-user must not duplicate itself per-machine. A
             // fresh install explicitly requests per-user scope.
-            match &rollback {
+            let failure = match &rollback {
                 Some((previous, previous_sha256, previous_version)) => windows::downgrade_msi(
                     app,
                     windows::Package { file: &file, sha256: &sha256, version: &version },
@@ -367,21 +499,46 @@ pub fn install_at(
                     batch.take(),
                     job.stop,
                     &mut *job.phase,
-                ),
+                )
+                .map_err(|error| Failure { error, put_back: None }),
+            };
+            // A failed downgrade that put the previous package back says which registration that
+            // install made; nothing else may record it (see `Job::put_back`).
+            if let Err(failed) = &failure {
+                job.put_back = failed.put_back.clone();
             }
-            .map(|_| None)
+            failure.map(|()| None).map_err(|failure| failure.error)
         }
         #[cfg(windows)]
         PackageKind::PortableZip => {
-            crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
+            let mut accept = |record: &Record| {
                 if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
                     return Err("The portable executable does not match the selected version. The installation was rolled back.".into());
+                }
+                if let Some(profile) = profile {
+                    profile.validate_record(job.paths, record)?;
                 }
                 match commit.as_deref_mut() {
                     Some(commit) => commit(record),
                     None => Ok(()),
                 }
-            })
+            };
+            match profile {
+                Some(profile) => crate::portable::install_signed(
+                    crate::portable::Package {
+                        app,
+                        file: &file,
+                        version: &version,
+                        previous,
+                        paths: job.paths,
+                        directory: destination.as_deref(),
+                        replace: job.replace,
+                    },
+                    &|files, entries| profile.validate_layout(files, entries),
+                    &mut accept,
+                ),
+                None => crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut accept),
+            }
             .map(Some)
         }
         #[cfg(target_os = "linux")]
@@ -1866,7 +2023,7 @@ pub(crate) mod linux {
 }
 
 #[cfg(target_os = "macos")]
-mod macos_verify;
+pub(crate) mod macos_verify;
 
 #[cfg(target_os = "macos")]
 pub mod macos {
@@ -2529,44 +2686,81 @@ pub mod windows {
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
-    ) -> Result<(), String> {
+    ) -> Result<(), super::Failure> {
+        // The registrations the downgrade works on, listed once: that same listing is what the
+        // removal step removes, so a registration that appears afterwards is never removed behind
+        // the listing's back.
+        let installs = crate::detect::windows::msi_installs(app);
+        let previous_numbers = super::version::parse(previous.version);
         if scope == Some(MsiScope::PerMachine) {
             let mut elevated = None;
-            in_turn(stop, phase, JobPhase::Installing, || {
-                elevated = downgrade_elevated(app, &chosen, &previous, destination, scope)?;
+            let started = in_turn(stop, phase, JobPhase::Installing, || {
+                elevated = downgrade_elevated(app, &chosen, &previous, destination, scope, &installs)?;
                 Ok(())
-            })?;
+            });
+            if let Err(error) = started {
+                return Err(super::Failure { error, put_back: None });
+            }
             // Separate prompts are no fallback: refusing a later one would leave no app at all.
             return match elevated {
-                Some(ended) => msi_downgrade::report(ended, app.name, chosen.version, previous.version),
-                None => Err(msi_downgrade::no_session(app.name, chosen.version)),
+                Some(ended) => msi_downgrade::report(ended, app.name, chosen.version, previous.version)
+                    .map_err(|failed| reported(app, failed, previous_numbers.as_ref())),
+                None => Err(super::Failure { error: msi_downgrade::no_session(app.name, chosen.version), put_back: None }),
             };
         }
         // One turn for all three steps: once the copy is removed, nothing waiting in the queue
-        // (another install, or a cancel while waiting) can stop the put-back.
-        in_turn(stop, phase, JobPhase::Installing, || {
+        // (another install, or a cancel while waiting) can stop the put-back. The queue's turn
+        // carries a message out, so what the installer reported is kept beside it.
+        let mut failed = None;
+        let started = in_turn(stop, phase, JobPhase::Installing, || {
             msi_downgrade::run(msi_downgrade::Steps {
                 app: app.name,
                 chosen: chosen.version,
                 previous: previous.version,
-                remove: &mut || remove_registrations(app),
+                remove: &mut || remove_listed(app, &installs),
                 install_chosen: &mut || run_direct(chosen.file, destination, scope),
                 reinstall_previous: &mut || run_direct(previous.file, destination, scope),
             })
-        })
+            .map_err(|stopped| {
+                let message = stopped.error.clone();
+                failed = Some(stopped);
+                message
+            })
+        });
+        if let Some(failed) = failed {
+            return Err(reported(app, failed, previous_numbers.as_ref()));
+        }
+        started.map_err(|error| super::Failure { error, put_back: None })
+    }
+
+    /// What a failed downgrade reports: its message, and — only when the installer says it removed
+    /// every registration the removal step covers and then put the previous package back — the
+    /// registration that package is in now, by product code
+    /// ([`msi_downgrade::put_back_registration`]). That is the single registration carrying
+    /// `previous`'s numbers, even when Windows Installer reused a code the machine already had (the
+    /// same package installs under the same code); several such registrations or none record
+    /// nothing, and so does a put-back after a removal that stopped partway.
+    fn reported(app: &CraftApp, failed: msi_downgrade::Failed, previous: Option<&super::version::Version>) -> super::Failure {
+        let mut put_back = None;
+        if failed.put_back == msi_downgrade::PutBack::AfterRemoval {
+            let after: Vec<_> = crate::detect::windows::msi_installs(app).into_iter().map(|m| (m.product_code, m.version)).collect();
+            put_back = msi_downgrade::put_back_registration(failed.put_back, &after, previous).map(|product_code| super::PutBack { product_code });
+        }
+        super::Failure { error: failed.error, put_back }
     }
 
     /// The one-prompt route: both packages held unchanged and checked again, then one elevated
-    /// session removes, installs and if needed puts back. `None` when that session can't start.
+    /// session removes, installs and if needed puts back. `installs` is the downgrade's one listing,
+    /// which is what the session removes. `None` when that session can't start.
     fn downgrade_elevated(
         app: &CraftApp,
         chosen: &Package<'_>,
         previous: &Package<'_>,
         destination: Option<&Path>,
         scope: Option<MsiScope>,
+        installs: &[crate::detect::windows::MsiInstall],
     ) -> Result<Option<msi_downgrade::Ended>, String> {
         let _held = (msi_batch::hold(chosen.file, chosen.sha256)?, msi_batch::hold(previous.file, previous.sha256)?);
-        let installs = crate::detect::windows::msi_installs(app);
         if installs.is_empty() {
             return Err(format!("{} isn't registered with the Windows Installer", app.name));
         }
@@ -2643,10 +2837,17 @@ pub mod windows {
     }
 
     /// Removes every Windows Installer registration of `app` in turn, within the caller's queue
-    /// turn. A failure says whether an earlier registration was already removed, so a downgrade
-    /// knows the app is partly gone.
+    /// turn: an uninstall, where no put-back follows that a later listing could misjudge.
     fn remove_registrations(app: &CraftApp) -> Result<(), msi_downgrade::Removal> {
         let installs = crate::detect::windows::msi_installs(app);
+        remove_listed(app, &installs)
+    }
+
+    /// Removes exactly the registrations in `installs`, in turn, within the caller's queue turn. A
+    /// downgrade passes the one listing it works from, so what the step removes is exactly what was
+    /// listed — never a registration that appeared afterwards. A failure says whether an earlier
+    /// registration was already removed, so a downgrade knows the app is partly gone.
+    fn remove_listed(app: &CraftApp, installs: &[crate::detect::windows::MsiInstall]) -> Result<(), msi_downgrade::Removal> {
         if installs.is_empty() {
             return Err(msi_downgrade::Removal { error: format!("{} isn't registered with the Windows Installer", app.name), partly: false });
         }
@@ -2662,6 +2863,18 @@ pub mod windows {
         }
         Ok(())
     }
+}
+
+#[cfg(unix)]
+fn complete_nightly_install(
+    downloaded: &Path,
+    authenticated: Option<&Path>,
+    install: impl FnOnce(&Path) -> Result<Record, String>,
+) -> Result<Option<Record>, String> {
+    let file = authenticated.unwrap_or(downloaded);
+    let record = install(file)?;
+    let _ = std::fs::remove_file(downloaded);
+    Ok(Some(record))
 }
 
 #[cfg(test)]
@@ -3176,6 +3389,7 @@ mod tests {
                 downgrade: Some(Downgrade::Reinstall { previous: &newer, asset: &newer_msi }),
                 batch: None,
                 place: None,
+                put_back: None,
             };
             install(app, &older, &older_msi, PackageKind::Msi, Some(&portable), None, &mut job).unwrap_err()
         };
@@ -3300,6 +3514,7 @@ mod tests {
                     downgrade,
                     batch: None,
                     place: None,
+                    put_back: None,
                 };
                 install(app, &release, &asset, kind, Some(&installed), previous, &mut job).unwrap_err()
             };
@@ -3341,6 +3556,7 @@ mod tests {
                 downgrade: None,
                 batch: None,
                 place: None,
+                put_back: None,
             };
             let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
             assert!(err.contains("isn't supported"), "{err}");
@@ -3376,6 +3592,7 @@ mod tests {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let error = install(app, &release, &asset, PackageKind::AppImage, None, None, &mut job).unwrap_err();
         assert!(error.contains("folder is unavailable") || (process::in_sandbox() && error.contains("aren't supported")), "{error}");
@@ -3410,6 +3627,7 @@ mod tests {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let err = install(app, &release, &asset, kind, None, None, &mut job).unwrap_err();
         assert!(err.contains("publishes no checksum"), "{err}");
@@ -4087,6 +4305,7 @@ mod tests {
             downgrade: Some(Downgrade::Reinstall { previous: &previous, asset: &installed }),
             batch: None,
             place: None,
+            put_back: None,
         };
         let have = |asset: &Asset| {
             let dest = download_path(&paths, asset);
@@ -4135,6 +4354,7 @@ mod tests {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, Some(&installed), None, &mut job, None);
         assert!(result.is_err());
@@ -4169,6 +4389,7 @@ mod tests {
             downgrade: None,
             batch: None,
             place: None,
+            put_back: None,
         };
         let result = install_at(app, &release, &asset, PackageKind::AppImage, None, None, &mut job, None);
         assert!(result.is_err(), "mismatched artifact version must be rejected");
@@ -4456,5 +4677,47 @@ mod tests {
             let app = std::env::var("CRAFT_APP").expect("set CRAFT_APP to a Craft App bundle");
             assert!(signed_by(Path::new(&app), TEAM_ID), "{app} isn't signed by {TEAM_ID}");
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod shared_selection_cleanup_tests {
+    use super::*;
+    #[test]
+    fn shared_selection_success_retires_the_download_not_the_private_verified_snapshot() {
+        let temp = tempfile::tempdir().unwrap();
+        let download = temp.path().join("owned-download.tar.gz");
+        let snapshot = temp.path().join("verified-snapshot.tar.gz");
+        let unrelated = temp.path().join("unrelated");
+        for (path, bytes) in
+            [(&download, b"mutable downloaded bytes".as_slice()), (&snapshot, b"verified snapshot bytes"), (&unrelated, b"unrelated user bytes")]
+        {
+            std::fs::write(path, bytes).unwrap();
+        }
+        let record = Record {
+            version: "1.0.0-nightly.1".into(),
+            kind: PackageKind::TarGz,
+            path: temp.path().join("installed"),
+            installed_at: 1,
+            files: Vec::new(),
+            needs_root: false,
+        };
+        let result = complete_nightly_install(&download, Some(&snapshot), |selected| {
+            assert_eq!(selected, snapshot);
+            assert_eq!(std::fs::read(selected).unwrap(), b"verified snapshot bytes");
+            Ok(record.clone())
+        })
+        .unwrap();
+        assert_eq!(result, Some(record));
+        assert!(!download.exists(), "successful completion must remove the owned mutable download");
+        assert_eq!(
+            std::fs::read(&snapshot).unwrap(),
+            b"verified snapshot bytes",
+            "the private snapshot stays owned by its authenticated-archive guard"
+        );
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"unrelated user bytes");
+        std::fs::write(&download, b"keep failed download").unwrap();
+        assert!(complete_nightly_install(&download, Some(&snapshot), |_| Err("cancelled or failed".into())).is_err());
+        assert_eq!(std::fs::read(&download).unwrap(), b"keep failed download");
     }
 }

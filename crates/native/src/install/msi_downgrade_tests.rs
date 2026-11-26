@@ -4,7 +4,7 @@ use super::*;
 
 /// Runs a step-by-step downgrade whose steps answer `remove` (an error, and whether something was
 /// removed before it), `chosen` and `back`, and returns its result with the steps that ran, in order.
-fn downgrade(remove: Result<(), (&str, bool)>, chosen: Result<(), &str>, back: Result<(), &str>) -> (Result<(), String>, Vec<&'static str>) {
+fn downgrade(remove: Result<(), (&str, bool)>, chosen: Result<(), &str>, back: Result<(), &str>) -> (Result<(), Failed>, Vec<&'static str>) {
     let ran = RefCell::new(Vec::new());
     let result = run(Steps {
         app: "FilmCraft",
@@ -36,7 +36,7 @@ fn the_newer_copy_goes_before_the_chosen_version_and_nothing_is_put_back_on_succ
 #[test]
 fn a_failed_removal_changes_nothing_and_installs_nothing() {
     let (result, ran) = downgrade(Err(("the Windows Installer stopped with error 1603", false)), Ok(()), Ok(()));
-    assert_eq!(result, Err("the Windows Installer stopped with error 1603".to_string()));
+    assert_eq!(result, Err(Failed::without_put_back("the Windows Installer stopped with error 1603".to_string())));
     assert_eq!(ran, ["remove"]);
 }
 
@@ -46,28 +46,34 @@ fn a_failed_removal_changes_nothing_and_installs_nothing() {
 fn a_removal_that_fails_after_removing_one_copy_puts_the_previous_version_back() {
     let (result, ran) = downgrade(Err(("the Windows Installer stopped with error 1603", true)), Ok(()), Ok(()));
     assert_eq!(ran, ["remove", "put back"]);
-    let message = result.unwrap_err();
+    let failed = result.unwrap_err();
+    let message = &failed.error;
     assert!(message.contains("FilmCraft 0.14.0 couldn't be fully removed") && message.contains("still installed"), "{message}");
     assert!(!message.contains("nothing was changed"), "{message}");
+    assert_eq!(failed.put_back, PutBack::AfterPartialRemoval, "part of the app may be left, so only a new code is the restore");
     let (result, _) = downgrade(Err(("error 1603", true)), Ok(()), Err("error 1603"));
-    let message = result.unwrap_err();
+    let failed = result.unwrap_err();
+    let message = &failed.error;
     assert!(message.contains("putting it back failed too") && message.contains("Install FilmCraft again from the launcher"), "{message}");
+    assert_eq!(failed.put_back, PutBack::Not, "nothing was put back, so there is no registration to record");
 }
 
 #[test]
 fn a_failed_install_puts_the_previous_version_back_and_says_so() {
     let (result, ran) = downgrade(Ok(()), Err("the Windows Installer stopped with error 1603"), Ok(()));
     assert_eq!(ran, ["remove", "install chosen", "put back"]);
-    let message = result.unwrap_err();
+    let failed = result.unwrap_err();
+    let message = &failed.error;
     assert!(message.contains("FilmCraft 0.13.0 couldn't be installed"), "{message}");
     assert!(message.contains("FilmCraft 0.14.0 was put back"), "{message}");
+    assert_eq!(failed.put_back, PutBack::AfterRemoval, "every registration the removal step covers is gone, so a same-code restore is recorded too");
 }
 
 #[test]
 fn a_refused_prompt_also_puts_the_previous_version_back() {
     let (result, ran) = downgrade(Ok(()), Err(CANCELLED), Ok(()));
     assert_eq!(ran, ["remove", "install chosen", "put back"]);
-    let message = result.unwrap_err();
+    let message = result.unwrap_err().error;
     assert!(message.contains("permission wasn't given"), "{message}");
     assert!(!message.contains(CANCELLED), "{message}");
 }
@@ -75,9 +81,11 @@ fn a_refused_prompt_also_puts_the_previous_version_back() {
 #[test]
 fn when_putting_back_fails_too_the_person_is_told_how_to_recover() {
     let (result, _) = downgrade(Ok(()), Err("error 1603"), Err(CANCELLED));
-    let message = result.unwrap_err();
+    let failed = result.unwrap_err();
+    let message = &failed.error;
     assert!(message.contains("putting 0.14.0 back failed too (permission wasn't given)"), "{message}");
     assert!(message.contains("Install FilmCraft again from the launcher"), "{message}");
+    assert_eq!(failed.put_back, PutBack::Not);
 }
 
 /// The exit code the elevated script builds for `step`, as PowerShell computes it (a code outside
@@ -109,19 +117,94 @@ fn each_outcome_tells_the_person_what_is_installed_now() {
     let report = |e| report(e, "FilmCraft", "0.13.0", "0.14.0");
     assert_eq!(report(Ended::Done), Ok(()));
     // A refused prompt is an ordinary cancel: nothing ran.
-    assert_eq!(report(Ended::Declined), Err(CANCELLED.to_string()));
+    assert_eq!(report(Ended::Declined), Err(Failed::without_put_back(CANCELLED.to_string())));
     let removal = report(Ended::RemovalFailed(1603)).unwrap_err();
-    assert!(removal.contains("FilmCraft 0.14.0 couldn't be removed") && removal.contains("nothing was changed"), "{removal}");
+    let message = &removal.error;
+    assert!(message.contains("FilmCraft 0.14.0 couldn't be removed") && message.contains("nothing was changed"), "{message}");
+    assert_eq!(removal.put_back, PutBack::Not);
     let back = report(Ended::PutBack(1603)).unwrap_err();
-    assert!(back.contains("FilmCraft 0.14.0 was put back"), "{back}");
+    assert!(back.error.contains("FilmCraft 0.14.0 was put back"), "{}", back.error);
+    assert_eq!(back.put_back, PutBack::AfterRemoval, "every registration the removal step covers is gone, so its registration is reported");
     let lost = report(Ended::NotPutBack { install: 1603, back: 1603 }).unwrap_err();
-    assert!(lost.contains("Install FilmCraft again from the launcher"), "{lost}");
+    assert!(lost.error.contains("Install FilmCraft again from the launcher"), "{}", lost.error);
+    assert_eq!(lost.put_back, PutBack::Not);
     let partly = report(Ended::PartlyRemovedPutBack(1603)).unwrap_err();
-    assert!(partly.contains("couldn't be fully removed") && partly.contains("FilmCraft 0.14.0 is still installed"), "{partly}");
+    assert!(partly.error.contains("couldn't be fully removed") && partly.error.contains("FilmCraft 0.14.0 is still installed"), "{}", partly.error);
+    assert_eq!(partly.put_back, PutBack::AfterPartialRemoval, "part of the app may be left, so only a new code is the restore");
     let partly_lost = report(Ended::PartlyRemovedNotPutBack { removal: 1603, back: 1603 }).unwrap_err();
-    assert!(partly_lost.contains("Install FilmCraft again from the launcher"), "{partly_lost}");
+    assert!(partly_lost.error.contains("Install FilmCraft again from the launcher"), "{}", partly_lost.error);
+    assert_eq!(partly_lost.put_back, PutBack::Not);
     let odd = report(Ended::Other(Some(5))).unwrap_err();
-    assert!(odd.contains("Check which version of FilmCraft is installed"), "{odd}");
+    assert!(odd.error.contains("Check which version of FilmCraft is installed"), "{}", odd.error);
+    assert_eq!(odd.put_back, PutBack::Not);
+}
+
+/// Once the removal step removed every registration it covers, the checked previous package goes
+/// back in, and Windows Installer gives it the same product code the removed copy had: that same
+/// code is the restore, as the one registration carrying the previous release's numbers. Anything
+/// but exactly one such registration proves nothing.
+#[test]
+fn a_same_code_restore_after_a_completed_removal_is_the_put_back() {
+    let previous = super::super::version::parse("0.25.0-rc.1").unwrap();
+    let install = |code: &str, v: &str| (code.to_string(), super::super::version::parse(v));
+    let (rc, second, other) = (
+        "{3D425FF2-3EB2-4950-9833-95B01B102845}".to_string(),
+        "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".to_string(),
+        "{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}".to_string(),
+    );
+    // An unrecorded RC whose registrations the removal step covered, put back from its own
+    // package: Windows Installer reinstalled it under the very product code the machine had.
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[install(&rc, "0.25.0")], Some(&previous)), Some(rc.clone()));
+    // A registration the removal step never covers — an account's own per-user record, say — sits
+    // beside the restore without becoming a second candidate of its own.
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[install(&rc, "0.25.0"), install(&other, "0.24.0")], Some(&previous)), Some(rc.clone()));
+    // Two registrations with the previous numbers record nothing, even beside one with other
+    // numbers; nor does none at all, or one carrying other numbers.
+    assert_eq!(
+        put_back_registration(
+            PutBack::AfterRemoval,
+            &[install(&rc, "0.25.0"), install(&second, "0.25.0"), install(&other, "0.24.0")],
+            Some(&previous)
+        ),
+        None
+    );
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[], Some(&previous)), None);
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[install(&rc, "0.24.0")], Some(&previous)), None);
+    // Without the previous release's version there is nothing to match against, and nothing is
+    // recorded when no put-back ran.
+    assert_eq!(put_back_registration(PutBack::AfterRemoval, &[install(&rc, "0.25.0")], None), None);
+    assert_eq!(put_back_registration(PutBack::Not, &[install(&rc, "0.25.0")], Some(&previous)), None);
+}
+
+/// A removal that stopped with part of the app gone leaves registrations behind that cannot be
+/// told apart from the restore — a registration that appeared since the snapshot can carry the
+/// previous numbers just as the restore does, even when the put-back reused a code the app already
+/// had. Such a put-back records nothing, whatever the registrations look like.
+#[test]
+fn a_partial_removal_records_nothing() {
+    let previous = super::super::version::parse("0.25.0-rc.1").unwrap();
+    let install = |code: &str, v: &str| (code.to_string(), super::super::version::parse(v));
+    let (reused, appeared, newer) = (
+        "{3D425FF2-3EB2-4950-9833-95B01B102845}".to_string(),
+        "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".to_string(),
+        "{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}".to_string(),
+    );
+    // The case that matters: the put-back went back in under a code the app already had, and a
+    // registration that appeared after the snapshot carries the previous numbers too. The one
+    // "new" code would have been taken for the restore; nothing is recorded instead.
+    assert_eq!(
+        put_back_registration(PutBack::AfterPartialRemoval, &[install(&reused, "0.25.0"), install(&appeared, "0.25.0")], Some(&previous)),
+        None
+    );
+    // Even alone, a registration with the previous numbers is not the restore after a partial
+    // removal: it may be one the removal step left behind.
+    assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &[install(&appeared, "0.25.0")], Some(&previous)), None);
+    assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &[install(&reused, "0.25.0")], Some(&previous)), None);
+    assert_eq!(
+        put_back_registration(PutBack::AfterPartialRemoval, &[install(&newer, "0.26.0"), install(&appeared, "0.25.0")], Some(&previous)),
+        None
+    );
+    assert_eq!(put_back_registration(PutBack::AfterPartialRemoval, &[], Some(&previous)), None);
 }
 
 /// An all-users downgrade with no elevated session stops before removing anything, and says so.
@@ -159,6 +242,12 @@ fn only_machine_wide_records_name_what_the_elevated_session_removes() {
     let none = elevated_removals("FilmCraft", [(PLANTED, MsiScope::PerUser)]).unwrap_err();
     assert!(none.contains("FilmCraft isn't registered"), "{none}");
     assert!(elevated_removals("FilmCraft", [("{x' ; calc ; '}", MsiScope::PerMachine)]).is_err());
+    // The session removes exactly the listing the downgrade snapshotted: one that is missing from
+    // it — a registration that appears later — is not removed behind the snapshot's back.
+    let later = "{A1B2C3D4-E5F6-4A5B-8C9D-0E1F2A3B4C5D}";
+    let snapshot = elevated_removals("FilmCraft", [(OURS, MsiScope::PerMachine)]).unwrap();
+    assert_eq!(snapshot, vec![format!("/x {OURS} /passive /norestart")]);
+    assert!(!snapshot.iter().any(|line| line.contains(later)), "a registration outside the snapshot stays put");
 }
 
 /// Runs the generated elevated script for real, but not elevated and with `cmd.exe` standing in
