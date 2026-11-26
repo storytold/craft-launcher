@@ -1344,7 +1344,9 @@ impl LauncherUi {
                     self.update_button(ui, entry, status, &labels, main_w, place);
                 }
             }
-            Primary::SelectedVersion { tag, checked, .. } if entry.installed.is_some() => self.chosen_beside_open(ui, entry, &tag, checked, main_w),
+            Primary::SelectedVersion { tag, checked, retry } if entry.installed.is_some() => {
+                self.chosen_beside_open(ui, entry, &tag, checked, retry, main_w);
+            }
             Primary::SelectedVersion { tag, checked, retry } => {
                 let label =
                     fmt(if retry { tl!("Retry install of version {version}") } else { tl!("Install version {version}") }, &[("version", &tag)]);
@@ -1383,16 +1385,17 @@ impl LauncherUi {
     /// ahead (#1616). Where the two don't fit side by side, an install that would go ahead shows
     /// alone, as an update does, and one that wouldn't leaves Open alone: a refused install never
     /// takes the place of Open. Open is in the `⋯` menu either way.
-    fn chosen_beside_open(&mut self, ui: &mut Ui, entry: &AppEntry, tag: &str, checked: bool, main_w: f32) {
+    fn chosen_beside_open(&mut self, ui: &mut Ui, entry: &AppEntry, tag: &str, checked: bool, retry: bool, main_w: f32) {
         let id = entry.app.id;
-        let install = fmt(tl!("Install version {version}"), &[("version", tag)]);
+        let install = fmt(if retry { tl!("Retry install of version {version}") } else { tl!("Install version {version}") }, &[("version", tag)]);
+        let short = if retry { tl!("Retry") } else { tl!("Install") };
         let open = entry.installed_label().map_or_else(|| tl!("Open").to_string(), |v| fmt(tl!("Open {version}"), &[("version", &v)]));
         let why = self.version_refusal(entry, tag);
         let explain = |resp: egui::Response| match &why {
             Some(why) => resp.on_disabled_hover_text(why),
             None => resp,
         };
-        if let Some(split) = widgets::split_layout(ui, main_w, &[&open, tl!("Open")], &[&install, tl!("Install")], false) {
+        if let Some(split) = widgets::split_layout(ui, main_w, &[&open, tl!("Open")], &[&install, short], false) {
             let (opened, installed) = widgets::split_button(
                 ui,
                 widgets::Half { label: &open, kind: Kind::Secondary, enabled: true },
@@ -1407,7 +1410,7 @@ impl LauncherUi {
                 self.install_app(id);
             }
         } else if checked {
-            let resp = widgets::labelled_button(ui, fitted(ui, &install, &[tl!("Install")], main_w), &install, Kind::Primary, main_w);
+            let resp = widgets::labelled_button(ui, fitted(ui, &install, &[short], main_w), &install, Kind::Primary, main_w);
             if self.size_hint(resp, entry).clicked() {
                 self.install_app(id);
             }

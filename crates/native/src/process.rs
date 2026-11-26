@@ -870,24 +870,40 @@ fn windows_file_name(path: &Path) -> Option<String> {
     text.rsplit(['\\', '/']).next().filter(|name| !name.is_empty()).map(str::to_string)
 }
 
-/// Whether two executable paths name the same file, as Windows compares them: in any case, with
-/// either slash, and with or without the `\\?\` prefix. Paths that differ as text are compared
-/// again after resolving both on disk, so a junction, a symbolic link or a short (8.3) name
-/// matches the file it leads to.
+/// Whether two executable paths identify the same file, including hardlinks and symbolic links.
 fn same_program(left: &Path, right: &Path) -> bool {
-    fn normalized(path: &Path) -> String {
-        let text = path.to_string_lossy().replace('/', "\\").to_lowercase();
-        match text.strip_prefix(r"\\?\unc\") {
-            Some(share) => format!(r"\\{share}"),
-            None => text.strip_prefix(r"\\?\").unwrap_or(&text).to_string(),
-        }
+    file_identity(left).zip(file_identity(right)).is_some_and(|(left, right)| left == right)
+}
+
+fn file_identity(path: &Path) -> Option<(u64, u64)> {
+    #[cfg(windows)]
+    {
+        use winsafe::{HFILE, co};
+        let (file, _) = HFILE::CreateFile(
+            path.to_str()?,
+            co::GENERIC::default(),
+            Some(co::FILE_SHARE::READ | co::FILE_SHARE::WRITE | co::FILE_SHARE::DELETE),
+            None,
+            co::DISPOSITION::OPEN_EXISTING,
+            co::FILE_ATTRIBUTE::NORMAL,
+            None,
+            None,
+            None,
+        )
+        .ok()?;
+        let info = file.GetFileInformationByHandle().ok()?;
+        Some((u64::from(info.dwVolumeSerialNumber), info.nFileIndex()))
     }
-    if normalized(left) == normalized(right) {
-        return true;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = std::fs::metadata(path).ok()?;
+        Some((metadata.dev(), metadata.ino()))
     }
-    match (std::fs::canonicalize(left), std::fs::canonicalize(right)) {
-        (Ok(left), Ok(right)) => normalized(&left) == normalized(&right),
-        _ => false,
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        None
     }
 }
 
@@ -1052,8 +1068,48 @@ mod tests {
 mod running_tests {
     use super::*;
 
-    fn targets() -> Vec<PathBuf> {
-        vec![PathBuf::from(r"C:\Apps\PhotoCraft\photocraft.exe"), PathBuf::from(r"C:\Apps\PhotoCraft\photocraft-cli.exe")]
+    #[test]
+    fn an_executable_path_that_does_not_exist_is_not_confirmed() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("photocraft.exe");
+        assert!(!same_program(&missing, &missing));
+    }
+
+    #[test]
+    fn hardlinked_executable_paths_identify_the_same_program() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("photocraft.exe");
+        let alias = dir.path().join("other.exe");
+        std::fs::write(&source, b"program").unwrap();
+        std::fs::hard_link(&source, &alias).unwrap();
+        assert!(same_program(&source, &alias));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn distinct_case_sensitive_executable_paths_are_not_confirmed() {
+        let dir = tempfile::tempdir().unwrap();
+        let lower = dir.path().join("craft");
+        let upper = dir.path().join("Craft");
+        std::fs::create_dir(&lower).unwrap();
+        if let Err(error) = std::fs::create_dir(&upper) {
+            assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+            return;
+        }
+        let lower = lower.join("photocraft.exe");
+        let upper = upper.join("photocraft.exe");
+        std::fs::write(&lower, b"one").unwrap();
+        std::fs::write(&upper, b"two").unwrap();
+        assert!(!same_program(&lower, &upper));
+    }
+
+    fn targets() -> (tempfile::TempDir, Vec<PathBuf>) {
+        let dir = tempfile::tempdir().unwrap();
+        let targets = vec![dir.path().join("photocraft.exe"), dir.path().join("photocraft-cli.exe")];
+        for path in &targets {
+            std::fs::write(path, b"program").unwrap();
+        }
+        (dir, targets)
     }
 
     fn program(name: &str, path: Option<&str>) -> RunningProgram {
@@ -1062,26 +1118,33 @@ mod running_tests {
 
     #[test]
     fn the_installed_app_or_its_command_line_tool_is_confirmed_by_path() {
-        let gui = [program("photocraft.exe", Some(r"C:\Apps\PhotoCraft\photocraft.exe"))];
-        assert_eq!(match_running(&targets(), &gui), Running::Confirmed(targets()[0].clone()));
-        let cli = [program("photocraft-cli.exe", Some(r"\\?\c:/apps/photocraft/PHOTOCRAFT-CLI.EXE"))];
-        assert_eq!(match_running(&targets(), &cli), Running::Confirmed(targets()[1].clone()));
+        let (_dir, targets) = targets();
+        let gui = [program("photocraft.exe", Some(&targets[0].to_string_lossy()))];
+        assert_eq!(match_running(&targets, &gui), Running::Confirmed(targets[0].clone()));
+        #[cfg(windows)]
+        let cli_path = PathBuf::from(format!(r"\\?\{}", targets[1].display()).to_uppercase());
+        #[cfg(not(windows))]
+        let cli_path = targets[1].clone();
+        let cli = [program("photocraft-cli.exe", Some(&cli_path.to_string_lossy()))];
+        assert_eq!(match_running(&targets, &cli), Running::Confirmed(targets[1].clone()));
     }
 
     #[test]
     fn another_copy_with_the_same_name_is_not_this_one() {
+        let (_dir, targets) = targets();
         let other =
             [program("photocraft.exe", Some(r"D:\Portable\PhotoCraft\photocraft.exe")), program("notepad.exe", Some(r"C:\Windows\notepad.exe"))];
-        assert_eq!(match_running(&targets(), &other), Running::No);
-        assert_eq!(match_running(&targets(), &[]), Running::No);
+        assert_eq!(match_running(&targets, &other), Running::No);
+        assert_eq!(match_running(&targets, &[]), Running::No);
     }
 
     #[test]
     fn a_name_without_a_path_is_only_possible_and_a_confirmed_match_wins() {
+        let (_dir, targets) = targets();
         let unknown = [program("PhotoCraft-CLI.exe", None)];
-        assert_eq!(match_running(&targets(), &unknown), Running::Possible("PhotoCraft-CLI.exe".into()));
-        let both = [program("photocraft.exe", None), program("photocraft.exe", Some(r"C:\Apps\PhotoCraft\photocraft.exe"))];
-        assert_eq!(match_running(&targets(), &both), Running::Confirmed(targets()[0].clone()));
+        assert_eq!(match_running(&targets, &unknown), Running::Possible("PhotoCraft-CLI.exe".into()));
+        let both = [program("photocraft.exe", None), program("photocraft.exe", Some(&targets[0].to_string_lossy()))];
+        assert_eq!(match_running(&targets, &both), Running::Confirmed(targets[0].clone()));
         let slashed = [PathBuf::from("C:/Apps/PhotoCraft/photocraft.exe")];
         assert_eq!(match_running(&slashed, &[program("PHOTOCRAFT.EXE", None)]), Running::Possible("PHOTOCRAFT.EXE".into()));
     }

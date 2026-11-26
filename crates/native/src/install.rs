@@ -3246,6 +3246,7 @@ mod tests {
             replace: false,
             approved_path: None,
             downgrade: None,
+            put_back: None,
             failure: None,
             batch: None,
             place: None,

@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-native",
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-core"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -336,14 +336,14 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-mcp"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "craft-ai-mcp",
 ]
 
 [[package]]
 name = "artcraft-launcher-native"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "artcraft-launcher-core",
  "craft-ai-agents",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-ui-egui"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "artcraft-launcher-core",
  "craft-font-manager",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "artcraft-launcher-web"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-ui-egui",
@@ -7895,7 +7895,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.20.3"
+version = "0.20.4"
 dependencies = [
  "jiff",
  "semver",
