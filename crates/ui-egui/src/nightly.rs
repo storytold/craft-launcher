@@ -77,6 +77,16 @@ fn nightly_job_progress(phase: JobPhase) -> (Option<f32>, String) {
     }
 }
 
+/// The line the Developer Builds page shows while the launcher's own GitHub budget is holding the
+/// next check back: the same "next check" wording the stable page uses for the same kind of hold.
+/// `None` when there is no hold in the future, so the page says what it knows.
+fn held_back_line(until: Option<i64>, now: i64) -> Option<String> {
+    use crate::i18n::fmt;
+    let until = until.filter(|until| *until > now)?;
+    let (hour, minute) = crate::local_time::clock(until);
+    Some(fmt(tl!("Next GitHub check at {time}"), &[("time", &format!("{hour:02}:{minute:02}"))]))
+}
+
 fn nightly_ago(at: i64, now: i64) -> String {
     use crate::i18n::tn;
     use artcraft_launcher_core::time::{TimeAgo, ago_kind};
@@ -137,6 +147,9 @@ pub(crate) struct NightlyState {
     pub entries: Vec<AppEntry>,
     options: Option<BackendOptions>,
     checked_at: Option<i64>,
+    /// When the launcher's own GitHub budget will let the next sweep ask again, from the backend's
+    /// `CheckFinished`. The page says it is waiting for GitHub instead of reporting "nothing found".
+    held_back_until: Option<i64>,
     attempted_at: Option<i64>,
     // Request throttling is not evidence that Native actually attempted a lookup.
     requested_at: Option<i64>,
@@ -167,6 +180,7 @@ impl NightlyState {
                 .collect(),
             options: None,
             checked_at: None,
+            held_back_until: None,
             attempted_at: None,
             requested_at: None,
             statuses: BTreeMap::new(),
@@ -238,8 +252,16 @@ impl NightlyState {
         let events = self.backend.as_mut().map_or_else(Vec::new, |backend| backend.poll());
         for event in events {
             match event {
-                Event::CheckStarted => self.checking = true,
-                Event::CheckFinished { .. } => self.checking = false,
+                Event::CheckStarted => {
+                    self.checking = true;
+                    self.held_back_until = None;
+                }
+                Event::CheckFinished { rate_limited_until, .. } => {
+                    self.checking = false;
+                    // Only a launcher-budget hold is worth saying out loud on this page: a server's
+                    // own backoff arrives through each app's status.
+                    self.held_back_until = rate_limited_until;
+                }
                 Event::NightlyStatus { app, mut status } => {
                     if self.entries.iter().any(|entry| entry.app.id == app) {
                         status.message = status.message.map(|message| message.chars().take(512).collect());
@@ -305,12 +327,20 @@ impl NightlyState {
             }
         }
         let Some(backend) = &mut self.backend else { return };
-        // Nightly has its own six-hour policy, independent of Stable's user preference.
-        // Poll persisted metadata before requesting work. Native remains the final gate,
-        // including server backoff and manual request coalescing.
+        // Nightly asks on its own hourly clock, independent of Stable's preference; the backend
+        // decides which apps are due. Poll persisted metadata before requesting work; Native remains
+        // the final gate, including the budget, server backoff and manual request coalescing.
         let now = backend.now();
         // Like Native, treat an attempt in the future after clock rollback as stale.
-        let due = self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 6 * 60 * 60);
+        let hourly_due = self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60 * 60);
+        // A hold the launcher's own budget imposed decides the next check by itself: while it runs,
+        // nothing is asked even if the hourly gate would say yes; once it passes, ask at once rather
+        // than wait out the hour of a sweep that never ran. Consent, coalescing and server backoff
+        // still guard the request. A sweep that completed without a hold keeps the hourly gate.
+        let due = match self.held_back_until {
+            Some(until) => now >= until,
+            None => hourly_due,
+        };
         // Unacknowledged requests are coalesced briefly, not treated as actual attempts.
         // A future request permits one replacement, which resets this baseline to now.
         let request_allowed = self.requested_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60);
@@ -318,6 +348,8 @@ impl NightlyState {
         if self.available && settings.nightly_enabled && !self.checking && due && request_allowed && retry_allowed {
             // A request is not a successful verification, including when Native coalesces it.
             self.requested_at = Some(now);
+            // The hold has been answered: a fresh hold, if any, arrives with the next CheckFinished.
+            self.held_back_until = None;
             backend.send(Command::CheckForUpdates { force: false });
         }
     }
@@ -442,6 +474,12 @@ impl LauncherUi {
                     ui.label(tl!("Could not check for developer builds."));
                     let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
                     nightly_status_labels(ui, status, now);
+                } else if enabled
+                    && let Some(line) = held_back_line(self.nightly.held_back_until, self.nightly.backend.as_ref().map_or(0, |backend| backend.now()))
+                {
+                    // Nothing was asked this time, so nothing was found: say the check is waiting for
+                    // GitHub rather than stamping a verification that did not happen.
+                    ui.add(egui::Label::new(line).wrap());
                 } else if enabled
                     && self.nightly.checked_at.is_some()
                     && entries.iter().any(|entry| matches!(entry.latest, Some(LatestRelease::None)))
@@ -1257,6 +1295,152 @@ mod status_tests {
     }
 
     #[test]
+    fn a_budget_hold_is_shown_as_waiting_and_cleared_by_the_next_check() {
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        let hold = Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1000 + 60 * 60) };
+        fake.events.borrow_mut().extend([Event::CheckStarted, hold]);
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        state.logic(&Settings::default());
+        assert_eq!(state.held_back_until, Some(1000 + 60 * 60), "a held-back sweep says when GitHub is asked again");
+        let (hour, minute) = crate::local_time::clock(1000 + 60 * 60);
+        assert_eq!(held_back_line(state.held_back_until, 1000).as_deref(), Some(format!("Next GitHub check at {hour:02}:{minute:02}").as_str()));
+        assert_eq!(held_back_line(state.held_back_until, 1000 + 60 * 60), None, "a hold that has passed says nothing");
+        fake.events.borrow_mut().push(Event::CheckStarted);
+        state.logic(&Settings::default());
+        assert_eq!(state.held_back_until, None, "the next check clears it");
+    }
+
+    #[test]
+    fn an_expired_budget_hold_makes_the_next_check_eligible_without_waiting_the_hour() {
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        // A sweep that ran and found nothing, held back by the launcher's budget until 1600.
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(400, 400, true, None),
+            Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1600) },
+        ]);
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        let enabled = Settings { nightly_enabled: true, ..Default::default() };
+        fake.now.set(1599);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "still inside the hold");
+        fake.now.set(1600);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "the hold has passed, so ask now instead of waiting for the hourly gate");
+        assert_eq!(state.held_back_until, None, "the hold is spent once it has been answered");
+        fake.now.set(1601);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "unacknowledged requests still coalesce");
+    }
+
+    #[test]
+    fn a_hold_left_by_a_partly_refused_sweep_is_waited_out_and_then_asks_for_the_deferred_app() {
+        // One sweep: PhotoCraft's Nightly verified, then the launcher's budget refused the rest, so
+        // the backend deferred FilmCraft (its attempt time is put back, which is what makes it due
+        // again). The page must not ask before the hold expires, must ask at the moment it does, and
+        // every other guard must still stand.
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        let deferred = Event::NightlyStatus {
+            app: "filmcraft".into(),
+            status: NightlyStatus { attempted_at: None, verified_at: None, retry_at: None, stale: false, message: None },
+        };
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(1000, 1000, false, None),
+            deferred,
+            Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1600) },
+        ]);
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        let enabled = Settings { nightly_enabled: true, ..Default::default() };
+
+        // Inside the hold: the hourly gate alone would also say no, so this only proves patience.
+        fake.now.set(1599);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "nothing is asked while the budget is still holding the sweep");
+
+        // The deferred app is due at the backend (its attempt time was put back); the page asks now
+        // rather than waiting the rest of the hour, and the sweep that runs picks it up.
+        fake.now.set(1600);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "the hold has expired, so ask for the deferred app");
+        assert_eq!(state.held_back_until, None, "the hold is spent once it has been answered");
+
+        // Coalescing: an unacknowledged request is not repeated.
+        fake.now.set(1601);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "a request already sent is coalesced for sixty seconds");
+
+        // Consent still wins: with Nightly switched off, an expired hold asks nothing.
+        let fake = FakeBackend::default();
+        fake.now.set(2000);
+        fake.events
+            .borrow_mut()
+            .extend([Event::CheckStarted, Event::CheckFinished { at: 2000, source: Source::GitHubApi, rate_limited_until: Some(2500) }]);
+        let mut off = NightlyState::new(Some(Box::new(fake.clone())), None);
+        fake.now.set(2600);
+        off.logic(&Settings::default());
+        assert_eq!(checks(&fake), 0, "consent is not inferred from an expired budget hold");
+
+        // A server's own backoff still holds the page back even when the launcher's hold has passed.
+        let fake = FakeBackend::default();
+        fake.now.set(3000);
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(3000, 3000, false, Some(3600)),
+            Event::CheckFinished { at: 3000, source: Source::GitHubApi, rate_limited_until: Some(3100) },
+        ]);
+        let mut backed_off = NightlyState::new(Some(Box::new(fake.clone())), None);
+        fake.now.set(3100);
+        backed_off.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "an app's server backoff still gates the request");
+        fake.now.set(3600);
+        backed_off.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "and the request goes once the server's backoff is over");
+
+        // A hold still in the future is honoured, not treated as expired.
+        let fake = FakeBackend::default();
+        fake.now.set(4000);
+        // An attempt just now, so the hourly gate itself says no, and a hold ten minutes out.
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(4000, 4000, false, None),
+            Event::CheckFinished { at: 4000, source: Source::GitHubApi, rate_limited_until: Some(4600) },
+        ]);
+        let mut later = NightlyState::new(Some(Box::new(fake.clone())), None);
+        later.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "a future hold is waited out");
+        fake.now.set(4600);
+        later.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "and asking resumes when it passes");
+    }
+
+    #[test]
+    fn a_future_hold_holds_even_when_the_hourly_gate_would_ask() {
+        // Two shapes of an already-due page: an attempt long enough ago, and no attempt at all.
+        for attempt in [Some(-2600), None] {
+            let fake = FakeBackend::default();
+            fake.now.set(1000);
+            let mut events = vec![Event::CheckStarted];
+            if let Some(at) = attempt {
+                events.push(status(at, at, false, None));
+            }
+            events.push(Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1600) });
+            fake.events.borrow_mut().extend(events);
+            let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+            let enabled = Settings { nightly_enabled: true, ..Default::default() };
+            fake.now.set(1599);
+            state.logic(&enabled);
+            assert_eq!(checks(&fake), 0, "{attempt:?}: a running hold is honoured though the hourly gate says yes");
+            fake.now.set(1600);
+            state.logic(&enabled);
+            assert_eq!(checks(&fake), 1, "{attempt:?}: and asking resumes the moment it passes");
+        }
+    }
+
+    #[test]
     fn completion_without_verified_status_never_claims_success() {
         let fake = FakeBackend::default();
         fake.now.set(100);
@@ -1270,17 +1454,17 @@ mod status_tests {
     }
 
     #[test]
-    fn persisted_attempt_controls_six_hour_boundary_independently_of_stable_and_clock_rollback() {
+    fn persisted_attempt_controls_hourly_boundary_independently_of_stable_and_clock_rollback() {
         for check_every in [crate::settings::CheckEvery::Hour, crate::settings::CheckEvery::Day, crate::settings::CheckEvery::Never] {
             let fake = FakeBackend::default();
             fake.events.borrow_mut().push(status(1000, 500, true, None));
-            fake.now.set(1000 + 6 * 60 * 60 - 1);
+            fake.now.set(1000 + 60 * 60 - 1);
             let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
             let settings = Settings { nightly_enabled: true, check_every, ..Default::default() };
             state.logic(&settings);
             assert_eq!(checks(&fake), 0, "restart polls persisted scheduling metadata before any request");
             assert!(state.entries.iter().all(|entry| entry.latest.is_none()), "metadata never recreates a release body");
-            fake.now.set(1000 + 6 * 60 * 60);
+            fake.now.set(1000 + 60 * 60);
             state.logic(&settings);
             assert_eq!(checks(&fake), 1);
             state.logic(&settings);
@@ -1304,10 +1488,10 @@ mod status_tests {
             state.logic(&settings);
             assert_eq!(state.attempted_at, Some(960));
             assert_eq!(state.checked_at, Some(500));
-            fake.now.set(960 + 6 * 60 * 60 - 1);
+            fake.now.set(960 + 60 * 60 - 1);
             state.logic(&settings);
-            assert_eq!(checks(&fake), 3, "a confirmed actual attempt restores the six-hour policy");
-            fake.now.set(960 + 6 * 60 * 60);
+            assert_eq!(checks(&fake), 3, "a confirmed actual attempt restores the hourly policy");
+            fake.now.set(960 + 60 * 60);
             state.logic(&settings);
             assert_eq!(checks(&fake), 4);
         }
@@ -1586,10 +1770,16 @@ mod polish_tests {
         }
     }
     #[test]
-    fn shared_selection_pre_release_destination_lists_only_explicit_channel_apps_on_every_host() {
+    fn shared_selection_pre_release_destination_lists_every_explicit_channel_app_on_every_host() {
         for os in [artcraft_launcher_core::Os::Windows, artcraft_launcher_core::Os::Linux, artcraft_launcher_core::Os::MacOs] {
             let state = NightlyState::new(None, Some(Platform { os, arch: artcraft_launcher_core::Arch::X64 }));
-            assert_eq!(state.entries.iter().map(|entry| entry.app.id).collect::<Vec<_>>(), vec!["photocraft"]);
+            let expected: Vec<&str> = artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|app| app.has_separate_nightly_channel() && app.runs_on(os))
+                .map(|app| app.id)
+                .collect();
+            assert!(expected.len() > 1, "the destination is not a one-app page: {expected:?}");
+            assert_eq!(state.entries.iter().map(|entry| entry.app.id).collect::<Vec<_>>(), expected, "{os:?}");
         }
     }
     #[test]

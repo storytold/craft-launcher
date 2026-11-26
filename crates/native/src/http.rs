@@ -54,6 +54,9 @@ pub struct Http {
 pub(crate) struct NightlyHttpError {
     pub why: String,
     pub retry_at: Option<i64>,
+    /// The launcher's own GitHub budget refused the request: no server was asked, nothing should be
+    /// persisted as a failure, and the app keeps its place in the queue.
+    pub over_budget: bool,
 }
 
 /// Why ArtCraft's release feed couldn't be read.
@@ -336,6 +339,12 @@ impl Http {
         self.nightly_get_as(url, max, timeout, lookup_now, artcraft_launcher_core::release::Priority::Discovery)
     }
 
+    /// When the launcher's own GitHub budget would let a Nightly request of `priority` go again,
+    /// if it cannot go now. Not a server backoff: nothing persists it.
+    pub(crate) fn nightly_budget_retry_at(&self, priority: artcraft_launcher_core::release::Priority, now: i64) -> Option<i64> {
+        self.budget.next_free(priority, now)
+    }
+
     /// [`nightly_get`](Self::nightly_get), with an API request counted against the GitHub budget
     /// for `priority`.
     pub(crate) fn nightly_get_as(
@@ -352,7 +361,7 @@ impl Http {
             // Not a server backoff: no `retry_at`, so the refusal isn't saved as one and a later
             // check the user asks for still goes to the budget at its own priority (#713).
             log::info!("GitHub budget: nightly discovery held back until {until}");
-            return Err(NightlyHttpError { why: "The launcher's GitHub budget is spent for now.".into(), retry_at: None });
+            return Err(NightlyHttpError { over_budget: true, why: "The launcher's GitHub budget is spent for now.".into(), retry_at: None });
         }
         // The lookup timestamp predates admission/queueing and network I/O. It cannot anchor
         // a server's relative wait. Sample the wall clock only after receiving its response.
@@ -367,7 +376,7 @@ impl Http {
         receipt_now: impl Fn() -> i64,
     ) -> Result<Option<Vec<u8>>, NightlyHttpError> {
         let started = std::time::Instant::now();
-        let failed = |why: String| NightlyHttpError { why, retry_at: None };
+        let failed = |why: String| NightlyHttpError { over_budget: false, why, retry_at: None };
         let api = url.starts_with("https://api.github.com/");
         let default = if is_loopback(url) { &self.direct } else { &self.small };
         let (physical, agent) = self.request(url, default).map_err(failed)?;
@@ -416,7 +425,7 @@ impl Http {
                     } else {
                         retry.or_else(|| (status == 429).then(|| now.saturating_add(60)))
                     };
-                    return Err(NightlyHttpError { why: format!("Nightly resource answered HTTP {status}"), retry_at });
+                    return Err(NightlyHttpError { over_budget: false, why: format!("Nightly resource answered HTTP {status}"), retry_at });
                 }
                 status @ (301 | 302 | 303 | 307 | 308) => {
                     // API redirects are refused even without a token. The fixed debug mirror
@@ -948,11 +957,18 @@ pub(crate) mod tests {
         let http = Http::new().unwrap().with_budget(budget).without_token();
         let url = "https://api.github.com/repos/storytold/photocraft/releases?per_page=1";
         let refused = http.nightly_get_as(url, 1024, Duration::from_secs(1), now, artcraft_launcher_core::release::Priority::Discovery).unwrap_err();
+        assert!(refused.over_budget, "the sweep stops on the launcher's own budget");
+        assert_eq!(refused.retry_at, None, "a budget refusal is not a server backoff");
+        // Every other refusal is a real answer or a real failure, never the budget.
+        let unreachable = http
+            .nightly_get_as("http://127.0.0.1:1/none", 1024, Duration::from_secs(1), now, artcraft_launcher_core::release::Priority::Discovery)
+            .unwrap_err();
+        assert!(!unreachable.over_budget, "a transport failure is not a budget refusal");
         let mut state = crate::nightly_lookup::State::default();
         let key = "photocraft".to_string();
         state.outcome(&key, now, &crate::nightly_lookup::Outcome::Indeterminate(refused));
         assert_eq!(state.backoff(now), None, "no backoff saved");
-        assert_eq!(state.begin(std::slice::from_ref(&key), now + 60, true, true), vec![key], "the user's check goes ahead");
+        assert_eq!(state.begin(std::slice::from_ref(&key), &Default::default(), now + 60, true, true), vec![key], "the user's check goes ahead");
     }
 
     /// A token has its own limit, so the launcher's budget doesn't cap requests that carry one.

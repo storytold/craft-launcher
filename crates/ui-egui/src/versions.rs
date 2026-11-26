@@ -569,7 +569,9 @@ mod tests {
     #[test]
     fn shared_selection_legacy_picker_really_follows_and_pins_main_supported_nightlies() {
         use egui_kittest::kittest::Queryable;
-        for id in ["solidcraft", "filmcraft"] {
+        // Apps without their own Nightly channel keep main's ordinary picker behaviour.
+        for id in ["solidcraft", "pdfcraft"] {
+            assert!(!CraftApp::by_id(id).unwrap().has_separate_nightly_channel(), "{id} must stay an app without its own Nightly channel");
             let (mut harness, sent) = picker(id, VersionTrack::Stable);
             harness.get_by_value("v0.9.0 (latest release)").click();
             harness.run_steps(3);

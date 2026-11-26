@@ -559,17 +559,36 @@ impl NativeBackend {
         std::thread::spawn(move || {
             let _busy = busy;
             let initial = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            let refreshed = match platform
-                .and_then(|platform| CraftApp::by_id("photocraft").and_then(|app| crate::nightly_profile::for_app(app, platform).ok()))
-            {
-                Some(adapter) => match crate::nightly_transaction::refresh(&paths, adapter) {
-                    Ok(manifest) => Some(manifest),
-                    Err(error) => {
-                        shared.emit(Event::Notice { app: "photocraft".into(), result: Err(error) });
-                        crate::nightly_transaction::stored_manifest(&paths).ok()
+            // Every app with a separate channel recovers its own interrupted transaction; a
+            // failure is reported against that app, and an unreadable manifest stays a read error
+            // rather than an empty one.
+            let adapters: Vec<_> = platform
+                .map(|platform| {
+                    artcraft_launcher_core::hosted_catalog::apps()
+                        .iter()
+                        .chain(std::iter::once(&LAUNCHER))
+                        .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
+                        .filter_map(|app| crate::nightly_profile::for_app(app, platform).ok())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let refreshed = if adapters.is_empty() {
+                Some(Manifest::default())
+            } else {
+                let mut refreshed = None;
+                let mut failed = false;
+                for adapter in adapters {
+                    match crate::nightly_transaction::refresh(&paths, adapter) {
+                        Ok(manifest) => refreshed = Some(manifest),
+                        Err(error) => {
+                            failed = true;
+                            shared.emit(Event::Notice { app: adapter.app().into(), result: Err(error) });
+                        }
                     }
-                },
-                None => Some(Manifest::default()),
+                }
+                // A manifest read from any app is the shared record; only when none succeeded does
+                // the stored manifest's own read decide between "no copy" and "unreadable".
+                if failed && refreshed.is_none() { crate::nightly_transaction::stored_manifest(&paths).ok() } else { refreshed }
             };
             // An unreadable manifest is not evidence that no copy is owned: keep the last known
             // record and publish nothing until a successful read can say what exists.
@@ -718,7 +737,15 @@ impl NativeBackend {
     fn check_nightly_at(&self, manual: bool, now: i64) {
         let Some(platform) = self.platform else { return };
         let apps = self.nightly_apps();
+        // A scheduling failure covers the whole sweep, so its notice names the first app in it.
+        let sweep_app = apps.first().map_or(LAUNCHER_ID, |app| app.id);
         let keys: Vec<_> = apps.iter().map(|app| crate::nightly_lookup::key(app, platform)).collect();
+        // An app with a record in the Nightly manifest is installed here: its own Nightly is the copy
+        // its user is running, so it is refreshed hourly and first in every sweep.
+        let installed: std::collections::BTreeSet<String> = {
+            let manifest = self.shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            apps.iter().filter(|app| manifest.apps.contains_key(app.id)).map(|app| crate::nightly_lookup::key(app, platform)).collect()
+        };
         let (chosen, generation) = {
             let options = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
             if !options.nightly_enabled {
@@ -733,10 +760,10 @@ impl NativeBackend {
                     report_installable(app, &self.shared, self.platform);
                 }
                 self.shared
-                    .emit(Event::Notice { app: "photocraft".into(), result: Err(format!("Nightly scheduling metadata is unavailable: {error}")) });
+                    .emit(Event::Notice { app: sweep_app.into(), result: Err(format!("Nightly scheduling metadata is unavailable: {error}")) });
                 return;
             }
-            let chosen = state.begin(&keys, now, manual, true);
+            let chosen = state.begin(&keys, &installed, now, manual, true);
             if chosen.is_empty() {
                 drop(state);
                 drop(options);
@@ -752,7 +779,7 @@ impl NativeBackend {
                     report_installable(app, &self.shared, self.platform);
                 }
                 self.shared
-                    .emit(Event::Notice { app: "photocraft".into(), result: Err(format!("Could not persist Nightly scheduling metadata: {error}")) });
+                    .emit(Event::Notice { app: sweep_app.into(), result: Err(format!("Could not persist Nightly scheduling metadata: {error}")) });
                 return;
             }
             (chosen, state.generation)
@@ -767,9 +794,14 @@ impl NativeBackend {
             shared.emit(Event::CheckStarted);
             // One sweep and one request at a time. All admitted app lookups share this deadline.
             let started = Instant::now();
-            // Opening the page or pressing its check is the user's own action.
-            let priority = if manual { Priority::User } else { Priority::Discovery };
-            for app in apps.into_iter().filter(|app| chosen.contains(&crate::nightly_lookup::key(app, platform))) {
+            // `begin` decided the order: installed copies first, then the front of the queue.
+            let by_key: std::collections::BTreeMap<String, CraftApp> =
+                apps.into_iter().map(|app| (crate::nightly_lookup::key(&app, platform), app)).collect();
+            // When the launcher's own budget held this sweep back, so the page can say it is waiting
+            // for GitHub instead of reporting a finished check that found nothing.
+            let mut held_back_until = None;
+            for (index, key) in chosen.iter().enumerate() {
+                let Some(app) = by_key.get(key).copied() else { continue };
                 let enabled = || {
                     shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
                         && shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).generation == generation
@@ -777,9 +809,19 @@ impl NativeBackend {
                 if !enabled() {
                     break;
                 }
+                // The user's own check outranks a background one; an installed copy outranks an app
+                // nobody has installed, which is what keeps discovery inside its budget.
+                let priority = if manual {
+                    Priority::User
+                } else if installed.contains(key) {
+                    Priority::Installed
+                } else {
+                    Priority::Discovery
+                };
                 let backoff = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
                 let outcome = if let Some(retry_at) = backoff {
                     crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
+                        over_budget: false,
                         why: "Nightly discovery is waiting for server backoff.".into(),
                         retry_at: Some(retry_at),
                     })
@@ -794,15 +836,37 @@ impl NativeBackend {
                     )
                 } else {
                     crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
+                        over_budget: false,
                         why: "Secure Nightly connections are unavailable.".into(),
                         retry_at: None,
                     })
                 };
+                if let crate::nightly_lookup::Outcome::Indeterminate(error) = &outcome
+                    && error.over_budget
+                {
+                    // The launcher's own budget refused this lookup and the ones behind it: no app
+                    // failed, so every remaining one goes back where it was and keeps its place in
+                    // the queue instead of waiting out a cadence for a request never made.
+                    let mut state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                    for later in &chosen[index..] {
+                        state.defer(later);
+                    }
+                    if let Err(error) = state.save(&paths) {
+                        log::warn!("Could not persist deferred Nightly scheduling: {error}");
+                    }
+                    held_back_until = http.as_ref().and_then(|http| http.nightly_budget_retry_at(priority, crate::now()));
+                    break;
+                }
                 finish_nightly_result(&app, platform, generation, outcome, &shared, &paths);
             }
             drop(lease);
             let retry = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
-            shared.emit(Event::CheckFinished { at: crate::now(), source: Source::GitHubApi, rate_limited_until: retry });
+            shared.emit(Event::CheckFinished {
+                at: crate::now(),
+                source: Source::GitHubApi,
+                // A server's backoff, or the launcher's own budget: both mean "ask again at this time".
+                rate_limited_until: retry.or(held_back_until),
+            });
         }));
     }
 
@@ -1249,10 +1313,12 @@ struct Chosen {
     fallback: Option<String>,
 }
 
-fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
+/// Whether `release` may be installed on `track`. The app stays part of the call because the
+/// track is its own choice; that a Nightly is never an ordinary release is now shared policy.
+fn release_matches_track(_app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
     match track {
         VersionTrack::Stable => {
-            artcraft_launcher_core::release::ordinary_release_allowed(app.has_separate_nightly_channel(), release)
+            artcraft_launcher_core::release::ordinary_release_allowed(release)
                 && (prereleases || (!release.prerelease && release.version.as_ref().is_some_and(version::is_stable)))
         }
         VersionTrack::Nightly => artcraft_launcher_core::release::is_nightly(release),
@@ -1380,6 +1446,7 @@ fn finish_nightly_result(
         let previous = state.record(&key).tag.and_then(|tag| version::parse(&tag));
         if previous.as_ref().zip(next.release().version.as_ref()).is_some_and(|(old, next)| version::is_newer(old, next)) {
             outcome = Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
                 why: "Nightly discovery would regress the previous verified SemVer selection; it was kept stale.".into(),
                 retry_at: None,
             });
@@ -1389,6 +1456,7 @@ fn finish_nightly_result(
         Ok(record) => record,
         Err(error) => {
             outcome = Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
                 why: format!("Could not persist Nightly result metadata: {error}"),
                 retry_at: state.record(&key).retry_at,
             });
@@ -3357,6 +3425,24 @@ mod tests {
         release.prerelease = true;
         assert!(release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Nightly, false));
         assert!(!release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Stable, false));
+    }
+
+    /// A Nightly is never the Stable track's copy: not for an app with its own Nightly
+    /// channel, and not for one without it (SolidCraft).
+    #[test]
+    fn a_nightly_is_never_a_stable_track_release_for_an_app_without_a_separate_channel() {
+        let app = CraftApp::by_id("solidcraft").unwrap();
+        assert!(!app.has_separate_nightly_channel(), "the community app is the non-roster example");
+        let mut nightly = Release { tag: "v0.9.0-nightly.20261028".into(), version: version::parse("v0.9.0-nightly.20261028"), ..Default::default() };
+        nightly.prerelease = true;
+        for prereleases in [false, true] {
+            assert!(!release_matches_track(app, &nightly, &VersionTrack::Stable, prereleases), "prereleases={prereleases}");
+            assert!(release_matches_track(app, &nightly, &VersionTrack::Nightly, prereleases), "the explicit Nightly track still asks for it");
+        }
+        let mut beta = Release { tag: "v0.9.0-beta.1".into(), version: version::parse("v0.9.0-beta.1"), ..Default::default() };
+        beta.prerelease = true;
+        assert!(!release_matches_track(app, &beta, &VersionTrack::Stable, false), "a plain beta stays behind the Stable track");
+        assert!(release_matches_track(app, &beta, &VersionTrack::Stable, true), "with pre-releases on it is an ordinary candidate");
     }
 
     #[test]
