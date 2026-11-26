@@ -20,9 +20,10 @@ fn tag(run: u64) -> String {
 const HISTORY: &str = "history";
 
 /// The complete release history `data` holds, as the lookup gets it from our API.
-fn history(data: &BTreeMap<String, Vec<u8>>) -> Result<AppReleases, NightlyHttpError> {
-    let items: Vec<Value> = serde_json::from_slice(data.get(HISTORY).ok_or_else(|| failure("no history"))?).map_err(|e| failure(e.to_string()))?;
-    Ok(history_of(items))
+fn history(data: &BTreeMap<String, Vec<u8>>) -> Result<(AppReleases, usize), NightlyHttpError> {
+    let body = data.get(HISTORY).ok_or_else(|| failure("no history"))?;
+    let items: Vec<Value> = serde_json::from_slice(body).map_err(|e| failure(e.to_string()))?;
+    Ok((history_of(items), body.len()))
 }
 
 fn history_of(items: Vec<Value>) -> AppReleases {
@@ -91,7 +92,7 @@ fn a_deadline_used_up_before_a_lookup_starts_is_a_launcher_refusal() {
         app(),
         platform(),
         NOW,
-        &mut || Ok(history_of(vec![candidate(&tag(20), true).0])),
+        &mut || Ok((history_of(vec![candidate(&tag(20), true).0]), 0)),
         &mut |_, _, _, _| {
             calls += 1;
             Ok(Some(b"[]".to_vec()))
@@ -119,7 +120,7 @@ fn a_deadline_an_app_spends_itself_is_its_own_failure() {
         app(),
         platform(),
         NOW,
-        &mut || Ok(history_of(vec![candidate(&tag(20), true).0])),
+        &mut || Ok((history_of(vec![candidate(&tag(20), true).0]), 0)),
         &mut |_, _, _, _| {
             calls += 1;
             elapsed.set(MAX_TIME);
@@ -274,6 +275,26 @@ fn descriptor_request_budget_is_indeterminate_before_a_compatible_winner() {
     assert_eq!(requests, MAX_REQUESTS - 1, "the history request is the lookup's first");
 }
 
+/// The history's bytes count against the same budget as the downloads after it.
+#[test]
+fn a_history_that_uses_up_the_byte_budget_is_indeterminate() {
+    let mut calls = 0;
+    let outcome = lookup(
+        app(),
+        platform(),
+        NOW,
+        &mut || Ok((history_of(vec![candidate(&tag(20), true).0]), MAX_BYTES)),
+        &mut |_, _, _, _| {
+            calls += 1;
+            Ok(None)
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    );
+    assert!(matches!(outcome, Outcome::Indeterminate(_)));
+    assert_eq!(calls, 0, "nothing is downloaded past the budget");
+}
+
 #[test]
 fn fresh_off_and_off_during_a_response_make_no_followup_request_or_selection() {
     let mut calls = 0;
@@ -281,7 +302,7 @@ fn fresh_off_and_off_during_a_response_make_no_followup_request_or_selection() {
         app(),
         platform(),
         NOW,
-        &mut || Ok(history_of(Vec::new())),
+        &mut || Ok((history_of(Vec::new()), 0)),
         &mut |_, _, _, _| {
             calls += 1;
             Ok(Some(b"[]".to_vec()))
@@ -298,7 +319,7 @@ fn fresh_off_and_off_during_a_response_make_no_followup_request_or_selection() {
         app(),
         platform(),
         NOW,
-        &mut || Ok(history_of(vec![item.clone()])),
+        &mut || Ok((history_of(vec![item.clone()]), 0)),
         &mut |_, _, _, _| {
             calls += 1;
             enabled.set(false);
@@ -620,7 +641,7 @@ fn shared_selection_unconfigured_platform_lookup_refuses_before_any_network_body
         // Intel Macs have no Nightly row; Apple silicon is admitted by its pinned signing team.
         Platform { os: Os::MacOs, arch: Arch::X64 },
         NOW,
-        &mut || Ok(history_of(vec![candidate(&tag(20), true).0])),
+        &mut || Ok((history_of(vec![candidate(&tag(20), true).0]), 0)),
         &mut |_, _, _, _| {
             requests += 1;
             Ok(None)

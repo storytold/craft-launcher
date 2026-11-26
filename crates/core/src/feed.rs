@@ -257,14 +257,17 @@ impl AppReleases {
         let repo = if served.eq_ignore_ascii_case(repo) { repo } else { former_repo.filter(|former| served.eq_ignore_ascii_case(former))? };
         // No list at all is no answer, never a complete empty history.
         let serde_json::Value::Array(items) = raw.releases? else { return None };
-        let releases = items
+        let sent = items.len();
+        let releases: Vec<Release> = items
             .into_iter()
             .take(MAX_HISTORY)
             .filter_map(|item| RawRelease::deserialize(item).ok())
             .filter_map(RawRelease::into_release)
             .filter_map(|r| r.to_release(repo, None))
             .collect();
-        Some(Self { complete: raw.complete, releases, fetched_at: Some(fetched_at) })
+        // A release cut off or that couldn't be read leaves the history short of what was sent.
+        let complete = raw.complete && releases.len() == sent;
+        Some(Self { complete, releases, fetched_at: Some(fetched_at) })
     }
 }
 
@@ -746,7 +749,7 @@ mod tests {
         ];
         let json = history(photo.repo, r#""2026-10-09T13:00:00Z""#, &releases.join(","));
         let read = AppReleases::parse(&json, photo.repo, None, NOW).unwrap();
-        assert!(read.complete);
+        assert!(!read.complete, "the tagless one dropped leaves it short of what was sent");
         assert_eq!(read.fetched_at, parse_rfc3339("2026-10-09T13:00:00Z"));
         let tags: Vec<&str> = read.releases.iter().map(|r| r.tag.as_str()).collect();
         assert_eq!(tags, ["v0.7.0-nightly.20261126.1.1", "v0.6.0", "v0.5.0"], "newest first, nightlies kept, a tagless one dropped");
@@ -756,6 +759,19 @@ mod tests {
         assert!(AppReleases::parse(&history("someone/photocraft", r#""2026-10-09T13:00:00Z""#, ""), photo.repo, None, NOW).is_none());
         assert!(AppReleases::parse(&history(photo.repo, "null", ""), photo.repo, None, NOW).is_none());
         assert!(AppReleases::parse(&json, photo.repo, None, NOW + 2 * MAX_AGE).is_none());
+        // A release that can't be read (here a nightly with a tag that isn't a version) leaves a
+        // "complete" history incomplete, so what's missing from it isn't known to be gone.
+        let unreadable = history(
+            photo.repo,
+            r#""2026-10-09T13:00:00Z""#,
+            &format!("{},{}", release("v0.6.0", photo.repo), r#"{"tag": "nightly/1", "prerelease": true}"#),
+        );
+        let read = AppReleases::parse(&unreadable, photo.repo, None, NOW).unwrap();
+        assert!(!read.complete && read.releases.len() == 1);
+        // So is one longer than is read.
+        let many: Vec<String> = (0..=MAX_HISTORY).map(|i| release(&format!("v0.{i}.0"), photo.repo)).collect();
+        let long = AppReleases::parse(&history(photo.repo, r#""2026-10-09T13:00:00Z""#, &many.join(",")), photo.repo, None, NOW).unwrap();
+        assert!(!long.complete && long.releases.len() == MAX_HISTORY);
         // A "complete" history that sends no list at all is no answer.
         let no_list = json.replace(r#", "releases": ["#, r#", "missing": ["#);
         assert!(AppReleases::parse(&no_list, photo.repo, None, NOW).is_none());

@@ -791,7 +791,7 @@ impl NativeBackend {
                         &app,
                         platform,
                         now,
-                        &mut || crate::source::fetch_history(http, &feed_url, &query, crate::now()),
+                        &mut || crate::source::fetch_history(http, &feed_url, &query),
                         &mut |url, max, timeout, now| http.nightly_get(url, max, timeout, now),
                         &|| started.elapsed(),
                         &enabled,

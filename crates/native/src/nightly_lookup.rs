@@ -141,13 +141,14 @@ impl Budget<'_> {
 /// descriptor bodies unnecessary. An incomplete history never proves coverage, and one that
 /// couldn't be read is indeterminate.
 ///
-/// `history` asks our release API for the app's history: this lookup's first request, under the
-/// same deadline and request count as the downloads after it.
+/// `history` asks our release API for the app's history (and says how many bytes it was): this
+/// lookup's first request, under the same deadline, request count and byte budget as the
+/// downloads after it.
 pub(crate) fn lookup<'a>(
     app: &CraftApp,
     platform: Platform,
     now: i64,
-    history: &mut dyn FnMut() -> Result<artcraft_launcher_core::feed::AppReleases, NightlyHttpError>,
+    history: &mut dyn FnMut() -> Result<(artcraft_launcher_core::feed::AppReleases, usize), NightlyHttpError>,
     fetch: &'a mut Fetch<'a>,
     elapsed: &'a dyn Fn() -> Duration,
     enabled: &'a dyn Fn() -> bool,
@@ -162,7 +163,13 @@ pub(crate) fn lookup<'a>(
     }
     budget.requests += 1;
     let history = match history() {
-        Ok(history) => history,
+        Ok((history, bytes)) => {
+            budget.bytes = budget.bytes.saturating_add(bytes);
+            if budget.bytes >= MAX_BYTES {
+                return Outcome::Indeterminate(failure("The release history used up the Nightly discovery byte budget."));
+            }
+            history
+        }
         Err(error) => return Outcome::Indeterminate(error),
     };
     match scan(app, platform, history, &mut budget) {

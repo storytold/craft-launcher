@@ -99,19 +99,24 @@ impl ReleaseSource for ApiSource {
     }
 }
 
-/// `query`'s app's release history, asked of our API next to `feed_url` at `now`, with no saved
-/// copy: for Developer Builds discovery, which keeps no [`ApiSource`]. A server's `Retry-After`
-/// (or a 429 without one) becomes the scheduler's backoff.
-pub(crate) fn fetch_history(http: &Http, feed_url: &str, query: &ReleaseQuery, now: i64) -> Result<AppReleases, crate::http::NightlyHttpError> {
+/// `query`'s app's release history, asked of our API next to `feed_url`, with no saved copy, and
+/// how many bytes it was: for Developer Builds discovery, which keeps no [`ApiSource`] and counts
+/// them against its byte budget. A server's `Retry-After` (or a 429 without one), counted from when
+/// the answer arrived, becomes the scheduler's backoff.
+pub(crate) fn fetch_history(http: &Http, feed_url: &str, query: &ReleaseQuery) -> Result<(AppReleases, usize), crate::http::NightlyHttpError> {
     let error = |why: &str, retry_at: Option<i64>| crate::http::NightlyHttpError { over_budget: false, why: why.into(), retry_at };
     let url = feed::app_releases_url(feed_url, &query.app).ok_or_else(|| error(NOT_LISTED, None))?;
     let json = http.get_history(&url).map_err(|e| {
         log::warn!("release history of {}: {}", query.app, e.why);
-        let retry_at =
-            e.retry_after.map(|secs| now.saturating_add(secs.clamp(0, 24 * 60 * 60))).or_else(|| e.throttled.then(|| now.saturating_add(60)));
+        let received = crate::now();
+        let retry_at = e
+            .retry_after
+            .map(|secs| received.saturating_add(secs.clamp(0, 24 * 60 * 60)))
+            .or_else(|| e.throttled.then(|| received.saturating_add(60)));
         error(UNREACHABLE, retry_at)
     })?;
-    AppReleases::parse(&json, &query.repo, query.former_repo.as_deref(), now).ok_or_else(|| error(NOT_LISTED, None))
+    let history = AppReleases::parse(&json, &query.repo, query.former_repo.as_deref(), crate::now()).ok_or_else(|| error(NOT_LISTED, None))?;
+    Ok((history, json.len()))
 }
 
 #[cfg(test)]
