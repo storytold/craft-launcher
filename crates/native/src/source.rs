@@ -219,10 +219,10 @@ impl GitHubSource {
                 let mut multi_page = false;
                 let release = if prereleases {
                     let mut release = release::parse_github_release_list(&text, repo, true)?;
-                    // Nightlies of a separately channelled app are not ordinary releases, so a page
-                    // full of them proves nothing: look further, and report an incomplete answer
-                    // rather than caching "no release" when the bounded search ends early.
-                    if release.is_none() && separate {
+                    // A Nightly is never an ordinary release for any app, so a page full of them
+                    // proves nothing: look further, and report an incomplete answer rather than
+                    // caching "no release" when the bounded search ends early.
+                    if release.is_none() {
                         // Page 1's ETag does not cover later pages: a 304 on it could replay an
                         // answer whose page has since changed, so a multi-page answer keeps none.
                         multi_page = true;
@@ -291,8 +291,8 @@ impl GitHubSource {
         *self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(until);
     }
 
-    /// The version list. For an app whose nightlies have their own channel, pages full of them are
-    /// read past (bounded) so the ordinary versions the picker offers cannot be crowded out.
+    /// The version list. Nightlies are never ordinary versions for any app, so pages full of them
+    /// are read past (bounded) so the ordinary versions the picker offers cannot be crowded out.
     fn versions_with(
         &self,
         query: &ReleaseQuery,
@@ -320,7 +320,7 @@ impl GitHubSource {
                 }
                 Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
             };
-            let crowded = query.separate_nightly && !list.iter().any(release::ordinary_release_allowed);
+            let crowded = !list.iter().any(release::ordinary_release_allowed);
             if !full || !crowded {
                 return Ok(list);
             }
@@ -1011,6 +1011,39 @@ mod tests {
         assert!(list.iter().any(|r| r.tag == "v0.9.0"));
         assert_eq!(asked, 2);
     }
+    #[test]
+    fn a_nightly_only_first_page_still_reaches_the_ordinary_release_for_any_app() {
+        // PhotoCraft has its own channel and solidcraft does not; since no app offers a Nightly on
+        // its ordinary track, both must look past a page of them rather than cache "no release".
+        for id in ["solidcraft", "filmcraft"] {
+            let repo = artcraft_launcher_core::CraftApp::by_id(id).unwrap().repo;
+            let (_temp, source) = fresh_source();
+            let mut asked = 0;
+            let answer = source
+                .ask_api_with(&q(repo), true, |url, _| {
+                    asked += 1;
+                    Ok(Fetched::Body {
+                        text: if url.ends_with("&page=2") {
+                            r#"[{"tag_name":"v0.9.0","prerelease":false}]"#.into()
+                        } else {
+                            crowded_page(repo, LIST_PAGE, 0)
+                        },
+                        etag: Some("page-1".into()),
+                    })
+                })
+                .unwrap()
+                .unwrap();
+            assert_eq!(tag_of(&answer), Some("v0.9.0"), "{id}: the stable release behind a page of nightlies");
+            assert_eq!(asked, 2, "{id}: one page, then one look past it");
+            let cache = source.cache.lock().unwrap();
+            assert_eq!(
+                cache.entries.get(&cache_key(repo, true)).and_then(|entry| entry.etag.as_deref()),
+                None,
+                "{id}: a multi-page answer keeps no page-1 ETag"
+            );
+        }
+    }
+
     #[test]
     fn third_party_lookups_keep_mains_single_page_and_offer_no_nightly() {
         let repo = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap().repo;
