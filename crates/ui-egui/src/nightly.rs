@@ -1325,6 +1325,88 @@ mod status_tests {
     }
 
     #[test]
+    fn a_hold_left_by_a_partly_refused_sweep_is_waited_out_and_then_asks_for_the_deferred_app() {
+        // One sweep: PhotoCraft's Nightly verified, then the launcher's budget refused the rest, so
+        // the backend deferred FilmCraft (its attempt time is put back, which is what makes it due
+        // again). The page must not ask before the hold expires, must ask at the moment it does, and
+        // every other guard must still stand.
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        let deferred = Event::NightlyStatus {
+            app: "filmcraft".into(),
+            status: NightlyStatus { attempted_at: None, verified_at: None, retry_at: None, stale: false, message: None },
+        };
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(1000, 1000, false, None),
+            deferred,
+            Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1600) },
+        ]);
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        let enabled = Settings { nightly_enabled: true, ..Default::default() };
+
+        // Inside the hold: the hourly gate alone would also say no, so this only proves patience.
+        fake.now.set(1599);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "nothing is asked while the budget is still holding the sweep");
+
+        // The deferred app is due at the backend (its attempt time was put back); the page asks now
+        // rather than waiting the rest of the hour, and the sweep that runs picks it up.
+        fake.now.set(1600);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "the hold has expired, so ask for the deferred app");
+        assert_eq!(state.held_back_until, None, "the hold is spent once it has been answered");
+
+        // Coalescing: an unacknowledged request is not repeated.
+        fake.now.set(1601);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "a request already sent is coalesced for sixty seconds");
+
+        // Consent still wins: with Nightly switched off, an expired hold asks nothing.
+        let fake = FakeBackend::default();
+        fake.now.set(2000);
+        fake.events
+            .borrow_mut()
+            .extend([Event::CheckStarted, Event::CheckFinished { at: 2000, source: Source::GitHubApi, rate_limited_until: Some(2500) }]);
+        let mut off = NightlyState::new(Some(Box::new(fake.clone())), None);
+        fake.now.set(2600);
+        off.logic(&Settings::default());
+        assert_eq!(checks(&fake), 0, "consent is not inferred from an expired budget hold");
+
+        // A server's own backoff still holds the page back even when the launcher's hold has passed.
+        let fake = FakeBackend::default();
+        fake.now.set(3000);
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(3000, 3000, false, Some(3600)),
+            Event::CheckFinished { at: 3000, source: Source::GitHubApi, rate_limited_until: Some(3100) },
+        ]);
+        let mut backed_off = NightlyState::new(Some(Box::new(fake.clone())), None);
+        fake.now.set(3100);
+        backed_off.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "an app's server backoff still gates the request");
+        fake.now.set(3600);
+        backed_off.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "and the request goes once the server's backoff is over");
+
+        // A hold still in the future is honoured, not treated as expired.
+        let fake = FakeBackend::default();
+        fake.now.set(4000);
+        // An attempt just now, so the hourly gate itself says no, and a hold ten minutes out.
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(4000, 4000, false, None),
+            Event::CheckFinished { at: 4000, source: Source::GitHubApi, rate_limited_until: Some(4600) },
+        ]);
+        let mut later = NightlyState::new(Some(Box::new(fake.clone())), None);
+        later.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "a future hold is waited out");
+        fake.now.set(4600);
+        later.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "and asking resumes when it passes");
+    }
+
+    #[test]
     fn completion_without_verified_status_never_claims_success() {
         let fake = FakeBackend::default();
         fake.now.set(100);
