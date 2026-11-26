@@ -34,21 +34,21 @@ log = "0.4"
 # All date/time conversion goes through jiff (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
 jiff = "0.2"
 # Feature flags (craft-libs#1118, merged in craft-libs#1119).
-craft-flags = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
+craft-flags = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
 # The agents switch and app list (Settings › AI agents), shared with the craft-ai-mcp gateway and
 # every Craft app. Pinned to the merge of storytold/craft-ai-integrations#197.
 craft-ai-agents = { git = "https://github.com/storytold/craft-ai-integrations", rev = "0d76ea02a06299a5a6eee1993863fbcafe9c2cc3" }
-craft-update = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
-craft-ui = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
+craft-update = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-ui = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
 # The Fonts page: Craft Font Manager's panel, the font store and the installed fonts.
-craft-font-store = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
-craft-font-manager = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c", features = ["ui"] }
+craft-font-store = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-font-manager = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4", features = ["ui"] }
 # The craft-ui runtime the Fonts page runs on (crates/ui-egui/src/framework.rs): the app's shared services, its theme and
 # the window system.
-craft-i18n = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
-craft-host = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
-craft-theme = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
-craft-window = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "d7010805175ba1190d521b2565852bdda39e632c" }
+craft-i18n = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-host = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-theme = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
+craft-window = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "de994d8ddfbd4cb78a1b05d690bd86e41c680ca4" }
 
 [profile.dev.package."*"]
 opt-level = 2
