@@ -1123,8 +1123,15 @@ mod running_tests {
     #[cfg(windows)]
     #[test]
     fn enumeration_matches_a_running_hardlink_and_rejects_a_distinct_copy() {
-        use std::io::{BufRead, BufReader};
+        use std::io::{BufRead, BufReader, Read, Write};
         use std::process::{Child, Stdio};
+
+        if std::env::var_os("CRAFT_RUNNING_IMAGE_FIXTURE").is_some() {
+            std::io::stdout().write_all(b"\nready\n").unwrap();
+            std::io::stdout().flush().unwrap();
+            std::io::stdin().read_exact(&mut [0]).unwrap();
+            return;
+        }
 
         struct Probe(Child);
         impl Drop for Probe {
@@ -1134,9 +1141,25 @@ mod running_tests {
             }
         }
         let start = |path: &Path| {
-            let mut child = Probe(command(path).args(["-t", "127.0.0.1"]).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap());
+            let mut child = Probe(
+                command(path)
+                    .args(["--exact", "process::running_tests::enumeration_matches_a_running_hardlink_and_rejects_a_distinct_copy", "--nocapture"])
+                    .env("CRAFT_RUNNING_IMAGE_FIXTURE", "1")
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            );
+            let mut output = BufReader::new(child.0.stdout.as_mut().unwrap());
             let mut line = String::new();
-            assert!(BufReader::new(child.0.stdout.as_mut().unwrap()).read_line(&mut line).unwrap() > 0);
+            loop {
+                line.clear();
+                assert!(output.read_line(&mut line).unwrap() > 0, "fixture exited before readiness");
+                if line.trim_end() == "ready" {
+                    break;
+                }
+            }
             child
         };
         let dir = tempfile::tempdir().unwrap();
@@ -1145,9 +1168,9 @@ mod running_tests {
         let other_dir = dir.path().join("separate");
         std::fs::create_dir(&other_dir).unwrap();
         let distinct = other_dir.join("probe.exe");
-        let ping = windows_system_program(r"System32\PING.EXE").unwrap();
-        std::fs::copy(&ping, &source).unwrap();
-        std::fs::copy(&ping, &distinct).unwrap();
+        let executable = std::env::current_exe().unwrap();
+        std::fs::copy(&executable, &source).unwrap();
+        std::fs::copy(&executable, &distinct).unwrap();
         std::fs::hard_link(&source, &alias).unwrap();
         let active = start(&alias);
         assert_eq!(
