@@ -2153,14 +2153,7 @@ fn sweep(
                     let latest = match mirror {
                         Some(_) => mirror_chosen(app, feed, now, track),
                         None if *track != VersionTrack::Stable => track_answer(app, track, feed, source.as_ref(), force),
-                        // When the feed has no answer for the app (it couldn't be read, is stale,
-                        // or doesn't list it), the app's history stands in: our API, then GitHub.
-                        None => latest_for(app, feed, options.prereleases, now).map(|answer| match answer {
-                            LatestRelease::Failed(why) => {
-                                source.latest_fallback(&release_query(feed, app), options.prereleases).unwrap_or(LatestRelease::Failed(why))
-                            }
-                            other => other,
-                        }),
+                        None => latest_or_fallback(app, feed, source.as_ref(), options.prereleases, now),
                     };
                     let latest = if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
                         latest.map(|answer| match (answer, http, platform) {
@@ -2225,6 +2218,16 @@ fn latest_for(app: &CraftApp, feed: Option<&Feed>, pre: bool, now: i64) -> Optio
     Some(match answer {
         FeedAnswer::Fresh(found) => found.map_or(LatestRelease::None, LatestRelease::Found),
         FeedAnswer::Unknown => LatestRelease::Failed(NOT_IN_FEED.into()),
+    })
+}
+
+/// [`latest_for`], and when the feed has no answer for the app (it couldn't be read, is stale, or
+/// doesn't list it), the latest release from the app's history: our API, then GitHub. When that
+/// can't answer either, the feed's own reason stands.
+fn latest_or_fallback(app: &CraftApp, feed: Option<&Feed>, source: &dyn ReleaseSource, pre: bool, now: i64) -> Option<LatestRelease> {
+    latest_for(app, feed, pre, now).map(|answer| match answer {
+        LatestRelease::Failed(why) => source.latest_fallback(&release_query(feed, app), pre).unwrap_or(LatestRelease::Failed(why)),
+        other => other,
     })
 }
 
@@ -3299,12 +3302,41 @@ mod tests {
     }
 
     /// An app the feed has no current answer for, and every app when there is no feed at all, say
-    /// so instead of showing nothing or asking anywhere else.
+    /// so from the feed alone; the check then asks the app's history ([`latest_or_fallback`]).
     #[test]
     fn without_an_answer_from_the_feed_an_app_says_it_couldnt_be_checked() {
         let word = CraftApp::by_id("wordcraft").unwrap();
         assert_eq!(latest_for(word, Some(&feed()), false, NOW), Some(LatestRelease::Failed(NOT_IN_FEED.into())));
         assert_eq!(latest_for(word, None, true, NOW), Some(LatestRelease::Failed(crate::source::UNREACHABLE.into())));
+    }
+
+    /// When the release feed can't be read or doesn't list an app, the app's history (our API,
+    /// then GitHub) names its latest release; when that can't answer either, the feed's reason
+    /// stands; and an app the feed answers for never asks.
+    #[test]
+    fn without_an_answer_from_the_feed_the_apps_history_names_its_latest_release() {
+        struct Fallback(Option<LatestRelease>, AtomicUsize);
+        impl ReleaseSource for Fallback {
+            fn history_within(&self, _query: &ReleaseQuery, _max_age: i64) -> Result<AppReleases, String> {
+                Err("unused".into())
+            }
+            fn latest_fallback(&self, query: &ReleaseQuery, _prereleases: bool) -> Option<LatestRelease> {
+                assert_eq!(query.app, "wordcraft");
+                self.1.fetch_add(1, Ordering::SeqCst);
+                self.0.clone()
+            }
+        }
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let found = Fallback(Some(LatestRelease::Found(tagged("0.9.0"))), AtomicUsize::new(0));
+        assert_eq!(latest_or_fallback(word, None, &found, false, NOW), Some(LatestRelease::Found(tagged("0.9.0"))), "no feed at all");
+        assert_eq!(latest_or_fallback(word, Some(&feed()), &found, false, NOW), Some(LatestRelease::Found(tagged("0.9.0"))), "not in the feed");
+        let down = Fallback(None, AtomicUsize::new(0));
+        assert_eq!(latest_or_fallback(word, Some(&feed()), &down, false, NOW), Some(LatestRelease::Failed(NOT_IN_FEED.into())));
+        assert_eq!(latest_or_fallback(word, None, &down, false, NOW), Some(LatestRelease::Failed(crate::source::UNREACHABLE.into())));
+        let unasked = Fallback(None, AtomicUsize::new(0));
+        assert!(matches!(latest_or_fallback(photo, Some(&feed()), &unasked, false, NOW), Some(LatestRelease::Found(r)) if r.tag == "v0.6.0"));
+        assert_eq!(unasked.1.load(Ordering::SeqCst), 0, "the feed's answer stands without asking");
     }
 
     /// Opening Choose version asks for a list saved more than 15 minutes ago again, though the

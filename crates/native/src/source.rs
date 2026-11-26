@@ -185,6 +185,9 @@ impl Gate {
     }
 }
 
+/// A history as kept: when it was read (Unix seconds), the history, and where it came from.
+type SavedHistory = (i64, AppReleases, Served);
+
 /// Our release API, next to the release feed at `feed_url`, with GitHub behind it.
 pub struct ApiSource {
     net: Box<dyn Net>,
@@ -192,7 +195,7 @@ pub struct ApiSource {
     /// Whether GitHub is asked when our API can't answer (not for a local mirror).
     github: bool,
     /// Each app's history (by app id and repo), when it was read (Unix seconds), and from where.
-    saved: Mutex<HashMap<(String, String), (i64, AppReleases, Served)>>,
+    saved: Mutex<HashMap<(String, String), SavedHistory>>,
     gate: Mutex<Gate>,
 }
 
