@@ -43,7 +43,7 @@ fn row(ui: &mut Ui, label: &str, control_width: f32, add: &mut dyn FnMut(&mut Ui
 
 fn note(ui: &mut Ui, text: &str) {
     let t = Tokens::get(ui.ctx());
-    ui.label(RichText::new(text).size(12.0).color(t.muted));
+    ui.label(RichText::new(text).size(theme::TEXT_CAPTION).color(t.muted));
 }
 
 impl LauncherUi {
@@ -175,7 +175,7 @@ impl LauncherUi {
             // In English on purpose: the language asked for can't be drawn.
             let text = "No font for this language was found on this system, so the interface stays in English. \
                         Installing one (for example Noto Sans CJK or Noto Sans Georgian) and restarting fixes it.";
-            ui.add(egui::Label::new(RichText::new(text).size(12.0).color(t.warn)).wrap());
+            ui.add(egui::Label::new(RichText::new(text).size(theme::TEXT_CAPTION).color(t.warn)).wrap());
             ui.add_space(14.0);
         }
     }
@@ -480,7 +480,11 @@ impl LauncherUi {
             ui.add_space(8.0);
             let agents = self.mcp_agents.clone();
             if !agents.gateway_found {
-                ui.label(RichText::new(tl!("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.")).size(12.0).color(t.muted));
+                ui.label(
+                    RichText::new(tl!("The Craft gateway (craft-ai-mcp) is not installed beside the launcher."))
+                        .size(theme::TEXT_CAPTION)
+                        .color(t.muted),
+                );
                 // Turning on needs the gateway; turning off and removing entries never does.
                 if !agents.enabled {
                     return;
@@ -493,7 +497,11 @@ impl LauncherUi {
             if !agents.enabled {
                 return;
             }
-            ui.label(RichText::new(tl!("Apps agents can reach: {count}").replace("{count}", &agents.apps.to_string())).size(12.0).color(t.muted));
+            ui.label(
+                RichText::new(tl!("Apps agents can reach: {count}").replace("{count}", &agents.apps.to_string()))
+                    .size(theme::TEXT_CAPTION)
+                    .color(t.muted),
+            );
             ui.add_space(10.0);
             ui.label(RichText::new(tl!("Quick install")).strong());
             note(ui, tl!("Adds the Craft apps to that client. Restart the client afterwards."));
@@ -529,7 +537,7 @@ impl LauncherUi {
         ui.horizontal(|ui| {
             ui.label(c.name.as_str());
             if c.added {
-                ui.label(RichText::new(tl!("Added")).size(12.0).color(t.muted));
+                ui.label(RichText::new(tl!("Added")).size(theme::TEXT_CAPTION).color(t.muted));
                 if ui.button(tl!("Remove")).clicked() {
                     self.act_command(Command::McpSetClient { client: c.client, added: false });
                     self.mcp_restart_offer = None;
@@ -542,7 +550,7 @@ impl LauncherUi {
                     }
                 }
             } else if !c.installed {
-                ui.label(RichText::new(tl!("Not installed")).size(12.0).color(t.muted));
+                ui.label(RichText::new(tl!("Not installed")).size(theme::TEXT_CAPTION).color(t.muted));
             }
         });
         // A client reads its MCP servers only when it starts: right after adding, say so and offer

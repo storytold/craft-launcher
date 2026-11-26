@@ -138,6 +138,30 @@ pub fn rule(ui: &mut Ui, height: f32) {
     ui.painter().vline(rect.center().x, rect.y_range(), t.hairline());
 }
 
+/// The keyboard focus, drawn round `resp`'s rect inside the control, so a neighbour or a clip never
+/// hides it. Only the keyboard (Tab, arrows) gives these controls focus, so a mouse click never
+/// leaves a ring behind.
+pub fn focus_ring(ui: &Ui, resp: &Response) {
+    if resp.has_focus() {
+        paint_focus_ring(ui.painter(), resp.rect, &Tokens::get(ui.ctx()));
+    }
+}
+
+/// Paints the focus ring round `rect` ([`focus_ring_strokes`]).
+pub fn paint_focus_ring(painter: &egui::Painter, rect: Rect, t: &Tokens) {
+    for (r, stroke) in focus_ring_strokes(rect, t) {
+        painter.rect_stroke(r, CornerRadius::ZERO, stroke, egui::StrokeKind::Inside);
+    }
+}
+
+/// The focus ring as two strokes, outermost first: 2 px of the brand blue at the control's edge,
+/// then 1 px of the page colour just inside it. The blue then borders the page colour on both
+/// sides whatever the control is filled with (inverted, red, faded on hover, an app's colour), so
+/// it keeps WCAG's 3:1 for non-text marks everywhere.
+pub(crate) fn focus_ring_strokes(rect: Rect, t: &Tokens) -> [(Rect, Stroke); 2] {
+    [(rect, Stroke::new(2.0, t.accent)), (rect.shrink(2.0), Stroke::new(1.0, t.bg))]
+}
+
 /// A square header cell with an icon (white, tinted here) and a hairline on its left; inverts on
 /// hover. While `busy` it shows a spinner and can't be clicked.
 pub fn nav_icon(ui: &mut Ui, icon: egui::ImageSource<'static>, tip: &str, height: f32, busy: bool) -> Response {
@@ -156,6 +180,7 @@ pub fn nav_icon(ui: &mut Ui, icon: egui::ImageSource<'static>, tip: &str, height
         egui::Image::new(icon).tint(tint).paint_at(ui, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)));
     }
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !busy, tip));
+    focus_ring(ui, &resp);
     let resp = resp.on_hover_text(tip);
     if busy { resp } else { resp.on_hover_cursor(egui::CursorIcon::PointingHand) }
 }
@@ -445,6 +470,7 @@ pub fn hud_link(ui: &mut Ui, text: &str, url: &str) -> Response {
     let (rect, resp) = ui.allocate_exact_size(galley.size(), Sense::click());
     paint_left(ui, rect, galley, if resp.hovered() { t.ink_strong } else { t.muted });
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, text));
+    focus_ring(ui, &resp);
     let resp = resp.on_hover_text(url).on_hover_cursor(egui::CursorIcon::PointingHand);
     if resp.clicked() {
         open_external_link(ui.ctx(), url);
@@ -513,6 +539,7 @@ pub fn labelled_button(ui: &mut Ui, text: &str, label: &str, kind: Kind, width: 
     ui.painter().rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, fade(color));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
+    focus_ring(ui, &resp);
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
 }
 
@@ -690,6 +717,7 @@ fn paint_cell<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opt: &T, cell: &C
         None => cell.label.to_string(),
     };
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, &name));
+    focus_ring(ui, &resp);
     if resp.on_hover_text(cell.tip).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !on {
         *value = *opt;
         changed = true;
@@ -722,7 +750,13 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
             ui.ctx().request_repaint();
         }
     }
-    p.text(egui::pos2(rect.left(), rect.top() + 9.0), egui::Align2::LEFT_CENTER, caption, egui::FontId::new(12.0, theme::medium()), t.muted);
+    p.text(
+        egui::pos2(rect.left(), rect.top() + 9.0),
+        egui::Align2::LEFT_CENTER,
+        caption,
+        egui::FontId::new(theme::TEXT_CAPTION, theme::medium()),
+        t.muted,
+    );
     let resp = ui.interact(rect, ui.scope_id().with(("progress", caption)), Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ProgressIndicator, true, caption));
 }
@@ -861,6 +895,7 @@ pub fn grip_button(ui: &mut Ui, tip: &str) -> Response {
     let c = if hovered { t.invert_fg } else { t.muted };
     paint_glyph(p, rect, Glyph::Grip, c);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    focus_ring(ui, &resp);
     let cursor = if resp.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab };
     resp.on_hover_text(tip).on_hover_cursor(cursor)
 }
@@ -879,6 +914,7 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     let c = if hovered { t.invert_fg } else { t.muted };
     paint_glyph(p, rect, glyph, c);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    focus_ring(ui, &resp);
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
@@ -905,6 +941,7 @@ pub fn pin_button(ui: &mut Ui, pinned: bool, tip: &str) -> Response {
     let glyph = if pinned { Glyph::PinFilled } else { Glyph::Pin };
     paint_glyph(p, rect, glyph, c);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    focus_ring(ui, &resp);
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
@@ -930,6 +967,7 @@ pub fn more_menu<R>(ui: &mut Ui, app_name: &str, add_contents: impl FnOnce(&mut 
         ui.set_min_width(200.0);
         add_contents(ui)
     });
+    focus_ring(ui, &response);
     response.accessible_name(crate::i18n::fmt(tl!("More actions for {name}"), &[("name", app_name)]));
 }
 
@@ -985,6 +1023,7 @@ fn icon_link(ui: &mut Ui, size: f32, link: &IconLink<'_>) {
     let color = if resp.hovered() { t.ink_strong } else { t.faint };
     egui::Image::new(icon).tint(color).paint_at(ui, rect.shrink(pad));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, &link.label));
+    focus_ring(ui, &resp);
     let resp = resp.on_hover_text(&link.tip).on_hover_cursor(egui::CursorIcon::PointingHand);
     if resp.clicked() {
         open_external_link(ui.ctx(), link.url);
