@@ -244,6 +244,14 @@ fn install_at_with_profile(
     if !downgrade_is_safe(job.downgrade, kind, existing, previous) {
         return Err(format!("Going back to an older version of {} isn't available for this kind of install yet.", app.name));
     }
+    // Refuse before the download, not after it: the swap at the end would fail anyway.
+    #[cfg(target_os = "macos")]
+    if kind == PackageKind::Dmg
+        && let Some(installed) = existing.filter(|installed| installed.source == InstallSource::MacApp)
+        && let Some(refusal) = macos::replace_refusal(app, Path::new(&installed.location))
+    {
+        return Err(refusal);
+    }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
     #[cfg(windows)]
     let msi_scope = if kind == PackageKind::Msi {
@@ -1894,6 +1902,45 @@ pub mod macos {
     /// The same choice as a fresh install makes, creating nothing: the install-folder hint.
     pub(super) fn default_applications_dir() -> Option<PathBuf> {
         super::mac_applications_dir(Path::new(SYSTEM_APPLICATIONS), dirs::home_dir().as_deref())
+    }
+
+    /// Why this account can't replace the installed bundle at `bundle`, if it clearly can't.
+    ///
+    /// An update stages the new copy in a new folder beside the old one and moves the old one
+    /// into another, so it must be able to add to and remove from the parent folder. macOS also
+    /// refuses to move a folder to another parent unless it can write the folder itself (its
+    /// `..` entry changes), so a bundle another account owns can't be moved aside either. A
+    /// standard account in `/Applications` (`root:admin`, mode 775) hits the first; a bundle a
+    /// management tool installed as root hits the second.
+    ///
+    /// Asked before the download so a refused update costs nothing. It reads permissions with
+    /// `access(2)` and writes nothing. Only a clear refusal counts: when the check itself fails,
+    /// the update goes ahead and reports whatever really stops it.
+    pub(super) fn replace_refusal(app: &CraftApp, bundle: &Path) -> Option<String> {
+        replace_refusal_with(app, bundle, refused)
+    }
+
+    pub(super) fn replace_refusal_with(app: &CraftApp, bundle: &Path, refused: impl Fn(&Path, rustix::fs::Access) -> bool) -> Option<String> {
+        use rustix::fs::Access;
+        let parent = bundle.parent()?;
+        let blocked = if refused(parent, Access::WRITE_OK | Access::EXEC_OK) {
+            parent
+        } else if refused(bundle, Access::WRITE_OK) {
+            bundle
+        } else {
+            return None;
+        };
+        Some(format!(
+            "Updating {} needs an administrator, because this account can't change {}. An administrator can update it, or remove it so you can install it again.",
+            app.name,
+            blocked.display()
+        ))
+    }
+
+    /// Whether `access(2)` clearly refuses `wanted` on `path`.
+    fn refused(path: &Path, wanted: rustix::fs::Access) -> bool {
+        use rustix::io::Errno;
+        matches!(rustix::fs::access(path, wanted), Err(Errno::ACCESS | Errno::PERM | Errno::ROFS))
     }
 
     /// What a new copy must prove before it replaces anything. The checksum shows the download is
@@ -4205,6 +4252,110 @@ mod tests {
                 said = String::from_utf8_lossy(&output.stderr).trim().to_string();
             }
             panic!("hdiutil create failed after 5 tries: {said}");
+        }
+
+        /// Restores a folder's mode when dropped, so a failed assertion still lets the
+        /// temporary folder be cleaned up.
+        struct Mode<'a>(&'a Path, u32);
+
+        impl Drop for Mode<'_> {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(self.0, std::os::unix::fs::PermissionsExt::from_mode(self.1));
+            }
+        }
+
+        fn read_only(path: &Path) -> Mode<'_> {
+            std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o555)).unwrap();
+            Mode(path, 0o755)
+        }
+
+        /// Runs the update of `installed` to PhotoCraft 0.6.0 far enough to see whether it is
+        /// refused. Nothing serves the download, so an update that isn't refused fails there.
+        fn update_installed(dir: &Path, installed: &Path) -> (Result<Option<Record>, String>, Paths) {
+            let paths = Paths::under(&dir.join("data"));
+            let http = Http::new().unwrap();
+            let phase = &mut |_| ();
+            let locations = InstallLocations::default();
+            let release = Release { version: version::parse("0.6.0"), tag: "v0.6.0".into(), ..Release::default() };
+            let asset = Asset {
+                name: "photocraft-0.6.0-macos-universal.dmg".into(),
+                url: "http://127.0.0.1:9/storytold/photocraft/releases/download/v0.6.0/photocraft-0.6.0-macos-universal.dmg".into(),
+                ..Asset::default()
+            };
+            let existing = Installed {
+                version: version::parse("0.5.0"),
+                source: InstallSource::MacApp,
+                location: installed.display().to_string(),
+                package: None,
+                externally_managed: false,
+                origin: None,
+                installation: None,
+            };
+            let stop = Stop::default();
+            let mut job = Job {
+                http: &http,
+                paths: &paths,
+                stop: &stop,
+                phase,
+                install_locations: &locations,
+                replace: false,
+                approved_path: None,
+                downgrade: None,
+                batch: None,
+                place: None,
+            };
+            let result = install_at(photocraft(), &release, &asset, PackageKind::Dmg, Some(&existing), None, &mut job, None);
+            (result, paths)
+        }
+
+        /// A standard account can't write `/Applications` (`root:admin`, 775). The update used to
+        /// download the whole image and only then fail to create its staging folder there
+        /// (storytold/craft-launcher#1234, #493); now it says an administrator is needed, first.
+        #[test]
+        fn an_update_in_a_folder_this_account_cannot_change_is_refused_before_the_download() {
+            let dir = tempfile::tempdir().unwrap();
+            let apps = dir.path().join("Applications");
+            std::fs::create_dir(&apps).unwrap();
+            let installed = bundle(&apps, "0.5.0");
+            let _restore = read_only(&apps);
+            if super::write_probe(&apps).is_ok() {
+                return; // Running as root: permissions refuse nothing, so there is nothing to see.
+            }
+            let (result, paths) = update_installed(dir.path(), &installed);
+            let error = result.unwrap_err();
+            assert!(error.contains("needs an administrator"), "{error}");
+            assert!(error.contains(&apps.display().to_string()), "{error}");
+            assert!(std::fs::read_dir(paths.downloads()).map_or(true, |mut d| d.next().is_none()), "the update downloaded anyway");
+            assert_eq!(std::fs::read(installed.join("Contents/MacOS/PhotoCraft")).unwrap(), b"0.5.0");
+        }
+
+        /// A bundle another account owns (one a management tool installed as root) can't be moved
+        /// aside even in a folder this account can write: "couldn't move the old copy aside"
+        /// (storytold/craft-launcher#1151).
+        #[test]
+        fn an_update_of_a_bundle_this_account_cannot_change_is_refused_before_the_download() {
+            let dir = tempfile::tempdir().unwrap();
+            let installed = bundle(dir.path(), "0.5.0");
+            let _restore = read_only(&installed);
+            if super::write_probe(&installed).is_ok() {
+                return; // Running as root.
+            }
+            let (result, _) = update_installed(dir.path(), &installed);
+            let error = result.unwrap_err();
+            assert!(error.contains("needs an administrator"), "{error}");
+            assert!(error.contains(&installed.display().to_string()), "{error}");
+        }
+
+        /// A copy this account can replace gets no refusal, and an unclear answer from the check
+        /// (anything but a clear refusal) doesn't stop the update either.
+        #[test]
+        fn only_a_clear_refusal_stops_an_update() {
+            let dir = tempfile::tempdir().unwrap();
+            let installed = bundle(dir.path(), "0.5.0");
+            assert_eq!(super::macos::replace_refusal(photocraft(), &installed), None);
+            assert_eq!(super::macos::replace_refusal_with(photocraft(), &installed, |_, _| false), None);
+            let error = super::macos::replace_refusal_with(photocraft(), &installed, |path, _| path == dir.path()).unwrap();
+            assert!(error.starts_with("Updating PhotoCraft needs an administrator"), "{error}");
         }
 
         #[test]
