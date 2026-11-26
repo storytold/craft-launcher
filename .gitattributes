@@ -1,2 +1,5 @@
 # Signatures verify exact bytes; checkout must not convert signed TOML to CRLF.
 /crates/core/tests/fixtures/hosted-catalog.toml -text
+# The real release signature fixture is checked over its exact bytes.
+/crates/native/tests/fixtures/linux-release-signed/* -text
+/crates/native/assets/linux-release-signing-key.asc -text

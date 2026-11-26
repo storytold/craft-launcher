@@ -24,9 +24,35 @@ impl Paths {
         Ok(Self { data, cache })
     }
 
+    /// [`Self::new`] with aliases in the folders the OS (or the portable zip's folder) owns
+    /// resolved, such as `/home -> var/home` on Fedora Atomic desktops (Silverblue, Bazzite).
+    /// Nightly storage refuses any alias on its path, so it starts from these physical paths;
+    /// the launcher's own folder and everything below it are kept as named, so an alias there is
+    /// still refused. Stable storage keeps [`Self::new`], so its records stay byte-for-byte.
+    pub fn new_resolved() -> Result<Self, String> {
+        let (base, own) = match portable_root() {
+            Some(root) => (root.parent().ok_or("the portable folder has no parent")?.to_path_buf(), PathBuf::from("ArtCraftLauncherData")),
+            None => {
+                let data = dirs::data_local_dir().ok_or("no per-user data folder on this system")?;
+                let cache = dirs::cache_dir().ok_or("no per-user cache folder on this system")?;
+                return Ok(Self { data: resolve_existing(&data).join(DIR), cache: resolve_existing(&cache).join(DIR) });
+            }
+        };
+        Ok(Self::under(&resolve_existing(&base).join(own)))
+    }
+
     /// For tests: everything under one folder.
     pub fn under(root: &std::path::Path) -> Self {
         Self { data: root.join("data"), cache: root.join("cache") }
+    }
+
+    /// A versioned namespace. Stable storage and records remain byte-for-byte compatible.
+    pub fn for_channel(mut self, channel: artcraft_launcher_core::nightly::InstallChannel) -> Self {
+        if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
+            self.data = self.data.join("pre-release").join("v1");
+            self.cache = self.cache.join("pre-release").join("v1");
+        }
+        self
     }
 
     pub fn downloads(&self) -> PathBuf {
@@ -35,6 +61,11 @@ impl Paths {
 
     pub fn release_cache(&self) -> PathBuf {
         self.cache.join("releases.json")
+    }
+
+    /// The GitHub API requests of the last hour, kept beside the release cache.
+    pub fn github_budget(&self) -> PathBuf {
+        self.cache.join("github-budget.json")
     }
 
     /// The last answer from ArtCraft's release feed, for an instant first paint and as a fallback.
@@ -51,6 +82,11 @@ impl Paths {
     /// pictures repository it was fetched from, so a new revision never reads an old picture.
     pub fn screenshot(&self, app: &str, key: &str) -> PathBuf {
         self.cache.join("screenshots").join(artcraft_launcher_core::details::SCREENSHOTS_REV).join(app).join(format!("{key}.jpg"))
+    }
+
+    /// Nightly-only bounded scheduling/result metadata, never release or descriptor bodies.
+    pub(crate) fn nightly_checks(&self) -> PathBuf {
+        self.data.join("nightly-checks-v1.json")
     }
 
     pub fn manifest(&self) -> PathBuf {
@@ -87,6 +123,30 @@ pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> 
     Ok(())
 }
 
+/// `path` with the aliases in its longest existing ancestor resolved and the missing rest
+/// appended as named. Anything unresolvable (a relative path, a dangling alias, an unreadable
+/// folder) is returned unchanged, so the Nightly checks see and refuse it rather than this
+/// guessing.
+fn resolve_existing(path: &std::path::Path) -> PathBuf {
+    if !path.is_absolute() || path.components().any(|part| matches!(part, std::path::Component::CurDir | std::path::Component::ParentDir)) {
+        return path.to_path_buf();
+    }
+    for ancestor in path.ancestors() {
+        match std::fs::canonicalize(ancestor) {
+            Ok(resolved) => {
+                return match path.strip_prefix(ancestor) {
+                    Ok(rest) if rest.as_os_str().is_empty() => resolved,
+                    Ok(rest) => resolved.join(rest),
+                    Err(_) => path.to_path_buf(),
+                };
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && std::fs::symlink_metadata(ancestor).is_err() => {}
+            Err(_) => return path.to_path_buf(),
+        }
+    }
+    path.to_path_buf()
+}
+
 /// Portable mode: a `portable.txt` beside the executable keeps everything in
 /// `ArtCraftLauncherData` next to it (the Windows portable zip ships one).
 pub fn portable_root() -> Option<PathBuf> {
@@ -98,6 +158,61 @@ pub fn portable_root() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nightly_paths_do_not_alias_stable_records_downloads_or_apps() {
+        use artcraft_launcher_core::nightly::InstallChannel;
+        let root = tempfile::tempdir().unwrap();
+        let stable = Paths::under(root.path());
+        let nightly = stable.clone().for_channel(InstallChannel::Nightly);
+        assert_ne!(stable.manifest(), nightly.manifest());
+        assert_ne!(stable.downloads(), nightly.downloads());
+        assert_ne!(stable.apps(), nightly.apps());
+        assert!(nightly.data.starts_with(&stable.data));
+        assert!(nightly.cache.starts_with(&stable.cache));
+        assert_eq!(stable.clone().for_channel(InstallChannel::Stable).manifest(), stable.manifest());
+        assert!(!nightly.data.exists(), "choosing a namespace never creates or removes data");
+    }
+
+    /// Fedora Atomic desktops link `/home` to `var/home`: an alias above the launcher's own
+    /// folder is resolved, so Nightly storage is usable there, while one inside it still is not.
+    #[cfg(unix)]
+    #[test]
+    fn an_os_alias_above_the_launcher_folder_is_resolved_but_one_inside_it_is_kept() {
+        use artcraft_launcher_core::nightly::InstallChannel;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("var/home/user/.local/share")).unwrap();
+        std::os::unix::fs::symlink("var/home", root.join("home")).unwrap();
+        let share = root.join("home/user/.local/share");
+        let resolved = resolve_existing(&share.join(DIR));
+        assert_eq!(resolved, root.join("var/home/user/.local/share").join(DIR));
+        let paths = Paths { data: resolved.clone(), cache: resolved.join("cache") }.for_channel(InstallChannel::Nightly);
+        assert!(crate::nightly_profile::validate_paths(&paths).is_ok(), "a resolved OS alias is accepted");
+        let raw = Paths { data: share.join(DIR), cache: share.join(DIR).join("cache") }.for_channel(InstallChannel::Nightly);
+        assert!(crate::nightly_profile::validate_paths(&raw).is_err(), "an unresolved alias is still refused");
+
+        let real = root.join("elsewhere");
+        std::fs::create_dir(&real).unwrap();
+        let own = root.join("var/home/user/.local/share").join(DIR);
+        std::os::unix::fs::symlink(&real, &own).unwrap();
+        let aliased = Paths { data: resolve_existing(&share).join(DIR), cache: resolve_existing(&share).join(DIR).join("c") }
+            .for_channel(InstallChannel::Nightly);
+        assert!(crate::nightly_profile::validate_paths(&aliased).is_err(), "an alias of the launcher's own folder is refused");
+    }
+
+    #[test]
+    fn resolving_leaves_missing_relative_and_dangling_paths_alone() {
+        assert_eq!(resolve_existing(std::path::Path::new("relative/dir")), PathBuf::from("relative/dir"));
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        assert_eq!(resolve_existing(&root.join("missing/deeper")), root.join("missing/deeper"));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join("nowhere"), root.join("dangling")).unwrap();
+            assert_eq!(resolve_existing(&root.join("dangling/x")), root.join("dangling/x"));
+        }
+    }
 
     #[test]
     fn atomic_write_does_not_overwrite_an_unrelated_temporary_file() {

@@ -104,6 +104,9 @@ impl LauncherUi {
     }
 
     fn settings_contents(&mut self, ui: &mut Ui, host: &mut dyn Host, wide: bool) {
+        // The right column holds install, fonts and background settings, which need app
+        // management: without it (the web build) it would be empty, so one column is drawn.
+        let wide = wide && self.caps.manage_apps;
         // The columns are drawn from two closures that both need `self` and `host`: the pieces
         // are drawn one after the other, through a cell, never at the same time (were they ever,
         // the second would be skipped rather than panic).
@@ -113,19 +116,28 @@ impl LauncherUi {
             wide,
             theme::COLUMN_GAP,
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, _) = &mut *state;
+                // Fonts makes the right column long, so the left also takes Community and the
+                // nightly opt-in, which keeps the two columns about the same height.
                 this.settings_language(ui);
                 this.settings_updates(ui);
                 this.settings_appearance(ui);
+                this.settings_nightly(ui);
+                this.settings_community(ui);
                 this.settings_agents(ui);
             },
             |ui| {
-                let Ok(mut state) = state.try_borrow_mut() else { return };
+                let Ok(mut state) = state.try_borrow_mut() else {
+                    return;
+                };
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
+                #[cfg(not(target_arch = "wasm32"))]
+                this.settings_fonts(ui);
                 this.settings_background(ui, &mut **host);
-                this.settings_community(ui);
             },
         );
     }
@@ -139,7 +151,7 @@ impl LauncherUi {
         let installed = self.cjk_font;
         sheet::panel_with_heading(ui, tl!("Language"), |ui, heading| {
             let width = ui.available_width();
-            craft_ui::ComboBox::from_id_salt("language")
+            egui::ComboBox::from_id_salt("language")
                 .selected_text(Settings::language_label(&lang_code, installed))
                 .width(width)
                 .show_ui(ui, |ui| {
@@ -177,7 +189,7 @@ impl LauncherUi {
         sheet::panel(ui, tl!("Updates"), |ui| {
             let mut every = self.settings.check_every;
             row(ui, tl!("Check for updates"), 150.0, &mut |ui, label| {
-                craft_ui::ComboBox::from_id_salt("every")
+                egui::ComboBox::from_id_salt("every")
                     .selected_text(every.label())
                     .width(150.0)
                     .show_ui(ui, |ui| {
@@ -201,7 +213,7 @@ impl LauncherUi {
                 let mut at_once = self.settings.simultaneous_downloads.min(4);
                 let no_limit = tl!("No limit").to_string();
                 row(ui, tl!("Simultaneous downloads"), 150.0, &mut |ui, label| {
-                    craft_ui::ComboBox::from_id_salt("at_once")
+                    egui::ComboBox::from_id_salt("at_once")
                         .selected_text(if at_once == 0 { no_limit.clone() } else { at_once.to_string() })
                         .width(150.0)
                         .show_ui(ui, |ui| {
@@ -218,11 +230,37 @@ impl LauncherUi {
             }
             ui.checkbox(&mut self.settings.notify, tl!("Notify me when an installed app has an update"));
             ui.checkbox(&mut self.settings.prereleases, tl!("Include pre-releases (betas and release candidates)"));
+            note(ui, tl!("Betas and release candidates can replace your stable installation."));
             row(ui, tl!("Launcher version"), 200.0, &mut |ui, label| {
                 self.version_combo(ui, launcher_id, &artcraft_launcher_core::catalog::LAUNCHER, 200.0, label);
                 self.version_lock(ui, launcher_id);
             });
             self.launcher_version_notes(ui);
+        });
+    }
+
+    /// Independent nightly discovery; the ordinary beta/RC filter stays in Updates.
+    fn settings_nightly(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Nightly builds"), |ui| {
+            let mut enabled = self.settings.nightly_enabled;
+            // Where builds can't be verified yet, nothing is offered to download; a choice
+            // already on can still be turned off.
+            let available = self.nightly.available();
+            let interactive = available || enabled;
+            let checkbox = egui::Checkbox::new(&mut enabled, tl!("Discover nightly builds (Developer Builds page)"));
+            let response = ui.add_enabled(interactive, checkbox);
+            if !available {
+                note(ui, tl!("Developer builds aren't available on this platform yet."));
+            }
+            if response.changed() {
+                if enabled {
+                    self.open_nightly_consent(response.id);
+                    self.dialog = None;
+                } else {
+                    self.act(crate::app::UiAction::NightlyConsent(false));
+                }
+            }
+            note(ui, tl!("Separate installs, settings and data. Turning this off keeps installed copies and their data."));
         });
     }
 
@@ -267,7 +305,7 @@ impl LauncherUi {
                 .or(Some(PackageKind::Msi));
             row(ui, tl!("Install new apps as"), 210.0, &mut |ui, label| {
                 let shown = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
-                craft_ui::ComboBox::from_id_salt("windows-kind")
+                egui::ComboBox::from_id_salt("windows-kind")
                     .selected_text(shown)
                     .width(210.0)
                     .show_ui(ui, |ui| {
@@ -303,7 +341,7 @@ impl LauncherUi {
                     None => tl!("System package (recommended)"),
                 };
                 let shown = choice.map_or(default_label, |k| crate::i18n::t(k.label()));
-                craft_ui::ComboBox::from_id_salt("kind")
+                egui::ComboBox::from_id_salt("kind")
                     .selected_text(shown)
                     .width(210.0)
                     .show_ui(ui, |ui| {
@@ -324,6 +362,33 @@ impl LauncherUi {
             });
             self.settings.preferred_kinds = choice.into_iter().collect();
             note(ui, tl!("Updates always use the format an app was installed with."));
+        });
+    }
+
+    /// The font store's download consent, preview settings and font sources, which every Craft app
+    /// shares.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn settings_fonts(&mut self, ui: &mut Ui) {
+        sheet::panel(ui, tl!("Fonts"), |ui| {
+            let now = ui.input(|i| i.time);
+            let mut allowed = self.fonts.downloads_allowed(now);
+            if ui.checkbox(&mut allowed, tl!("Allow font downloads")).changed()
+                && let Err(e) = self.fonts.set_downloads_allowed(allowed)
+            {
+                self.toast_from_ui(fmt(tl!("Couldn't change the font download setting: {e}"), &[("e", &e)]), true);
+            }
+            note(
+                ui,
+                tl!(
+                    "Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting."
+                ),
+            );
+            ui.add_space(10.0);
+            self.fonts.preview_settings_ui(ui);
+            ui.add_space(10.0);
+            widgets::hud(ui, tl!("Sources"), Tokens::get(ui.ctx()).faint);
+            ui.add_space(2.0);
+            self.fonts.sources_ui(ui, &self.framework.host, &self.settings.fonts);
         });
     }
 

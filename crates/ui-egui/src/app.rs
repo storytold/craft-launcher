@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
+    is_paused,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -76,6 +77,16 @@ pub trait Host {
     fn quit(&mut self) {}
 }
 
+/// The launcher's pages, switched by the toggle at the start of the toolbar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Page {
+    /// The Craft App Suite.
+    #[default]
+    Apps,
+    /// Craft Font Manager (desktop only).
+    Fonts,
+}
+
 pub(crate) struct Toast {
     pub text: String,
     pub error: bool,
@@ -96,6 +107,8 @@ pub(crate) struct Toast {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum UiAction {
     Command(Command),
+    NightlyCommand(Command),
+    NightlyConsent(bool),
     /// [`Command::Launch`] with the app's launch flags, plus one launch-count increment.
     Launch(String),
     /// Re-run the manual update check, clearing the auto-update back-off.
@@ -111,13 +124,33 @@ pub(crate) enum UiAction {
 pub(crate) enum Dialog {
     Notes(String),
     ConfirmUninstall(String),
-    UnlockVersion { app: String, tag: String },
-    Install { app: String, folder: String },
-    Replace { app: String, path: String },
+    UnlockVersion {
+        app: String,
+        tag: String,
+    },
+    Install {
+        app: String,
+        folder: String,
+    },
+    Replace {
+        app: String,
+        path: String,
+    },
+    /// Going back to `chosen` can only put `fallback` back if it fails (see
+    /// [`Event::GoBackFallback`](artcraft_launcher_core::protocol::Event::GoBackFallback)).
+    GoBackFallback {
+        app: String,
+        installed: String,
+        chosen: String,
+        fallback: String,
+    },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
     Versions(String),
-    LaunchFlags { app: String, flags: String },
+    LaunchFlags {
+        app: String,
+        flags: String,
+    },
 }
 
 impl Dialog {
@@ -130,6 +163,7 @@ impl Dialog {
             Dialog::UnlockVersion { app, .. } => ("unlock-version", app),
             Dialog::Install { app, .. } => ("install", app),
             Dialog::Replace { app, .. } => ("replace", app),
+            Dialog::GoBackFallback { app, .. } => ("go-back-fallback", app),
             Dialog::Settings => ("settings", ""),
             Dialog::LauncherUpdate(r) => ("launcher-update", &r.tag),
             Dialog::Versions(id) => ("versions", id),
@@ -142,6 +176,7 @@ pub struct LauncherUi {
     pub(crate) backend: Box<dyn Backend>,
     pub settings: Settings,
     pub(crate) entries: Vec<AppEntry>,
+    pub(crate) nightly: crate::nightly::NightlyState,
     /// AI agents: the gateway switch and the MCP clients.
     pub(crate) mcp_agents: McpAgents,
     /// Whether we've asked for MCP state since the settings dialog last opened (reset when it closes).
@@ -160,14 +195,21 @@ pub struct LauncherUi {
     /// While the Choose version dialog is open: its app and the choice it had before, put back
     /// unless the dialog's Install keeps the new one.
     pub(crate) version_before: Option<(String, artcraft_launcher_core::protocol::VersionTrack)>,
+    /// The `InstallChosen` last sent for an app, while its job runs or its download is paused, so
+    /// Resume asks for the same release by name again rather than the track's.
+    pub(crate) chosen_installs: std::collections::HashMap<String, Command>,
     /// The launcher's own update, while it downloads and installs.
     pub(crate) launcher_job: Option<artcraft_launcher_core::protocol::JobPhase>,
     /// The new launcher is in place: quit so it can start.
     restart_requested: bool,
-    /// News from ArtCraft's release feed, shown inline until dismissed.
-    pub(crate) announcements: Vec<artcraft_launcher_core::feed::Notice>,
-    /// Alerts from the feed, shown as popups until acknowledged.
-    pub(crate) alerts: Vec<artcraft_launcher_core::feed::Notice>,
+    /// Announcements from the signed notices file, listed in the header's bell until dismissed.
+    pub(crate) announcements: Vec<artcraft_launcher_core::notices::Notice>,
+    /// The bell's panel is open.
+    pub(crate) bell_open: bool,
+    /// Announcements that were unread when the panel opened: they keep a dot while it is open.
+    pub(crate) bell_new: std::collections::BTreeSet<String>,
+    /// Alerts from the signed notices file, shown as popups until acknowledged.
+    pub(crate) alerts: Vec<artcraft_launcher_core::notices::Notice>,
     pub(crate) search: String,
     pub(crate) toasts: Vec<Toast>,
     pub(crate) dialog: Option<Dialog>,
@@ -209,6 +251,11 @@ pub struct LauncherUi {
     pub(crate) auto_update_attempted: std::collections::BTreeSet<(String, String)>,
     /// The URL or deep link to open when Discord is clicked.
     pub(crate) discord_url: &'static str,
+    pub(crate) page: Page,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fonts: crate::fonts::FontsTab,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) framework: crate::framework::Framework,
     /// UI actions drawn in this pass, not sent yet.
     pending: Vec<UiAction>,
     /// The `egui::Context::cumulative_frame_nr` those actions belong to.
@@ -268,9 +315,11 @@ impl LauncherUi {
         let platform = backend.platform();
         let mut settings = settings;
         settings.migrate();
+        let nightly = crate::nightly::NightlyState::new(backend.nightly_context(), platform);
         Self {
             backend,
             settings,
+            nightly,
             entries: artcraft_launcher_core::hosted_catalog::apps()
                 .iter()
                 .filter(|a| platform.is_none_or(|p| a.runs_on(p.os)))
@@ -288,9 +337,12 @@ impl LauncherUi {
             version_lists: std::collections::HashMap::new(),
             version_requests: std::collections::HashSet::new(),
             version_before: None,
+            chosen_installs: std::collections::HashMap::new(),
             launcher_job: None,
             restart_requested: false,
             announcements: Vec::new(),
+            bell_open: false,
+            bell_new: std::collections::BTreeSet::new(),
             alerts: Vec::new(),
             search: String::new(),
             toasts: Vec::new(),
@@ -314,6 +366,11 @@ impl LauncherUi {
             was_focused: true,
             auto_update_attempted: std::collections::BTreeSet::new(),
             discord_url: artcraft_launcher_core::catalog::DISCORD_URL,
+            page: Page::Apps,
+            #[cfg(not(target_arch = "wasm32"))]
+            fonts: crate::fonts::FontsTab::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            framework: crate::framework::Framework::new(),
             pending: Vec::new(),
             frame: None,
             flushed: Vec::new(),
@@ -332,6 +389,10 @@ impl LauncherUi {
         self.applied_theme = None;
         self.applied_motion = None;
         self.motion_recheck = 0.0;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.framework.zoom = None;
+        }
         self.toasts.clear();
         // Actions belong to the old context's frame; messages waiting to be shown do not.
         self.pending.clear();
@@ -340,11 +401,34 @@ impl LauncherUi {
     }
 
     /// Input on its way to egui (the shell's `raw_input_hook`): with fewer animations asked for,
-    /// a mouse wheel scrolls at once instead of gliding.
-    pub fn raw_input(&self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+    /// a mouse wheel scrolls at once instead of gliding. The desktop's craft-ui runtime also gets the
+    /// coming frame's root values.
+    pub fn raw_input(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if self.reduce_motion {
             motion::unsmooth_wheel(ctx, raw);
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.framework.before_input(ctx, self.reduce_motion, drawable_lang(&self.settings.language, self.cjk_font).code());
+    }
+
+    /// The interface zoom.
+    fn zoom(&self, ctx: &egui::Context) -> f32 {
+        #[cfg(not(target_arch = "wasm32"))]
+        let zoom = self.framework.zoom.unwrap_or_else(|| ctx.zoom_factor());
+        #[cfg(target_arch = "wasm32")]
+        let zoom = ctx.zoom_factor();
+        zoom
+    }
+
+    /// Sets the interface zoom: on the desktop the runtime writes it to the context as the next frame starts.
+    fn set_zoom(&mut self, ctx: &egui::Context, zoom: f32) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.framework.zoom = Some(zoom);
+            ctx.request_repaint();
+        }
+        #[cfg(target_arch = "wasm32")]
+        ctx.set_zoom_factor(zoom);
     }
 
     /// Installed apps with an update waiting (the tray shows the count). Hidden apps are left out,
@@ -356,7 +440,7 @@ impl LauncherUi {
     /// Something is downloading or installing, the launcher's own update included: quitting now
     /// would cut it short.
     pub fn busy(&self) -> bool {
-        self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
+        self.backend.has_active_jobs() || self.nightly.busy() || self.launcher_job.is_some() || self.entries.iter().any(|e| e.job.is_some())
     }
 
     /// Looks for updates now (the tray's "Check for Updates").
@@ -378,7 +462,7 @@ impl LauncherUi {
 
     /// Queues one user action. Distinct controls may queue equal payloads in the same pass; the
     /// per-frame duplicate check happens in [`Self::flush_actions`] when the draw order is known.
-    fn act(&mut self, action: UiAction) {
+    pub(crate) fn act(&mut self, action: UiAction) {
         self.pending.push(action);
     }
 
@@ -416,6 +500,15 @@ impl LauncherUi {
             }
             match action {
                 UiAction::Command(command) => self.backend.send(command.clone()),
+                UiAction::NightlyCommand(command) => self.nightly.send(command.clone(), self.settings.nightly_enabled),
+                UiAction::NightlyConsent(enabled) => {
+                    self.settings.nightly_enabled = *enabled;
+                    self.nightly.consent_open = false;
+                    if *enabled {
+                        self.nightly.active = true;
+                    }
+                    self.nightly.configure(&self.settings);
+                }
                 UiAction::Launch(id) => {
                     let flags = self.settings.launch_flags.get(id).map_or("", String::as_str);
                     // The dialog only saves flags that split, but the settings file can be edited by hand.
@@ -480,6 +573,7 @@ impl LauncherUi {
             quiet_installs: self.settings.auto_update,
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
+            nightly_enabled: false, // The stable backend never acquires nightly consent.
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),
             simultaneous_downloads: self.settings.simultaneous_downloads,
@@ -531,12 +625,29 @@ impl LauncherUi {
             Some(Dialog::Install { app: id.to_string(), folder: self.settings.install_locations.per_app.get(id).cloned().unwrap_or_default() });
     }
 
+    /// Installs the release `tag` the person picked by name ([`Command::InstallChosen`]), and keeps
+    /// the request so Resume repeats it.
+    pub(crate) fn install_chosen(&mut self, id: &str, tag: String, fallback: Option<String>) {
+        let command = Command::InstallChosen { app: id.to_string(), tag, fallback };
+        self.chosen_installs.insert(id.to_string(), command.clone());
+        self.act_command(command);
+    }
+
+    /// Resumes `id`'s paused download: as the request by name that started it, else as an install.
+    pub(crate) fn resume_app(&mut self, id: &str) {
+        match self.chosen_installs.get(id).cloned() {
+            Some(command) => self.act_command(command),
+            None => self.install_app(id),
+        }
+    }
+
     /// Non-drawing work: runs every frame and also while the window is hidden in the tray.
     pub fn logic(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
         // Messages made here (toasts, alerts) are drawn later, so use the language the UI can
         // actually show: English where the system has no CJK face for the preference.
         set_current(effective_lang(&self.settings.language));
         self.configure();
+        self.nightly.logic(&self.settings);
         // A kept version's card notes a newer release; that needs the app's published list.
         self.request_pinned_lists();
         if !self.started {
@@ -624,6 +735,8 @@ impl LauncherUi {
                 false
             }
             Event::Notices { announcements, alerts } => {
+                let current = announcements.iter().chain(&alerts).map(|n| n.id.as_str()).collect();
+                self.settings.forget_notices_not_in(&current);
                 self.announcements = announcements;
                 self.alerts = alerts;
                 false
@@ -651,6 +764,10 @@ impl LauncherUi {
                 self.dialog = Some(Dialog::Replace { app, path });
                 false
             }
+            Event::GoBackFallback { app, installed, chosen, fallback } => {
+                self.dialog = Some(Dialog::GoBackFallback { app, installed, chosen, fallback });
+                false
+            }
             Event::JobFinished { app, result } => {
                 self.on_job_finished(app, result);
                 true
@@ -659,6 +776,7 @@ impl LauncherUi {
                 self.on_notice(result);
                 true
             }
+            Event::NightlyStatus { .. } => false, // Nightly metadata never changes Stable scheduling or presentation.
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;
@@ -715,6 +833,11 @@ impl LauncherUi {
             e.job = None;
         }
         let kept = self.entry(&app).is_some_and(|e| e.ready);
+        // A paused job is resumed by the same request, so the request is kept: every pause
+        // outcome, the connection-caused one included (is_paused), not just the plain PAUSED.
+        if !matches!(&result, Err(e) if is_paused(e)) {
+            self.chosen_installs.remove(&app);
+        }
         match result {
             Ok(msg) => self.toast(msg, false),
             // The paused card says it all.
@@ -730,8 +853,8 @@ impl LauncherUi {
                 self.toast(tl!("Install cancelled. The download is kept for the next try."), false);
             }
             Err(e) if e == INSTALL_CANCELLED => self.toast(tl!("Install cancelled"), false),
-            // The Replace dialog says it all.
-            Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. }) if *a == app) => {}
+            // The Replace dialog, or the question about going back, says it all.
+            Err(_) if matches!(&self.dialog, Some(Dialog::Replace { app: a, .. } | Dialog::GoBackFallback { app: a, .. }) if *a == app) => {}
             Err(e) => self.toast(e, true),
         }
     }
@@ -850,23 +973,31 @@ impl LauncherUi {
     fn zoom_input(&mut self, ctx: &egui::Context) {
         use egui::gui_zoom::kb_shortcuts;
         let notes_open = matches!(self.dialog, Some(Dialog::Notes(_)));
+        // The interface's zoom keys are egui's own in the browser; the desktop's runtime turns those off.
+        let keys = notes_open || cfg!(not(target_arch = "wasm32"));
         let (delta, zoom_in, zoom_out, reset) = ctx.input_mut(|i| {
             let delta = i.zoom_delta();
-            let reset = notes_open && i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
-            let zoom_in = notes_open && (i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY));
-            let zoom_out = notes_open && i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);
+            let reset = keys && i.consume_shortcut(&kb_shortcuts::ZOOM_RESET);
+            let zoom_in = keys && (i.consume_shortcut(&kb_shortcuts::ZOOM_IN) || i.consume_shortcut(&kb_shortcuts::ZOOM_IN_SECONDARY));
+            let zoom_out = keys && i.consume_shortcut(&kb_shortcuts::ZOOM_OUT);
             (delta, zoom_in, zoom_out, reset)
         });
         let delta = if delta.is_finite() && delta > 0.0 { delta } else { 1.0 };
+        let step = match (zoom_in, zoom_out) {
+            (true, false) => 0.1,
+            (false, true) => -0.1,
+            _ => 0.0,
+        };
         if notes_open {
-            let step = match (zoom_in, zoom_out) {
-                (true, false) => 0.1,
-                (false, true) => -0.1,
-                _ => 0.0,
-            };
             self.notes_zoom = if reset { 1.0 } else { ((self.notes_zoom + step) * delta).clamp(0.5, 3.0) };
-        } else if delta != 1.0 {
-            ctx.set_zoom_factor((ctx.zoom_factor() * delta).clamp(0.2, 5.0));
+        } else if reset {
+            self.set_zoom(ctx, 1.0);
+        } else if step != 0.0 || delta != 1.0 {
+            let mut zoom = self.zoom(ctx);
+            if step != 0.0 {
+                zoom = ((zoom + step) * 10.0).round() / 10.0;
+            }
+            self.set_zoom(ctx, (zoom * delta).clamp(0.2, 5.0));
         }
     }
 
@@ -874,6 +1005,11 @@ impl LauncherUi {
     pub fn ui(&mut self, ui: &mut egui::Ui, host: &mut dyn Host) {
         let ctx = ui.ctx().clone();
         self.begin_ui_frame(&ctx);
+        // The Fonts page's own sheet and prompt read their Escape from the runtime.
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.page != Page::Fonts || self.nightly.active || self.dialog.is_some() {
+            crate::framework::return_window_escape(&ctx);
+        }
         if host.title_bar() == TitleBar::MacOs && ctx.input_mut(|i| i.consume_key(egui::Modifiers::MAC_CMD, egui::Key::M)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
@@ -927,45 +1063,91 @@ impl LauncherUi {
             .exact_size(crate::views::FOOTER_H)
             .resizable(false)
             .show(ui, |ui| self.footer(ui));
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }))
-            .show(ui, |ui| {
-                self.toolbar(ui);
-                ui.add_space(18.0);
-                let ids = self.visible_ids();
-                // The table is wider than a narrow window: let it scroll sideways too.
-                let scroll = match self.settings.view {
-                    ViewMode::Grid => egui::ScrollArea::vertical(),
-                    ViewMode::Table => egui::ScrollArea::both(),
-                };
-                scroll.auto_shrink(false).show(ui, |ui| {
-                    // Escape must run even when search/filter leaves no rows (grid/table skipped).
-                    self.clear_pin_drag_on_escape(ui);
-                    if ids.is_empty() {
-                        ui.add_space(40.0);
-                        ui.vertical_centered(|ui| {
-                            crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
-                        });
-                    } else {
-                        match self.settings.view {
-                            ViewMode::Grid => self.grid(ui, &ids),
-                            ViewMode::Table => self.table(ui, &ids),
-                        }
-                    }
-                    ui.add_space(16.0);
-                    // The drop targets have seen this frame's pointer: a released drag ends here.
-                    if !ui.input(|i| i.pointer.primary_down()) {
-                        self.pin_dragging = None;
-                    }
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(tokens.bg)).show(ui, |ui| {
+            // The Pre-Release channel has its own page; Apps and Fonts belong to Stable.
+            if self.nightly.active {
+                #[cfg(not(target_arch = "wasm32"))]
+                self.fonts.hidden();
+                egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| {
+                    ui.add_space(12.0);
+                    self.nightly_page(ui);
                 });
-            });
+                return;
+            }
+            egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| self.toolbar(ui));
+            #[cfg(not(target_arch = "wasm32"))]
+            if self.page == Page::Fonts {
+                egui::Frame::new().inner_margin(egui::Margin { left: 20, right: 20, top: 18, bottom: 0 }).show(ui, |ui| {
+                    let language = drawable_lang(&self.settings.language, self.cjk_font).code();
+                    self.fonts.ui(ui, &self.framework.host, &mut self.settings.fonts, language);
+                });
+                return;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            self.fonts.hidden();
+            ui.add_space(18.0);
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(20, 0)).show(ui, |ui| self.apps_page(ui));
+        });
         self.details_drawer(&ctx);
         self.dialogs(&ctx, host);
+        self.nightly_consent_modal(&ctx);
         self.flush_actions();
         self.draw_toasts(&ctx);
         if host.title_bar() == TitleBar::Custom {
             crate::widgets::window_edges(&ctx);
         }
+    }
+
+    /// The Craft App Suite as cards or a table, below the toolbar.
+    fn apps_page(&mut self, ui: &mut egui::Ui) {
+        let tokens = Tokens::get(ui.ctx());
+        let ids = self.visible_ids();
+        // The table is wider than a narrow window: let it scroll sideways too.
+        let scroll = match self.settings.view {
+            ViewMode::Grid => egui::ScrollArea::vertical(),
+            ViewMode::Table => egui::ScrollArea::both(),
+        };
+        scroll.auto_shrink(false).show(ui, |ui| {
+            // Escape must run even when search/filter leaves no rows (grid/table skipped).
+            self.clear_pin_drag_on_escape(ui);
+            if ids.is_empty() {
+                ui.add_space(40.0);
+                ui.vertical_centered(|ui| {
+                    crate::widgets::hud(ui, tl!("No apps match"), tokens.muted);
+                });
+            } else {
+                match self.settings.view {
+                    ViewMode::Grid => self.grid(ui, &ids),
+                    ViewMode::Table => self.table(ui, &ids),
+                }
+            }
+            ui.add_space(16.0);
+            // The drop targets have seen this frame's pointer: a released drag ends here.
+            if !ui.input(|i| i.pointer.primary_down()) {
+                self.pin_dragging = None;
+            }
+        });
+    }
+
+    /// The page the window shows.
+    pub fn page(&self) -> Page {
+        self.page
+    }
+
+    pub fn set_page(&mut self, page: Page) {
+        self.page = if cfg!(target_arch = "wasm32") { Page::Apps } else { page };
+    }
+
+    /// Builds the Fonts page from `options` instead of the user's fonts and font store (tests).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn use_font_options(&mut self, options: craft_font_manager::Options) {
+        self.fonts = crate::fonts::FontsTab::with_options(options);
+    }
+
+    /// The Fonts page's panel, once the page has shown.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn fonts_panel(&self) -> Option<&craft_font_manager::FontsPanel> {
+        self.fonts.panel()
     }
 
     /// Test hook for the filtered/sorted catalog ids currently shown.
@@ -1210,6 +1392,7 @@ mod tests {
         // A fixed language keeps `effective_lang` away from the machine's locale.
         let settings = Settings { language: "en".into(), notify: false, ..Settings::default() };
         let ctx = egui::Context::default();
+        crate::framework::install_headless(&ctx);
         (LauncherUi::new(&ctx, Box::new(backend), settings), sent, ctx)
     }
 
@@ -1488,24 +1671,29 @@ mod tests {
         let sent = Rc::new(RefCell::new(Vec::new()));
         let mut backend = Some(Recorder { sent });
         let settings = Settings { language: "en".into(), notify: false, ..Settings::default() };
-        Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(egui::Theme::Dark).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                if state.is_none()
-                    && let Some(backend) = backend.take()
-                {
-                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings.clone()));
-                }
-                if let Some(launcher) = state.as_mut() {
-                    launcher.logic(&ui.ctx().clone(), &mut NoHost);
-                    // The strict policy covers drawing passes only: translation is what asks the
-                    // fonts for glyphs. Logic may set the current language ahead of the gate, but
-                    // it draws nothing.
-                    let _strict = crate::i18n::StrictCjkDrawing::on(launcher.cjk_font);
-                    launcher.ui(ui, &mut NoHost);
-                }
-            },
-            None,
-        )
+        Harness::builder()
+            .with_context_setup(crate::framework::install_headless)
+            .with_size(egui::vec2(1180.0, 900.0))
+            .with_theme(egui::Theme::Dark)
+            .allow_missing_glyphs()
+            .build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    if state.is_none()
+                        && let Some(backend) = backend.take()
+                    {
+                        *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings.clone()));
+                    }
+                    if let Some(launcher) = state.as_mut() {
+                        launcher.logic(&ui.ctx().clone(), &mut NoHost);
+                        // The strict policy covers drawing passes only: translation is what asks the
+                        // fonts for glyphs. Logic may set the current language ahead of the gate, but
+                        // it draws nothing.
+                        let _strict = crate::i18n::StrictCjkDrawing::on(launcher.cjk_font);
+                        launcher.ui(ui, &mut NoHost);
+                    }
+                },
+                None,
+            )
     }
 
     /// Opens Settings and its language combo through visible labels, leaving the picker open for a
@@ -1558,14 +1746,14 @@ mod tests {
             let inter: &[u8] = include_bytes!("../../../assets/fonts/Inter-Variable.ttf");
             assert_eq!(marker.bytes(), inter, "the available marker must be the real Inter face, not a CJK face");
 
-            // Exactly one gate pass: it installs the face and draws nothing. We stop here and do
-            // not run the following pass, which would panic on missing Chinese glyphs in the Inter stand-in.
+            // The gate pass installs the face and draws nothing; the runtime discards it and runs the frame's
+            // second pass with the face in place, so the frame on screen is Chinese.
             h.step();
             {
                 let launcher = h.state().as_ref().expect("harness state");
                 assert_eq!(launcher.cjk_font, Some(Lang::ZH_CN), "the gate must install the face");
             }
-            assert!(!crate::i18n::drew_cjk(), "the gate pass must not draw CJK text");
+            assert_eq!(crate::i18n::current(), Lang::ZH_CN, "the frame that installs the face draws with it");
         }
 
         // Unavailable: no face at all, so every frame stays English and the gate installs nothing.
@@ -1611,5 +1799,21 @@ mod tests {
         assert!(update_check_due(Some(NOW + 60), NOW, EVERY));
         assert!(update_check_due(Some(i64::MAX), NOW, EVERY));
         assert!(update_check_due(Some(i64::MIN), NOW, EVERY));
+    }
+    #[test]
+    fn shared_selection_declined_consent_never_activates_a_new_destination() {
+        let (mut refused, _, _) = launcher();
+        refused.pending.push(UiAction::NightlyConsent(false));
+        refused.flush_actions();
+        assert!(!refused.settings.nightly_enabled && !refused.nightly.active);
+        let (mut accepted, _, _) = launcher();
+        accepted.pending.push(UiAction::NightlyConsent(true));
+        accepted.flush_actions();
+        assert!(accepted.settings.nightly_enabled && accepted.nightly.active);
+        let (mut retained, _, _) = launcher();
+        retained.nightly.active = true;
+        retained.pending.push(UiAction::NightlyConsent(false));
+        retained.flush_actions();
+        assert!(!retained.settings.nightly_enabled && retained.nightly.active, "OFF must not force an already open management destination away");
     }
 }

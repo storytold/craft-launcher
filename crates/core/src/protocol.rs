@@ -42,6 +42,17 @@ pub enum Command {
         app: String,
         path: String,
     },
+    /// `Install`, for the release `tag` the person picked by name in the version dialog. When it is
+    /// older than the installed copy, the install goes back to it the way it goes back to a pinned
+    /// version, also when `tag` is the latest release, whose track then goes on following new
+    /// releases. Nothing is installed when the release to install is no longer `tag`. `fallback` is
+    /// the release the person agreed may be put back if going back fails
+    /// ([`Event::GoBackFallback`]). A backend that can't go back refuses it.
+    InstallChosen {
+        app: String,
+        tag: String,
+        fallback: Option<String>,
+    },
     Uninstall {
         app: String,
     },
@@ -138,6 +149,8 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Consent for the separate nightly context; never switches the stable install channel.
+    pub nightly_enabled: bool,
     /// Downloads that may run at once (1 to 4; 0 for no limit).
     pub simultaneous_downloads: u8,
 }
@@ -150,6 +163,17 @@ pub enum LatestRelease {
     None,
     /// Couldn't find out (offline, rate-limited, unreadable answer).
     Failed(String),
+}
+
+/// Nightly-only scheduling metadata. A previous success is not advanced by an offline,
+/// budget-limited or server-limited attempt. This contains no install capability or body cache.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NightlyStatus {
+    pub attempted_at: Option<i64>,
+    pub verified_at: Option<i64>,
+    pub retry_at: Option<i64>,
+    pub stale: bool,
+    pub message: Option<String>,
 }
 
 /// What a running job is doing.
@@ -184,11 +208,23 @@ pub struct PausedDownload {
 
 /// The `JobFinished` error a paused job ends with (not a failure).
 pub const PAUSED: &str = "paused";
+/// What a job paused by a connection that keeps dropping says instead of plain [`PAUSED`]: the
+/// download stopped where it was, and Resume continues it. Still a pause, not a failure
+/// ([`is_paused`]), so the UI keeps the request that started the job and sends it again.
+pub const PAUSED_BY_CONNECTION: &str = "The download paused because the connection keeps dropping. Press Resume to continue where it stopped.";
 /// The `JobFinished` error a cancelled job ends with (not a failure).
 pub const CANCELLED: &str = "cancelled";
 /// The `JobFinished` error of an install whose system prompt (password, Windows Installer) the
 /// user dismissed after the download finished (not a failure).
 pub const INSTALL_CANCELLED: &str = "install cancelled";
+
+/// Whether a `JobFinished` error means the job paused rather than failed: the download is kept
+/// and Resume sends the request that started the job again ([`Command::InstallChosen`] included,
+/// with the release and fallback the person agreed to). A pause ends a job as an error, so every
+/// pause outcome is recognised here, in one place: never by matching the message where it is shown.
+pub fn is_paused(error: &str) -> bool {
+    error == PAUSED || error == PAUSED_BY_CONNECTION
+}
 
 /// Which service an app's release information came from (the footer names them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -255,8 +291,8 @@ pub enum Event {
     LauncherRestarting,
     /// News and alerts from ArtCraft's release feed (replaces any earlier set).
     Notices {
-        announcements: Vec<crate::feed::Notice>,
-        alerts: Vec<crate::feed::Notice>,
+        announcements: Vec<crate::notices::Notice>,
+        alerts: Vec<crate::notices::Notice>,
     },
     Detected {
         app: String,
@@ -297,6 +333,16 @@ pub enum Event {
         app: String,
         path: String,
     },
+    /// Going back from the installed `installed` (a version with no release of its own) to
+    /// `chosen` stopped before changing anything: if it fails, only `fallback`, a published
+    /// pre-release with the installed numbers, can be put back. `Command::InstallChosen` with
+    /// `fallback` goes ahead once the person agrees.
+    GoBackFallback {
+        app: String,
+        installed: String,
+        chosen: String,
+        fallback: String,
+    },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
     /// Clears the app's in-progress job phase in the UI.
     JobFinished {
@@ -315,6 +361,10 @@ pub enum Event {
         app: String,
         key: String,
         result: Result<Vec<u8>, String>,
+    },
+    NightlyStatus {
+        app: String,
+        status: NightlyStatus,
     },
     CheckStarted,
     CheckFinished {
@@ -391,6 +441,24 @@ pub struct Capabilities {
 
 /// The UI's view of a backend.
 pub trait Backend {
+    /// Admitted mutation/Open jobs, including the gap before their first progress event.
+    /// Must be a cheap in-memory query; metadata discovery is not an active job.
+    fn has_active_jobs(&self) -> bool {
+        false
+    }
+
+    /// Create an independent context using the same backend implementation.
+    fn nightly_context(&self) -> Option<Box<dyn Backend>> {
+        None
+    }
+
+    /// Whether this (nightly) context can discover and install new pre-release builds: the
+    /// platform's Nightly signing trust is configured. Without it the UI offers neither, while
+    /// copies already installed stay manageable. Backends with no signing trust of their own
+    /// (test doubles) can install whatever they are asked to.
+    fn nightly_available(&self) -> bool {
+        true
+    }
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;

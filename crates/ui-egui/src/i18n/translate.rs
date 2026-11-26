@@ -1,21 +1,25 @@
 //! Looking strings up in the language the UI is drawn in.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::Cell;
 
 use super::lang::{LANGUAGES, Lang};
 
-/// Index into [`LANGUAGES`] of the language the UI is drawn in this frame.
-static CURRENT: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    /// Draw locale belongs to this renderer's thread, just like its font gate.
+    /// New threads start in English until their own UI frame chooses a language.
+    static CURRENT: Cell<usize> = const { Cell::new(0) };
+}
 
 /// Set the UI language for drawing (the shell calls this once per frame from the preference), so
 /// widgets can translate without every call site carrying a language around.
+/// This affects only the calling thread; background formatting can pass an explicit [`Lang`].
 pub fn set_current(lang: Lang) {
-    CURRENT.store(lang.index(), Ordering::Relaxed);
+    CURRENT.set(lang.index());
 }
 
 /// The language the UI is drawn in.
 pub fn current() -> Lang {
-    LANGUAGES.get(CURRENT.load(Ordering::Relaxed)).map_or(Lang::EN, Lang)
+    LANGUAGES.get(CURRENT.get()).map_or(Lang::EN, Lang)
 }
 
 /// Does `lang` have a catalog entry for this plain string? (English never does: it is the source.)
@@ -52,6 +56,36 @@ pub fn t_id<'a>(id: &str, label: &'a str) -> &'a str {
 
 #[cfg(test)]
 pub(crate) use strict::{StrictCjkDrawing, drew_cjk};
+
+#[cfg(test)]
+mod locale_tests {
+    use super::*;
+    use std::sync::Barrier;
+
+    #[test]
+    fn concurrent_rendering_threads_keep_their_own_draw_language() {
+        set_current(Lang::ZH_CN);
+        let english_ready = Barrier::new(2);
+        let chinese_selected = Barrier::new(2);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                let initial = current();
+                set_current(Lang::EN);
+                english_ready.wait();
+                chinese_selected.wait();
+                assert_eq!(initial, Lang::EN, "new renderers do not inherit another thread's draw language");
+                assert_eq!(t("Settings"), tr(Lang::EN, "Settings"), "another renderer must not change this frame's language");
+            });
+            scope.spawn(|| {
+                english_ready.wait();
+                set_current(Lang::ZH_CN);
+                chinese_selected.wait();
+                assert_eq!(t("Settings"), tr(Lang::ZH_CN, "Settings"));
+            });
+        });
+        assert_eq!(current(), Lang::ZH_CN, "child frames must not change their parent renderer's locale");
+    }
+}
 
 /// Fill `{name}` placeholders in one pass. Values and unknown placeholders stay as written.
 pub fn fmt(template: &str, args: &[(&str, &str)]) -> String {
