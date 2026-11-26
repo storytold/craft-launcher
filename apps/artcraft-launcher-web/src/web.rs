@@ -305,7 +305,9 @@ async fn latest(query: &release::ReleaseQuery, prereleases: bool) -> Result<Late
             format!("https://api.github.com/repos/{repo}/releases?per_page={PRERELEASE_PAGE}&page={page}")
         };
         let Some(text) = release_answer(&url).await? else {
-            return Ok(LatestRelease::None);
+            // A first page that is missing means the repository has no releases; a later page that
+            // disappears leaves this lookup unfinished, which is an error, never "no release".
+            return crate::missing_page(page);
         };
         if let Some(found) = release::parse_github_release_list(&text, repo, true).map_err(|_| None)? {
             // A Nightly is never an ordinary latest release, for any app.
