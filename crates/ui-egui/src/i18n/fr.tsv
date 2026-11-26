@@ -566,7 +566,12 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Keep the current location	Conserver l’emplacement actuel
 	Administrator permission is required for each update.	Chaque mise à jour nécessite une autorisation administrateur.
 	Install only for me	Installer uniquement pour moi
-	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows demandera encore une fois les droits administrateur pour désinstaller l’ancienne copie partagée. Après la migration, les mises à jour et la désinstallation pour ce compte ne nécessitent normalement plus ces droits. Les autres utilisateurs Windows perdront l’accès.
+	All Windows users keep access.	Tous les utilisateurs de Windows gardent l’accès.
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows demande une dernière fois l’autorisation d’administrateur pour supprimer la copie partagée.
+	After that, updates need no administrator permission.	Ensuite, les mises à jour ne demandent plus d’autorisation d’administrateur.
+	Other Windows users will lose access to the app.	Les autres utilisateurs de Windows perdront l’accès à l’application.
+	Remember my choice and don't ask on later updates	Mémoriser mon choix et ne plus demander lors des prochaines mises à jour
+	These apps update for everyone without asking: {apps}	Ces applications se mettent à jour pour tous sans demander : {apps}
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Les paramètres et préréglages du profil restent en place. Les extensions du dossier du programme peuvent nécessiter une réinstallation ; sauvegardez-les d’abord.
 	I accept removal of the shared copy and the risk to add-ons beside it.	J’accepte la suppression de l’installation partagée et le risque pour les extensions de son dossier.
 	Ask again how to update apps installed for everyone	Redemander comment mettre à jour les applications installées pour tous

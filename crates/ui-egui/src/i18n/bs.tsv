@@ -542,7 +542,12 @@ artcraft	AI image and video creation	Kreiranje slika i videa pomoću AI
 	Keep the current location	Zadrži trenutnu lokaciju
 	Administrator permission is required for each update.	Za svako ažuriranje potrebna je administratorska dozvola.
 	Install only for me	Instaliraj samo za mene
-	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows će još jednom tražiti administratorsku dozvolu za deinstalaciju stare zajedničke kopije. Nakon premještanja, ažuriranja i deinstalacija za ovaj račun obično ne traže administratorsku dozvolu. Ostali korisnici Windowsa izgubit će pristup.
+	All Windows users keep access.	Svi korisnici Windowsa zadržavaju pristup.
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows posljednji put traži administratorsku dozvolu da ukloni zajedničku kopiju.
+	After that, updates need no administrator permission.	Nakon toga ažuriranja ne traže administratorsku dozvolu.
+	Other Windows users will lose access to the app.	Ostali korisnici Windowsa izgubit će pristup aplikaciji.
+	Remember my choice and don't ask on later updates	Zapamti moj izbor i ne pitaj pri sljedećim ažuriranjima
+	These apps update for everyone without asking: {apps}	Ove aplikacije se ažuriraju za sve bez pitanja: {apps}
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Postavke profila i predlošci ostaju gdje jesu. Dodatke pored programa možda će trebati ponovo instalirati; prvo napravite njihovu sigurnosnu kopiju.
 	I accept removal of the shared copy and the risk to add-ons beside it.	Prihvatam uklanjanje zajedničke kopije i rizik za dodatke pored nje.
 	Ask again how to update apps installed for everyone	Ponovo pitaj kako ažurirati aplikacije instalirane za sve

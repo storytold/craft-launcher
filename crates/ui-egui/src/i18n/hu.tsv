@@ -569,7 +569,12 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Keep the current location	A jelenlegi hely megtartása
 	Administrator permission is required for each update.	Minden frissítéshez rendszergazdai engedély szükséges.
 	Install only for me	Telepítés csak nekem
-	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	A Windows még egyszer rendszergazdai engedélyt kér a régi közös példány eltávolításához. Az áttelepítés után a frissítések és az eltávolítás ennél a fióknál általában már nem igényelnek ilyen engedélyt. A többi Windows-felhasználó elveszíti a hozzáférést.
+	All Windows users keep access.	Minden Windows-felhasználó megtartja a hozzáférést.
+	Windows asks for administrator permission one last time, to remove the shared copy.	A Windows utoljára kér rendszergazdai engedélyt a közös példány eltávolításához.
+	After that, updates need no administrator permission.	Ezután a frissítésekhez nem kell rendszergazdai engedély.
+	Other Windows users will lose access to the app.	A többi Windows-felhasználó elveszíti a hozzáférést az alkalmazáshoz.
+	Remember my choice and don't ask on later updates	Választásom megjegyzése, a későbbi frissítéseknél ne kérdezzen
+	These apps update for everyone without asking: {apps}	Ezek az alkalmazások kérdés nélkül frissülnek mindenkinek: {apps}
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	A profil beállításai és készletei a helyükön maradnak. A program mappájában lévő bővítményeket esetleg újra kell telepíteni; előbb készítsen róluk másolatot.
 	I accept removal of the shared copy and the risk to add-ons beside it.	Elfogadom a közös telepítés eltávolítását és a mappájában lévő bővítményeket érintő kockázatot.
 	Ask again how to update apps installed for everyone	Újra rákérdezni, hogyan frissüljenek a mindenkinek telepített alkalmazások

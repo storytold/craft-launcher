@@ -149,6 +149,8 @@ pub(crate) enum Dialog {
         plan: artcraft_launcher_core::protocol::MsiUpdatePlan,
         migrate: bool,
         accepted: bool,
+        /// Keep this app's shared copy on later updates without asking.
+        remember: bool,
     },
     Settings,
     LauncherUpdate(artcraft_launcher_core::Release),
@@ -778,7 +780,7 @@ impl LauncherUi {
                     e.job = None;
                 }
                 self.update_choices.retain(|d| !matches!(d, Dialog::MsiUpdate { app: a, .. } if a == &app));
-                self.update_choices.push_back(Dialog::MsiUpdate { app, plan, migrate: false, accepted: false });
+                self.update_choices.push_back(Dialog::MsiUpdate { app, plan, migrate: false, accepted: false, remember: false });
                 false
             }
             Event::Occupied { app, path } => {

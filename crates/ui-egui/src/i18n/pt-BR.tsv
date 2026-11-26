@@ -556,7 +556,12 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Keep the current location	Manter o local atual
 	Administrator permission is required for each update.	Cada atualização exige permissão de administrador.
 	Install only for me	Instalar somente para mim
-	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	O Windows pedirá mais uma vez permissão de administrador para desinstalar a cópia compartilhada antiga. Após a migração, atualizações e desinstalação nesta conta normalmente não precisam mais dessa permissão. Outros usuários do Windows perderão o acesso.
+	All Windows users keep access.	Todos os usuários do Windows mantêm o acesso.
+	Windows asks for administrator permission one last time, to remove the shared copy.	O Windows pedirá permissão de administrador pela última vez para remover a cópia compartilhada.
+	After that, updates need no administrator permission.	Depois disso, as atualizações não precisam de permissão de administrador.
+	Other Windows users will lose access to the app.	Outros usuários do Windows perderão o acesso ao aplicativo.
+	Remember my choice and don't ask on later updates	Lembrar minha escolha e não perguntar nas próximas atualizações
+	These apps update for everyone without asking: {apps}	Estes aplicativos são atualizados para todos sem perguntar: {apps}
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	As configurações e predefinições do perfil permanecem no lugar. Os complementos na pasta do programa podem precisar de reinstalação; faça uma cópia antes.
 	I accept removal of the shared copy and the risk to add-ons beside it.	Aceito remover a instalação compartilhada e o risco para os complementos na pasta dela.
 	Ask again how to update apps installed for everyone	Perguntar de novo como atualizar aplicativos instalados para todos

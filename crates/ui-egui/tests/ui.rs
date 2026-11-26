@@ -5184,7 +5184,7 @@ fn msi_migration_requires_consent_and_queues_other_apps() {
     h.get_by_label("I accept removal of the shared copy and the risk to add-ons beside it.").click();
     h.run();
     h.get_by_label("Update").click();
-    h.run();
+    h.run_steps(8);
     assert!(
         sent.borrow()
             .iter()
@@ -5196,13 +5196,30 @@ fn msi_migration_requires_consent_and_queues_other_apps() {
     assert_eq!(sent.borrow().iter().filter(|c| matches!(c, Command::ConfirmMsiUpdate { .. })).count(), 1);
 }
 
-/// Keeping the current location is the default. It is remembered, the backend learns it before
-/// the update is sent, and the update goes as a plain install, so it is not asked again.
+/// Keeping the current location is the default. Without "remember", only this update goes ahead
+/// where it is, and nothing is kept for the next one.
 #[test]
-fn msi_update_keeps_location_by_default() {
+fn msi_update_keeps_location_once_unless_remembered() {
     let mut ev = events();
     ev.push(migration_offer("photocraft"));
     let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Light, true, 1.0);
+    h.run();
+    h.get_by_label("Update").click();
+    h.run();
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::ConfirmMsiUpdate { app, migrate: false, .. } if app == "photocraft")));
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. })));
+    assert!(h.state().as_ref().unwrap().settings.keep_shared_installs.is_empty());
+}
+
+/// A remembered choice to keep: the backend learns it before the update is sent, and the update
+/// goes as a plain install, so it is not asked again.
+#[test]
+fn msi_update_remembers_keeping_the_location() {
+    let mut ev = events();
+    ev.push(migration_offer("photocraft"));
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Light, true, 1.0);
+    h.run();
+    h.get_by_label("Remember my choice and don't ask on later updates").click();
     h.run();
     snapshot(&mut h, "msi-update-light");
     h.get_by_label("Update").click();
@@ -5235,13 +5252,17 @@ fn kept_all_users_updates_go_together_and_settings_can_ask_again() {
     let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
     h.run();
     h.state_mut().as_mut().unwrap().settings.batch_updates = true;
-    h.get_by_label("Update").click();
+    h.get_by_label("Remember my choice and don't ask on later updates").click();
     h.run();
+    h.get_by_label("Update").click();
+    h.run_steps(8);
     let installs = |sent: &RefCell<Vec<Command>>| {
         sent.borrow().iter().filter(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. })).cloned().collect::<Vec<_>>()
     };
     assert!(installs(&sent).is_empty(), "nothing is sent while another choice is pending");
     h.get_by_label("Choose how to update GridCraft");
+    h.get_by_label("Remember my choice and don't ask on later updates").click();
+    h.run();
     h.get_by_label("Update").click();
     h.run();
     assert_eq!(installs(&sent), [Command::InstallAll { apps: vec!["photocraft".into(), "gridcraft".into()] }]);
@@ -5264,6 +5285,8 @@ fn kept_all_users_updates_go_together_and_settings_can_ask_again() {
         assert!(h.query_by_label("Ask again how to update apps installed for everyone").is_none());
         return;
     }
+    // Settings names the remembered apps.
+    h.get_by_label_contains("without asking: GridCraft, PhotoCraft");
     h.get_by_label("Ask again how to update apps installed for everyone").click();
     h.run_steps(2);
     assert!(h.state().as_ref().unwrap().settings.keep_shared_installs.is_empty());

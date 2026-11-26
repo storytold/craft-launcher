@@ -549,7 +549,12 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Keep the current location	Mantener la ubicación actual
 	Administrator permission is required for each update.	Cada actualización requiere permiso de administrador.
 	Install only for me	Instalar solo para mí
-	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows pedirá una vez más permiso de administrador para desinstalar la antigua copia compartida. Tras la migración, las actualizaciones y la desinstalación para esta cuenta normalmente ya no requieren ese permiso. Los demás usuarios de Windows perderán el acceso.
+	All Windows users keep access.	Todos los usuarios de Windows mantienen el acceso.
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows pedirá permiso de administrador por última vez para quitar la copia compartida.
+	After that, updates need no administrator permission.	Después, las actualizaciones no necesitan permiso de administrador.
+	Other Windows users will lose access to the app.	Los demás usuarios de Windows perderán el acceso a la aplicación.
+	Remember my choice and don't ask on later updates	Recordar mi elección y no preguntar en próximas actualizaciones
+	These apps update for everyone without asking: {apps}	Estas aplicaciones se actualizan para todos sin preguntar: {apps}
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	La configuración y los preajustes del perfil permanecen en su lugar. Los complementos de la carpeta del programa pueden necesitar reinstalarse; haz una copia antes.
 	I accept removal of the shared copy and the risk to add-ons beside it.	Acepto eliminar la instalación compartida y el riesgo para los complementos de su carpeta.
 	Ask again how to update apps installed for everyone	Volver a preguntar cómo actualizar las aplicaciones instaladas para todos

@@ -536,7 +536,12 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Keep the current location	Ponechat aktuální umístění
 	Administrator permission is required for each update.	Každá aktualizace vyžaduje oprávnění správce.
 	Install only for me	Nainstalovat pouze pro mě
-	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows ještě jednou požádá o oprávnění správce k odinstalaci staré sdílené kopie. Po přesunu aktualizace a odinstalace pro tento účet obvykle již oprávnění správce nevyžadují. Ostatní uživatelé Windows ztratí přístup.
+	All Windows users keep access.	Všichni uživatelé Windows si ponechají přístup.
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows naposledy požádá o oprávnění správce, aby odstranil sdílenou kopii.
+	After that, updates need no administrator permission.	Poté aktualizace oprávnění správce nevyžadují.
+	Other Windows users will lose access to the app.	Ostatní uživatelé Windows ztratí přístup k aplikaci.
+	Remember my choice and don't ask on later updates	Zapamatovat si mou volbu a při dalších aktualizacích se neptat
+	These apps update for everyone without asking: {apps}	Tyto aplikace se aktualizují pro všechny bez dotazu: {apps}
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Nastavení a předvolby profilu zůstanou na místě. Doplňky ve složce programu mohou vyžadovat novou instalaci; nejprve je zálohujte.
 	I accept removal of the shared copy and the risk to add-ons beside it.	Souhlasím s odstraněním sdílené instalace a s rizikem pro doplňky v její složce.
 	Ask again how to update apps installed for everyone	Znovu se zeptat, jak aktualizovat aplikace nainstalované pro všechny

@@ -568,7 +568,12 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Keep the current location	Am aktuellen Speicherort bleiben
 	Administrator permission is required for each update.	Für jede Aktualisierung sind Administratorrechte erforderlich.
 	Install only for me	Nur für mich installieren
-	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows fragt noch einmal nach Administratorrechten, um die alte gemeinsame Kopie zu deinstallieren. Nach dem Umzug benötigen Updates und die Deinstallation für dieses Konto normalerweise keine Administratorrechte mehr. Andere Windows-Benutzer verlieren den Zugriff.
+	All Windows users keep access.	Alle Windows-Benutzer behalten den Zugriff.
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows fragt ein letztes Mal nach Administratorrechten, um die gemeinsame Kopie zu entfernen.
+	After that, updates need no administrator permission.	Danach brauchen Updates keine Administratorrechte mehr.
+	Other Windows users will lose access to the app.	Andere Windows-Benutzer verlieren den Zugriff auf die App.
+	Remember my choice and don't ask on later updates	Meine Wahl merken und bei späteren Updates nicht mehr fragen
+	These apps update for everyone without asking: {apps}	Diese Apps werden ohne Nachfrage für alle aktualisiert: {apps}
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Profileinstellungen und Vorgaben bleiben erhalten. Erweiterungen im Programmordner müssen möglicherweise neu installiert werden; sichern Sie diese zuerst.
 	I accept removal of the shared copy and the risk to add-ons beside it.	Ich akzeptiere die Entfernung der gemeinsamen Installation und das Risiko für Erweiterungen in ihrem Ordner.
 	Ask again how to update apps installed for everyone	Erneut fragen, wie für alle installierte Apps aktualisiert werden

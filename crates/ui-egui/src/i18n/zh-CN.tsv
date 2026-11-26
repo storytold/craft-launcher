@@ -536,7 +536,12 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Keep the current location	保留当前位置
 	Administrator permission is required for each update.	每次更新都需要管理员授权。
 	Install only for me	仅为我安装
-	Windows will ask once more for administrator permission to uninstall the old shared copy. After migration, updates and uninstalling for this account normally need no administrator permission. Other Windows users will lose access.	Windows 将再次请求管理员权限，以卸载旧的共享副本。迁移后，此账户的更新和卸载通常不再需要管理员权限。其他 Windows 用户将失去访问权限。
+	All Windows users keep access.	所有 Windows 用户仍可使用。
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows 将最后一次请求管理员权限，以删除共享副本。
+	After that, updates need no administrator permission.	之后更新不再需要管理员权限。
+	Other Windows users will lose access to the app.	其他 Windows 用户将无法再使用此应用。
+	Remember my choice and don't ask on later updates	记住我的选择，以后更新时不再询问
+	These apps update for everyone without asking: {apps}	这些应用将为所有用户更新，不再询问：{apps}
 	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	用户配置文件中的设置和预设将保留原位。程序文件夹中的附加组件可能需要重新安装，请先备份。
 	I accept removal of the shared copy and the risk to add-ons beside it.	我同意删除共享安装，并接受其文件夹中附加组件可能受影响的风险。
 	Ask again how to update apps installed for everyone	重新询问如何更新为所有用户安装的应用
