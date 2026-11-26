@@ -96,6 +96,10 @@ off.
 The web version shows the same catalog in the browser, with the latest download for each app; the
 Fonts page is desktop only.
 
+On macOS, automatic app and launcher updates wait while Low Data Mode is on. Downloads already
+running automatically pause and resume when it is off. Manual updates and release checks remain
+available.
+
 ## Interface languages
 
 The interface is in English, Bosnian (Bosanski), Brazilian Portuguese (Português (Brasil)), Czech

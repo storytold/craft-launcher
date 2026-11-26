@@ -41,6 +41,8 @@ fn backend(root: &Path, channel: InstallChannel) -> NativeBackend {
         source: None,
         platform: Some(Platform { os: Os::Windows, arch: Arch::X64 }),
         pins: None,
+        #[cfg(target_os = "macos")]
+        _network: None,
         spawn: Arc::new(|_| panic!("this fixture reserves jobs; it never runs them")),
     }
 }
@@ -178,8 +180,8 @@ fn review_launcher_failed_before_claim_cannot_clear_the_next_updates_restart() {
     nightly.channel = InstallChannel::Nightly;
     nightly.lifecycle = stable.lifecycle.clone();
     let nightly = Arc::new(nightly);
-    assert!(stable.reserve_job(LAUNCHER_ID, Arc::new(Stop::default())) == Admission::Reserved);
-    let first = JobGuard { shared: stable.clone(), app_id: LAUNCHER_ID.into() };
+    assert!(stable.reserve_job(LAUNCHER_ID, Arc::new(Stop::default()), false) == Admission::Reserved);
+    let first = JobGuard { shared: stable.clone(), app_id: LAUNCHER_ID.into(), finished: false };
     assert!(!stable.lifecycle.restarting.load(Ordering::SeqCst), "A fails before ever claiming restart");
     let (retired_tx, retired_rx) = std::sync::mpsc::channel();
     let (claimed_tx, claimed_rx) = std::sync::mpsc::channel();
@@ -187,15 +189,15 @@ fn review_launcher_failed_before_claim_cannot_clear_the_next_updates_restart() {
     let second_shared = stable.clone();
     let second = std::thread::spawn(move || {
         retired_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert!(second_shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default())) == Admission::Reserved);
-        let second = JobGuard { shared: second_shared.clone(), app_id: LAUNCHER_ID.into() };
+        assert!(second_shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default()), false) == Admission::Reserved);
+        let second = JobGuard { shared: second_shared.clone(), app_id: LAUNCHER_ID.into(), finished: false };
         claim_backend_restart(&second_shared, &Stop::default(), Duration::ZERO, &mut || {}).unwrap();
         claimed_tx.send(()).unwrap();
         finished_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         let claim_survived = second_shared.lifecycle.restarting.load(Ordering::SeqCst);
-        let admission = nightly.reserve_job(APP, Arc::new(Stop::default()));
+        let admission = nightly.reserve_job(APP, Arc::new(Stop::default()), false);
         if admission == Admission::Reserved {
-            drop(JobGuard { shared: nightly, app_id: APP.into() });
+            drop(JobGuard { shared: nightly, app_id: APP.into(), finished: false });
         }
         drop(second);
         (claim_survived, admission == Admission::Restarting)
@@ -222,8 +224,8 @@ fn review_launcher_failure_resets_before_retirement_and_success_keeps_restart_cl
     }
     for success in [false, true] {
         let shared = Arc::new(tests::shared());
-        assert!(shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default())) == Admission::Reserved);
-        let job = JobGuard { shared: shared.clone(), app_id: LAUNCHER_ID.into() };
+        assert!(shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default()), false) == Admission::Reserved);
+        let job = JobGuard { shared: shared.clone(), app_id: LAUNCHER_ID.into(), finished: false };
         claim_backend_restart(&shared, &Stop::default(), Duration::ZERO, &mut || {}).unwrap();
         let observed_shared = shared.clone();
         AFTER_UPDATE_RETIREMENT.with(|slot| {
@@ -235,10 +237,10 @@ fn review_launcher_failure_resets_before_retirement_and_success_keeps_restart_cl
                     "failure must reset before retirement; success must retain restart"
                 );
                 assert!(observed_shared.events.lock().unwrap().is_empty(), "terminal event must follow retirement");
-                let admission = observed_shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default()));
+                let admission = observed_shared.reserve_job(LAUNCHER_ID, Arc::new(Stop::default()), false);
                 assert!(admission == if success { Admission::Restarting } else { Admission::Reserved });
                 if admission == Admission::Reserved {
-                    drop(JobGuard { shared: observed_shared, app_id: LAUNCHER_ID.into() });
+                    drop(JobGuard { shared: observed_shared, app_id: LAUNCHER_ID.into(), finished: false });
                 }
             }));
         });

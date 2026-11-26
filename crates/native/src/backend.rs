@@ -113,6 +113,7 @@ impl HostDetection {
 enum Admission {
     Reserved,
     AlreadyActive,
+    NetworkDeferred,
     Restarting,
 }
 
@@ -139,7 +140,8 @@ struct Shared {
     nightly_detection_observer: Mutex<Option<ReviewDetectionHook>>,
     download_sizes: Mutex<HashMap<String, DownloadSize>>,
     installed: Mutex<HashMap<String, Installed>>,
-    jobs: Mutex<HashMap<String, Arc<Stop>>>,
+    jobs: Mutex<HashMap<String, RunningJob>>,
+    automatic_updates_allowed: AtomicBool,
     /// Process lifetime is shared; per-channel installed state and job views are not.
     lifecycle: Arc<ProcessLifecycle>,
     manifest: Mutex<Manifest>,
@@ -211,14 +213,37 @@ impl Drop for NightlyCheckLease {
 struct JobGuard {
     shared: Arc<Shared>,
     app_id: String,
+    finished: bool,
+}
+
+#[derive(Clone)]
+struct RunningJob {
+    stop: Arc<Stop>,
+    automatic: bool,
+    deferred: bool,
+}
+
+impl JobGuard {
+    /// Remove the job before its terminal events are published. Returning the deferred flag lets
+    /// callers publish completion and deferral together after the old slot is released.
+    fn finish(&mut self) -> bool {
+        if self.finished {
+            return false;
+        }
+        self.finished = true;
+        let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        process.remove(&self.shared.job_key(&self.app_id));
+        let job = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
+        job.is_some_and(|job| job.deferred && job.stop.check().is_err_and(|e| e == PAUSED))
+    }
 }
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
-        let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
-        self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
-        process.remove(&self.shared.job_key(&self.app_id));
+        if self.finish() {
+            self.shared.emit(Event::AutomaticUpdateDeferred { app: self.app_id.clone() });
+        }
     }
 }
 
@@ -229,13 +254,16 @@ impl Shared {
     fn job_key(&self, app: &str) -> String {
         if self.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly { format!("nightly:{app}") } else { app.to_owned() }
     }
-    fn reserve_job(&self, app: &str, stop: Arc<Stop>) -> Admission {
+    fn reserve_job(&self, app: &str, stop: Arc<Stop>, automatic: bool) -> Admission {
         let _reporting = self.reporting.lock().unwrap_or_else(PoisonError::into_inner);
         let mut process = self.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
         let mut jobs = self.jobs.lock().unwrap_or_else(PoisonError::into_inner);
         let key = self.job_key(app);
         if jobs.contains_key(app) || process.contains_key(&key) {
             return Admission::AlreadyActive;
+        }
+        if automatic && !self.automatic_updates_allowed.load(Ordering::SeqCst) {
+            return Admission::NetworkDeferred;
         }
         if self.lifecycle.restarting.load(Ordering::SeqCst) {
             return Admission::Restarting;
@@ -245,7 +273,7 @@ impl Shared {
             let revision = revisions.entry(key.clone()).or_default();
             *revision = revision.wrapping_add(1);
         }
-        jobs.insert(app.to_owned(), stop.clone());
+        jobs.insert(app.to_owned(), RunningJob { stop: stop.clone(), automatic, deferred: false });
         process.insert(key, stop);
         Admission::Reserved
     }
@@ -325,6 +353,19 @@ impl Shared {
         self.installed.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id)
     }
 
+    fn network_changed(&self, allowed: bool) {
+        let mut jobs = self.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        self.automatic_updates_allowed.store(allowed, Ordering::SeqCst);
+        if !allowed {
+            for job in jobs.values_mut().filter(|job| job.automatic && job.stop.check().is_ok()) {
+                job.deferred = true;
+                job.stop.pause();
+            }
+        }
+        drop(jobs);
+        (self.waker)();
+    }
+
     fn emit(&self, event: Event) {
         self.emit_all([event]);
     }
@@ -348,6 +389,8 @@ pub struct NativeBackend {
     /// Runs a job's worker. Each worker gets its own thread; a test swaps this to see what is in
     /// the download line at the moment each one would start.
     spawn: Spawn,
+    #[cfg(target_os = "macos")]
+    _network: Option<crate::network::Monitor>,
 }
 
 /// Runs a job's worker (see [`NativeBackend::spawn`]).
@@ -496,6 +539,7 @@ impl NativeBackend {
             download_sizes: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
+            automatic_updates_allowed: AtomicBool::new(false),
             lifecycle,
             manifest: Mutex::new(Manifest::load(&paths.manifest())),
             options: Mutex::new(BackendOptions::default()),
@@ -523,10 +567,27 @@ impl NativeBackend {
         if let Some(path) = &pins {
             crate::pins::prepare_folder(path);
         }
+        #[cfg(not(target_os = "macos"))]
+        shared.network_changed(true);
+        #[cfg(target_os = "macos")]
+        let network = {
+            let shared = shared.clone();
+            crate::network::Monitor::new(move |allowed| shared.network_changed(allowed))
+        };
         let spawn: Spawn = Arc::new(|work| {
             std::thread::spawn(work);
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform(), pins, spawn };
+        let backend = Self {
+            shared,
+            paths,
+            http,
+            source,
+            platform: native_platform(),
+            pins,
+            spawn,
+            #[cfg(target_os = "macos")]
+            _network: Some(network),
+        };
         backend.replay_cache();
         if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
             backend.replay_nightly_status();
@@ -967,7 +1028,7 @@ impl NativeBackend {
             let platform = self.platform.ok_or("This nightly platform is not supported.")?;
             crate::nightly_profile::for_app(app, platform)?;
             match work {
-                Work::Install(None) => {
+                Work::Install { batch: None, .. } => {
                     if !self.options().nightly_enabled {
                         return Err("Developer build installs and updates are off. Retained copies and data are kept.".into());
                     }
@@ -982,7 +1043,7 @@ impl NativeBackend {
                     }
                     Ok(())
                 }
-                Work::Replace(_) | Work::Install(Some(_)) => {
+                Work::Replace(_) | Work::Install { batch: Some(_), .. } => {
                     Err("Nightly cannot replace a Stable/custom path or join a shared installer batch.".into())
                 }
             }
@@ -1016,6 +1077,7 @@ impl NativeBackend {
             return None;
         }
         let uninstall = matches!(work, Work::Uninstall);
+        let automatic = matches!(work, Work::Install { automatic: true, .. });
         let launching = matches!(work, Work::Launch(_));
         let app = CraftApp::by_id(app_id)?;
         if self.platform.is_some_and(|p| !app.runs_on(p.os)) {
@@ -1035,8 +1097,17 @@ impl NativeBackend {
         #[cfg(test)]
         tests::note_job_preparation("job reservation");
         let stop = Arc::new(Stop::default());
-        match self.shared.reserve_job(app.id, stop.clone()) {
-            Admission::AlreadyActive => return None,
+        match self.shared.reserve_job(app.id, stop.clone(), automatic) {
+            Admission::AlreadyActive => {
+                if automatic {
+                    self.shared.emit(Event::AutomaticUpdateWaiting { app: app.id.to_string() });
+                }
+                return None;
+            }
+            Admission::NetworkDeferred => {
+                self.shared.emit(Event::AutomaticUpdateDeferred { app: app.id.to_string() });
+                return None;
+            }
             Admission::Restarting => {
                 let result = Err("ArtCraft Launcher is restarting to finish its update. Try again once it's back.".into());
                 self.shared.emit(Event::JobFinished { app: app.id.to_string(), result });
@@ -1045,7 +1116,7 @@ impl NativeBackend {
             Admission::Reserved => {}
         }
         let shared = self.shared.clone();
-        let job = JobGuard { shared: shared.clone(), app_id: app.id.to_string() };
+        let job = JobGuard { shared: shared.clone(), app_id: app.id.to_string(), finished: false };
         let paths = self.paths.clone();
         let http = self.http.clone();
         let platform = self.platform;
@@ -1061,7 +1132,7 @@ impl NativeBackend {
         let spawn = self.spawn.clone();
         Some(Box::new(move || {
             spawn(Box::new(move || {
-                let job = job;
+                let mut job = job;
                 let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
                 let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
                 let result = if let Work::Launch(args) = &work {
@@ -1085,7 +1156,7 @@ impl NativeBackend {
                 } else {
                     let (approved, batch) = match &work {
                         Work::Replace(path) => (Some(path.as_str()), None),
-                        Work::Install(batch) => (None, batch.clone()),
+                        Work::Install { batch, .. } => (None, batch.clone()),
                         Work::Uninstall | Work::Launch(_) => (None, None),
                     };
                     let r = run_install(
@@ -1135,8 +1206,10 @@ impl NativeBackend {
                 shared.invalidate_download_size(app.id);
                 publish_detected(app, found, &shared, platform);
                 report_partial(app, &shared, &paths, platform);
-                drop(job);
-                shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+                let deferred = job.finish();
+                let id = app.id.to_string();
+                let event = Event::JobFinished { app: id.clone(), result };
+                shared.emit_all(std::iter::once(event).chain(deferred.then_some(Event::AutomaticUpdateDeferred { app: id })));
             }));
         }))
     }
@@ -1145,13 +1218,13 @@ impl NativeBackend {
     /// needs a permission prompt, the batch shares one — each member waits for the others'
     /// downloads before the system installer is asked once. Apps unknown or already running a
     /// job are left out; a batch of one installs the same as a single [`Command::Install`].
-    fn install_all(&self, apps: &[String]) {
+    fn install_all(&self, apps: &[String], automatic: bool) {
         if self.shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
             let mut seen = std::collections::HashSet::new();
             let prepared: Vec<_> = apps
                 .iter()
                 .filter(|id| CraftApp::by_id(id).is_some() && seen.insert(id.as_str()))
-                .filter_map(|id| self.prepare_job(id, Work::Install(None)))
+                .filter_map(|id| self.prepare_job(id, Work::Install { batch: None, automatic }))
                 .collect();
             for start in prepared {
                 start();
@@ -1161,10 +1234,8 @@ impl NativeBackend {
         let running = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner);
         let mut ids: Vec<&str> = Vec::new();
         for id in apps {
-            let Some(app) = CraftApp::by_id(id) else {
-                continue;
-            };
-            if running.contains_key(app.id) || ids.contains(&app.id) {
+            let Some(app) = CraftApp::by_id(id) else { continue };
+            if ids.contains(&app.id) || (!automatic && running.contains_key(app.id)) {
                 continue;
             }
             ids.push(app.id);
@@ -1179,13 +1250,12 @@ impl NativeBackend {
         #[cfg(not(any(target_os = "linux", windows)))]
         let batch = None;
         // Every member takes its place in the download line before any worker starts.
-        let ready: Vec<_> = ids.iter().filter_map(|id| self.prepare_job(id, Work::Install(batch.clone()))).collect();
+        let ready: Vec<_> = ids.iter().filter_map(|id| self.prepare_job(id, Work::Install { batch: batch.clone(), automatic })).collect();
         let started = ready.len();
         for spawn in ready {
             spawn();
         }
-        // Members that could not start after all (another job raced in for them) are not coming:
-        // their places in the batch are given back, so the rest don't wait for them.
+        // Give back the places of members that could not start so the rest do not wait for them.
         for _ in started..ids.len() {
             if let Some(batch) = &batch {
                 batch.leave();
@@ -1207,7 +1277,7 @@ impl NativeBackend {
     }
 
     /// Downloads the newer launcher, puts it in place and asks the UI to quit so it can start.
-    fn update_launcher(&self) {
+    fn update_launcher(&self, automatic: bool) {
         let id = LAUNCHER_ID.to_string();
         let refuse = || {
             self.shared.emit(Event::JobFinished {
@@ -1225,13 +1295,23 @@ impl NativeBackend {
             return refuse();
         };
         let stop = Arc::new(Stop::default());
-        if self.shared.reserve_job(&id, stop.clone()) != Admission::Reserved {
-            return;
+        match self.shared.reserve_job(&id, stop.clone(), automatic) {
+            Admission::AlreadyActive => {
+                if automatic {
+                    self.shared.emit(Event::AutomaticUpdateWaiting { app: id });
+                }
+                return;
+            }
+            Admission::NetworkDeferred => {
+                self.shared.emit(Event::AutomaticUpdateDeferred { app: id });
+                return;
+            }
+            Admission::Restarting => return,
+            Admission::Reserved => {}
         }
-        let job = JobGuard { shared: self.shared.clone(), app_id: id.clone() };
+        let job = JobGuard { shared: self.shared.clone(), app_id: id.clone(), finished: false };
         let (shared, paths, http) = (self.shared.clone(), self.paths.clone(), self.http.clone());
         std::thread::spawn(move || {
-            let job = job;
             let mut last_emit = Instant::now() - Duration::from_secs(1);
             let mut phase = |p: JobPhase| {
                 if matches!(p, JobPhase::Downloading { done, total } if done != total && done != 0) && last_emit.elapsed() < Duration::from_millis(50)
@@ -1280,7 +1360,10 @@ impl NativeBackend {
 enum Work {
     /// Install or update. Carries the batch this job is part of, if any (see
     /// [`Command::InstallAll`]): where the platform needs a permission prompt, the batch shares one.
-    Install(Option<crate::queue::Gather>),
+    Install {
+        batch: Option<crate::queue::Gather>,
+        automatic: bool,
+    },
     /// Install over the path the user agreed to overwrite (see [`Command::Replace`]).
     Replace(String),
     Uninstall,
@@ -1773,21 +1856,20 @@ fn landed(before: Option<&Installed>, after: Option<&Installed>, latest: &versio
     has_latest(after) && !has_latest(before)
 }
 
-fn finish_launcher_update(shared: &Shared, job: JobGuard, result: Result<(), String>) {
+fn finish_launcher_update(shared: &Shared, mut job: JobGuard, result: Result<(), String>) {
     // A failed update still owns the launcher reservation here. Clear its claim before
     // retirement can admit a new updater; success deliberately keeps restart held.
     if result.is_err() {
         shared.lifecycle.restarting.store(false, Ordering::SeqCst);
     }
-    drop(job);
+    let deferred = job.finish();
     #[cfg(test)]
     nightly_lifecycle_review_tests::after_update_retirement();
-    match result {
-        Ok(()) => shared.emit(Event::LauncherRestarting),
-        Err(e) => {
-            shared.emit(Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) });
-        }
-    }
+    let event = match result {
+        Ok(()) => Event::LauncherRestarting,
+        Err(e) => Event::JobFinished { app: LAUNCHER_ID.to_string(), result: Err(e) },
+    };
+    shared.emit_all(std::iter::once(event).chain(deferred.then_some(Event::AutomaticUpdateDeferred { app: LAUNCHER_ID.to_string() })));
 }
 
 /// For the launcher's own update, before it replaces itself: waits (saying so through `waiting`)
@@ -2575,6 +2657,10 @@ impl NativeBackend {
 }
 
 impl Backend for NativeBackend {
+    fn automatic_updates_allowed(&self) -> bool {
+        self.shared.automatic_updates_allowed.load(Ordering::SeqCst)
+    }
+
     fn has_active_jobs(&self) -> bool {
         !self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).is_empty()
     }
@@ -2654,9 +2740,14 @@ impl Backend for NativeBackend {
                 });
             }
             Command::Install { app } => {
-                self.start_job(&app, Work::Install(None));
+                self.start_job(&app, Work::Install { batch: None, automatic: false });
             }
-            Command::InstallAll { apps } => self.install_all(&apps),
+            Command::InstallAll { apps } => self.install_all(&apps, false),
+            Command::AutoUpdateAll { apps } => self.install_all(&apps, true),
+            Command::AutoUpdate { app } if app == LAUNCHER_ID => self.update_launcher(true),
+            Command::AutoUpdate { app } => {
+                self.start_job(&app, Work::Install { batch: None, automatic: true });
+            }
             Command::Replace { app, path } => {
                 self.start_job(&app, Work::Replace(path));
             }
@@ -2664,14 +2755,15 @@ impl Backend for NativeBackend {
                 self.start_job(&app, Work::Uninstall);
             }
             Command::Pause { app } => {
-                if let Some(stop) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app) {
-                    stop.pause();
+                if let Some(job) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&app) {
+                    job.deferred = false;
+                    job.stop.pause();
                 }
             }
             Command::Cancel { app } => {
                 let running = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app).cloned();
                 match running {
-                    Some(stop) => stop.cancel(),
+                    Some(job) => job.stop.cancel(),
                     // A paused download, or one kept after a failed install: throw the file away.
                     None => {
                         if let Some(def) = CraftApp::by_id(&app)
@@ -2727,7 +2819,7 @@ impl Backend for NativeBackend {
                     shared.emit(Event::Notice { app: app_id, result });
                 });
             }
-            Command::UpdateLauncher => self.update_launcher(),
+            Command::UpdateLauncher => self.update_launcher(false),
             Command::FetchScreenshots { app } => self.fetch_screenshots(&app),
             Command::DownloadOrder(order) => {
                 if self.shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable {
@@ -3162,6 +3254,7 @@ mod tests {
             download_sizes: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
             jobs: Mutex::new(HashMap::new()),
+            automatic_updates_allowed: AtomicBool::new(true),
             lifecycle: Arc::new(ProcessLifecycle::default()),
             manifest: Mutex::new(Manifest::default()),
             options: Mutex::new(BackendOptions::default()),
@@ -3181,6 +3274,151 @@ mod tests {
             feed_throttle: Mutex::new(FeedThrottle::new()),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
         }
+    }
+
+    #[test]
+    fn low_data_mode_pauses_automatic_app_and_launcher_downloads_only() {
+        let shared = Arc::new(shared());
+        let ids = ["photocraft", LAUNCHER_ID, "wordcraft", "filmcraft", "deckcraft"];
+        for id in ids {
+            shared
+                .jobs
+                .lock()
+                .unwrap()
+                .insert(id.into(), RunningJob { stop: Arc::new(Stop::default()), automatic: id != "wordcraft", deferred: false });
+        }
+        // User pauses and cancellations must not become automatic retries.
+        {
+            let jobs = shared.jobs.lock().unwrap();
+            jobs.get("filmcraft").unwrap().stop.pause();
+            jobs.get("deckcraft").unwrap().stop.cancel();
+        }
+        shared.network_changed(false);
+        assert!(!shared.automatic_updates_allowed.load(Ordering::SeqCst));
+        {
+            let jobs = shared.jobs.lock().unwrap();
+            for id in ["photocraft", LAUNCHER_ID] {
+                let job = jobs.get(id).unwrap();
+                assert_eq!(job.stop.check(), Err(PAUSED.into()));
+                assert!(job.deferred);
+            }
+            assert!(jobs.get("wordcraft").unwrap().stop.check().is_ok());
+            assert!(!jobs.get("filmcraft").unwrap().deferred);
+            assert!(!jobs.get("deckcraft").unwrap().deferred);
+        }
+        // A quick off/on change must still remember which jobs need to resume.
+        shared.network_changed(true);
+        for id in ids {
+            drop(JobGuard { shared: shared.clone(), app_id: id.into(), finished: false });
+        }
+        assert_eq!(
+            *shared.events.lock().unwrap(),
+            vec![Event::AutomaticUpdateDeferred { app: "photocraft".into() }, Event::AutomaticUpdateDeferred { app: LAUNCHER_ID.into() },]
+        );
+    }
+
+    #[test]
+    fn terminal_events_are_queued_in_order_as_one_batch() {
+        let shared = shared();
+        shared.emit_all([Event::JobFinished { app: APP.into(), result: Err(PAUSED.into()) }, Event::AutomaticUpdateDeferred { app: APP.into() }]);
+        assert_eq!(
+            std::mem::take(&mut *shared.events.lock().unwrap()),
+            vec![Event::JobFinished { app: APP.into(), result: Err(PAUSED.into()) }, Event::AutomaticUpdateDeferred { app: APP.into() }]
+        );
+    }
+
+    #[test]
+    fn a_finished_guard_cannot_remove_a_replacement_job() {
+        let shared = Arc::new(shared());
+        assert!(shared.reserve_job(APP, Arc::new(Stop::default()), false) == Admission::Reserved);
+        let mut guard = JobGuard { shared: shared.clone(), app_id: APP.into(), finished: false };
+        assert!(!guard.finish());
+        assert!(shared.reserve_job(APP, Arc::new(Stop::default()), true) == Admission::Reserved);
+        drop(guard);
+        assert!(shared.jobs.lock().unwrap().contains_key(APP));
+        assert!(shared.lifecycle.jobs.lock().unwrap().contains_key(APP));
+    }
+
+    #[test]
+    fn low_data_mode_defers_automatic_work_but_manual_updates_still_start() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        backend.shared.network_changed(false);
+        backend.send(Command::AutoUpdate { app: APP.into() });
+        assert!(backend.shared.jobs.lock().unwrap().is_empty());
+        assert_eq!(backend.poll(), vec![Event::AutomaticUpdateDeferred { app: APP.into() }]);
+        backend.send(Command::AutoUpdateAll { apps: vec![APP.into()] });
+        assert!(backend.shared.jobs.lock().unwrap().is_empty());
+        assert_eq!(backend.poll(), vec![Event::AutomaticUpdateDeferred { app: APP.into() }]);
+
+        // This test backend has no HTTP client, so a manual job ends with an actionable error.
+        backend.send(Command::Install { app: APP.into() });
+        wait_until(|| backend.shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP)));
+        let events = backend.poll();
+        assert!(events.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP)));
+        assert!(!events.iter().any(|event| matches!(event, Event::AutomaticUpdateDeferred { .. })));
+    }
+
+    #[test]
+    fn an_automatic_update_waits_for_an_active_job() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        backend.shared.jobs.lock().unwrap().insert(APP.into(), RunningJob { stop: Arc::new(Stop::default()), automatic: false, deferred: false });
+        backend.send(Command::AutoUpdate { app: APP.into() });
+        assert_eq!(backend.poll(), vec![Event::AutomaticUpdateWaiting { app: APP.into() }]);
+    }
+
+    /// Start on an unrestricted connection, then turn Low Data Mode on and off in System Settings.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires toggling macOS Low Data Mode on the active network"]
+    fn live_macos_low_data_mode_cycle() {
+        let shared = Arc::new(shared());
+        shared.automatic_updates_allowed.store(false, Ordering::SeqCst);
+        let (sent, received) = mpsc::channel();
+        let watched = shared.clone();
+        let _monitor = crate::network::Monitor::new(move |allowed| {
+            watched.network_changed(allowed);
+            let _ = sent.send(allowed);
+        });
+        let wait_for = |expected| {
+            let deadline = Instant::now() + Duration::from_secs(180);
+            loop {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let allowed = received.recv_timeout(remaining).expect("toggle Low Data Mode before the timeout");
+                eprintln!("Network.framework: automatic updates allowed = {allowed}");
+                if allowed == expected {
+                    break;
+                }
+            }
+        };
+        wait_for(true);
+        let app_stop = Arc::new(Stop::default());
+        let launcher_stop = Arc::new(Stop::default());
+        let manual_stop = Arc::new(Stop::default());
+        for (id, stop, automatic) in
+            [("photocraft", app_stop.clone(), true), (LAUNCHER_ID, launcher_stop.clone(), true), ("wordcraft", manual_stop.clone(), false)]
+        {
+            shared.jobs.lock().unwrap().insert(id.into(), RunningJob { stop, automatic, deferred: false });
+        }
+        eprintln!("READY: turn Low Data Mode ON");
+        wait_for(false);
+        assert!(!shared.automatic_updates_allowed.load(Ordering::SeqCst));
+        assert_eq!(app_stop.check(), Err(PAUSED.into()));
+        assert_eq!(launcher_stop.check(), Err(PAUSED.into()));
+        assert!(manual_stop.check().is_ok());
+        for id in ["photocraft", LAUNCHER_ID] {
+            drop(JobGuard { shared: shared.clone(), app_id: id.into(), finished: false });
+        }
+        assert_eq!(shared.events.lock().unwrap().len(), 2, "both automatic updates must be eligible for retry");
+        eprintln!("PASS: automatic app and launcher jobs paused; manual job unaffected");
+        eprintln!("READY: turn Low Data Mode OFF");
+        wait_for(true);
+        assert!(shared.automatic_updates_allowed.load(Ordering::SeqCst));
+        assert!(manual_stop.check().is_ok());
+        eprintln!("PASS: automatic updates allowed again after Low Data Mode was turned off");
     }
 
     /// A local server answering every request with `status` (and `Retry-After: 120` on a 429),
@@ -3894,7 +4132,7 @@ mod tests {
         backend.pins = None;
         let stable_record = root.path().join("versions.json");
         std::fs::write(&stable_record, "stable choices stay here").unwrap();
-        assert!(!backend.start_job(APP, Work::Install(None)));
+        assert!(!backend.start_job(APP, Work::Install { batch: None, automatic: false }));
         backend.send(Command::Configure(BackendOptions { nightly_enabled: true, ..Default::default() }));
         assert_eq!(std::fs::read_to_string(stable_record).unwrap(), "stable choices stay here");
         assert!(backend.shared.jobs.lock().unwrap().is_empty());
@@ -3959,7 +4197,7 @@ mod tests {
             backend.pins = None;
             backend.shared.options.lock().unwrap().nightly_enabled = enabled;
             JOB_PREPARATION_EFFECTS.with(|effects| *effects.borrow_mut() = Some(Vec::new()));
-            for work in [Work::Install(None), Work::Replace("stable application".into()), Work::Uninstall] {
+            for work in [Work::Install { batch: None, automatic: false }, Work::Replace("stable application".into()), Work::Uninstall] {
                 assert!(backend.prepare_job(APP, work).is_none());
             }
             let effects = JOB_PREPARATION_EFFECTS.with(|effects| effects.borrow_mut().take().unwrap());
@@ -4008,6 +4246,8 @@ mod tests {
             spawn: Arc::new(|work| {
                 std::thread::spawn(work);
             }),
+            #[cfg(target_os = "macos")]
+            _network: None,
         }
     }
 
@@ -4099,7 +4339,7 @@ mod tests {
             *backend.shared.launcher_release.lock().unwrap() = Some((release, String::new()));
             let offered = backend.capabilities().self_update;
             if !offered {
-                backend.update_launcher();
+                backend.update_launcher(false);
                 let events = backend.poll();
                 assert!(
                     matches!(&events[..], [Event::JobFinished { app, result: Err(_) }] if app == LAUNCHER_ID),
@@ -4373,7 +4613,7 @@ mod tests {
             })
         };
 
-        backend.install_all(&ids.iter().map(|id| id.to_string()).collect::<Vec<_>>());
+        backend.install_all(&ids.iter().map(|id| id.to_string()).collect::<Vec<_>>(), false);
 
         let seen = in_line_at_each_start.lock().unwrap().clone();
         assert_eq!(seen.len(), 3, "one worker per app");
@@ -4911,7 +5151,7 @@ mod tests {
             *backend.shared.launcher_release.lock().unwrap() = Some((release.clone(), String::new()));
             assert_eq!(backend.capabilities().self_update, updates, "{install:?}");
             if !updates {
-                backend.update_launcher();
+                backend.send(Command::UpdateLauncher);
                 let events = backend.poll();
                 assert!(
                     matches!(&events[..], [Event::JobFinished { app, result: Err(_) }] if app == LAUNCHER_ID),

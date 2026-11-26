@@ -89,6 +89,8 @@ fn actual_backend_fresh_off_schedules_nothing_and_later_off_cancels_queued_sweep
         source: None,
         platform: Some(platform),
         pins: None,
+        #[cfg(target_os = "macos")]
+        _network: None,
         spawn: Arc::new(move |task| target.lock().unwrap().push(task)),
     };
     backend.check(false);
@@ -138,6 +140,8 @@ fn failed_attempt_metadata_write_refreshes_stale_ui_state_without_spawning_or_ch
         source: None,
         platform: Some(platform),
         pins: None,
+        #[cfg(target_os = "macos")]
+        _network: None,
         spawn: Arc::new(move |_| {
             counted.fetch_add(1, Ordering::SeqCst);
         }),
@@ -203,6 +207,8 @@ fn failed_result_save_retains_maximum_known_retry_and_flushes_it_before_admissio
         source: None,
         platform: Some(platform),
         pins: None,
+        #[cfg(target_os = "macos")]
+        _network: None,
         spawn: Arc::new(move |_| {
             counted.fetch_add(1, Ordering::SeqCst);
         }),
@@ -254,6 +260,8 @@ fn unreadable_existing_metadata_blocks_restart_without_replacement_until_valid_r
         source: None,
         platform: Some(platform),
         pins: None,
+        #[cfg(target_os = "macos")]
+        _network: None,
         spawn: Arc::new(move |_| {
             counted.fetch_add(1, Ordering::SeqCst);
         }),

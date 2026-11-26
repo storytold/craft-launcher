@@ -21,6 +21,8 @@ pub mod login;
 pub mod manifest;
 #[cfg(any(windows, test))]
 mod msi_context;
+#[cfg(target_os = "macos")]
+mod network;
 mod nightly;
 mod nightly_fs;
 mod nightly_lookup;
