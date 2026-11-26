@@ -224,7 +224,6 @@ month	Nov	nov.
 month	Dec	dec.
 	Not checked yet	Még nem történt ellenőrzés
 	Next GitHub check at {time}	Következő GitHub-ellenőrzés: {time}
-	Waiting for GitHub's hourly limit. Checking again at {time}.	Waiting for GitHub's hourly limit. Checking again at {time}.
 	Next check at {time}	Következő ellenőrzés: {time}
 	Installing for {platform}	Telepítés {platform} rendszerre
 	Downloads for {platform}	Letöltések {platform} rendszerre

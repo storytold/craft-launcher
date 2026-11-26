@@ -226,7 +226,6 @@ month	Nov	11月
 month	Dec	12月
 	Not checked yet	まだ確認していません
 	Next GitHub check at {time}	次回の GitHub 確認: {time}
-	Waiting for GitHub's hourly limit. Checking again at {time}.	Waiting for GitHub's hourly limit. Checking again at {time}.
 	Next check at {time}	次回の確認: {time}
 	Installing for {platform}	{platform} にインストール
 	Downloads for {platform}	{platform} 用のダウンロード

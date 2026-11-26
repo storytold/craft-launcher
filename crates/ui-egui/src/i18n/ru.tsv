@@ -222,7 +222,6 @@ month	Nov	нояб.
 month	Dec	дек.
 	Not checked yet	Ещё не проверялось
 	Next GitHub check at {time}	Следующая проверка GitHub в {time}
-	Waiting for GitHub's hourly limit. Checking again at {time}.	Waiting for GitHub's hourly limit. Checking again at {time}.
 	Next check at {time}	Следующая проверка в {time}
 	Installing for {platform}	Установка для {platform}
 	Downloads for {platform}	Скачивание для {platform}

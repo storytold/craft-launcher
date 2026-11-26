@@ -61,27 +61,37 @@ impl GitHubBudget {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         // A clock set back can't keep requests in the window for longer than an hour.
         state.asked.retain(|at| *at > now - HOUR && *at <= now);
+        if let Some(until) = self.wait(&state, priority, now) {
+            return Err(until);
+        }
+        state.asked.push(now);
+        // Counted against GitHub's count at once: requests in flight on other threads haven't
+        // answered with a newer one yet.
+        if let Some((remaining, reset)) = state.github.filter(|(_, reset)| *reset > now && *reset - now <= MAX_NETWORK_WAIT) {
+            state.github = Some((remaining - 1, reset));
+        }
+        self.save(&state);
+        Ok(())
+    }
+
+    /// When a request of `priority` could go again, or `None` when one may go now. `take` refuses
+    /// with exactly this instant, so a time the UI shows is a time the budget honours: one rule,
+    /// not one here and one there that can drift apart.
+    fn wait(&self, state: &State, priority: Priority, now: i64) -> Option<i64> {
         // A refill time further off than GitHub ever names comes from a clock set back since.
         let network = state.github.filter(|(_, reset)| *reset > now && *reset - now <= MAX_NETWORK_WAIT);
         let own = self.limit as i64 - state.asked.len() as i64;
         let left = network.map_or(own, |(remaining, _)| own.min(remaining - NETWORK_RESERVE));
         let needed = held_back(priority) + 1;
         if left >= needed {
-            state.asked.push(now);
-            // Counted against GitHub's count at once: requests in flight on other threads haven't
-            // answered with a newer one yet.
-            if let Some((remaining, reset)) = network {
-                state.github = Some((remaining - 1, reset));
-            }
-            self.save(&state);
-            return Ok(());
+            return None;
         }
         // Free once enough of this hour's requests have aged out, and GitHub's count has refilled
         // if that is what stands in the way.
         let expiring = usize::try_from(needed - own).unwrap_or(0);
         let own_free = if expiring == 0 { now } else { state.asked.get(expiring - 1).map_or(now, |at| at + HOUR) };
         let network_free = network.filter(|(remaining, _)| remaining - NETWORK_RESERVE < needed).map_or(now, |(_, reset)| reset);
-        Err(own_free.max(network_free))
+        Some(own_free.max(network_free))
     }
 
     /// When `priority` could have a request again if it cannot have one now: the same instant
@@ -89,19 +99,9 @@ impl GitHubBudget {
     /// The UI needs this to say when the launcher will ask GitHub again, without saving a wait as
     /// if a server had asked for one.
     pub(crate) fn next_free(&self, priority: Priority, now: i64) -> Option<i64> {
-        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
-        let asked: Vec<i64> = state.asked.iter().copied().filter(|at| *at > now - HOUR && *at <= now).collect();
-        let network = state.github.filter(|(_, reset)| *reset > now && *reset - now <= MAX_NETWORK_WAIT);
-        let own = self.limit as i64 - asked.len() as i64;
-        let left = network.map_or(own, |(remaining, _)| own.min(remaining - NETWORK_RESERVE));
-        let needed = held_back(priority) + 1;
-        if left >= needed {
-            return None;
-        }
-        let expiring = usize::try_from(needed - own).unwrap_or(0);
-        let own_free = if expiring == 0 { now } else { asked.get(expiring - 1).map_or(now, |at| at + HOUR) };
-        let network_free = network.filter(|(remaining, _)| remaining - NETWORK_RESERVE < needed).map_or(now, |(_, reset)| reset);
-        Some(own_free.max(network_free))
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state.asked.retain(|at| *at > now - HOUR && *at <= now);
+        self.wait(&state, priority, now)
     }
 
     /// Notes GitHub's own count from an answer's `X-RateLimit-Remaining` and `X-RateLimit-Reset`

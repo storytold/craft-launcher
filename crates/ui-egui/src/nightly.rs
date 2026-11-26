@@ -78,12 +78,13 @@ fn nightly_job_progress(phase: JobPhase) -> (Option<f32>, String) {
 }
 
 /// The line the Developer Builds page shows while the launcher's own GitHub budget is holding the
-/// next check back: `None` when there is no hold in the future, so the page says what it knows.
+/// next check back: the same "next check" wording the stable page uses for the same kind of hold.
+/// `None` when there is no hold in the future, so the page says what it knows.
 fn held_back_line(until: Option<i64>, now: i64) -> Option<String> {
     use crate::i18n::fmt;
     let until = until.filter(|until| *until > now)?;
     let (hour, minute) = crate::local_time::clock(until);
-    Some(fmt(tl!("Waiting for GitHub's hourly limit. Checking again at {time}."), &[("time", &format!("{hour:02}:{minute:02}"))]))
+    Some(fmt(tl!("Next GitHub check at {time}"), &[("time", &format!("{hour:02}:{minute:02}"))]))
 }
 
 fn nightly_ago(at: i64, now: i64) -> String {
@@ -1286,10 +1287,7 @@ mod status_tests {
         state.logic(&Settings::default());
         assert_eq!(state.held_back_until, Some(1000 + 60 * 60), "a held-back sweep says when GitHub is asked again");
         let (hour, minute) = crate::local_time::clock(1000 + 60 * 60);
-        assert_eq!(
-            held_back_line(state.held_back_until, 1000).as_deref(),
-            Some(format!("Waiting for GitHub's hourly limit. Checking again at {hour:02}:{minute:02}.").as_str())
-        );
+        assert_eq!(held_back_line(state.held_back_until, 1000).as_deref(), Some(format!("Next GitHub check at {hour:02}:{minute:02}").as_str()));
         assert_eq!(held_back_line(state.held_back_until, 1000 + 60 * 60), None, "a hold that has passed says nothing");
         fake.events.borrow_mut().push(Event::CheckStarted);
         state.logic(&Settings::default());
