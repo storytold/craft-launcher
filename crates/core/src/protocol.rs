@@ -367,6 +367,13 @@ pub enum Event {
         app: String,
         failure: Option<InstallFailure>,
     },
+    /// The result of an install attempt for one release.
+    BlockedForRelease {
+        app: String,
+        release: Release,
+        retry_allowed: Option<bool>,
+        failure: Option<InstallFailure>,
+    },
     /// Going back from the installed `installed` (a version with no release of its own) to
     /// `chosen` stopped before changing anything: if it fails, only `fallback`, a published
     /// pre-release with the installed numbers, can be put back. `Command::InstallChosen` with

@@ -122,7 +122,14 @@ fn a_failed_chosen_install_keeps_its_exit_code_and_log() {
     // A removal that stopped after removing one registration keeps its code over the put-back's.
     let mut exit = None;
     let mut removal = || Err(Removal { error: "error 1603".to_string(), partly: true, code: Some(1603) });
-    let _ = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut || Ok(()), &mut removal, &install, &mut exit);
+    let installed = std::cell::RefCell::new(Vec::new());
+    let tracked_install = |path: &Path, exit: &mut Exit| {
+        installed.borrow_mut().push(path.to_path_buf());
+        install(path, exit)
+    };
+    let result = run_packages("FilmCraft", (chosen, "0.13.0"), (previous, "0.14.0"), &mut || Ok(()), &mut removal, &tracked_install, &mut exit);
+    assert!(result.unwrap_err().error.contains("couldn't be fully removed"));
+    assert_eq!(*installed.borrow(), [previous.to_path_buf()]);
     assert_eq!(exit, Some((1603, None)));
     // Windows Installer never started: no code is kept.
     let mut exit = None;

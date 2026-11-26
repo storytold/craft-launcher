@@ -1101,6 +1101,7 @@ impl NativeBackend {
                 let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
                 // What stopped an install, for the app's card.
                 let mut failure = None;
+                let mut attempted_release = None;
                 let result = if let Work::Launch(args) = &work {
                     run_nightly_launch(app, &shared, &paths, platform, &stop, args)
                 } else if uninstall && shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
@@ -1143,6 +1144,7 @@ impl NativeBackend {
                         approved,
                         source.as_deref(),
                         &mut failure,
+                        &mut attempted_release,
                         batch,
                         place,
                         by_name,
@@ -1162,7 +1164,7 @@ impl NativeBackend {
                     shared.host.detect(app, &manifest, &shared.host.snapshot())
                 };
                 // One installer call can cover several apps, and fail after some of them went in.
-                let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+                let latest = attempted_release.clone().or_else(|| shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned());
                 let result = match (result, latest) {
                     (Err(e), Some(release))
                         if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable
@@ -1176,11 +1178,39 @@ impl NativeBackend {
                 };
                 // The manifest may change the package plan even when detection finds the same copy.
                 shared.invalidate_download_size(app.id);
+                let retry_choice = match &work {
+                    Work::Chosen(chosen) => Some(chosen),
+                    _ => None,
+                };
+                let retry_options = chosen_options(&options, app, retry_choice);
+                let retry_allowed = attempted_release.as_ref().map(|release| match repository_update(app, found.as_ref(), &options) {
+                    Some(update) => update.is_ok(),
+                    None => install_plan(
+                        app,
+                        Some(release.clone()),
+                        platform,
+                        &retry_options,
+                        (found.as_ref(), manifest.apps.get(app.id)),
+                        Asking::Answer(&shared.last_system_kinds()),
+                    )
+                    .is_ok(),
+                });
                 publish_detected(app, found, &shared, platform);
                 report_partial(app, &shared, &paths, platform);
                 // One poll sees both: a Blocked alone would offer Retry while the job still runs.
-                let blocked =
-                    (!uninstall && !launching).then(|| Event::Blocked { app: app.id.to_string(), failure: failure.filter(|_| result.is_err()) });
+                let blocked = (!uninstall && !launching).then(|| {
+                    let failure = failure.filter(|_| result.is_err());
+                    match (attempted_release, retry_choice) {
+                        (Some(release), _) => Event::BlockedForRelease { app: app.id.to_string(), release, retry_allowed, failure },
+                        (None, Some(chosen)) => Event::BlockedForRelease {
+                            app: app.id.to_string(),
+                            release: Release { tag: chosen.tag.clone(), ..Release::default() },
+                            retry_allowed: None,
+                            failure,
+                        },
+                        (None, None) => Event::Blocked { app: app.id.to_string(), failure },
+                    }
+                });
                 job.finish(blocked.into_iter().chain([Event::JobFinished { app: app.id.to_string(), result }]));
             }));
         }))
@@ -1340,6 +1370,31 @@ enum Work {
 struct Chosen {
     tag: String,
     fallback: Option<String>,
+}
+
+fn requested_release(
+    latest: Option<Release>,
+    chosen: Option<&Chosen>,
+    source: Option<&dyn ReleaseSource>,
+    query: &ReleaseQuery,
+) -> Result<Option<Release>, String> {
+    if let Some(chosen) = chosen.filter(|chosen| latest.as_ref().is_none_or(|release| release.tag != chosen.tag)) {
+        let source = source.ok_or("the selected release is not available without a release source")?;
+        return match source.chosen_within(query, &VersionTrack::Pinned(chosen.tag.clone()), crate::source::CHOOSER_FRESH).latest {
+            LatestRelease::Found(release) if release.tag == chosen.tag => Ok(Some(release)),
+            LatestRelease::Failed(error) => Err(error),
+            _ => Err(format!("the selected release {} is not available", chosen.tag)),
+        };
+    }
+    Ok(latest)
+}
+
+fn chosen_options(options: &BackendOptions, app: &CraftApp, chosen: Option<&Chosen>) -> BackendOptions {
+    let mut selected = options.clone();
+    if let Some(chosen) = chosen {
+        selected.versions.insert(app.id.into(), VersionTrack::Pinned(chosen.tag.clone()));
+    }
+    selected
 }
 
 /// Whether `release` may be installed on `track`. The app stays part of the call because the
@@ -1659,6 +1714,7 @@ fn run_install(
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
     failure: &mut Option<InstallFailure>,
+    attempted_release: &mut Option<Release>,
     batch: Option<crate::queue::Gather>,
     place: Option<crate::downloads::Place<'static>>,
     by_name: Option<&Chosen>,
@@ -1739,7 +1795,10 @@ fn run_install(
         }
     }
     let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
-    let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
+    let latest = requested_release(latest, by_name, source, &release_query(load_feed(paths).as_ref(), app))?;
+    *attempted_release = latest.clone();
+    let plan_options = chosen_options(options, app, by_name);
+    let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, &plan_options, (existing, record), Asking::Install)?;
     // The person picked a release by name: install that one, or nothing.
     if let Some(chosen) = by_name.filter(|c| c.tag != release.tag) {
         return Err(format!("{} {} isn't the version to install any more, so nothing was changed. Choose the version again.", app.name, chosen.tag));
@@ -2866,7 +2925,10 @@ impl Backend for NativeBackend {
                 }
             }
             Command::Cancel { app } => {
-                let running = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app).cloned();
+                let running = {
+                    let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+                    self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app).cloned()
+                };
                 match running {
                     Some(stop) => stop.cancel(),
                     // A paused download, or one kept after a failed install: throw the file away.
@@ -3176,6 +3238,7 @@ mod tests {
             None,
             None,
             &mut None,
+            &mut None,
             Some(gather.clone()),
             None,
             None,
@@ -3188,6 +3251,32 @@ mod tests {
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    #[test]
+    fn a_named_retry_resolves_its_release_after_the_latest_changes() {
+        struct Versions(Release);
+        impl ReleaseSource for Versions {
+            fn latest(&self, _: &ReleaseQuery, _: bool) -> crate::source::Answer {
+                panic!("a named retry does not ask for latest")
+            }
+            fn versions(&self, _: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                Ok(vec![self.0.clone()])
+            }
+            fn cached(&self, _: &ReleaseQuery, _: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let old = tagged("0.3.0");
+        let chosen = Chosen { tag: old.tag.clone(), fallback: None };
+        let release =
+            requested_release(Some(tagged("0.5.0")), Some(&chosen), Some(&Versions(old.clone())), &ReleaseQuery::for_app(app, app.repo)).unwrap();
+        assert_eq!(release, Some(old));
     }
 
     /// A Flatpak its repository updates can't install a release picked by name: the repository
@@ -3214,8 +3303,24 @@ mod tests {
         let picked = Chosen { tag: "v0.4.0".into(), fallback: None };
         let (options, stop) = (BackendOptions::default(), Stop::default());
         let paths = Paths::under(dir.path());
-        let result =
-            run_install(app, &shared, &paths, None, None, &options, Some(&installed), None, &stop, None, None, &mut None, None, None, Some(&picked));
+        let result = run_install(
+            app,
+            &shared,
+            &paths,
+            None,
+            None,
+            &options,
+            Some(&installed),
+            None,
+            &stop,
+            None,
+            None,
+            &mut None,
+            &mut None,
+            None,
+            None,
+            Some(&picked),
+        );
         assert!(result.as_ref().is_err_and(|e| e.as_str() != artcraft_launcher_core::protocol::CANCELLED), "{result:?}");
         assert_eq!(*seen.lock().unwrap(), 0, "nothing started: no progress was reported");
     }
@@ -4844,7 +4949,7 @@ mod tests {
                 return;
             };
             let polled: Vec<Event> = shared.events.lock().unwrap().drain(..).collect();
-            let blocked = polled.iter().any(|event| matches!(event, Event::Blocked { app, .. } if app == APP));
+            let blocked = polled.iter().any(|event| matches!(event, Event::Blocked { app, .. } | Event::BlockedForRelease { app, .. } if app == APP));
             let finished = polled.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
             if blocked || finished {
                 let _ = sent.send((blocked, finished));
@@ -4876,7 +4981,8 @@ mod tests {
             };
             let polled: Vec<Event> = shared.events.lock().unwrap().drain(..).collect();
             for event in polled {
-                if matches!(&event, Event::Blocked { app, .. } | Event::JobFinished { app, .. } if app == APP) {
+                if matches!(&event, Event::Blocked { app, .. } | Event::BlockedForRelease { app, .. } | Event::JobFinished { app, .. } if app == APP)
+                {
                     let _ = sent.send(event);
                 }
             }
@@ -4928,7 +5034,8 @@ mod tests {
         let mut failure = None;
         let options = BackendOptions::default();
         let stop = Stop::default();
-        let result = run_install(app, &shared, &paths, Some(&http), None, &options, None, None, &stop, None, None, &mut failure, None, None, None);
+        let result =
+            run_install(app, &shared, &paths, Some(&http), None, &options, None, None, &stop, None, None, &mut failure, &mut None, None, None, None);
         assert_eq!(result, Err("PhotoCraft is open.".into()));
         assert_eq!(failure, Some(open));
     }

@@ -1067,6 +1067,12 @@ impl LauncherUi {
                 (_, None) => Primary::Unavailable(tl!("Not available")),
             };
         }
+        if let Some(Command::InstallChosen { tag, .. }) = self.chosen_installs.get(entry.app.id)
+            && entry.job.is_none()
+            && self.chosen_retry_allowed.contains_key(entry.app.id)
+        {
+            return Primary::SelectedVersion { tag: tag.clone(), checked: self.retry_version_installs(entry, tag), retry: true };
+        }
         // Once the pinned version is the installed one, the normal statuses (Open) take over again.
         if let Some(artcraft_launcher_core::protocol::VersionTrack::Pinned(tag)) = self.settings.versions.get(entry.app.id)
             && entry.installed.as_ref().and_then(|i| i.version.as_ref()) != artcraft_launcher_core::version::parse(tag).as_ref()
@@ -1357,7 +1363,7 @@ impl LauncherUi {
                 };
                 let resp = if checked { self.size_hint(resp, entry) } else { resp };
                 if resp.clicked() {
-                    self.install_app(id);
+                    self.resume_app(id);
                 }
             }
             Primary::Open => {
@@ -1407,12 +1413,12 @@ impl LauncherUi {
             }
             let installed = explain(installed);
             if checked && self.size_hint(installed, entry).clicked() {
-                self.install_app(id);
+                self.resume_app(id);
             }
         } else if checked {
             let resp = widgets::labelled_button(ui, fitted(ui, &install, &[short], main_w), &install, Kind::Primary, main_w);
             if self.size_hint(resp, entry).clicked() {
-                self.install_app(id);
+                self.resume_app(id);
             }
         } else if widgets::labelled_button(ui, fitted(ui, &open, &[tl!("Open")], main_w), &open, Kind::Secondary, main_w).clicked() {
             self.launch_app(id);

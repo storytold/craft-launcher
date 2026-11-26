@@ -423,7 +423,7 @@ fn install_at_with_profile(
                     &mut *job.phase,
                     // The app or its command-line tool may have started while the downgrade
                     // waited for another Windows Installer job: looked for again before removal.
-                    &mut || closed_before_removal(app, running_copy, find_running, &mut blocked),
+                    &mut |locations| closed_before_removals(app, locations, find_running, &mut blocked),
                     &mut msi_exit,
                 ),
                 None => windows::run_msi(
@@ -626,6 +626,19 @@ fn closed_before_removal(
     }
 }
 
+#[cfg(any(windows, test))]
+fn closed_before_removals(
+    app: &CraftApp,
+    locations: &[PathBuf],
+    find_running: FindRunning<'_>,
+    blocked: &mut Option<InstallFailure>,
+) -> Result<(), String> {
+    for location in locations {
+        closed_before_removal(app, Some(location), find_running, blocked)?;
+    }
+    Ok(())
+}
+
 /// The card's cause when the Windows Installer stopped an install with `code` (its log at
 /// `log`; a downgrade's removal step writes none), and a message to show instead of the
 /// installer's own when the log or a running app explains it.
@@ -654,7 +667,8 @@ fn msi_failure(
     // A downgrade's own error says what is installed now, so it stays the message.
     let message = |error: String| downgrade.is_none().then_some(error);
     match (code, cause) {
-        (0 | 3010 | 1641 | 1602, _) => None,
+        (0 | 3010 | 1641, _) => None,
+        (1602, _) if downgrade.is_none() => None,
         (1618, _) => Some((None, failure(Blocker::InstallerBusy))),
         (1603, Some(msi_log::Cause::LaunchCondition(condition))) => {
             let error = condition.as_ref().map(|text| format!("{}'s installer stopped at one of its own checks: {text}", app.name));
@@ -681,11 +695,10 @@ fn msi_failure(
     }
 }
 
-/// The card's cause and the message when Windows refused to remove or write `file` with error
-/// `code` while replacing a portable copy. A running copy at `location` or its command-line tool
-/// explains either code; without one, 32 is a file another program has open and 5 a denied
-/// access. When the previous files couldn't be put back, `error` says so and where they are, so
-/// it stays the message and ends the details.
+/// The card's cause and message when Windows refuses to remove or write `file` with error
+/// `code` while replacing a portable copy. Code 32 reports a file in use; code 5 reports denied
+/// access. A running copy at `location` or its command-line tool is included in the details.
+/// Failed restoration or retained installation folders keep the full error message.
 #[cfg(any(windows, test))]
 fn file_failure(
     app: &CraftApp,
@@ -696,15 +709,17 @@ fn file_failure(
     running: &process::Running,
 ) -> (Option<String>, InstallFailure) {
     let raw = format!("Windows error {code} · {}", file.display());
-    let (message, mut failure) = match location.and_then(|location| open_failure(app, location, running, Some(&raw))) {
-        Some((message, failure)) => (message, failure),
-        None if code == 32 => (
+    let (message, mut failure) = match code {
+        32 => (
             format!("Another program is using {}. Close it, then try again.", file.display()),
             InstallFailure { blocker: Blocker::FileInUse, details: raw },
         ),
-        None => (format!("Windows denied access to {}.", file.display()), InstallFailure { blocker: Blocker::AccessDenied, details: raw }),
+        _ => (format!("Windows denied access to {}.", file.display()), InstallFailure { blocker: Blocker::AccessDenied, details: raw }),
     };
-    if error.contains("could not restore the previous version") {
+    if let Some((_, observed)) = location.and_then(|location| open_failure(app, location, running, None)) {
+        failure.details = format!("{} · {}", failure.details, observed.details);
+    }
+    if error.contains("could not restore the previous version") || error.contains("the installation folder was retained") {
         failure.details = format!("{} · {error}", failure.details);
         return (None, failure);
     }
@@ -1250,7 +1265,9 @@ fn uninstall_checking(
             crate::portable::remove(app, record.ok_or("the launcher has no record of these files")?)
         }
         #[cfg(windows)]
-        InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
+        InstallSource::Msi => {
+            windows::uninstall_msi(app, stop, phase, &mut |locations| closed_before_removals(app, locations, find_running, &mut None))
+        }
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
@@ -2820,13 +2837,15 @@ pub mod windows {
         scope: Option<MsiScope>,
         stop: &Stop,
         phase: &mut dyn FnMut(JobPhase),
-        ready: &mut dyn FnMut() -> Result<(), String>,
+        ready: &mut dyn FnMut(&[PathBuf]) -> Result<(), String>,
         exit: &mut msi_downgrade::Exit,
     ) -> Result<(), super::Failure> {
         // The registrations the downgrade works on, listed once: that same listing is what the
         // removal step removes, so a registration that appears afterwards is never removed behind
         // the listing's back.
         let installs = crate::detect::windows::msi_installs(app);
+        let locations: Vec<PathBuf> = installs.iter().filter_map(|install| install.exe.clone()).collect();
+        let mut ready = || ready(&locations);
         let previous_numbers = super::version::parse(previous.version);
         if scope == Some(MsiScope::PerMachine) {
             let mut elevated = None;
@@ -2857,7 +2876,7 @@ pub mod windows {
                 app.name,
                 (chosen.file, chosen.version),
                 (previous.file, previous.version),
-                ready,
+                &mut ready,
                 &mut || remove_listed(app, &installs),
                 &|msi, exit| run_direct(msi, destination, scope, exit),
                 exit,
@@ -2935,15 +2954,18 @@ pub mod windows {
         Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some((ended, logs)))
     }
 
-    pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app).map_err(|removal| removal.error))
-    }
-
-    /// Removes every Windows Installer registration of `app` in turn, within the caller's queue
-    /// turn: an uninstall, where no put-back follows that a later listing could misjudge.
-    fn remove_registrations(app: &CraftApp) -> Result<(), msi_downgrade::Removal> {
-        let installs = crate::detect::windows::msi_installs(app);
-        remove_listed(app, &installs)
+    pub fn uninstall_msi(
+        app: &CraftApp,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+        ready: &mut dyn FnMut(&[PathBuf]) -> Result<(), String>,
+    ) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Removing, || {
+            let installs = crate::detect::windows::msi_installs(app);
+            let locations: Vec<PathBuf> = installs.iter().filter_map(|install| install.exe.clone()).collect();
+            ready(&locations)?;
+            remove_listed(app, &installs).map_err(|removal| removal.error)
+        })
     }
 
     /// Removes exactly the registrations in `installs`, in turn, within the caller's queue turn. A
@@ -3132,6 +3154,50 @@ mod tests {
         assert_eq!(failure.blocker, Blocker::InstallerFailed);
     }
 
+    #[test]
+    fn a_canceled_downgrade_keeps_its_failure_on_the_card() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let error = "The previous version was removed and could not be restored.";
+        let (message, failure) = msi_failure(app, None, 1602, None, Some(error), || process::Running::No).unwrap();
+        assert_eq!(message, None);
+        assert_eq!(failure.blocker, Blocker::InstallerFailed);
+        assert!(failure.details.contains(error));
+        assert!(msi_failure(app, None, 1602, None, None, || process::Running::No).is_none());
+    }
+
+    #[test]
+    fn removal_checks_a_running_copy_in_the_second_registration() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let locations = [PathBuf::from("first/photocraft.exe"), PathBuf::from("second/photocraft.exe")];
+        let find = |targets: &[PathBuf]| {
+            if targets.contains(&locations[1]) { process::Running::Confirmed(locations[1].clone()) } else { process::Running::No }
+        };
+        let mut blocked = None;
+        assert!(closed_before_removals(app, &locations, &find, &mut blocked).is_err());
+        assert_eq!(blocked.unwrap().blocker, Blocker::AppOpen);
+        assert!(closed_before_removals(app, &[], &find, &mut None).is_ok());
+    }
+
+    #[test]
+    fn a_retained_installation_folder_stays_in_the_failure_details() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let error = "os error 32; the installation folder was retained (disk full)";
+        let (message, failure) = file_failure(app, None, 32, Path::new("file.dll"), error, &process::Running::No);
+        assert_eq!(message, None);
+        assert!(failure.details.ends_with(error));
+    }
+
+    #[test]
+    fn a_running_process_does_not_establish_the_cause_of_a_file_refusal() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let executable = Path::new("PhotoCraft/photocraft.exe");
+        let file = Path::new("PhotoCraft/library.dll");
+        let (message, failure) = file_failure(app, Some(executable), 5, file, "os error 5", &process::Running::Confirmed(executable.into()));
+        assert_eq!(failure.blocker, Blocker::AccessDenied);
+        assert_eq!(message.as_deref(), Some("Windows denied access to PhotoCraft/library.dll."));
+        assert!(failure.details.contains("photocraft.exe"));
+    }
+
     /// A downgrade's removal step writes no log: another installation stopping it is still
     /// another installation, and the downgrade's own error (nothing was changed) stays the message.
     #[test]
@@ -3202,8 +3268,8 @@ mod tests {
             InstallFailure { blocker: Blocker::AccessDenied, details: r"Windows error 5 · C:\Apps\PhotoCraft\photocraft.exe".into() }
         );
         let (error, failure) = file_failure(app, Some(&exe), 5, &exe, "os error 5", &process::Running::Confirmed(cli.clone()));
-        assert_eq!(error.as_deref(), Some("PhotoCraft's command-line tool is running. Quit it, then try again."));
-        assert_eq!(failure.blocker, Blocker::AppOpen);
+        assert_eq!(error.as_deref(), Some(r"Windows denied access to C:\Apps\PhotoCraft\photocraft.exe."));
+        assert_eq!(failure.blocker, Blocker::AccessDenied);
         assert_eq!(failure.details, format!(r"Windows error 5 · C:\Apps\PhotoCraft\photocraft.exe · {}", cli.display()));
         // When the previous files couldn't be put back, the error that says where they are stays.
         let unrestored = r"os error 32; could not restore the previous version (disk full). Recovery files: C:\Cache\staging\photocraft";

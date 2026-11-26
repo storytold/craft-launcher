@@ -852,6 +852,16 @@ pub fn match_running(targets: &[PathBuf], programs: &[RunningProgram]) -> Runnin
                 if let Some(target) = targets.iter().find(|target| same_program(target, path)) {
                     return Running::Confirmed(target.clone());
                 }
+                if possible.is_none()
+                    && targets.iter().any(|target| {
+                        let reported = path.to_string_lossy().replace('/', "\\");
+                        let expected = target.to_string_lossy().replace('/', "\\");
+                        reported.trim_start_matches(r"\\?\").eq_ignore_ascii_case(expected.trim_start_matches(r"\\?\"))
+                            && (file_identity(target).is_none() || file_identity(path).is_none())
+                    })
+                {
+                    possible = Some(program.name.clone());
+                }
             }
             None if possible.is_none()
                 && targets.iter().any(|target| windows_file_name(target).is_some_and(|name| name.eq_ignore_ascii_case(&program.name))) =>
@@ -933,6 +943,11 @@ pub fn app_running(targets: &[PathBuf]) -> Running {
     }
 }
 
+#[cfg(any(windows, test))]
+fn keep_running_program(names: &[String], program: &RunningProgram) -> bool {
+    program.path.is_some() || names.iter().any(|wanted| wanted.eq_ignore_ascii_case(&program.name))
+}
+
 /// The running programs whose file name is one of `names`, with each one's full path where
 /// Windows gives it (not for a program of another user or an elevated one). `None` when the
 /// process list can't be read.
@@ -946,14 +961,14 @@ fn running_programs(names: &[String]) -> Option<Vec<RunningProgram>> {
     for entry in list.iter_processes().take(MAX_PROCESSES) {
         let entry = entry.ok()?;
         let name = entry.szExeFile();
-        if !names.iter().any(|wanted| wanted.eq_ignore_ascii_case(&name)) {
-            continue;
-        }
         let path = HPROCESS::OpenProcess(co::PROCESS::QUERY_LIMITED_INFORMATION, false, entry.th32ProcessID)
             .ok()
             .and_then(|process| process.QueryFullProcessImageName(co::PROCESS_NAME::WIN32).ok())
             .map(PathBuf::from);
-        out.push(RunningProgram { name, path });
+        let program = RunningProgram { name, path };
+        if keep_running_program(names, &program) {
+            out.push(program);
+        }
     }
     Some(out)
 }
@@ -1076,6 +1091,14 @@ mod running_tests {
     }
 
     #[test]
+    fn a_matching_reported_path_with_unreadable_identity_is_possible() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photocraft.exe");
+        let programs = [RunningProgram { name: "photocraft.exe".into(), path: Some(path.clone()) }];
+        assert_eq!(match_running(&[path], &programs), Running::Possible("photocraft.exe".into()));
+    }
+
+    #[test]
     fn hardlinked_executable_paths_identify_the_same_program() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("photocraft.exe");
@@ -1083,6 +1106,57 @@ mod running_tests {
         std::fs::write(&source, b"program").unwrap();
         std::fs::hard_link(&source, &alias).unwrap();
         assert!(same_program(&source, &alias));
+    }
+
+    #[test]
+    fn a_known_process_image_is_kept_when_its_name_differs() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("photocraft.exe");
+        let alias = dir.path().join("other.exe");
+        std::fs::write(&source, b"program").unwrap();
+        std::fs::hard_link(&source, &alias).unwrap();
+        let program = RunningProgram { name: "other.exe".into(), path: Some(alias) };
+        let programs: Vec<_> = std::iter::once(program).filter(|program| keep_running_program(&["photocraft.exe".into()], program)).collect();
+        assert_eq!(match_running(&[source], &programs), Running::Confirmed(dir.path().join("photocraft.exe")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn enumeration_matches_a_running_hardlink_and_rejects_a_distinct_copy() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Child, Stdio};
+
+        struct Probe(Child);
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let start = |path: &Path| {
+            let mut child = Probe(command(path).args(["-t", "127.0.0.1"]).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap());
+            let mut line = String::new();
+            assert!(BufReader::new(child.0.stdout.as_mut().unwrap()).read_line(&mut line).unwrap() > 0);
+            child
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("probe.exe");
+        let alias = dir.path().join("other.exe");
+        let other_dir = dir.path().join("separate");
+        std::fs::create_dir(&other_dir).unwrap();
+        let distinct = other_dir.join("probe.exe");
+        let ping = windows_system_program(r"System32\PING.EXE").unwrap();
+        std::fs::copy(&ping, &source).unwrap();
+        std::fs::copy(&ping, &distinct).unwrap();
+        std::fs::hard_link(&source, &alias).unwrap();
+        let active = start(&alias);
+        assert_eq!(
+            match_running(std::slice::from_ref(&source), &running_programs(&["probe.exe".into()]).unwrap()),
+            Running::Confirmed(source.clone())
+        );
+        drop(active);
+        let _distinct = start(&distinct);
+        assert_eq!(match_running(&[source], &running_programs(&["probe.exe".into()]).unwrap()), Running::No);
     }
 
     #[cfg(unix)]
