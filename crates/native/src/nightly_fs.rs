@@ -308,6 +308,7 @@ impl Dir {
         }
         #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
         {
+            let _ = (child, target, destination);
             Err("Exclusive Nightly moves are unavailable on this platform.".into())
         }
     }
