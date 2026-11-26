@@ -29,18 +29,25 @@ fn api(page: usize) -> String {
 #[test]
 fn every_app_is_verified_within_six_hours_under_the_developers_budget() {
     // The real Developer Builds budget, no token, every sweep automatic: a refused request must
-    // never cost an app its turn, or the apps late in the roster would never be looked up.
+    // never cost an app its turn, or the apps late in the roster would never be looked up. Ten of
+    // the hour's fifteen requests are already spent, so the first sweep is refused outright and
+    // the five sweeps after it still cover all fifteen apps.
     let budget = crate::github_budget::GitHubBudget::in_memory(crate::github_budget::DEVELOPER_BUILDS);
+    for _ in 0..10 {
+        assert!(budget.take(Priority::User, NOW).is_ok(), "the user's own checks spend the hour first");
+    }
     let keys: Vec<String> = (0..15).map(|index| format!("key-{index:02}")).collect();
     let installed = BTreeSet::new();
     let mut state = State::default();
     let mut now = NOW;
+    let mut refusals = 0;
     for _ in 0..6 {
         let chosen = state.begin(&keys, &installed, now, false, true);
         let mut refused = false;
         for key in &chosen {
             if refused || budget.take(Priority::Discovery, now).is_err() {
                 refused = true;
+                refusals += 1;
                 state.defer(key);
                 assert_eq!(state.records.get(key).and_then(|record| record.attempted_at), None, "a refusal leaves the key where it was");
                 continue;
@@ -56,6 +63,7 @@ fn every_app_is_verified_within_six_hours_under_the_developers_budget() {
             "{key} was verified within six hours"
         );
     }
+    assert_eq!(refusals, DISCOVERY_PER_SWEEP, "the refused sweep deferred its whole choice");
 }
 
 #[test]
