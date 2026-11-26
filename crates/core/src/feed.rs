@@ -50,9 +50,10 @@ pub struct FeedApp {
     pub release: Option<FeedRelease>,
     /// When storyteller-web last fetched this app (Unix seconds).
     pub fetched_at: Option<i64>,
-    /// Whether the entry carries the pre-release channel at all (`latest_prerelease` and the
-    /// `releases` version list). A server from before those existed sends neither, and its silence
-    /// says nothing about betas.
+    /// Whether the entry carries a usable pre-release channel: the `releases` version list, and a
+    /// `latest_prerelease` that is absent, `null` (no beta) or readable. A server from before those
+    /// existed sends neither, and its silence says nothing about betas; a beta that can't be read
+    /// says nothing either.
     pub channels: bool,
     /// The newest beta or release candidate. Meaningless unless `channels` is set.
     pub prerelease: Option<FeedRelease>,
@@ -303,8 +304,9 @@ struct RawApp {
     latest_release: Option<RawRelease>,
     #[serde(default, deserialize_with = "lenient")]
     app_last_fetched: Option<String>,
-    #[serde(default, deserialize_with = "lenient")]
-    latest_prerelease: Option<RawRelease>,
+    /// Kept raw: a beta that is there but can't be read is not the same as none.
+    #[serde(default)]
+    latest_prerelease: Option<serde_json::Value>,
     /// Kept raw: whether it is a list at all says whether the server knows the channels.
     #[serde(default)]
     releases: Option<serde_json::Value>,
@@ -325,12 +327,16 @@ impl RawApp {
             ),
             _ => None,
         };
+        let prerelease = match self.latest_prerelease {
+            None | Some(serde_json::Value::Null) => Ok(None),
+            Some(value) => RawRelease::deserialize(value).ok().and_then(RawRelease::into_release).map(Some).ok_or(()),
+        };
         FeedApp {
             repo: self.repo.filter(|r| r.split('/').count() == 2 && r.split('/').all(|part| !part.is_empty() && part != "." && part != "..")),
             release: self.latest_release.and_then(RawRelease::into_release),
             fetched_at: self.app_last_fetched.as_deref().and_then(parse_rfc3339),
-            channels: versions.is_some(),
-            prerelease: self.latest_prerelease.and_then(RawRelease::into_release),
+            channels: versions.is_some() && prerelease.is_ok(),
+            prerelease: prerelease.unwrap_or_default(),
             versions: versions.unwrap_or_default(),
         }
     }
@@ -541,8 +547,9 @@ mod tests {
         // The version list names a higher version than the two sent in full.
         let behind = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.7.0", "v0.7.0-rc.1", "v0.6.0"]));
         assert_eq!(behind.answer_with_prereleases(photo, NOW), FeedAnswer::AskGitHub);
-        // A "beta" that is really a nightly, or whose tag isn't a version.
-        for beta in ["v0.7.0-nightly.20261126.1.1", "latest"] {
+        // A "beta" that is really a nightly, whose tag isn't a version, or that has no tag: it is
+        // there, so it isn't "no beta".
+        for beta in ["v0.7.0-nightly.20261126.1.1", "latest", ""] {
             let feed = with_channels(Some(beta), Some(&["v0.6.0"]));
             assert_eq!(feed.answer_with_prereleases(photo, NOW), FeedAnswer::AskGitHub, "{beta}");
         }
@@ -561,16 +568,18 @@ mod tests {
     fn reads_the_channels_leniently() {
         let feed = Feed::parse(
             r#"{"release_info": {"apps": {
-                "photocraft": {"latest_prerelease": 5, "releases": [{"tag": "v1.0.0"}, {"tag": 7}, "x", {"tag": ""}]},
+                "photocraft": {"latest_prerelease": null, "releases": [{"tag": "v1.0.0"}, {"tag": 7}, "x", {"tag": ""}]},
                 "soundcraft": {"releases": "nope"},
-                "filmcraft": {"releases": null}
+                "filmcraft": {"releases": null},
+                "wordcraft": {"latest_prerelease": 5, "releases": []}
             }}}"#,
         )
         .unwrap();
         let photo = &feed.apps["photocraft"];
-        assert!(photo.channels && photo.prerelease.is_none());
+        assert!(photo.channels && photo.prerelease.is_none(), "null: no beta");
         assert_eq!(photo.versions, ["v1.0.0"]);
         assert!(!feed.apps["soundcraft"].channels && !feed.apps["filmcraft"].channels);
+        assert!(!feed.apps["wordcraft"].channels, "a beta of the wrong shape isn't \"no beta\"");
     }
 
     #[test]
