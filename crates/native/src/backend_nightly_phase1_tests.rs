@@ -16,7 +16,7 @@ fn app() -> &'static CraftApp {
 fn complete(shared: &Shared, paths: &Paths, platform: Platform, run: u64) {
     let key = nightly_lookup::key(app(), platform);
     let now = crate::now();
-    shared.nightly_state.lock().unwrap().begin(&[key], now, true, true);
+    shared.nightly_state.lock().unwrap().begin(&[key], &Default::default(), now, true, true);
     finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(run))), shared, paths);
     shared.nightly_state.lock().unwrap().finish();
 }
@@ -34,7 +34,7 @@ fn selection_ui_and_install_gate_agree_and_failed_refresh_retains_stale_success(
         app(),
         platform,
         0,
-        Outcome::Indeterminate(crate::http::NightlyHttpError { why: "offline".into(), retry_at: Some(crate::now() + 120) }),
+        Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "offline".into(), retry_at: Some(crate::now() + 120) }),
         &shared,
         &paths,
     );
@@ -104,9 +104,16 @@ fn actual_backend_fresh_off_schedules_nothing_and_later_off_cancels_queued_sweep
     task();
     assert!(queued.lock().unwrap().is_empty());
     assert!(shared.nightly_verified.lock().unwrap().is_empty());
-    let record = shared.nightly_state.lock().unwrap().record(&nightly_lookup::key(app(), platform));
-    assert!(record.attempted_at.is_some());
-    assert!(record.verified_at.is_none());
+    // An automatic sweep looks at its three-app discovery allowance now, not at the whole roster,
+    // so check the apps it chose rather than assuming a particular one is among them.
+    let state = shared.nightly_state.lock().unwrap();
+    let attempted: Vec<_> = artcraft_launcher_core::hosted_catalog::apps()
+        .iter()
+        .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
+        .filter(|app| state.record(&nightly_lookup::key(app, platform)).attempted_at.is_some())
+        .collect();
+    assert_eq!(attempted.len(), 3, "the sweep marks the apps it chose as attempted");
+    assert!(attempted.iter().all(|app| state.record(&nightly_lookup::key(app, platform)).verified_at.is_none()));
     assert!(!shared.checking.load(Ordering::SeqCst));
 }
 
@@ -159,7 +166,7 @@ fn failed_result_save_retains_maximum_known_retry_and_flushes_it_before_admissio
         app(),
         platform,
         0,
-        Outcome::Indeterminate(crate::http::NightlyHttpError { why: "limited".into(), retry_at: Some(deadline) }),
+        Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(deadline) }),
         &shared,
         &paths,
     );
@@ -169,7 +176,11 @@ fn failed_result_save_retains_maximum_known_retry_and_flushes_it_before_admissio
         state.outcome(
             &key,
             before.attempted_at.unwrap() + 20,
-            &Outcome::Indeterminate(crate::http::NightlyHttpError { why: "subsequent storage failure".into(), retry_at: Some(deadline - 60) }),
+            &Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
+                why: "subsequent storage failure".into(),
+                retry_at: Some(deadline - 60),
+            }),
         );
         let failed = state.record(&key);
         assert_eq!(failed.retry_at, Some(deadline));
@@ -217,7 +228,7 @@ fn unreadable_existing_metadata_blocks_restart_without_replacement_until_valid_r
         app(),
         platform,
         0,
-        Outcome::Indeterminate(crate::http::NightlyHttpError { why: "limited".into(), retry_at: Some(deadline) }),
+        Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(deadline) }),
         &original,
         &paths,
     );

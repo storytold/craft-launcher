@@ -8,6 +8,8 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 
+use artcraft_launcher_core::Os;
+
 use crate::manifest::Record;
 use crate::nightly_profile::Adapter;
 use crate::paths::Paths;
@@ -78,7 +80,7 @@ fn disjoint(paths: &[PathBuf], protected: &[PathBuf]) -> Result<(), String> {
     for path in paths {
         let path = resolved_missing(path)?;
         if protected.iter().any(|stable| path.starts_with(stable) || stable.starts_with(&path)) {
-            return Err("The nightly namespace overlaps PhotoCraft's stable data or installation; nothing was changed.".into());
+            return Err("The nightly namespace overlaps the stable app's data or installation; nothing was changed.".into());
         }
     }
     Ok(())
@@ -91,40 +93,71 @@ fn xdg_root(value: Option<std::ffi::OsString>, home: &Path, fallback: &str) -> P
     value.map(PathBuf::from).filter(|path| path.is_absolute()).unwrap_or_else(|| home.join(fallback))
 }
 
-pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
-    let home = dirs::home_dir().ok_or("No home directory is available for the nightly isolation check.")?;
+/// The stable app's macOS data and installation, by every name it is stored under: its display
+/// name, the capitalised id some libraries derive (`Photocraft`), and its stable bundle id.
+#[cfg(any(target_os = "macos", test))]
+fn mac_stable_paths_for(app: &str, display: &str, stable: &str, home: &Path) -> Vec<PathBuf> {
+    let capitalised: String = app.chars().take(1).flat_map(char::to_uppercase).chain(app.chars().skip(1)).collect();
+    let mut paths = Vec::new();
+    for name in [display, capitalised.as_str()] {
+        for folder in ["Library/Application Support", "Library/Caches", "Library/Preferences"] {
+            paths.push(home.join(folder).join(name));
+        }
+    }
+    paths.push(home.join("Library/Caches").join(stable));
+    paths.push(home.join("Library/Preferences").join(format!("{stable}.plist")));
+    paths.push(home.join("Library/Saved Application State").join(format!("{stable}.savedState")));
+    paths.push(home.join("Library/WebKit").join(stable));
+    paths.push(home.join("Library/HTTPStorages").join(stable));
+    paths.push(home.join("Applications").join(format!("{display}.app")));
+    paths.push(PathBuf::from("/Applications").join(format!("{display}.app")));
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+/// The stable copy the Nightly namespace must stay clear of, named by this row's own app.
+#[cfg(any(target_os = "macos", test))]
+fn mac_stable_paths(adapter: Adapter, home: &Path) -> Vec<PathBuf> {
+    let stable =
+        artcraft_launcher_core::CraftApp::by_id(adapter.app()).map_or_else(|| format!("ai.storyteller.{}", adapter.app()), |app| app.bundle_id());
+    mac_stable_paths_for(adapter.app(), adapter.display(), &stable, home)
+}
+
+/// The Linux equivalents: the XDG roots for this row's app and its usual system install paths.
+#[cfg(any(target_os = "linux", test))]
+fn linux_stable_paths(adapter: Adapter, home: &Path, roots: [Option<std::ffi::OsString>; 4]) -> Result<Vec<PathBuf>, String> {
+    let app = adapter.app();
+    let [config, data, cache, state] = roots;
     let mut protected = Vec::new();
-    #[cfg(target_os = "linux")]
-    for (variable, fallback) in
-        [("XDG_CONFIG_HOME", ".config"), ("XDG_DATA_HOME", ".local/share"), ("XDG_CACHE_HOME", ".cache"), ("XDG_STATE_HOME", ".local/state")]
-    {
-        let base = xdg_root(std::env::var_os(variable), &home, fallback);
+    for (value, fallback) in [(config, ".config"), (data, ".local/share"), (cache, ".cache"), (state, ".local/state")] {
+        let base = xdg_root(value, home, fallback);
         if !base.is_absolute() {
             return Err("A stable XDG root is relative; nightly isolation cannot be established.".into());
         }
-        protected.push(base.join("photocraft"));
+        protected.push(base.join(app));
     }
+    protected.extend([PathBuf::from("/usr/bin").join(app), PathBuf::from("/usr/local/bin").join(app), PathBuf::from("/opt").join(app)]);
+    Ok(protected)
+}
+
+pub(crate) fn validate_namespaces(adapter: Adapter, paths: &Paths) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("No home directory is available for the nightly isolation check.")?;
+    let app = adapter.app();
+    let mut protected = Vec::new();
     #[cfg(target_os = "linux")]
-    protected.extend([PathBuf::from("/usr/bin/photocraft"), PathBuf::from("/usr/local/bin/photocraft"), PathBuf::from("/opt/photocraft")]);
+    protected.extend(linux_stable_paths(
+        adapter,
+        &home,
+        [
+            std::env::var_os("XDG_CONFIG_HOME"),
+            std::env::var_os("XDG_DATA_HOME"),
+            std::env::var_os("XDG_CACHE_HOME"),
+            std::env::var_os("XDG_STATE_HOME"),
+        ],
+    )?);
     #[cfg(target_os = "macos")]
-    {
-        for relative in [
-            "Library/Application Support/Photocraft",
-            "Library/Application Support/PhotoCraft",
-            "Library/Caches/Photocraft",
-            "Library/Caches/ai.storyteller.photocraft",
-            "Library/Preferences/Photocraft",
-            "Library/Caches/PhotoCraft",
-            "Library/Preferences/ai.storyteller.photocraft.plist",
-            "Library/Saved Application State/ai.storyteller.photocraft.savedState",
-            "Library/WebKit/ai.storyteller.photocraft",
-            "Library/HTTPStorages/ai.storyteller.photocraft",
-            "Applications/PhotoCraft.app",
-        ] {
-            protected.push(home.join(relative));
-        }
-        protected.push(PathBuf::from("/Applications/PhotoCraft.app"));
-    }
+    protected.extend(mac_stable_paths(adapter, &home));
     if !cfg!(any(target_os = "linux", target_os = "macos")) {
         let _ = &home;
         return Err("No nightly isolation contract is staged for this Unix platform.".into());
@@ -132,7 +165,7 @@ pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
     // Read only the stable Launcher's existing record for an additional custom installation
     // fence. Never adopt it, detect an OS package or use it as a fallback installation.
     let stable_data = paths.data.parent().and_then(Path::parent).ok_or("The nightly data folder has no stable namespace owner.")?;
-    protected.push(stable_data.join("apps/photocraft"));
+    protected.push(stable_data.join("apps").join(app));
     let stable_manifest = stable_data.join("installed.json");
     match std::fs::symlink_metadata(&stable_manifest) {
         Ok(_) => {
@@ -147,7 +180,7 @@ pub(crate) fn validate_namespaces(paths: &Paths) -> Result<(), String> {
             }
             let manifest: crate::manifest::Manifest =
                 serde_json::from_slice(&bytes).map_err(|_| "The stable ownership record cannot be checked safely.")?;
-            if let Some(record) = manifest.apps.get("photocraft") {
+            if let Some(record) = manifest.apps.get(app) {
                 protected.push(record.path.clone());
             }
         }
@@ -164,21 +197,22 @@ fn notice(text: &str) -> bool {
 
 // No arbitrary executable/resource tree is admitted. If the real signed package needs a
 // native framework or dependency, its inventory must be reviewed before this private row grows.
-fn mac_entry(path: &Path) -> bool {
-    const CONTENTS: &str = "PhotoCraft Nightly.app/Contents";
-    let text = path.to_str().unwrap_or("");
-    if ["PhotoCraft Nightly.app", CONTENTS].contains(&text) {
+fn mac_entry(adapter: Adapter, path: &Path) -> bool {
+    let Some((folder, _)) = adapter.bundle() else { return false };
+    let contents = format!("{folder}/Contents");
+    let Some(text) = path.to_str() else { return false };
+    if text == folder || text == contents {
         return true;
     }
-    let Ok(relative) = path.strip_prefix(CONTENTS) else { return false };
-    let Some(relative) = relative.to_str() else { return false };
+    let Some(relative) = text.strip_prefix(contents.as_str()).and_then(|rest| rest.strip_prefix('/')) else { return false };
+    let executable = adapter.executable().file_name().and_then(|name| name.to_str()).unwrap_or("");
+    let badge_prefix = format!("{contents}/");
+    let badge = adapter.badge().and_then(|badge| badge.to_str()).and_then(|badge| badge.strip_prefix(badge_prefix.as_str()));
     [
         "Info.plist",
         "PkgInfo",
         "MacOS",
-        "MacOS/PhotoCraft",
         "Resources",
-        "Resources/photocraft-nightly.icns",
         "Resources/docs",
         "_CodeSignature",
         "_CodeSignature/CodeResources",
@@ -186,39 +220,51 @@ fn mac_entry(path: &Path) -> bool {
         "CodeResources",
     ]
     .contains(&relative)
+        || relative == format!("MacOS/{executable}")
+        || badge == Some(relative)
         || relative.strip_prefix("Resources/docs/").is_some_and(notice)
 }
 
 fn layout(adapter: Adapter, files: &[PathBuf], entries: &[PathBuf]) -> Result<(), String> {
-    if !files.iter().any(|file| file == adapter.executable()) {
+    if !matches!(adapter.os(), Os::Linux | Os::MacOs) {
+        return Err("This is not a Unix nightly flavor.".into());
+    }
+    let executable = adapter.executable();
+    if !files.iter().any(|file| file == executable) {
         return Err("The nightly archive is missing its source-owned GUI executable.".into());
     }
-    let badge = match adapter {
-        Adapter::PhotoCraftLinuxV1 => Path::new("photocraft-nightly.png"),
-        Adapter::PhotoCraftMacV1 => Path::new("PhotoCraft Nightly.app/Contents/Resources/photocraft-nightly.icns"),
-        Adapter::PhotoCraftWindowsV1 => return Err("This is not a Unix nightly flavor.".into()),
-    };
-    if !files.iter().any(|file| file == badge) {
+    if let Some(binary) = adapter.binary()
+        && !files.iter().any(|file| file == binary)
+    {
+        return Err("The nightly archive is missing the program its launcher script starts.".into());
+    }
+    if let Some(badge) = adapter.badge()
+        && !files.iter().any(|file| file == badge)
+    {
         return Err("The nightly archive is missing its declared badge resource.".into());
     }
     for entry in entries {
         safe_relative(entry)?;
         let text = entry.to_str().ok_or("Invalid nightly path.")?;
-        let allowed = match adapter {
-            Adapter::PhotoCraftLinuxV1 => {
-                entry.components().count() == 1 && (text == "photocraft" || text == "photocraft-nightly.png" || notice(text))
+        let allowed = match adapter.os() {
+            Os::Linux => {
+                entry.components().count() == 1
+                    && (entry == executable
+                        || adapter.binary().is_some_and(|binary| entry == binary)
+                        || adapter.badge().is_some_and(|badge| entry == badge)
+                        || notice(text))
             }
-            Adapter::PhotoCraftMacV1 => mac_entry(entry),
-            Adapter::PhotoCraftWindowsV1 => false,
+            _ => mac_entry(adapter, entry),
         };
         if !allowed {
             return Err("The nightly archive contains content outside its dedicated GUI flavor.".into());
         }
     }
-    if adapter == Adapter::PhotoCraftMacV1
-        && files.iter().any(|file| file.starts_with("PhotoCraft Nightly.app/Contents/MacOS") && file != adapter.executable())
-    {
-        return Err("The nightly bundle contains an unexpected command-line executable.".into());
+    if let Some((folder, _)) = adapter.bundle() {
+        let macos = Path::new(folder).join("Contents/MacOS");
+        if files.iter().any(|file| file.starts_with(&macos) && file != executable) {
+            return Err("The nightly bundle contains an unexpected command-line executable.".into());
+        }
     }
     Ok(())
 }
@@ -264,6 +310,7 @@ fn write_entry(
     output.sync_all().map_err(|e| e.to_string())
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn extract_tar(file: &Path, preparation: &mut crate::nightly_transaction::Preparation<'_>) -> Result<Inventory, String> {
     let input = std::fs::File::open(file).map_err(|e| e.to_string())?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(input));
@@ -323,9 +370,19 @@ fn exact_full_version(found: Option<&str>, expected: &str) -> bool {
     version.pre.as_str().split('.').next() == Some("nightly") && found == Some(version.to_string().as_str())
 }
 
+/// The plist key carrying the full prerelease version: `<Display>Version`, the same shape for
+/// every app (`PhotoCraftVersion`, `CADCraftVersion`), taken from the row rather than guessed.
+#[cfg(any(target_os = "macos", test))]
+fn mac_version_key(display: &str) -> String {
+    format!("{display}Version")
+}
+
 #[cfg(target_os = "macos")]
-fn verify_mac_metadata(root: &Path, version: &str) -> Result<(), String> {
-    let bundle = root.join("PhotoCraft Nightly.app");
+fn verify_mac_metadata(adapter: Adapter, root: &Path, version: &str) -> Result<(), String> {
+    let (folder, bundle_id) = adapter.bundle().ok_or("This nightly flavor declares no macOS bundle.")?;
+    let version_key = mac_version_key(adapter.display());
+    let executable = adapter.executable().file_name().and_then(|name| name.to_str());
+    let bundle = root.join(folder);
     let plist_path = bundle.join("Contents/Info.plist");
     if regular(&plist_path)?.len() > 1024 * 1024 {
         return Err("The nightly Info.plist is too large to check safely.".into());
@@ -337,48 +394,93 @@ fn verify_mac_metadata(root: &Path, version: &str) -> Result<(), String> {
     }
     let value = plist::Value::from_reader(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
     let dict = value.as_dictionary().ok_or("The nightly bundle has no plist dictionary.")?;
-    if dict.get("CFBundleIdentifier").and_then(plist::Value::as_string) != Some("ai.storyteller.photocraft.nightly")
-        || dict.get("CFBundleExecutable").and_then(plist::Value::as_string) != Some("PhotoCraft")
-        || !exact_full_version(dict.get("PhotoCraftVersion").and_then(plist::Value::as_string), version)
+    if dict.get("CFBundleIdentifier").and_then(plist::Value::as_string) != Some(bundle_id)
+        || dict.get("CFBundleExecutable").and_then(plist::Value::as_string) != executable
+        || !exact_full_version(dict.get(&version_key).and_then(plist::Value::as_string), version)
         || dict.contains_key("CFBundleDocumentTypes")
         || dict.contains_key("CFBundleURLTypes")
     {
-        return Err("The nightly bundle identity, full PhotoCraftVersion or association policy does not match.".into());
+        return Err("The nightly bundle identity, full version or association policy does not match.".into());
     }
     Ok(())
 }
+
 #[cfg(target_os = "macos")]
-fn verify_mac(root: &Path, version: &str) -> Result<(), String> {
-    verify_mac_metadata(root, version)?;
-    let bundle = root.join("PhotoCraft Nightly.app");
-    let executable = root.join(Adapter::PhotoCraftMacV1.executable());
+fn verify_mac(adapter: Adapter, root: &Path, version: &str) -> Result<(), String> {
+    verify_mac_metadata(adapter, root, version)?;
+    let (folder, _) = adapter.bundle().ok_or("This nightly flavor declares no macOS bundle.")?;
+    let bundle = root.join(folder);
+    let executable = root.join(adapter.executable());
     let path = executable.to_str().ok_or("The nightly executable path cannot be checked losslessly.")?;
     let architecture = crate::process::run_with_output("/usr/bin/lipo", &["-archs", path], std::time::Duration::from_secs(60))?;
     if !architecture.success || architecture.stdout.trim() != "arm64" {
         return Err("The nightly bundle is not the source-owned aarch64 target.".into());
     }
-    verify_mac_signature(&bundle, crate::process::run_with_output)
+    verify_mac_signature(adapter, &bundle, crate::process::run_with_output)
 }
 
 /// The stable Mac checks (integrity, Developer ID identity, notarization, Gatekeeper policy),
-/// with the source-owned Nightly team and only the Nightly bundle identifier.
+/// with this app's source-owned Nightly team and only its Nightly bundle identifier.
 #[cfg(target_os = "macos")]
 fn verify_mac_signature(
+    adapter: Adapter,
     bundle: &Path,
     run: impl FnMut(&str, &[&str], std::time::Duration) -> Result<crate::process::RunOutput, String>,
 ) -> Result<(), String> {
-    let app = artcraft_launcher_core::CraftApp::by_id("photocraft").ok_or("Unknown nightly app.")?;
-    let team = crate::nightly_profile::mac_team()?;
+    let app = artcraft_launcher_core::CraftApp::by_id(adapter.app()).ok_or("Unknown nightly app.")?;
+    let team = crate::nightly_profile::mac_team(adapter.app())?;
+    let (_, bundle_id) = adapter.bundle().ok_or("This nightly flavor declares no macOS bundle.")?;
     // Pin only the Nightly identifier. Never accept the stable/former identifiers here.
-    let identity = artcraft_launcher_core::CraftApp { bundle: Some("ai.storyteller.photocraft.nightly"), former_bundles: &[], ..*app };
+    let identity = artcraft_launcher_core::CraftApp { bundle: Some(bundle_id), former_bundles: &[], ..*app };
     crate::install::macos_verify::verify_with(&identity, bundle, team, run)
 }
 
+/// Only the entrypoint and, when the row has one, the program its launcher script starts may be
+/// executable; every notice, badge and resource stays plain data.
 fn verify_content(adapter: Adapter, root: &Path, files: &[PathBuf]) -> Result<(), String> {
+    let executable = adapter.executable();
     for file in files {
-        if file != adapter.executable() && regular(&root.join(file))?.permissions().mode() & 0o111 != 0 {
+        if file != executable
+            && !adapter.binary().is_some_and(|binary| file == binary)
+            && regular(&root.join(file))?.permissions().mode() & 0o111 != 0
+        {
             return Err("The nightly archive contains an unexpected executable notice or resource.".into());
         }
+    }
+    Ok(())
+}
+
+/// The x86_64 Linux header every app's GUI program must still carry.
+#[cfg(any(target_os = "linux", test))]
+fn elf_x86_64(path: &Path) -> Result<(), String> {
+    let mut header = [0u8; 20];
+    std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut header)).map_err(|e| e.to_string())?;
+    if &header[..7] != b"\x7fELF\x02\x01\x01" || header[18..20] != [62, 0] || !matches!(header[16..18], [2, 0] | [3, 0]) {
+        return Err("The nightly GUI is not an x86_64 Linux ELF executable.".into());
+    }
+    Ok(())
+}
+
+/// A row with a separate binary ships a launcher script that hands over to it (Infra starts the
+/// script, never `<app>-bin`). That entrypoint is either an ELF too or a `#!` text program.
+#[cfg(any(target_os = "linux", test))]
+fn verify_linux_structure(adapter: Adapter, root: &Path, entrypoint: &Path) -> Result<(), String> {
+    let Some(binary) = adapter.binary() else {
+        // PhotoCraft ships its GUI program itself, with no launcher script in between.
+        return elf_x86_64(entrypoint);
+    };
+    let binary = root.join(binary);
+    if regular(&binary)?.permissions().mode() & 0o111 == 0 {
+        return Err("The program beside the nightly launcher script is not executable.".into());
+    }
+    elf_x86_64(&binary)?;
+    if elf_x86_64(entrypoint).is_ok() {
+        return Ok(());
+    }
+    let mut head = [0u8; 2];
+    let mut file = std::fs::File::open(entrypoint).map_err(|e| e.to_string())?;
+    if file.read_exact(&mut head).is_err() || &head != b"#!" {
+        return Err("The nightly launcher script does not start with a shebang.".into());
     }
     Ok(())
 }
@@ -389,26 +491,18 @@ fn verify_structure(adapter: Adapter, root: &Path, version: &str) -> Result<(), 
     if meta.permissions().mode() & 0o111 == 0 {
         return Err("The nightly GUI program is not executable.".into());
     }
-    match adapter {
-        Adapter::PhotoCraftLinuxV1 if cfg!(target_os = "linux") => {
-            let mut header = [0u8; 20];
-            std::fs::File::open(executable).and_then(|mut file| file.read_exact(&mut header)).map_err(|e| e.to_string())?;
-            if &header[..7] != b"\x7fELF\x02\x01\x01" || header[18..20] != [62, 0] || !matches!(header[16..18], [2, 0] | [3, 0]) {
-                return Err("The nightly GUI is not an x86_64 Linux ELF executable.".into());
-            }
-            Ok(())
-        }
+    let _ = version;
+    match adapter.os() {
+        #[cfg(target_os = "linux")]
+        Os::Linux => verify_linux_structure(adapter, root, &executable),
         #[cfg(target_os = "macos")]
-        Adapter::PhotoCraftMacV1 => verify_mac_metadata(root, version),
-        _ => {
-            let _ = version;
-            Err("This nightly adapter is not available on the current platform.".into())
-        }
+        Os::MacOs => verify_mac_metadata(adapter, root, version),
+        _ => Err("This nightly adapter is not available on the current platform.".into()),
     }
 }
 
 pub(crate) fn validate_record(adapter: Adapter, paths: &Paths, record: &Record) -> Result<(), String> {
-    validate_namespaces(paths)?;
+    validate_namespaces(adapter, paths)?;
     let root = paths.apps().join(adapter.app());
     directory(&root)?;
     if record.path != root.join(adapter.executable()) || record.files.len() > MAX_FILES || !record.files.contains(&record.path) {
@@ -437,8 +531,8 @@ pub(crate) fn validate_record(adapter: Adapter, paths: &Paths, record: &Record) 
 fn verify_program(adapter: Adapter, root: &Path, version: &str) -> Result<(), String> {
     verify_structure(adapter, root, version)?;
     #[cfg(target_os = "macos")]
-    if adapter == Adapter::PhotoCraftMacV1 {
-        verify_mac(root, version)?;
+    if adapter.os() == Os::MacOs {
+        verify_mac(adapter, root, version)?;
     }
     Ok(())
 }
@@ -497,10 +591,11 @@ pub(crate) fn install_with_checkpoints(
     let root = paths.apps().join(adapter.app());
     let prepared = (|| {
         preparation.directories(Path::new("unpacked"))?;
-        let inventory = match adapter {
-            Adapter::PhotoCraftLinuxV1 if cfg!(target_os = "linux") => extract_tar(file, &mut preparation)?,
+        let inventory = match adapter.os() {
+            #[cfg(target_os = "linux")]
+            Os::Linux => extract_tar(file, &mut preparation)?,
             #[cfg(target_os = "macos")]
-            Adapter::PhotoCraftMacV1 => extract_zip(file, &mut preparation)?,
+            Os::MacOs => extract_zip(file, &mut preparation)?,
             _ => return Err("The Nightly archive format is unsupported on this platform.".into()),
         };
         let unpacked = preparation.path().join("unpacked");

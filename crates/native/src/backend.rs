@@ -9,8 +9,8 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
-    Source, VersionTrack,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED_BY_CONNECTION,
+    PausedDownload, Source, VersionTrack, is_paused,
 };
 use artcraft_launcher_core::release::{Asset, Priority, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
@@ -104,7 +104,18 @@ impl HostDetection {
         match self {
             Self::System => crate::detect::detect(app, manifest, snapshot),
             #[cfg(test)]
-            Self::Stub(host) => crate::detect::from_manifest(app, manifest).or_else(|| host(app)),
+            Self::Stub(host) => crate::detect::from_manifest(app, manifest)
+                .or_else(|| host(app).map(|found| crate::detect::with_recorded_release(found, manifest.releases.get(app.id)))),
+        }
+    }
+
+    /// What the system itself has registered of `app`, leaving out the launcher's own records: the
+    /// copy a Windows Installer package just put in.
+    fn registered(&self, app: &CraftApp) -> Option<Installed> {
+        match self {
+            Self::System => crate::detect::detect(app, &Manifest::default(), &self.snapshot()),
+            #[cfg(test)]
+            Self::Stub(host) => host(app),
         }
     }
 }
@@ -548,17 +559,36 @@ impl NativeBackend {
         std::thread::spawn(move || {
             let _busy = busy;
             let initial = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            let refreshed = match platform
-                .and_then(|platform| CraftApp::by_id("photocraft").and_then(|app| crate::nightly_profile::for_app(app, platform).ok()))
-            {
-                Some(adapter) => match crate::nightly_transaction::refresh(&paths, adapter) {
-                    Ok(manifest) => Some(manifest),
-                    Err(error) => {
-                        shared.emit(Event::Notice { app: "photocraft".into(), result: Err(error) });
-                        crate::nightly_transaction::stored_manifest(&paths).ok()
+            // Every app with a separate channel recovers its own interrupted transaction; a
+            // failure is reported against that app, and an unreadable manifest stays a read error
+            // rather than an empty one.
+            let adapters: Vec<_> = platform
+                .map(|platform| {
+                    artcraft_launcher_core::hosted_catalog::apps()
+                        .iter()
+                        .chain(std::iter::once(&LAUNCHER))
+                        .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
+                        .filter_map(|app| crate::nightly_profile::for_app(app, platform).ok())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let refreshed = if adapters.is_empty() {
+                Some(Manifest::default())
+            } else {
+                let mut refreshed = None;
+                let mut failed = false;
+                for adapter in adapters {
+                    match crate::nightly_transaction::refresh(&paths, adapter) {
+                        Ok(manifest) => refreshed = Some(manifest),
+                        Err(error) => {
+                            failed = true;
+                            shared.emit(Event::Notice { app: adapter.app().into(), result: Err(error) });
+                        }
                     }
-                },
-                None => Some(Manifest::default()),
+                }
+                // A manifest read from any app is the shared record; only when none succeeded does
+                // the stored manifest's own read decide between "no copy" and "unreadable".
+                if failed && refreshed.is_none() { crate::nightly_transaction::stored_manifest(&paths).ok() } else { refreshed }
             };
             // An unreadable manifest is not evidence that no copy is owned: keep the last known
             // record and publish nothing until a successful read can say what exists.
@@ -707,7 +737,15 @@ impl NativeBackend {
     fn check_nightly_at(&self, manual: bool, now: i64) {
         let Some(platform) = self.platform else { return };
         let apps = self.nightly_apps();
+        // A scheduling failure covers the whole sweep, so its notice names the first app in it.
+        let sweep_app = apps.first().map_or(LAUNCHER_ID, |app| app.id);
         let keys: Vec<_> = apps.iter().map(|app| crate::nightly_lookup::key(app, platform)).collect();
+        // An app with a record in the Nightly manifest is installed here: its own Nightly is the copy
+        // its user is running, so it is refreshed hourly and first in every sweep.
+        let installed: std::collections::BTreeSet<String> = {
+            let manifest = self.shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            apps.iter().filter(|app| manifest.apps.contains_key(app.id)).map(|app| crate::nightly_lookup::key(app, platform)).collect()
+        };
         let (chosen, generation) = {
             let options = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
             if !options.nightly_enabled {
@@ -722,10 +760,10 @@ impl NativeBackend {
                     report_installable(app, &self.shared, self.platform);
                 }
                 self.shared
-                    .emit(Event::Notice { app: "photocraft".into(), result: Err(format!("Nightly scheduling metadata is unavailable: {error}")) });
+                    .emit(Event::Notice { app: sweep_app.into(), result: Err(format!("Nightly scheduling metadata is unavailable: {error}")) });
                 return;
             }
-            let chosen = state.begin(&keys, now, manual, true);
+            let chosen = state.begin(&keys, &installed, now, manual, true);
             if chosen.is_empty() {
                 drop(state);
                 drop(options);
@@ -741,7 +779,7 @@ impl NativeBackend {
                     report_installable(app, &self.shared, self.platform);
                 }
                 self.shared
-                    .emit(Event::Notice { app: "photocraft".into(), result: Err(format!("Could not persist Nightly scheduling metadata: {error}")) });
+                    .emit(Event::Notice { app: sweep_app.into(), result: Err(format!("Could not persist Nightly scheduling metadata: {error}")) });
                 return;
             }
             (chosen, state.generation)
@@ -756,9 +794,14 @@ impl NativeBackend {
             shared.emit(Event::CheckStarted);
             // One sweep and one request at a time. All admitted app lookups share this deadline.
             let started = Instant::now();
-            // Opening the page or pressing its check is the user's own action.
-            let priority = if manual { Priority::User } else { Priority::Discovery };
-            for app in apps.into_iter().filter(|app| chosen.contains(&crate::nightly_lookup::key(app, platform))) {
+            // `begin` decided the order: installed copies first, then the front of the queue.
+            let by_key: std::collections::BTreeMap<String, CraftApp> =
+                apps.into_iter().map(|app| (crate::nightly_lookup::key(&app, platform), app)).collect();
+            // When the launcher's own budget held this sweep back, so the page can say it is waiting
+            // for GitHub instead of reporting a finished check that found nothing.
+            let mut held_back_until = None;
+            for (index, key) in chosen.iter().enumerate() {
+                let Some(app) = by_key.get(key).copied() else { continue };
                 let enabled = || {
                     shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
                         && shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).generation == generation
@@ -766,9 +809,19 @@ impl NativeBackend {
                 if !enabled() {
                     break;
                 }
+                // The user's own check outranks a background one; an installed copy outranks an app
+                // nobody has installed, which is what keeps discovery inside its budget.
+                let priority = if manual {
+                    Priority::User
+                } else if installed.contains(key) {
+                    Priority::Installed
+                } else {
+                    Priority::Discovery
+                };
                 let backoff = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
                 let outcome = if let Some(retry_at) = backoff {
                     crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
+                        over_budget: false,
                         why: "Nightly discovery is waiting for server backoff.".into(),
                         retry_at: Some(retry_at),
                     })
@@ -783,15 +836,37 @@ impl NativeBackend {
                     )
                 } else {
                     crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
+                        over_budget: false,
                         why: "Secure Nightly connections are unavailable.".into(),
                         retry_at: None,
                     })
                 };
+                if let crate::nightly_lookup::Outcome::Indeterminate(error) = &outcome
+                    && error.over_budget
+                {
+                    // The launcher's own budget refused this lookup and the ones behind it: no app
+                    // failed, so every remaining one goes back where it was and keeps its place in
+                    // the queue instead of waiting out a cadence for a request never made.
+                    let mut state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                    for later in &chosen[index..] {
+                        state.defer(later);
+                    }
+                    if let Err(error) = state.save(&paths) {
+                        log::warn!("Could not persist deferred Nightly scheduling: {error}");
+                    }
+                    held_back_until = http.as_ref().and_then(|http| http.nightly_budget_retry_at(priority, crate::now()));
+                    break;
+                }
                 finish_nightly_result(&app, platform, generation, outcome, &shared, &paths);
             }
             drop(lease);
             let retry = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
-            shared.emit(Event::CheckFinished { at: crate::now(), source: Source::GitHubApi, rate_limited_until: retry });
+            shared.emit(Event::CheckFinished {
+                at: crate::now(),
+                source: Source::GitHubApi,
+                // A server's backoff, or the launcher's own budget: both mean "ask again at this time".
+                rate_limited_until: retry.or(held_back_until),
+            });
         }));
     }
 
@@ -918,7 +993,7 @@ impl NativeBackend {
                     }
                     Ok(())
                 }
-                Work::Replace(_) | Work::Install(Some(_)) => {
+                Work::Replace(_) | Work::Install(Some(_)) | Work::Chosen(_) => {
                     Err("Nightly cannot replace a Stable/custom path or join a shared installer batch.".into())
                 }
             }
@@ -1011,7 +1086,8 @@ impl NativeBackend {
                     match &existing {
                         Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
                             let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                            if m.apps.remove(app.id).is_some() {
+                            let released = m.releases.remove(app.id).is_some();
+                            if m.apps.remove(app.id).is_some() || released {
                                 let _ = m.save(&paths.manifest());
                             }
                             format!("{} was removed", app.name)
@@ -1022,7 +1098,11 @@ impl NativeBackend {
                     let (approved, batch) = match &work {
                         Work::Replace(path) => (Some(path.as_str()), None),
                         Work::Install(batch) => (None, batch.clone()),
-                        Work::Uninstall | Work::Launch(_) => (None, None),
+                        Work::Uninstall | Work::Launch(_) | Work::Chosen(_) => (None, None),
+                    };
+                    let by_name = match &work {
+                        Work::Chosen(chosen) => Some(chosen),
+                        _ => None,
                     };
                     let r = run_install(
                         app,
@@ -1038,12 +1118,12 @@ impl NativeBackend {
                         source.as_deref(),
                         batch,
                         place,
+                        by_name,
                     );
                     // Stopped by the connection rather than by the user: say so, and how to go on.
+                    // Still a pause (`protocol::is_paused`), so the UI keeps the request by name.
                     match r {
-                        Err(e) if e == PAUSED && stop.check().is_ok() => {
-                            Err("The download paused because the connection keeps dropping. Press Resume to continue where it stopped.".into())
-                        }
+                        Err(e) if is_paused(&e) && stop.check().is_ok() => Err(PAUSED_BY_CONNECTION.into()),
                         other => other,
                     }
                 };
@@ -1221,12 +1301,24 @@ enum Work {
     Replace(String),
     Uninstall,
     Launch(Vec<String>),
+    /// Install the release the person picked by name (see [`Command::InstallChosen`]).
+    Chosen(Chosen),
 }
 
-fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
+/// The release the person picked by name in the version dialog, and the release they agreed may be
+/// put back instead of the installed version if going back fails ([`Event::GoBackFallback`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Chosen {
+    tag: String,
+    fallback: Option<String>,
+}
+
+/// Whether `release` may be installed on `track`. The app stays part of the call because the
+/// track is its own choice; that a Nightly is never an ordinary release is now shared policy.
+fn release_matches_track(_app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
     match track {
         VersionTrack::Stable => {
-            artcraft_launcher_core::release::ordinary_release_allowed(app.has_separate_nightly_channel(), release)
+            artcraft_launcher_core::release::ordinary_release_allowed(release)
                 && (prereleases || (!release.prerelease && release.version.as_ref().is_some_and(version::is_stable)))
         }
         VersionTrack::Nightly => artcraft_launcher_core::release::is_nightly(release),
@@ -1234,35 +1326,61 @@ fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack
     }
 }
 
-/// Whether `chosen` is a version picked by name that is older than the installed copy.
-fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>) -> bool {
-    let VersionTrack::Pinned(tag) = track else {
-        return false;
-    };
+/// Whether `chosen` is a version picked by name that is older than the installed copy: the pinned
+/// version, or the release `by_name` says the person picked in the version dialog
+/// ([`Command::InstallChosen`]), on any track. A release a check found on its own (the latest one)
+/// never is, so a feed can't send an app back to an older build.
+fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>, by_name: Option<&Chosen>) -> bool {
+    let named = by_name.is_some_and(|c| c.tag == chosen.tag) || matches!(track, VersionTrack::Pinned(tag) if chosen.tag == *tag);
     let (Some(chosen_v), Some(installed_v)) = (chosen.version.as_ref(), existing.and_then(|i| i.version.as_ref())) else {
         return false;
     };
-    chosen.tag == *tag && version::is_newer(installed_v, chosen_v)
+    named && version::is_newer(installed_v, chosen_v)
 }
 
-/// For a version chosen by name that is older than the installed copy: the installed version's own
-/// published release, to put back if the downgrade fails. `None` for anything else, without
-/// asking `list`. An error means the downgrade can't be made safe, so it must not start.
+/// Why going back can't start yet.
+#[derive(Debug, PartialEq, Eq)]
+enum NoWayBack {
+    /// Nothing changed, and nothing will until something else does.
+    Refused(String),
+    /// Only this release can be put back
+    /// ([`RestorePoint::SameNumbers`](artcraft_launcher_core::rollback::RestorePoint::SameNumbers)): the person decides.
+    Ask(Box<Release>),
+}
+
+/// For a version chosen by name that is older than the installed copy: the release to put back if
+/// the downgrade fails ([`artcraft_launcher_core::rollback::restore_point`]), the installed
+/// version's own or, once the person agreed to it (`by_name`'s `fallback`), a pre-release with its
+/// numbers. `recorded`: the launcher's own record says which release the copy is. `None` for
+/// anything else, without asking `list`.
 fn downgrade_previous(
     app: &CraftApp,
     track: &VersionTrack,
     chosen: &Release,
     existing: Option<&Installed>,
+    recorded: bool,
+    by_name: Option<&Chosen>,
     list: impl FnOnce() -> Result<Vec<Release>, String>,
-) -> Result<Option<Release>, String> {
-    let Some(installed_v) = existing.and_then(|i| i.version.as_ref()).filter(|_| is_chosen_downgrade(track, chosen, existing)) else {
+) -> Result<Option<Release>, NoWayBack> {
+    use artcraft_launcher_core::rollback::{RestorePoint, restore_point};
+    let Some(installed) = existing.filter(|_| is_chosen_downgrade(track, chosen, existing, by_name)) else {
         return Ok(None);
     };
-    let releases =
-        list().map_err(|e| format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))?;
-    releases.into_iter().find(|r| r.version.as_ref() == Some(installed_v)).map(Some).ok_or_else(|| {
-        format!("{} {installed_v} isn't published any more, so it couldn't be put back if going back fails. Nothing was changed.", app.name)
-    })
+    let installed_v = installed.version.as_ref().map(ToString::to_string).unwrap_or_default();
+    let releases = list().map_err(|e| {
+        NoWayBack::Refused(format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))
+    })?;
+    match restore_point(&releases, installed, chosen, recorded) {
+        RestorePoint::Exact(previous) => Ok(Some(previous.clone())),
+        RestorePoint::SameNumbers(fallback) if by_name.and_then(|c| c.fallback.as_deref()) == Some(fallback.tag.as_str()) => {
+            Ok(Some(fallback.clone()))
+        }
+        RestorePoint::SameNumbers(fallback) => Err(NoWayBack::Ask(Box::new(fallback.clone()))),
+        RestorePoint::None => Err(NoWayBack::Refused(format!(
+            "{} {installed_v} isn't published any more, so it couldn't be put back if going back fails. Nothing was changed.",
+            app.name
+        ))),
+    }
 }
 
 /// What an install does with a Flatpak its repository updates: `flatpak update`, on Linux, and
@@ -1328,6 +1446,7 @@ fn finish_nightly_result(
         let previous = state.record(&key).tag.and_then(|tag| version::parse(&tag));
         if previous.as_ref().zip(next.release().version.as_ref()).is_some_and(|(old, next)| version::is_newer(old, next)) {
             outcome = Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
                 why: "Nightly discovery would regress the previous verified SemVer selection; it was kept stale.".into(),
                 retry_at: None,
             });
@@ -1337,6 +1456,7 @@ fn finish_nightly_result(
         Ok(record) => record,
         Err(error) => {
             outcome = Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
                 why: format!("Could not persist Nightly result metadata: {error}"),
                 retry_at: state.record(&key).retry_at,
             });
@@ -1507,9 +1627,10 @@ fn run_install(
     source: Option<&dyn ReleaseSource>,
     batch: Option<crate::queue::Gather>,
     place: Option<crate::downloads::Place<'static>>,
+    by_name: Option<&Chosen>,
 ) -> Result<String, String> {
     if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
-        if approved.is_some() || batch.is_some() {
+        if approved.is_some() || batch.is_some() || by_name.is_some() {
             return Err("Nightly cannot use Stable replacement or shared installer-batch permission.".into());
         }
         let locations = Default::default();
@@ -1533,6 +1654,7 @@ fn run_install(
             downgrade: None,
             batch: None,
             place,
+            put_back: None,
         };
         return run_nightly_install(app, shared, platform, &mut job);
     }
@@ -1545,6 +1667,10 @@ fn run_install(
         // own update (network, maybe a prompt) so the ready members don't wait for it.
         drop(batch);
         let inst = update?;
+        // Its repository decides the version: a release picked by name can't be installed here.
+        if by_name.is_some() {
+            return Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
+        }
         #[cfg(target_os = "linux")]
         {
             shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
@@ -1577,6 +1703,10 @@ fn run_install(
     }
     let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
     let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
+    // The person picked a release by name: install that one, or nothing.
+    if let Some(chosen) = by_name.filter(|c| c.tag != release.tag) {
+        return Err(format!("{} {} isn't the version to install any more, so nothing was changed. Choose the version again.", app.name, chosen.tag));
+    }
     let http = http.ok_or("secure connections aren't available on this system")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
     // Going back to a version chosen by name. A macOS bundle, a launcher AppImage or Flatpak keeps the old
@@ -1586,11 +1716,40 @@ fn run_install(
     let previous = if keeps_old_copy {
         None
     } else {
-        downgrade_previous(app, track, &release, existing, || {
+        // The launcher's own record of which release this registration is (see
+        // `detect::with_recorded_release`): such a copy is never taken for a pre-release.
+        // `existing` is the copy after detection, so a release candidate the launcher recorded
+        // already reads as that candidate; `record_describes` matches the numbers-only version
+        // Windows reports and is then false. That is harmless: `restore_point` finds the published
+        // candidate itself as the exact release and never needs the same-numbers fallback.
+        let recorded = {
+            let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            recorded_copy(&manifest, app, existing)
+        };
+        let previous = downgrade_previous(app, track, &release, existing, recorded, by_name, || {
             source
                 .ok_or_else(|| "secure connections aren't available on this system".to_string())?
                 .versions(&release_query(load_feed(paths).as_ref(), app))
-        })?
+        });
+        match previous {
+            Ok(previous) => previous,
+            Err(NoWayBack::Refused(why)) => return Err(why),
+            // Asked first, like an overwrite: the UI's question answers it.
+            Err(NoWayBack::Ask(fallback)) => {
+                // Only asked when that release has a package to put back.
+                if planned_asset(app, &fallback, platform, options, existing, record).is_none_or(|(_, k)| k != kind) {
+                    return Err(format!("{} {} has no matching download to put back, so nothing was changed.", app.name, fallback.version_label()));
+                }
+                let installed = existing.and_then(|i| i.version.as_ref()).map(ToString::to_string).unwrap_or_default();
+                shared.emit(Event::GoBackFallback {
+                    app: app.id.to_string(),
+                    installed: installed.clone(),
+                    chosen: release.tag.clone(),
+                    fallback: fallback.tag.clone(),
+                });
+                return Err(format!("{} {installed} isn't published, so going back waits for your answer. Nothing was changed.", app.name));
+            }
+        }
     };
     let previous_asset = match &previous {
         Some(p) => Some(
@@ -1602,7 +1761,7 @@ fn run_install(
         None => None,
     };
     let downgrade = if keeps_old_copy {
-        is_chosen_downgrade(track, &release, existing).then_some(install::Downgrade::KeepOldCopy)
+        is_chosen_downgrade(track, &release, existing, by_name).then_some(install::Downgrade::KeepOldCopy)
     } else {
         previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade::Reinstall { previous, asset })
     };
@@ -1636,6 +1795,7 @@ fn run_install(
         downgrade,
         batch: batch.take(),
         place,
+        put_back: None,
     };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1645,7 +1805,22 @@ fn run_install(
         *manifest = updated;
         Ok(())
     };
-    let new_record = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record))?;
+    let new_record = match install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record)) {
+        Ok(new_record) => new_record,
+        Err(e) => {
+            // A failed Windows Installer downgrade that put `previous` back reports which
+            // registration that package is in now; only then is a release recorded for it.
+            if let Some(put_back) = job.put_back.take()
+                && let Some(previous) = previous.as_ref()
+            {
+                remember_put_back(app, shared, paths, previous, &put_back);
+            }
+            return Err(e);
+        }
+    };
+    // Windows Installer keeps only the numbers of the version: remember which release this was.
+    let released =
+        if new_record.is_none() && kind == PackageKind::Msi { installed_release(&release, shared.host.registered(app).as_ref()) } else { None };
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let changed = match new_record {
@@ -1656,11 +1831,58 @@ fn run_install(
             // Installed the platform's own way: any old launcher record is stale.
             None => m.apps.remove(app.id).is_some(),
         };
-        if changed && let Err(e) = m.save(&paths.manifest()) {
+        let release_changed = match released {
+            Some(r) => m.releases.insert(app.id.to_string(), r.clone()).as_ref() != Some(&r),
+            None => m.releases.remove(app.id).is_some(),
+        };
+        if (changed || release_changed)
+            && let Err(e) = m.save(&paths.manifest())
+        {
             log::warn!("couldn't save the install record: {e}");
         }
     }
     Ok(installed_text(app, existing.is_some(), &release))
+}
+
+/// What the launcher keeps of the Windows Installer copy it just installed from `release` (see
+/// [`InstalledRelease`](crate::manifest::InstalledRelease)): the release, tied to the registration
+/// `found` that is there now, when that copy has the release's numbers. `None` when the system
+/// shows no such copy, so nothing unverified is ever recorded.
+fn installed_release(release: &Release, found: Option<&Installed>) -> Option<crate::manifest::InstalledRelease> {
+    let found = found.filter(|f| f.source == artcraft_launcher_core::InstallSource::Msi)?;
+    let (seen, full) = (found.version.as_ref()?, release.version.as_ref()?);
+    let package = found.package.clone().filter(|code| !code.is_empty())?;
+    ((seen.major, seen.minor, seen.patch) == (full.major, full.minor, full.patch) && (seen.pre.is_empty() || seen == full))
+        .then(|| crate::manifest::InstalledRelease { tag: release.tag.clone(), version: full.to_string(), package })
+}
+
+/// Whether the launcher's record says which release the installed copy `existing` is, read
+/// exactly as detection reads it ([`crate::detect::record_describes`], numbers included): only
+/// then may the fallback decision conclude anything from it. A record whose numbers don't match
+/// the copy describes another release, not this one.
+fn recorded_copy(manifest: &Manifest, app: &CraftApp, existing: Option<&Installed>) -> bool {
+    crate::detect::record_describes(existing, manifest.releases.get(app.id))
+}
+
+/// After a Windows Installer downgrade that failed and put `previous` back: the install reports
+/// the registration that package is in now (the one product code, carrying the previous release's
+/// numbers, that the put-back is; see [`install::PutBack`]), and that release is recorded for
+/// exactly that registration. Nothing is read off the registry here, and a put-back after a
+/// removal that stopped partway reports nothing at all — a registration it left behind that
+/// happens to have the same numbers never gets the release, and the copy that was there before
+/// keeps its own.
+fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &Release, put_back: &install::PutBack) {
+    let Some(version) = previous.version.as_ref() else { return };
+    let record =
+        crate::manifest::InstalledRelease { tag: previous.tag.clone(), version: version.to_string(), package: put_back.product_code.clone() };
+    let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+    if m.releases.get(app.id) == Some(&record) {
+        return;
+    }
+    m.releases.insert(app.id.to_string(), record);
+    if let Err(e) = m.save(&paths.manifest()) {
+        log::warn!("couldn't save the install record: {e}");
+    }
 }
 
 /// Whether an install may write over what is at its destination.
@@ -1696,7 +1918,7 @@ fn installed_text(app: &CraftApp, update: bool, release: &Release) -> String {
 /// shared by several apps (Linux packages installed together) can have installed some of them;
 /// any other error, a cancellation or a pause stands, whatever is found afterwards.
 fn landed_despite(error: &str, before: Option<&Installed>, after: Option<&Installed>, latest: &version::Version) -> bool {
-    error != PAUSED && error != CANCELLED && error != INSTALL_CANCELLED && install::failed_in_shared_call(error) && landed(before, after, latest)
+    !is_paused(error) && error != CANCELLED && error != INSTALL_CANCELLED && install::failed_in_shared_call(error) && landed(before, after, latest)
 }
 
 /// Whether an install took, whatever its job reported: `latest` is there now and wasn't before.
@@ -2592,6 +2814,9 @@ impl Backend for NativeBackend {
             Command::Replace { app, path } => {
                 self.start_job(&app, Work::Replace(path));
             }
+            Command::InstallChosen { app, tag, fallback } => {
+                self.start_job(&app, Work::Chosen(Chosen { tag, fallback }));
+            }
             Command::Uninstall { app } => {
                 self.start_job(&app, Work::Uninstall);
             }
@@ -2898,6 +3123,7 @@ mod tests {
             None,
             Some(gather.clone()),
             None,
+            None,
         );
         assert_eq!(result, Err(artcraft_launcher_core::protocol::CANCELLED.into()));
         let seen = seen.lock().unwrap();
@@ -2907,6 +3133,35 @@ mod tests {
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    /// A Flatpak its repository updates can't install a release picked by name: the repository
+    /// decides the version, so the request is refused before `flatpak update` runs.
+    #[test]
+    fn a_release_picked_by_name_never_runs_the_repository_update() {
+        let seen = Arc::new(Mutex::new(0));
+        let mut shared = shared();
+        shared.waker = Arc::new({
+            let seen = seen.clone();
+            move || *seen.lock().unwrap() += 1
+        });
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let installed = Installed {
+            version: version::parse("0.5.0"),
+            source: InstallSource::Flatpak,
+            location: String::new(),
+            package: None,
+            externally_managed: true,
+            origin: None,
+            installation: Some("user".into()),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let picked = Chosen { tag: "v0.4.0".into(), fallback: None };
+        let (options, stop) = (BackendOptions::default(), Stop::default());
+        let paths = Paths::under(dir.path());
+        let result = run_install(app, &shared, &paths, None, None, &options, Some(&installed), None, &stop, None, None, None, None, Some(&picked));
+        assert!(result.as_ref().is_err_and(|e| e.as_str() != artcraft_launcher_core::protocol::CANCELLED), "{result:?}");
+        assert_eq!(*seen.lock().unwrap(), 0, "nothing started: no progress was reported");
     }
 
     /// A "Replace" answer covers the path that was shown, never a destination that changed since.
@@ -2934,11 +3189,15 @@ mod tests {
             installation: None,
         };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
-        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None));
+        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None, None));
+        // The latest release, picked by name in the version dialog, goes back; found by a check, it doesn't.
+        let picked = Chosen { tag: "v0.13.0".into(), fallback: None };
+        assert!(is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), Some(&picked)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.12.0"), Some(&installed), Some(&picked)));
     }
 
     #[test]
@@ -2956,18 +3215,155 @@ mod tests {
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
         // An update, the latest release, nothing installed, or a stale release: no downgrade.
-        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), never), Ok(None));
-        assert_eq!(downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), never), Ok(None));
-        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, never), Ok(None));
-        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), never), Ok(None));
+        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), false, None, never), Ok(None));
+        assert_eq!(
+            downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), false, None, never),
+            Ok(None)
+        );
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, false, None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), false, None, never), Ok(None));
         // Going back finds the installed version's own release.
-        let found = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
+        let found =
+            downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
         assert_eq!(found.unwrap().map(|r| r.tag), Some("v0.14.0".to_string()));
         // Without it, or without the list, the downgrade doesn't start.
-        let gone = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Ok(vec![tagged("0.13.0")])).unwrap_err();
+        let refused = |result: Result<Option<Release>, NoWayBack>| match result {
+            Err(NoWayBack::Refused(why)) => why,
+            other => panic!("not refused: {other:?}"),
+        };
+        let gone = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Ok(vec![tagged("0.13.0")])));
         assert!(gone.contains("FilmCraft 0.14.0 isn't published any more") && gone.contains("Nothing was changed"), "{gone}");
-        let offline = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Err("offline".into())).unwrap_err();
+        let offline = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Err("offline".into())));
         assert!(offline.contains("(offline)") && offline.contains("nothing was changed"), "{offline}");
+    }
+
+    fn msi_copy(v: &str) -> Installed {
+        Installed {
+            version: version::parse(v),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: Some("{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
+    }
+
+    fn published() -> Vec<Release> {
+        let rc = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        vec![rc, tagged("0.23.1"), tagged("0.23.0")]
+    }
+
+    /// The release candidate the launcher installed reads back as itself (see
+    /// `detect::with_recorded_release`), so going back from it to the latest release finds the
+    /// candidate to put back, whether the latest release was picked in the dialog or pinned.
+    #[test]
+    fn going_back_from_an_installed_release_candidate_puts_the_candidate_back() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let rc = msi_copy("0.24.0-rc.1");
+        let picked = Chosen { tag: "v0.23.1".into(), fallback: None };
+        let back = downgrade_previous(app, &VersionTrack::Stable, &tagged("0.23.1"), Some(&rc), false, Some(&picked), || Ok(published()));
+        assert_eq!(back.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        let pinned = VersionTrack::Pinned("v0.23.0".into());
+        let back = downgrade_previous(app, &pinned, &tagged("0.23.0"), Some(&rc), false, None, || Ok(published()));
+        assert_eq!(back.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        // The candidate itself, chosen again, is the installed version: nothing to go back to.
+        let same = VersionTrack::Pinned("v0.24.0-rc.1".into());
+        let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
+        assert_eq!(downgrade_previous(app, &same, &published()[0], Some(&rc), false, None, never), Ok(None));
+    }
+
+    /// A copy Windows registered as 0.24.0, with no release of that version and no record of what
+    /// was installed: going back to the latest release asks first, then puts back the candidate
+    /// with those numbers if it fails. An answer about another release asks again, and going back
+    /// to anything but the latest release stays refused.
+    #[test]
+    fn a_stuck_installer_copy_goes_back_to_the_latest_release_only_once_the_person_agrees() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let stuck = msi_copy("0.24.0");
+        let latest = tagged("0.23.1");
+        let picked = |fallback: Option<&str>| Chosen { tag: "v0.23.1".into(), fallback: fallback.map(String::from) };
+        let ask = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(None)), || Ok(published()));
+        assert!(matches!(&ask, Err(NoWayBack::Ask(fallback)) if fallback.tag == "v0.24.0-rc.1"), "{ask:?}");
+        let agreed =
+            downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(Some("v0.24.0-rc.1"))), || Ok(published()));
+        assert_eq!(agreed.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        // An answer about another release isn't an answer about this one.
+        let other = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(Some("v0.23.0"))), || Ok(published()));
+        assert!(matches!(other, Err(NoWayBack::Ask(_))), "{other:?}");
+        // A copy the launcher recorded as the final 0.24.0 (since withdrawn) is never taken for the candidate.
+        let recorded = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), true, Some(&picked(None)), || Ok(published()));
+        assert!(matches!(recorded, Err(NoWayBack::Refused(_))), "{recorded:?}");
+        // Not the latest release: refused as before.
+        let older =
+            downgrade_previous(app, &VersionTrack::Pinned("v0.23.0".into()), &tagged("0.23.0"), Some(&stuck), false, None, || Ok(published()));
+        assert!(matches!(older, Err(NoWayBack::Refused(_))), "{older:?}");
+    }
+
+    /// What the launcher records after a Windows Installer install: the release it checked, tied to
+    /// the registration that install left, and nothing when the system shows no copy with its numbers.
+    #[test]
+    fn an_installer_install_records_its_release_only_for_the_copy_it_left() {
+        let rc = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        let recorded = installed_release(&rc, Some(&msi_copy("0.24.0"))).unwrap();
+        assert_eq!((recorded.tag.as_str(), recorded.version.as_str()), ("v0.24.0-rc.1", "0.24.0-rc.1"));
+        assert_eq!(Some(recorded.package), msi_copy("0.24.0").package);
+        assert_eq!(installed_release(&rc, Some(&msi_copy("0.23.1"))), None, "another version is there");
+        assert_eq!(installed_release(&rc, Some(&Installed { package: None, ..msi_copy("0.24.0") })), None, "no registration to tie it to");
+        assert_eq!(installed_release(&rc, Some(&Installed { source: InstallSource::Launcher, ..msi_copy("0.24.0") })), None);
+        assert_eq!(installed_release(&rc, None), None);
+    }
+
+    /// A put-back is recorded for the registration the installer reports it created, never for a
+    /// leftover registration that happens to have the previous version's numbers.
+    #[test]
+    fn a_put_back_is_recorded_for_the_registration_the_installer_reported() {
+        const CREATED: &str = "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}";
+        const LEFTOVER: &str = "{11111111-2222-3333-4444-555555555555}";
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let mut shared = shared();
+        // A different registration with the previous version's numbers is still on the machine.
+        shared.host = HostDetection::Stub(Arc::new(|_| Some(Installed { package: Some(LEFTOVER.into()), ..msi_copy("0.24.0") })));
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let previous = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        remember_put_back(app, &shared, &paths, &previous, &install::PutBack { product_code: CREATED.into() });
+        let recorded = shared.manifest.lock().unwrap().releases.get(app.id).cloned();
+        let wanted = crate::manifest::InstalledRelease { tag: "v0.24.0-rc.1".into(), version: "0.24.0-rc.1".into(), package: CREATED.into() };
+        assert_eq!(recorded, Some(wanted.clone()), "the reported registration, not the leftover one");
+        assert_eq!(Manifest::load(&paths.manifest()).releases.get(app.id), Some(&wanted), "saved for the next detection");
+        // Detection then reads that copy as the release the put-back installed.
+        let read = crate::detect::with_recorded_release(Installed { package: Some(CREATED.into()), ..msi_copy("0.24.0") }, Some(&wanted));
+        assert_eq!(read.version.map(|v| v.to_string()).as_deref(), Some("0.24.0-rc.1"));
+    }
+
+    /// The fallback decision asks whether the record describes the copy the way detection reads
+    /// it: a record whose numbers don't match the copy decides nothing, so the same-numbered
+    /// fallback is offered rather than refused.
+    #[test]
+    fn only_a_record_of_the_copy_itself_decides_what_going_back_may_put_back() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let stuck = msi_copy("0.24.0");
+        let code = stuck.package.clone().unwrap();
+        let record = |tag: &str, version: &str| crate::manifest::InstalledRelease { tag: tag.into(), version: version.into(), package: code.clone() };
+        let mut manifest = Manifest::default();
+        let latest = tagged("0.23.1");
+        let picked = Chosen { tag: "v0.23.1".into(), fallback: None };
+        let outcome = |manifest: &Manifest| {
+            let recorded = recorded_copy(manifest, app, Some(&stuck));
+            downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), recorded, Some(&picked), || Ok(published()))
+        };
+        // The record says the copy is the final 0.24.0 (since withdrawn): never taken for the candidate.
+        manifest.releases.insert(app.id.to_string(), record("v0.24.0", "0.24.0"));
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Refused(_))), "{:?}", outcome(&manifest));
+        // The record's numbers don't match the copy: it describes another release, so detection
+        // keeps what Windows reports and the candidate with the same numbers is put up for a yes.
+        manifest.releases.insert(app.id.to_string(), record("v0.23.5", "0.23.5"));
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Ask(_))), "{:?}", outcome(&manifest));
+        // Another registration is another copy, whatever it reports.
+        let elsewhere = crate::manifest::InstalledRelease { package: "{00000000-0000-0000-0000-000000000000}".into(), ..record("v0.24.0", "0.24.0") };
+        manifest.releases.insert(app.id.to_string(), elsewhere);
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Ask(_))), "{:?}", outcome(&manifest));
     }
 
     /// Going back is a conscious choice: a check for a pinned app reports the pinned release, so
@@ -3029,6 +3425,24 @@ mod tests {
         release.prerelease = true;
         assert!(release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Nightly, false));
         assert!(!release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Stable, false));
+    }
+
+    /// A Nightly is never the Stable track's copy: not for an app with its own Nightly
+    /// channel, and not for one without it (SolidCraft).
+    #[test]
+    fn a_nightly_is_never_a_stable_track_release_for_an_app_without_a_separate_channel() {
+        let app = CraftApp::by_id("solidcraft").unwrap();
+        assert!(!app.has_separate_nightly_channel(), "the community app is the non-roster example");
+        let mut nightly = Release { tag: "v0.9.0-nightly.20261028".into(), version: version::parse("v0.9.0-nightly.20261028"), ..Default::default() };
+        nightly.prerelease = true;
+        for prereleases in [false, true] {
+            assert!(!release_matches_track(app, &nightly, &VersionTrack::Stable, prereleases), "prereleases={prereleases}");
+            assert!(release_matches_track(app, &nightly, &VersionTrack::Nightly, prereleases), "the explicit Nightly track still asks for it");
+        }
+        let mut beta = Release { tag: "v0.9.0-beta.1".into(), version: version::parse("v0.9.0-beta.1"), ..Default::default() };
+        beta.prerelease = true;
+        assert!(!release_matches_track(app, &beta, &VersionTrack::Stable, false), "a plain beta stays behind the Stable track");
+        assert!(release_matches_track(app, &beta, &VersionTrack::Stable, true), "with pre-releases on it is an ordinary candidate");
     }
 
     #[test]
@@ -4737,7 +5151,15 @@ mod tests {
         let landed_after = |error: &str| landed_despite(error, before.as_ref(), after.as_ref(), &latest);
         // An app's own failure stands, even if its new version shows up (an MSI or AppImage that
         // reported an error, a cancelled or dismissed prompt, a pause).
-        for error in ["the Windows Installer stopped with error 1603", "couldn't copy the AppImage", CANCELLED, INSTALL_CANCELLED, PAUSED] {
+        let paused = artcraft_launcher_core::protocol::PAUSED;
+        for error in [
+            "the Windows Installer stopped with error 1603",
+            "couldn't copy the AppImage",
+            CANCELLED,
+            INSTALL_CANCELLED,
+            paused,
+            PAUSED_BY_CONNECTION,
+        ] {
             assert!(!landed_after(error), "{error}");
         }
         // A call shared with other apps may have installed this one before it failed.

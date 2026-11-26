@@ -89,6 +89,12 @@ licensed like those apps. Refresh them from the source path, never redraw them.
 |---|---|---|---|---|
 | `crates/native/tests/fixtures/windows-signed-reference.json` | Signed `pwsh.exe` read-only native-verification reference | Microsoft Corporation | Official PowerShell v7.7.0 `PowerShell-7.7.0-win-x64.zip`, exact URL/archive and root-entry hashes in the manifest | MIT, upstream versioned `LICENSE.txt`; provision externally from the original release, hash before extraction, keep upstream notices alongside it. No binary is vendored, executed, bundled or installed by the test. |
 
+## Reviewed Nightly supply table (not bundled)
+
+| Path | Title | Author | Source | License |
+|---|---|---|---|---|
+| `crates/native/tests/fixtures/nightly-apps.json` | Nightly app registry table (`craft-nightly-registry/v1`): each app's targets, asset patterns, isolation identities and entrypoints | ArtCraft Team | [`storytold/craft-common-actions`](https://github.com/storytold/craft-common-actions) `nightly-apps.json` at commit `2b4eb3d9` (registry win/mac targets), copied verbatim (`crates/native/src/nightly_profile.rs` holds the hand-reviewed copy that actually admits downloads) | MIT OR Apache-2.0 |
+
 ## Native filesystem dependency
 
 | Dependency | Author | Source and version | License |

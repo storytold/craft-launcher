@@ -10,69 +10,208 @@ use artcraft_launcher_core::{Arch, CraftApp, Os, PackageKind, Platform, Release}
 
 use crate::paths::Paths;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Adapter {
-    PhotoCraftWindowsV1,
-    PhotoCraftLinuxV1,
-    PhotoCraftMacV1,
-}
-
-struct Capability {
+/// One source-owned Nightly row: an app on one platform. A row names its payload exactly; it
+/// is not a claim of package or runtime qualification.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Capability {
     platform: Platform,
     os: &'static str,
     arch: &'static str,
     format: &'static str,
     suffix: &'static str,
     app: &'static str,
+    /// The display name its stable copy and data use (`CADCraft`).
+    display: &'static str,
     repository: &'static str,
     package: &'static str,
     profile: &'static str,
     profile_version: u32,
-    adapter: Adapter,
+    /// What the Launcher opens, relative to the program folder.
+    entrypoint: &'static str,
+    /// The program a Linux launcher script starts, beside it (`<app>-bin`), when there is one.
+    binary: Option<&'static str>,
+    /// The Nightly badge the payload must carry, when the row declares one.
+    badge: Option<&'static str>,
+    /// macOS: the `.app` folder at the payload's root and its Nightly bundle identifier.
+    bundle: Option<(&'static str, &'static str)>,
 }
 
-// These are staged source adapters, not claims of package/runtime qualification.
-const CAPABILITIES: [Capability; 3] = [
-    Capability {
-        platform: Platform { os: Os::Windows, arch: Arch::X64 },
-        os: "windows",
-        arch: "x86_64",
-        format: "portable_zip",
-        suffix: "windows-x86_64-nightly.zip",
-        app: "photocraft",
-        repository: "storytold/photocraft",
-        package: "ai.storyteller.photocraft.nightly",
-        profile: "nightly",
-        profile_version: 1,
-        adapter: Adapter::PhotoCraftWindowsV1,
-    },
-    Capability {
-        platform: Platform { os: Os::Linux, arch: Arch::X64 },
-        os: "linux",
-        arch: "x86_64",
-        format: "tar_gz",
-        suffix: "linux-x86_64-nightly.tar.gz",
-        app: "photocraft",
-        repository: "storytold/photocraft",
-        package: "ai.storyteller.photocraft.nightly",
-        profile: "nightly",
-        profile_version: 1,
-        adapter: Adapter::PhotoCraftLinuxV1,
-    },
-    Capability {
-        platform: Platform { os: Os::MacOs, arch: Arch::Arm64 },
-        os: "macos",
-        arch: "aarch64",
-        format: "portable_zip",
-        suffix: "macos-aarch64-nightly.zip",
-        app: "photocraft",
-        repository: "storytold/photocraft",
-        package: "ai.storyteller.photocraft.nightly",
-        profile: "nightly",
-        profile_version: 1,
-        adapter: Adapter::PhotoCraftMacV1,
-    },
+/// An app's Nightly on one platform: a reference to its source-owned row.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Adapter(&'static Capability);
+
+/// `<Display><Os>V1`: the adapter's whole persisted identity. `nightly_lookup::key` puts this into
+/// the Nightly scheduling key it saves on disk, and PhotoCraft's keys have read `PhotoCraftWindowsV1`,
+/// `PhotoCraftLinuxV1` and `PhotoCraftMacV1` since before this table existed. Written by hand, not
+/// derived: a derived Debug would print the row's fields instead, so every existing user's saved
+/// Nightly scheduling state would be silently dropped by an upgrade.
+impl std::fmt::Debug for Adapter {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let os = match self.0.platform.os {
+            Os::Windows => "Windows",
+            Os::Linux => "Linux",
+            Os::MacOs => "Mac",
+            Os::FreeBsd => "FreeBSD",
+        };
+        write!(formatter, "{}{os}V1", self.display())
+    }
+}
+
+// These are staged source adapters, not claims of package/runtime qualification. The rows are
+// copied by hand from storytold/craft-common-actions `nightly-apps.json` (craft-nightly-registry/v1)
+// at commit 2b4eb3d9 (registry-targets, reviewed by launcher-nightly-platforms), checked in
+// unchanged as `crates/native/tests/fixtures/nightly-apps.json`, so review reads the exact table
+// that was copied. Nightly admission inputs are source-owned and reviewed (see `nightly_trust.rs`
+// and docs/nightly-signing.md), never fetched or generated at build time: a registry change alone
+// never admits anything, and it shows up here as a failing fixture test, not as a silent download.
+//
+// One row per app and platform. What a row carries beyond the registry is the platform's convention,
+// not per-app data, so `row!` builds it from the app id and display name with `concat!` (still
+// compile-time constants, still visible in this file): the asset suffix, the Nightly package
+// identity, the entry point, the extra `<app>-bin` program a Linux launcher script starts, and the
+// badge and `.app` bundle a macOS payload must carry. PhotoCraft starts its Linux GUI directly, so
+// its Linux row is `linux-direct`. No Windows or macOS row exists for an app the registry does not
+// name on that platform.
+macro_rules! row {
+    // A Linux Nightly: the `<app>` launcher script with `<app>-bin` beside it.
+    (linux $app:literal, $display:literal, $repository:literal) => {
+        Capability {
+            platform: Platform { os: Os::Linux, arch: Arch::X64 },
+            os: "linux",
+            arch: "x86_64",
+            format: "tar_gz",
+            suffix: "linux-x86_64-nightly.tar.gz",
+            app: $app,
+            display: $display,
+            repository: $repository,
+            package: concat!("ai.storyteller.", $app, ".nightly"),
+            profile: "nightly",
+            profile_version: 1,
+            entrypoint: $app,
+            binary: Some(concat!($app, "-bin")),
+            badge: Some(concat!($app, "-nightly.png")),
+            bundle: None,
+        }
+    };
+    // A Linux Nightly whose entry point is the GUI program itself, with no launcher script.
+    (linux $app:literal, $display:literal, $repository:literal, none) => {
+        Capability {
+            platform: Platform { os: Os::Linux, arch: Arch::X64 },
+            os: "linux",
+            arch: "x86_64",
+            format: "tar_gz",
+            suffix: "linux-x86_64-nightly.tar.gz",
+            app: $app,
+            display: $display,
+            repository: $repository,
+            package: concat!("ai.storyteller.", $app, ".nightly"),
+            profile: "nightly",
+            profile_version: 1,
+            entrypoint: $app,
+            binary: None,
+            badge: Some(concat!($app, "-nightly.png")),
+            bundle: None,
+        }
+    };
+    // A Windows Nightly: the flat portable ZIP with `<app>.exe` at its root.
+    (windows $app:literal, $display:literal, $repository:literal) => {
+        Capability {
+            platform: Platform { os: Os::Windows, arch: Arch::X64 },
+            os: "windows",
+            arch: "x86_64",
+            format: "portable_zip",
+            suffix: "windows-x86_64-nightly.zip",
+            app: $app,
+            display: $display,
+            repository: $repository,
+            package: concat!("ai.storyteller.", $app, ".nightly"),
+            profile: "nightly",
+            profile_version: 1,
+            entrypoint: concat!($app, ".exe"),
+            binary: None,
+            badge: None,
+            bundle: None,
+        }
+    };
+    // A macOS Nightly: `<Display> Nightly.app` with its own Nightly identifier and badge.
+    (mac $app:literal, $display:literal, $repository:literal) => {
+        Capability {
+            platform: Platform { os: Os::MacOs, arch: Arch::Arm64 },
+            os: "macos",
+            arch: "aarch64",
+            format: "portable_zip",
+            suffix: "macos-aarch64-nightly.zip",
+            app: $app,
+            display: $display,
+            repository: $repository,
+            package: concat!("ai.storyteller.", $app, ".nightly"),
+            profile: "nightly",
+            profile_version: 1,
+            entrypoint: concat!($display, " Nightly.app/Contents/MacOS/", $display),
+            binary: None,
+            badge: Some(concat!($display, " Nightly.app/Contents/Resources/", $app, "-nightly.icns")),
+            bundle: Some((concat!($display, " Nightly.app"), concat!("ai.storyteller.", $app, ".nightly"))),
+        }
+    };
+}
+
+const CAPABILITIES: &[Capability] = &[
+    row!(windows "photocraft", "PhotoCraft", "storytold/photocraft"),
+    row!(linux "photocraft", "PhotoCraft", "storytold/photocraft", none),
+    row!(mac "photocraft", "PhotoCraft", "storytold/photocraft"),
+    row!(windows "anicraft", "AniCraft", "storytold/anicraft"),
+    row!(linux "anicraft", "AniCraft", "storytold/anicraft"),
+    row!(mac "anicraft", "AniCraft", "storytold/anicraft"),
+    row!(windows "cadcraft", "CADCraft", "storytold/cadcraft"),
+    row!(linux "cadcraft", "CADCraft", "storytold/cadcraft"),
+    row!(mac "cadcraft", "CADCraft", "storytold/cadcraft"),
+    row!(windows "deckcraft", "DeckCraft", "storytold/deckcraft"),
+    row!(linux "deckcraft", "DeckCraft", "storytold/deckcraft"),
+    row!(mac "deckcraft", "DeckCraft", "storytold/deckcraft"),
+    row!(windows "designcraft", "DesignCraft", "storytold/designcraft"),
+    row!(linux "designcraft", "DesignCraft", "storytold/designcraft"),
+    row!(mac "designcraft", "DesignCraft", "storytold/designcraft"),
+    row!(windows "effectcraft", "EffectCraft", "storytold/effectcraft"),
+    row!(linux "effectcraft", "EffectCraft", "storytold/effectcraft"),
+    row!(mac "effectcraft", "EffectCraft", "storytold/effectcraft"),
+    row!(windows "figcraft", "FigCraft", "storytold/figcraft"),
+    row!(linux "figcraft", "FigCraft", "storytold/figcraft"),
+    row!(mac "figcraft", "FigCraft", "storytold/figcraft"),
+    row!(windows "filmcraft", "FilmCraft", "storytold/filmcraft"),
+    row!(linux "filmcraft", "FilmCraft", "storytold/filmcraft"),
+    row!(mac "filmcraft", "FilmCraft", "storytold/filmcraft"),
+    row!(windows "gridcraft", "GridCraft", "storytold/gridcraft"),
+    row!(linux "gridcraft", "GridCraft", "storytold/gridcraft"),
+    row!(mac "gridcraft", "GridCraft", "storytold/gridcraft"),
+    row!(windows "lightcraft", "LightCraft", "storytold/lightcraft"),
+    row!(linux "lightcraft", "LightCraft", "storytold/lightcraft"),
+    row!(mac "lightcraft", "LightCraft", "storytold/lightcraft"),
+    row!(windows "materialcraft", "MaterialCraft", "storytold/materialcraft"),
+    row!(linux "materialcraft", "MaterialCraft", "storytold/materialcraft"),
+    row!(mac "materialcraft", "MaterialCraft", "storytold/materialcraft"),
+    row!(windows "soundcraft", "SoundCraft", "storytold/soundcraft"),
+    row!(linux "soundcraft", "SoundCraft", "storytold/soundcraft"),
+    row!(mac "soundcraft", "SoundCraft", "storytold/soundcraft"),
+    row!(windows "texturecraft", "TextureCraft", "storytold/texturecraft"),
+    row!(linux "texturecraft", "TextureCraft", "storytold/texturecraft"),
+    row!(mac "texturecraft", "TextureCraft", "storytold/texturecraft"),
+    row!(windows "vectorcraft", "VectorCraft", "storytold/vectorcraft"),
+    row!(linux "vectorcraft", "VectorCraft", "storytold/vectorcraft"),
+    row!(mac "vectorcraft", "VectorCraft", "storytold/vectorcraft"),
+    row!(windows "wordcraft", "WordCraft", "storytold/wordcraft"),
+    row!(linux "wordcraft", "WordCraft", "storytold/wordcraft"),
+    row!(mac "wordcraft", "WordCraft", "storytold/wordcraft"),
 ];
+
+/// PhotoCraft's three rows by name, for the tests that pin the identities the Launcher persisted
+/// before this table existed. Test-only: production code reaches every row through `for_app`.
+#[cfg(test)]
+#[allow(non_upper_case_globals)]
+impl Adapter {
+    pub(crate) const PhotoCraftWindowsV1: Self = Self(&CAPABILITIES[0]);
+    pub(crate) const PhotoCraftLinuxV1: Self = Self(&CAPABILITIES[1]);
+    pub(crate) const PhotoCraftMacV1: Self = Self(&CAPABILITIES[2]);
+}
 
 /// A known row is not a substitute for the caller's verified descriptor or archive checks.
 pub(crate) fn adapter(app: &CraftApp, release: &Release, artifact: &Artifact, platform: Platform) -> Result<Adapter, String> {
@@ -89,11 +228,9 @@ pub(crate) fn adapter(app: &CraftApp, release: &Release, artifact: &Artifact, pl
             && artifact.isolation.profile_contract == row.profile
             && artifact.isolation.profile_version == row.profile_version
             && artifact.isolation.associations == "none"
-            && artifact.asset.name == format!("photocraft-{version}-{}", row.suffix)
+            && artifact.asset.name == format!("{}-{version}-{}", row.app, row.suffix)
     });
-    row.map(|row| row.adapter)
-        .ok_or_else(|| "This app, target or profile has no separate nightly adapter.".into())
-        .and_then(configured_for_new_install)
+    row.map(Adapter).ok_or_else(|| "This app, target or profile has no separate nightly adapter.".into()).and_then(configured_for_new_install)
 }
 
 /// Admission for new discovery/install, separate from retained-copy management.
@@ -102,8 +239,8 @@ pub(crate) fn admit_new(app: &CraftApp, platform: Platform) -> Result<Adapter, S
 }
 
 fn configured_for_new_install(adapter: Adapter) -> Result<Adapter, String> {
-    match adapter {
-        Adapter::PhotoCraftMacV1 => mac_team().map(|_| adapter),
+    match adapter.os() {
+        Os::MacOs => mac_team(adapter.app()).map(|_| adapter),
         _ => Ok(adapter),
     }
 }
@@ -116,18 +253,20 @@ pub(crate) fn new_installs_available(platform: Platform) -> bool {
         && artcraft_launcher_core::hosted_catalog::apps().iter().any(|app| app.has_separate_nightly_channel() && admit_new(app, platform).is_ok())
 }
 
-/// The Developer ID team a macOS Nightly must be signed by, for admission and every approval.
-pub(crate) fn mac_team() -> Result<&'static str, String> {
-    let stable = CraftApp::by_id("photocraft").and_then(|app| app.mac_team);
+/// The Developer ID team `app`'s macOS Nightly must be signed by, for admission and every
+/// approval: the source-owned Nightly pin, while it still names the team the stable app's Mac
+/// install verifies.
+pub(crate) fn mac_team(app: &str) -> Result<&'static str, String> {
+    let stable = CraftApp::by_id(app).and_then(|app| app.mac_team);
     pinned_mac_team(crate::nightly_trust::MAC_TEAM, stable)
 }
 
 /// Ordinary mac_team metadata alone is not Nightly configuration: the source-owned Nightly pin
-/// must exist and still name the team stable PhotoCraft's Mac install verifies.
+/// must exist and still name the team the stable app's Mac install verifies.
 fn pinned_mac_team(pinned: Option<&'static str>, stable: Option<&str>) -> Result<&'static str, String> {
-    let team = pinned.ok_or("PhotoCraft Nightly on macOS is not configured; existing copies and data were left unchanged.")?;
+    let team = pinned.ok_or("Nightly builds on macOS are not configured; existing copies and data were left unchanged.")?;
     if stable != Some(team) {
-        return Err("The macOS Nightly signing team differs from stable PhotoCraft's; existing copies and data were left unchanged.".into());
+        return Err("The macOS Nightly signing team differs from the stable app's; existing copies and data were left unchanged.".into());
     }
     Ok(team)
 }
@@ -142,7 +281,7 @@ pub(crate) fn for_app(app: &CraftApp, platform: Platform) -> Result<Adapter, Str
                 && app.repo == row.repository
                 && platform == row.platform
         })
-        .map(|row| row.adapter)
+        .map(Adapter)
         .ok_or_else(|| "No separate nightly profile is known for this app and platform.".into())
 }
 
@@ -276,28 +415,52 @@ impl Adapter {
         configured_for_new_install(self)
     }
 
+    pub(crate) fn os(self) -> Os {
+        self.0.platform.os
+    }
+
     pub(crate) fn kind(self) -> PackageKind {
-        match self {
-            Self::PhotoCraftLinuxV1 => PackageKind::TarGz,
-            Self::PhotoCraftWindowsV1 | Self::PhotoCraftMacV1 => PackageKind::PortableZip,
+        match self.0.format {
+            "tar_gz" => PackageKind::TarGz,
+            _ => PackageKind::PortableZip,
         }
     }
 
+    /// What the Launcher opens, relative to the program folder.
     pub(crate) fn executable(self) -> &'static Path {
-        Path::new(match self {
-            Self::PhotoCraftWindowsV1 => "photocraft.exe",
-            Self::PhotoCraftLinuxV1 => "photocraft",
-            Self::PhotoCraftMacV1 => "PhotoCraft Nightly.app/Contents/MacOS/PhotoCraft",
-        })
+        Path::new(self.0.entrypoint)
+    }
+
+    /// The program a Linux launcher script starts, beside it.
+    #[cfg(any(unix, test))]
+    pub(crate) fn binary(self) -> Option<&'static Path> {
+        self.0.binary.map(Path::new)
+    }
+
+    /// The Nightly badge the payload must carry, when the row declares one.
+    #[cfg(any(unix, test))]
+    pub(crate) fn badge(self) -> Option<&'static Path> {
+        self.0.badge.map(Path::new)
+    }
+
+    /// macOS: the `.app` folder at the payload's root and its Nightly bundle identifier.
+    #[cfg(any(unix, test))]
+    pub(crate) fn bundle(self) -> Option<(&'static str, &'static str)> {
+        self.0.bundle
+    }
+
+    /// The display name the stable app's copy and data use.
+    pub(crate) fn display(self) -> &'static str {
+        self.0.display
     }
 
     /// The row already owns the filename, but bind it again at the install boundary. The
     /// stable asset parser intentionally does not recognize these dedicated nightly flavors.
     pub(crate) fn bind_release(self, release: &Release, asset: &artcraft_launcher_core::Asset) -> Result<(), String> {
-        let row = CAPABILITIES.iter().find(|row| row.adapter == self).ok_or("Unknown nightly adapter.")?;
+        let row = self.0;
         let version = release.version.as_ref().ok_or("The nightly has no exact version.")?;
         if version.pre.as_str().split('.').next() != Some("nightly")
-            || asset.name != format!("photocraft-{version}-{}", row.suffix)
+            || asset.name != format!("{}-{version}-{}", row.app, row.suffix)
             || artcraft_launcher_core::version::parse(&release.tag).as_ref() != Some(version)
             || asset.url != format!("https://github.com/{}/releases/download/{}/{}", row.repository, release.tag, asset.name)
         {
@@ -307,9 +470,7 @@ impl Adapter {
     }
 
     pub(crate) fn app(self) -> &'static str {
-        match self {
-            Self::PhotoCraftWindowsV1 | Self::PhotoCraftLinuxV1 | Self::PhotoCraftMacV1 => "photocraft",
-        }
+        self.0.app
     }
 
     /// A persistent per-app root, never inside the replaceable program/rollback directory.
@@ -323,7 +484,10 @@ impl Adapter {
     pub(crate) fn validate_profile(self, paths: &Paths) -> Result<(), String> {
         validate_paths(paths)?;
         #[cfg(unix)]
-        crate::nightly_unix::validate_namespaces(paths)?;
+        crate::nightly_unix::validate_namespaces(self, paths)?;
+        // This app's own stable data and installation, never another app's.
+        #[cfg(windows)]
+        crate::nightly_windows_fence::validate_windows_namespaces(self, paths)?;
         validate_tree(&paths.data, &self.profile_root(paths)?)
     }
 
@@ -369,15 +533,15 @@ impl Adapter {
     /// portable mode, a CLI, nested program trees and any extra executable are not.
     #[cfg(any(windows, test))]
     pub(crate) fn validate_layout(self, files: &[PathBuf], entries: &[PathBuf]) -> Result<(), String> {
-        let executable = format!("{}.exe", self.app());
-        if !files.iter().any(|file| file == Path::new(&executable)) {
+        let executable = self.executable();
+        if !files.iter().any(|file| file == executable) {
             return Err("The nightly ZIP needs its GUI executable at the archive root.".into());
         }
         for entry in entries {
             let text = entry.to_str().ok_or("The nightly ZIP has a non-textual filename.")?;
             let notice = ["README.md", "LICENSE", "LICENSE-MIT", "LICENSE-APACHE", "NOTICE", "ATTRIBUTION.md"].contains(&text)
                 || (text.starts_with("OFL-") && text.ends_with(".txt") && text.len() > "OFL-.txt".len());
-            if entry.components().count() != 1 || (entry != Path::new(&executable) && !notice) {
+            if entry.components().count() != 1 || (entry != executable && !notice) {
                 return Err("The nightly ZIP may contain only its root GUI and declared notice files, never portable.txt or another program.".into());
             }
         }
@@ -388,9 +552,8 @@ impl Adapter {
     pub(crate) fn launch_arguments(self, paths: &Paths, files: &[String]) -> Result<Vec<String>, String> {
         let root = self.profile_root(paths)?;
         let root = root.to_str().ok_or("The nightly profile path cannot be passed losslessly to the app.")?;
-        let selector = match self {
-            Self::PhotoCraftWindowsV1 | Self::PhotoCraftLinuxV1 | Self::PhotoCraftMacV1 => "nightly-v1",
-        };
+        // Every row is the version-1 Nightly profile contract (`nightly`, 1).
+        let selector = "nightly-v1";
         let mut args = vec!["--launch-profile".into(), selector.into(), "--profile-root".into(), root.into(), "--".into()];
         args.extend_from_slice(files);
         Ok(args)
@@ -410,7 +573,10 @@ mod tests {
         // The reviewed Windows publisher, Linux signer and macOS team pins are configured, each on its own OS.
         assert_eq!(new_installs_available(Platform { os: Os::Windows, arch: Arch::X64 }), cfg!(windows));
         assert_eq!(new_installs_available(Platform { os: Os::Linux, arch: Arch::X64 }), cfg!(target_os = "linux"));
-        assert_eq!(new_installs_available(Platform { os: Os::MacOs, arch: Arch::Arm64 }), cfg!(target_os = "macos") && mac_team().is_ok());
+        assert_eq!(
+            new_installs_available(Platform { os: Os::MacOs, arch: Arch::Arm64 }),
+            cfg!(target_os = "macos") && mac_team("photocraft").is_ok()
+        );
         // Without an admitted adapter (no Arm64 Windows or Linux Nightly yet) nothing is offered,
         // whatever trust the OS has.
         for platform in [Platform { os: Os::Windows, arch: Arch::Arm64 }, Platform { os: Os::Linux, arch: Arch::Arm64 }] {
@@ -523,7 +689,7 @@ mod tests {
         assert!(pinned_mac_team(Some("OTHERTEAM1"), stable).is_err(), "a pin that drifts from stable's team is refused");
         assert!(pinned_mac_team(stable, None).is_err());
         assert_eq!(pinned_mac_team(stable, stable), Ok(stable.unwrap()));
-        assert_eq!(mac_team(), Ok(stable.unwrap()), "the shipped pin is the stable PhotoCraft team");
+        assert_eq!(mac_team("photocraft"), Ok(stable.unwrap()), "the shipped pin is the stable PhotoCraft team");
     }
 
     #[test]
@@ -635,5 +801,249 @@ mod tests {
             assert!(adapter.validate_layout(&good, &entries).is_err(), "{unwanted}");
         }
         assert!(adapter.validate_layout(&[], &good).is_err());
+    }
+
+    /// The exact table `CAPABILITIES` was copied from: `storytold/craft-common-actions`
+    /// `nightly-apps.json` at commit `2b4eb3d9`, byte for byte. A fixture
+    /// for review, not a build input: nothing at runtime reads it, so a registry change fails this
+    /// test instead of admitting anything by itself.
+    const REGISTRY: &str = include_str!("../tests/fixtures/nightly-apps.json");
+
+    /// One registry target, flattened to the values a `Capability` row copies.
+    #[derive(Debug)]
+    struct RegistryTarget {
+        app: String,
+        display: String,
+        repository: String,
+        os: String,
+        arch: String,
+        format: String,
+        suffix: String,
+        package: String,
+        profile: String,
+        profile_version: u64,
+        associations: String,
+        entrypoint: String,
+        binary: Option<String>,
+    }
+
+    fn registry_targets() -> Vec<RegistryTarget> {
+        let registry: serde_json::Value = serde_json::from_str(REGISTRY).unwrap();
+        assert_eq!(registry["schema"], "craft-nightly-registry/v1");
+        let mut targets = Vec::new();
+        for (id, app) in registry["apps"].as_object().unwrap() {
+            for target in app["targets"].as_array().unwrap() {
+                let os = target["target"]["os"].as_str().unwrap().to_string();
+                let arch = target["target"]["arch"].as_str().unwrap().to_string();
+                let pattern = target["asset_pattern"].as_str().unwrap();
+                let prefix = format!("{id}-{{version}}-");
+                let suffix = pattern.strip_prefix(prefix.as_str()).expect("an asset pattern names its app and version").to_string();
+                // The row's extra program is the registry's `binary` only where it isn't the
+                // entrypoint: PhotoCraft's rows name its one GUI program in both fields. A missing
+                // or non-string `binary` is a malformed registry row, not the same as "no program".
+                let listed = &app["entrypoints"][format!("{os}-{arch}")];
+                let entrypoint = listed["entrypoint"].as_str().expect("a registry entrypoint names its entrypoint").to_string();
+                let binary = listed["binary"].as_str().expect("a registry entrypoint names its binary");
+                let binary = (binary != entrypoint.as_str()).then(|| binary.to_string());
+                let isolation = &target["isolation"];
+                targets.push(RegistryTarget {
+                    app: id.clone(),
+                    display: app["display_name"].as_str().unwrap().to_string(),
+                    repository: app["repository"].as_str().unwrap().to_string(),
+                    os,
+                    arch,
+                    format: target["target"]["format"].as_str().unwrap().to_string(),
+                    suffix,
+                    package: isolation["package_identity"].as_str().unwrap().to_string(),
+                    profile: isolation["profile_contract"].as_str().unwrap().to_string(),
+                    profile_version: isolation["profile_version"].as_u64().unwrap(),
+                    associations: isolation["associations"].as_str().unwrap().to_string(),
+                    entrypoint,
+                    binary,
+                });
+            }
+        }
+        targets
+    }
+
+    /// Every registry target has exactly one row with equal values, and no row lacks a target: a
+    /// reviewed registry change and a reviewed table change have to land together, and neither alone
+    /// can widen what the Launcher will install.
+    #[test]
+    fn capability_table_is_exactly_the_checked_in_registry() {
+        let targets = registry_targets();
+        assert_eq!(targets.len(), CAPABILITIES.len(), "one row per registry target, no row without one");
+        let mut matched = vec![false; targets.len()];
+        for row in CAPABILITIES {
+            let platform_os = match row.platform.os {
+                Os::Windows => "windows",
+                Os::FreeBsd => "freebsd",
+                Os::Linux => "linux",
+                Os::MacOs => "macos",
+            };
+            let platform_arch = match row.platform.arch {
+                Arch::X64 => "x86_64",
+                Arch::Arm64 => "aarch64",
+                Arch::X86 => "x86",
+                Arch::Riscv64 => "riscv64",
+            };
+            assert_eq!((row.os, row.arch), (platform_os, platform_arch), "{} declares its own target", row.app);
+            assert_eq!((row.profile, row.profile_version), ("nightly", 1), "{} uses the version-1 Nightly profile contract", row.app);
+            let expected_badge: Option<String> = match row.os {
+                "windows" => None,
+                "linux" => Some(format!("{}-nightly.png", row.app)),
+                _ => Some(format!("{} Nightly.app/Contents/Resources/{}-nightly.icns", row.display, row.app)),
+            };
+            assert_eq!(row.badge.map(str::to_string), expected_badge, "{} on {} carries its reviewed badge", row.app, row.os);
+            let expected_bundle =
+                (row.os == "macos").then(|| (format!("{} Nightly.app", row.display), format!("ai.storyteller.{}.nightly", row.app)));
+            assert_eq!(
+                row.bundle.map(|(folder, id)| (folder.to_string(), id.to_string())),
+                expected_bundle,
+                "{} on {} keeps to its own macOS bundle",
+                row.app,
+                row.os
+            );
+            let found = targets
+                .iter()
+                .enumerate()
+                .filter(|(_, target)| {
+                    target.app == row.app
+                        && target.display == row.display
+                        && target.repository == row.repository
+                        && target.os == row.os
+                        && target.arch == row.arch
+                        && target.format == row.format
+                        && target.suffix == row.suffix
+                        && target.package == row.package
+                        && target.profile == row.profile
+                        && target.profile_version == u64::from(row.profile_version)
+                        // The table holds no other association policy, and admission requires "none".
+                        && target.associations == "none"
+                        && target.entrypoint == row.entrypoint
+                        && target.binary.as_deref() == row.binary
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(found.len(), 1, "{} on {} {} has exactly one reviewed row", row.app, row.os, row.arch);
+            matched[found[0].0] = true;
+        }
+        assert!(matched.iter().all(|matched| *matched), "every registry target is in the table");
+    }
+
+    /// The persisted Nightly scheduling key contains `{adapter:?}`: PhotoCraft's three names may
+    /// never change, and no two rows may share one.
+    #[test]
+    fn adapter_debug_names_stay_the_persisted_lookup_identities() {
+        assert_eq!(format!("{:?}", Adapter::PhotoCraftWindowsV1), "PhotoCraftWindowsV1");
+        assert_eq!(format!("{:?}", Adapter::PhotoCraftLinuxV1), "PhotoCraftLinuxV1");
+        assert_eq!(format!("{:?}", Adapter::PhotoCraftMacV1), "PhotoCraftMacV1");
+        let names = CAPABILITIES.iter().map(|row| format!("{:?}", Adapter(row))).collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(names.len(), CAPABILITIES.len(), "every row has its own lookup identity");
+        for row in CAPABILITIES {
+            let name = format!("{:?}", Adapter(row));
+            assert!(name.starts_with(row.display) && name.ends_with("V1"), "{name}");
+            assert!(!name.contains(['{', ':', ' ', ',']), "a derived Debug would print the row's fields: {name}");
+        }
+    }
+
+    fn cadcraft_fixture() -> (&'static CraftApp, Release, Artifact, Platform) {
+        let app = CraftApp::by_id("cadcraft").unwrap();
+        let release = Release {
+            tag: "v1.0.0-nightly.20261120.123456.1.gabcdefabcdef".into(),
+            version: artcraft_launcher_core::version::parse("v1.0.0-nightly.20261120.123456.1.gabcdefabcdef"),
+            prerelease: true,
+            ..Default::default()
+        };
+        let artifact = Artifact {
+            signature: None,
+            target: Target { os: "linux".into(), arch: "x86_64".into(), format: "tar_gz".into() },
+            asset: Download {
+                name: format!("cadcraft-{}-linux-x86_64-nightly.tar.gz", release.version.as_ref().unwrap()),
+                url: "unused: caller verifies the published asset before table lookup".into(),
+                size: 1,
+                sha256: "a".repeat(64),
+            },
+            isolation: Isolation {
+                package_identity: "ai.storyteller.cadcraft.nightly".into(),
+                profile_contract: "nightly".into(),
+                profile_version: 1,
+                associations: "none".into(),
+            },
+        };
+        (app, release, artifact, Platform { os: Os::Linux, arch: Arch::X64 })
+    }
+
+    /// A row admits one app's own payload: no other app's asset name, package identity, profile or
+    /// format stands in, and the same payload under another app is refused.
+    #[test]
+    fn a_generic_app_is_admitted_only_with_its_own_payload_and_profile() {
+        let (app, release, good, platform) = cadcraft_fixture();
+        let row = adapter(app, &release, &good, platform).unwrap();
+        assert_eq!(Some(row), for_app(app, platform).ok());
+        assert_eq!(row.app(), "cadcraft");
+        assert_eq!(row.display(), "CADCraft");
+        assert_eq!(row.os(), Os::Linux);
+        assert_eq!(row.kind(), PackageKind::TarGz);
+        assert_eq!(row.executable(), Path::new("cadcraft"));
+        assert_eq!(row.binary(), Some(Path::new("cadcraft-bin")));
+        assert_eq!(row.badge(), Some(Path::new("cadcraft-nightly.png")));
+        assert_eq!(row.bundle(), None);
+        let version = release.version.as_ref().unwrap();
+        let mut changes = Vec::new();
+        for name in [
+            format!("anicraft-{version}-linux-x86_64-nightly.tar.gz"),
+            format!("photocraft-{version}-linux-x86_64-nightly.tar.gz"),
+            format!("cadcraft-{version}-linux-x86_64.zip"),
+        ] {
+            let mut other = good.clone();
+            other.asset.name = name;
+            changes.push(other);
+        }
+        let mut other = good.clone();
+        other.isolation.package_identity = "ai.storyteller.anicraft.nightly".into();
+        changes.push(other);
+        let mut other = good.clone();
+        other.isolation.profile_contract = "stable".into();
+        changes.push(other);
+        let mut other = good.clone();
+        other.isolation.profile_version = 2;
+        changes.push(other);
+        let mut other = good.clone();
+        other.isolation.associations = "stable".into();
+        changes.push(other);
+        let mut other = good.clone();
+        other.target.format = "AppImage".into();
+        changes.push(other);
+        let mut other = good.clone();
+        other.target.os = "macos".into();
+        changes.push(other);
+        for artifact in changes {
+            assert!(adapter(app, &release, &artifact, platform).is_err(), "{:?}", artifact.asset.name);
+        }
+        let photocraft = CraftApp::by_id("photocraft").unwrap();
+        assert!(adapter(photocraft, &release, &good, platform).is_err(), "PhotoCraft cannot install CADCraft's payload");
+        let community = CraftApp { kind: artcraft_launcher_core::catalog::AppKind::Community, ..*app };
+        assert!(adapter(&community, &release, &good, platform).is_err(), "a community build is not the official app");
+    }
+
+    /// Every row launches with its own profile root, the version-1 selector and a literal file tail.
+    #[test]
+    fn a_generic_app_launches_with_its_own_profile_root_and_literal_arguments() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::under(root.path()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+        let adapter = for_app(CraftApp::by_id("cadcraft").unwrap(), Platform { os: Os::Linux, arch: Arch::X64 }).unwrap();
+        let files = vec!["drawing.dxf".into(), "--profile-root".into(), "--".into()];
+        let args = adapter.launch_arguments(&paths, &files).unwrap();
+        assert_eq!(
+            &args[..5],
+            &["--launch-profile", "nightly-v1", "--profile-root", paths.data.join("profiles").join("cadcraft").to_str().unwrap(), "--"]
+        );
+        assert_eq!(&args[5..], files.as_slice());
+        for row in CAPABILITIES {
+            let args = Adapter(row).launch_arguments(&paths, &[]).unwrap();
+            assert_eq!(&args[1], "nightly-v1", "{}", row.app);
+            assert_eq!(&args[3], paths.data.join("profiles").join(row.app).to_str().unwrap(), "{}", row.app);
+        }
+        assert!(!root.path().join("data").exists(), "building an argv performs no filesystem access");
     }
 }

@@ -434,10 +434,12 @@ mod tests {
                 let mut loaded: Settings = serde_json::from_slice(&saved).unwrap();
                 loaded.migrate();
                 let mut expected = original.clone();
+                // Every app with its own Nightly channel migrates now, not just PhotoCraft.
                 expected.versions.remove("photocraft");
+                expected.versions.remove("filmcraft");
                 assert_eq!(
                     loaded, expected,
-                    "only invalid ordinary PhotoCraft tracks migrate; consent, Launcher, third parties, stable pins and unrelated settings survive"
+                    "invalid ordinary Nightly tracks of roster apps migrate; consent, Launcher, community apps, stable pins and unrelated settings survive"
                 );
                 let once = loaded.clone();
                 loaded.migrate();
