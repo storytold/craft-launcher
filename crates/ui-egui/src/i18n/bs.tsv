@@ -182,7 +182,7 @@ month	Nov	nov
 month	Dec	dec
 	Not checked yet	Još nije provjereno
 	Next GitHub check at {time}	Sljedeća provjera GitHuba u {time}
-	Waiting for GitHub's hourly limit. Checking again at {time}.	Čekanje na GitHubov satni limit. Sljedeća provjera u {time}.
+	Waiting for GitHub's hourly limit. Checking again at {time}.	Waiting for GitHub's hourly limit. Checking again at {time}.
 	Next check at {time}	Sljedeća provjera u {time}
 	Installing for {platform}	Instalacija za {platform}
 	Downloads for {platform}	Preuzimanja za {platform}

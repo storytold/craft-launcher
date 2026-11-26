@@ -127,7 +127,7 @@ month	Nov	11月
 month	Dec	12月
 	Not checked yet	尚未检查
 	Next GitHub check at {time}	下次检查 GitHub：{time}
-	Waiting for GitHub's hourly limit. Checking again at {time}.	正在等待 GitHub 的每小时限额。将在 {time} 再次检查。
+	Waiting for GitHub's hourly limit. Checking again at {time}.	Waiting for GitHub's hourly limit. Checking again at {time}.
 	Next check at {time}	下次检查：{time}
 	Installing for {platform}	安装平台：{platform}
 	Downloads for {platform}	下载平台：{platform}

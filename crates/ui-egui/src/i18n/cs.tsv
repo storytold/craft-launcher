@@ -204,7 +204,7 @@ month	Nov	11.
 month	Dec	12.
 	Not checked yet	Zatím nezkontrolováno
 	Next GitHub check at {time}	Další kontrola GitHubu v {time}
-	Waiting for GitHub's hourly limit. Checking again at {time}.	Čekání na hodinový limit GitHubu. Další kontrola v {time}.
+	Waiting for GitHub's hourly limit. Checking again at {time}.	Waiting for GitHub's hourly limit. Checking again at {time}.
 	Next check at {time}	Další kontrola v {time}
 	Installing for {platform}	Instalace pro {platform}
 	Downloads for {platform}	Stažení pro {platform}
