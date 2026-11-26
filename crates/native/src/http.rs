@@ -56,8 +56,10 @@ pub fn is_loopback(url: &str) -> bool {
     matches!(host, "127.0.0.1" | "localhost" | "[::1]") && !port.is_empty() && port.parse::<u16>().is_ok()
 }
 
-/// Only a debug build explicitly enabling `local-mirror` constructs this transport. Logical
-/// GitHub URLs stay intact for descriptor checks; physical requests go to this one-app fixture.
+/// Only a debug build explicitly enabling `local-mirror` constructs this transport. Logical URLs
+/// (our release API's PhotoCraft history, its GitHub downloads) stay intact for descriptor checks;
+/// physical requests go to this one-app fixture: `nightly/photocraft/releases.json` and
+/// `nightly/photocraft/assets/<tag>/<file>` under the base (docs/install-sources.md).
 #[derive(Clone)]
 struct NightlyMirror {
     base: String,
