@@ -3142,6 +3142,10 @@ mod tests {
 
         std::fs::write(&log, "MSI (s) (10:20) [10:00:02:000]: Warning: Local cached package 'C:\\Windows\\Installer\\1a2b3c.msi' is missing.\r\n")
             .unwrap();
+        let (error, failure) = msi_failure(app, Some(&exe), 1603, Some(&log), None, || process::Running::No).unwrap();
+        assert_eq!(error, None);
+        assert_eq!(failure.blocker, Blocker::InstallerFailed, "a warning does not establish the failure cause");
+        std::fs::write(&log, "Error 1714. The older version of PhotoCraft cannot be removed. System Error 1612.\r\n").unwrap();
         let (error, failure) = msi_failure(app, Some(&exe), 1603, Some(&log), None, || panic!("the log names the cause")).unwrap();
         assert!(error.as_deref().is_some_and(|e| e.contains("PhotoCraft version installed now") && e.contains("msiexec /fv")), "{error:?}");
         assert_eq!(failure, InstallFailure { blocker: Blocker::CachedPackageMissing, details: format!("MSI 1603 · {}", log.display()) });

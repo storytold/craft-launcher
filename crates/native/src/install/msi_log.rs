@@ -73,8 +73,8 @@ fn text(bytes: &[u8], utf16: bool) -> String {
 }
 
 /// The cause the log's text names: a failed `LaunchConditions` action ("Return value 3"), or a
-/// missing cached package ("Local cached package ... is missing", or error 1714 with system
-/// error 1612, see [`removal_failed_on_missing_cache`]).
+/// a removal failure caused by an unavailable installer source (error 1714 with system error
+/// 1612, see [`removal_failed_on_missing_cache`]).
 fn find(text: &str) -> Option<Cause> {
     let mut in_launch_conditions = false;
     let mut message = None;
@@ -95,7 +95,7 @@ fn find(text: &str) -> Option<Cause> {
         if in_launch_conditions && let Some(text) = condition_message(line) {
             message = Some(text);
         }
-        cached_missing |= (line.contains("Local cached package") && line.contains("is missing")) || removal_failed_on_missing_cache(line);
+        cached_missing |= removal_failed_on_missing_cache(line);
     }
     cached_missing.then_some(Cause::CachedPackageMissing)
 }
@@ -201,10 +201,10 @@ mod tests {
     fn a_missing_cached_package_is_named() {
         let (_dir, log) = written(&utf16(&missing_cached_package()));
         assert_eq!(cause(&log), Some(Cause::CachedPackageMissing));
-        // Either line alone is enough.
-        for line in missing_cached_package().lines().filter(|line| line.contains("Local cached") || line.contains("1714")) {
+        for line in missing_cached_package().lines().filter(|line| line.contains("1714")) {
             assert_eq!(find(line), Some(Cause::CachedPackageMissing), "{line}");
         }
+        assert_eq!(find("Warning: Local cached package 'old.msi' is missing."), None);
         // The same record by its numbered fields, without the English message: field 1 is the
         // error, 2 the product and 3 the system error.
         let numbered = [
@@ -216,6 +216,20 @@ mod tests {
         let (_dir, log) = written(&utf16(&numbered));
         assert_eq!(cause(&log), Some(Cause::CachedPackageMissing));
         assert_eq!(find("Note: 1: 1714 2:  3: 1612"), Some(Cause::CachedPackageMissing), "an empty product name");
+    }
+
+    #[test]
+    fn a_recovered_cache_warning_does_not_name_an_unrelated_failure() {
+        let log = [
+            "Warning: Local cached package 'C:\\Windows\\Installer\\old.msi' is missing.",
+            "SOURCEMGMT: Source is valid.",
+            "Action ended 10:00:02: ResolveSource. Return value 1.",
+            "Error 1303. The installer has insufficient privileges to access this directory.",
+            "Action ended 10:00:03: InstallFiles. Return value 3.",
+            "MainEngineThread is returning 1603",
+        ]
+        .join("\r\n");
+        assert_eq!(find(&log), None);
     }
 
     #[test]
