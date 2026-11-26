@@ -145,7 +145,14 @@ pub(crate) fn launch(
             .map(|file| file.strip_prefix(&root).map(Path::to_path_buf).map_err(|e| e.to_string()))
             .collect::<Result<Vec<_>, _>>()?;
         // Kept alive through CreateProcess: deny writes, replacement and deletion after approval.
-        crate::nightly_signing::authenticate_windows(adapter, &root, &files)?
+        let held = crate::nightly_signing::authenticate_windows(adapter, &root, &files)?;
+        // The handle now denies writes, replacement and deletion, so this version is the version of
+        // the bytes that will start: a file swapped in before the hold fails here, before the
+        // profile is created or any process starts. A version that cannot be read is a mismatch.
+        if crate::detect::windows::executable_version(&record.path) != artcraft_launcher_core::version::parse(&record.version) {
+            return Err("The Nightly program no longer matches its recorded version after its signature was checked; it was not started.".into());
+        }
+        held
     };
     stop.check()?;
     let profile = adapter.profile_root(paths)?;
