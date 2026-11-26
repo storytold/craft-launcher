@@ -32,7 +32,7 @@ serde_json = "1"
 semver = { version = "1", features = ["serde"] }
 log = "0.4"
 # All date/time conversion goes through jiff (no hand-rolled calendar code beyond the 400-year range extension; AGENTS.md).
-jiff = "0.2"
+jiff = "1.0"
 # Feature flags (craft-libs#1118, merged in craft-libs#1119).
 craft-flags = { version = "=0.1.0", git = "https://github.com/storytold/craft-libs", rev = "05b99ee5dcd64f2c954a693ef361301214ddc3c7" }
 # The agents switch and app list (Settings › AI agents), shared with the craft-ai-mcp gateway and
