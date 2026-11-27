@@ -38,26 +38,20 @@ fn nightly_build_date(text: &str) -> Option<(i64, u32, u32)> {
     (artcraft_launcher_core::time::civil_from_unix(at) == (year, month, day)).then_some((year, month, day))
 }
 
-fn nightly_build_label(version: &str, language: crate::i18n::Lang) -> String {
-    let nightly = crate::i18n::tr(language, "Nightly");
-    let Some((year, month, day)) = nightly_build_date(version) else { return nightly.to_owned() };
-    let date = crate::i18n::fmt(
+fn nightly_date_label(version: &str, language: crate::i18n::Lang) -> Option<String> {
+    let (year, month, day) = nightly_build_date(version)?;
+    Some(crate::i18n::fmt(
         crate::i18n::tr(language, "{month}/{day}/{year}"),
         &[("month", &month.to_string()), ("day", &day.to_string()), ("year", &year.to_string())],
-    );
-    format!("{nightly} {date}")
+    ))
 }
 
-fn nightly_card_version(entry: &AppEntry, enabled: bool) -> Option<String> {
-    if enabled && let Some(LatestRelease::Found(release)) = &entry.latest {
-        // The immutable tag is authoritative; a cached parsed field is only a convenience.
-        return Some(artcraft_launcher_core::version::parse(&release.tag).map_or_else(|| release.tag.clone(), |version| version.to_string()));
-    }
-    // OFF is management-only: a cached newer release must not label the installed copy.
-    entry.installed.as_ref()?.version.as_ref().map(ToString::to_string)
+fn nightly_release_version(entry: &AppEntry) -> Option<String> {
+    let Some(LatestRelease::Found(release)) = &entry.latest else { return None };
+    // The immutable tag is authoritative; a cached parsed field is only a convenience.
+    Some(artcraft_launcher_core::version::parse(&release.tag).map_or_else(|| release.tag.clone(), |version| version.to_string()))
 }
 
-// Reuse the UI's relative-time vocabulary; build identity still uses the UTC tag day.
 /// The card's caption and progress for a running Nightly job, in the same words as other jobs.
 fn nightly_job_progress(phase: JobPhase) -> (Option<f32>, String) {
     match phase {
@@ -100,23 +94,35 @@ fn nightly_ago(at: i64, now: i64) -> String {
     }
 }
 
-fn nightly_status_labels(ui: &mut Ui, status: &NightlyStatus, now: i64) {
-    use crate::i18n::fmt;
-    if status.stale && status.verified_at.is_some() {
-        ui.add(egui::Label::new(RichText::new(tl!("Previous verified result is stale. Check again before installing.")).strong()).wrap());
+fn retry_line(retry_at: Option<i64>, now: i64) -> Option<String> {
+    let at = retry_at.filter(|at| *at > now)?;
+    let minutes = at.saturating_sub(now).saturating_add(59) / 60;
+    Some(crate::fmt(tl!("Retry available in {minutes} min"), &[("minutes", &minutes.to_string())]))
+}
+
+fn nightly_status_details(ui: &mut Ui, status: &NightlyStatus, now: i64) {
+    if let Some(message) = &status.message {
+        ui.add(egui::Label::new(crate::i18n::msg(message)).wrap());
     }
     if let Some(at) = status.verified_at {
-        ui.label(fmt(tl!("Last verified: {ago}"), &[("ago", &nightly_ago(at, now))]));
+        ui.label(crate::fmt(tl!("Last verified: {ago}"), &[("ago", &nightly_ago(at, now))]));
     }
-    if let Some(at) = status.attempted_at {
-        ui.label(fmt(tl!("Last attempt: {ago}"), &[("ago", &nightly_ago(at, now))]));
+    if let Some(at) = status.attempted_at.filter(|at| Some(*at) != status.verified_at) {
+        ui.label(crate::fmt(tl!("Last attempt: {ago}"), &[("ago", &nightly_ago(at, now))]));
     }
-    if let Some(message) = &status.message {
-        ui.add(egui::Label::new(crate::i18n::message(crate::i18n::current(), message)).wrap());
-    }
-    if let Some(at) = status.retry_at.filter(|at| *at > now) {
-        let minutes = at.saturating_sub(now).saturating_add(59) / 60;
-        ui.add(egui::Label::new(fmt(tl!("Retry available in {minutes} min"), &[("minutes", &minutes.to_string())])).wrap());
+}
+
+fn build_identity(ui: &mut Ui, version: Option<&str>, date_key: &str, plain: &str, tokens: &Tokens) {
+    let label = version
+        .and_then(|version| nightly_date_label(version, crate::i18n::current()))
+        .map_or_else(|| plain.to_owned(), |date| crate::fmt(date_key, &[("date", &date)]));
+    ui.add(egui::Label::new(RichText::new(label).color(tokens.ink)).wrap());
+    if let Some(version) = version {
+        // A build identifier is not prose: use the available line instead of breaking
+        // at the first hyphen. Keep the entire value selectable and in the accessibility tree.
+        let mut job = egui::text::LayoutJob::simple(version.into(), egui::TextStyle::Small.resolve(ui.style()), tokens.muted, ui.available_width());
+        job.wrap.break_anywhere = true;
+        ui.add(egui::Label::new(job).wrap().selectable(true));
     }
 }
 
@@ -131,6 +137,11 @@ fn nightly_install_is_redundant(entry: &AppEntry) -> bool {
         return false;
     }
     !artcraft_launcher_core::version::is_update(&latest, installed)
+}
+
+fn nightly_failure(app: &str, reason: &str, template: &str) -> String {
+    let name = artcraft_launcher_core::CraftApp::by_id(app).map_or(app, |app| app.name);
+    crate::fmt(template, &[("app", name), ("reason", &crate::i18n::msg(reason))])
 }
 
 pub(crate) struct NightlyState {
@@ -155,7 +166,7 @@ pub(crate) struct NightlyState {
     requested_at: Option<i64>,
     statuses: BTreeMap<String, NightlyStatus>,
     checking: bool,
-    notices: Vec<String>,
+    storage_notices: Vec<(String, String)>,
     uninstall: Option<String>,
     uninstall_focus: bool,
 }
@@ -185,7 +196,7 @@ impl NightlyState {
             requested_at: None,
             statuses: BTreeMap::new(),
             checking: false,
-            notices: Vec::new(),
+            storage_notices: Vec::new(),
             uninstall: None,
             uninstall_focus: false,
         }
@@ -247,7 +258,8 @@ impl NightlyState {
         }
     }
 
-    pub fn logic(&mut self, settings: &Settings) {
+    pub fn logic(&mut self, settings: &Settings) -> Vec<String> {
+        let mut failure_toasts = Vec::new();
         self.configure(settings);
         let events = self.backend.as_mut().map_or_else(Vec::new, |backend| backend.poll());
         for event in events {
@@ -307,26 +319,33 @@ impl NightlyState {
                     }
                 }
                 Event::JobFinished { app, result } => {
-                    if let Some(entry) = self.entries.iter_mut().find(|entry| entry.app.id == app) {
-                        entry.job = None;
-                    }
+                    let phase = self.entries.iter_mut().find(|entry| entry.app.id == app).and_then(|entry| entry.job.take());
                     if let Err(why) = result {
-                        self.notices.push(why);
-                        if self.notices.len() > 4 {
-                            self.notices.remove(0);
-                        }
+                        let label = match phase {
+                            Some(JobPhase::Removing) => tl!("Couldn’t finish uninstalling the {app} developer build: {reason}"),
+                            Some(_) => tl!("Couldn’t finish installing the {app} developer build: {reason}"),
+                            // A job can be refused before it reports progress, and Open does not
+                            // report a phase. This event alone does not identify either action.
+                            None => tl!("{app} developer build: {reason}"),
+                        };
+                        failure_toasts.push(nightly_failure(&app, &why, label));
                     }
                 }
-                Event::Notice { result: Err(why), .. } => {
-                    self.notices.push(why);
-                    if self.notices.len() > 4 {
-                        self.notices.remove(0);
+                Event::NightlyRevealFailed { app, error } => {
+                    failure_toasts.push(nightly_failure(&app, &error, tl!("Couldn’t show the {app} developer build: {reason}")));
+                }
+                // Native also uses Notice for storage recovery and scheduling problems,
+                // which may replay during discovery. Keep a persistent, scoped explanation.
+                Event::Notice { app, result: Err(why) } if !self.storage_notices.iter().any(|(_, old)| *old == why) => {
+                    self.storage_notices.push((app, why));
+                    if self.storage_notices.len() > 4 {
+                        self.storage_notices.remove(0);
                     }
                 }
                 _ => {}
             }
         }
-        let Some(backend) = &mut self.backend else { return };
+        let Some(backend) = &mut self.backend else { return failure_toasts };
         // Nightly asks on its own hourly clock, independent of Stable's preference; the backend
         // decides which apps are due. Poll persisted metadata before requesting work; Native remains
         // the final gate, including the budget, server backoff and manual request coalescing.
@@ -352,6 +371,7 @@ impl NightlyState {
             self.held_back_until = None;
             backend.send(Command::CheckForUpdates { force: false });
         }
+        failure_toasts
     }
 }
 
@@ -424,6 +444,111 @@ impl LauncherUi {
         });
     }
 
+    fn nightly_check_status(&self, now: i64) -> Option<String> {
+        if self.nightly.checking {
+            return Some(tl!("Checking for updates…").into());
+        }
+        let mut current = 0;
+        let mut oldest = None::<i64>;
+        let mut failed = false;
+        let mut has_build = false;
+        for entry in &self.nightly.entries {
+            let status = self.nightly.statuses.get(entry.app.id);
+            failed |= status.is_some_and(|status| status.message.is_some()) || matches!(entry.latest, Some(LatestRelease::Failed(_)));
+            if let Some(at) = status.filter(|status| !status.stale).and_then(|status| status.verified_at)
+                && matches!(entry.latest, Some(LatestRelease::Found(_) | LatestRelease::None))
+            {
+                current += 1;
+                oldest = Some(oldest.map_or(at, |then| then.min(at)));
+                has_build |= matches!(entry.latest, Some(LatestRelease::Found(_)));
+            }
+        }
+        // One Check button is held back by the longest per-app backoff. It must not
+        // be offered as recovery in the summary while that button is disabled.
+        let retry = self.nightly.statuses.values().filter_map(|status| status.retry_at).max();
+        let wait = retry_line(retry, now).or_else(|| held_back_line(self.nightly.held_back_until, now));
+        if !self.nightly.storage_notices.is_empty() {
+            // A check does not repair local storage. The actionable reason is in Check details.
+            let problem = tl!("Developer builds need attention.");
+            return Some(wait.map_or_else(|| problem.into(), |wait| format!("{problem} {wait}")));
+        }
+        if failed {
+            let problem = if current > 0 { tl!("Some apps couldn’t be checked.") } else { tl!("Couldn’t check for developer builds.") };
+            let next = wait.unwrap_or_else(|| tl!("Try checking again.").into());
+            return Some(format!("{problem} {next}"));
+        }
+        if wait.is_some() {
+            return wait;
+        }
+        if current == self.nightly.entries.len()
+            && let Some(at) = oldest
+        {
+            let ago = nightly_ago(at, now);
+            return Some(if has_build {
+                crate::fmt(tl!("Checked {ago}"), &[("ago", &ago)])
+            } else {
+                crate::fmt(tl!("No developer builds available · checked {ago}"), &[("ago", &ago)])
+            });
+        }
+        if current > 0 {
+            Some(tl!("Some apps still need to be checked.").into())
+        } else if self.nightly.checked_at.is_some() || self.nightly.attempted_at.is_some() {
+            // Saved timestamps belong in Check details, not a summary with no current answer.
+            None
+        } else {
+            Some(tl!("Not checked yet").into())
+        }
+    }
+
+    fn nightly_check_summary(&self, ui: &mut Ui, now: i64, tokens: &Tokens) {
+        if let Some(summary) = self.nightly_check_status(now) {
+            let response = ui.add(egui::Label::new(RichText::new(summary).color(tokens.ink)).wrap());
+            ui.ctx().accesskit_node_builder(response.id, |node| node.set_live(egui::accesskit::Live::Polite));
+        }
+        let has_details = !self.nightly.storage_notices.is_empty()
+            || self.nightly.statuses.values().any(|status| status.verified_at.is_some() || status.attempted_at.is_some() || status.message.is_some());
+        if !has_details {
+            return;
+        }
+        egui::CollapsingHeader::new(RichText::new(tl!("Check details")).small().color(tokens.muted)).id_salt("nightly-check-details").show(
+            ui,
+            |ui| {
+                self.nightly_storage_notices(ui, true);
+                for entry in &self.nightly.entries {
+                    let Some(status) = self
+                        .nightly
+                        .statuses
+                        .get(entry.app.id)
+                        .filter(|status| status.verified_at.is_some() || status.attempted_at.is_some() || status.message.is_some())
+                    else {
+                        continue;
+                    };
+                    ui.label(RichText::new(entry.app.name).strong());
+                    if !status.stale && status.verified_at.is_some() {
+                        if matches!(entry.latest, Some(LatestRelease::None)) {
+                            ui.label(tl!("No developer build is available yet."));
+                        } else if matches!(entry.latest, Some(LatestRelease::Found(_)))
+                            && entry.installable != Some(true)
+                            && !nightly_install_is_redundant(entry)
+                        {
+                            ui.add(egui::Label::new(tl!("This build can’t be installed.")).wrap());
+                        }
+                    }
+                    nightly_status_details(ui, status, now);
+                }
+            },
+        );
+    }
+
+    fn nightly_storage_notices(&self, ui: &mut Ui, in_check_details: bool) {
+        for (app, why) in &self.nightly.storage_notices {
+            if in_check_details && self.nightly.statuses.values().any(|status| status.message.as_ref() == Some(why)) {
+                continue; // The app's check details already carry this explanation.
+            }
+            ui.add(egui::Label::new(nightly_failure(app, why, tl!("{app} developer build: {reason}"))).wrap());
+        }
+    }
+
     pub(crate) fn nightly_page(&mut self, ui: &mut Ui) {
         let tokens = Tokens::get(ui.ctx());
         let inline_actions = self.nightly_page_heading(ui);
@@ -457,58 +582,20 @@ impl LauncherUi {
         if self.nightly.backend.is_none() {
             ui.label(tl!("Developer build installation is unavailable on this platform."));
         }
-        if self.nightly.checking {
-            ui.spinner();
-        }
-        ui.add_space(12.0);
-        let entries = self.nightly.entries.clone();
         let enabled = self.nightly.discovering(self.settings.nightly_enabled);
+        let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
+        let entries = self.nightly.entries.clone();
         let visible: Vec<_> =
             entries.iter().filter(|e| e.installed.is_some() || (enabled && matches!(&e.latest, Some(LatestRelease::Found(_))))).collect();
-        if visible.is_empty() {
-            egui::Frame::new().fill(tokens.sunken).inner_margin(24).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                if self.nightly.checking {
-                    ui.label(tl!("Checking…"));
-                } else if enabled && let Some(status) = self.nightly.statuses.values().find(|status| status.message.is_some()) {
-                    ui.label(tl!("Could not check for developer builds."));
-                    let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
-                    nightly_status_labels(ui, status, now);
-                } else if enabled
-                    && let Some(line) = held_back_line(self.nightly.held_back_until, self.nightly.backend.as_ref().map_or(0, |backend| backend.now()))
-                {
-                    // Nothing was asked this time, so nothing was found: say the check is waiting for
-                    // GitHub rather than stamping a verification that did not happen.
-                    ui.add(egui::Label::new(line).wrap());
-                } else if enabled
-                    && self.nightly.checked_at.is_some()
-                    && entries.iter().any(|entry| matches!(entry.latest, Some(LatestRelease::None)))
-                {
-                    ui.label(tl!("No developer builds are available yet."));
-                    if let Some(status) = self.nightly.statuses.values().find(|status| !status.stale && status.verified_at.is_some()) {
-                        let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
-                        nightly_status_labels(ui, status, now);
-                    }
+        egui::ScrollArea::vertical().id_salt("pre-release-apps").show(ui, |ui| {
+            ui.push_id("nightly-page-status", |ui| {
+                if enabled {
+                    self.nightly_check_summary(ui, now, &tokens);
                 } else {
-                    ui.label(tl!("Not checked yet"));
-                    if enabled && let Some(status) = self.nightly.statuses.values().find(|status| status.attempted_at.is_some()) {
-                        let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
-                        nightly_status_labels(ui, status, now);
-                    }
+                    self.nightly_storage_notices(ui, false);
                 }
             });
-        } else if enabled {
-            // A failed app with no previous selection has no card. Do not hide its error
-            // merely because some other app has a verified build.
-            for entry in entries.iter().filter(|entry| !visible.iter().any(|shown| shown.app.id == entry.app.id)) {
-                if let Some(status) = self.nightly.statuses.get(entry.app.id).filter(|status| status.message.is_some()) {
-                    ui.label(RichText::new(entry.app.name).strong());
-                    let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
-                    nightly_status_labels(ui, status, now);
-                }
-            }
-        }
-        egui::ScrollArea::vertical().id_salt("pre-release-apps").show(ui, |ui| {
+            ui.add_space(12.0);
             let width = ui.available_width();
             let gap = crate::theme::PAD / 2.0;
             let columns = (((width + gap) / (crate::views::CARD_MIN_W + gap)).floor() as usize).max(1);
@@ -518,97 +605,93 @@ impl LauncherUi {
                     ui.spacing_mut().item_spacing.x = gap;
                     for entry in row {
                         ui.allocate_ui_with_layout(egui::vec2(card_width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
-                            self.nightly_card(ui, entry, enabled, &tokens);
+                            ui.push_id(entry.app.id, |ui| {
+                                self.nightly_card(ui, entry, enabled, &tokens);
+                            });
                         });
                     }
                 });
                 ui.add_space(gap);
             }
         });
-        for notice in &self.nightly.notices {
-            ui.add(egui::Label::new(notice).wrap());
-        }
     }
 
     fn nightly_card(&mut self, ui: &mut Ui, entry: &AppEntry, enabled: bool, tokens: &Tokens) {
+        let status = enabled.then(|| self.nightly.statuses.get(entry.app.id)).flatten();
+        // A date, cached result or retained copy is not an installation capability.
+        // The existing UI offer gate is unchanged and Native still revalidates.
+        let can_install = enabled
+            && !nightly_install_is_redundant(entry)
+            && entry.installable == Some(true)
+            && status.is_some_and(|status| !status.stale && status.verified_at.is_some());
+        let needs_verification = status.is_none_or(|status| status.stale || status.verified_at.is_none());
+        let installed = entry.installed.is_some();
+        let installed_version = entry.installed.as_ref().and_then(|copy| copy.version.as_ref()).map(ToString::to_string);
+        let candidate = (enabled && (!installed || can_install)).then(|| nightly_release_version(entry)).flatten();
         egui::Frame::new().fill(tokens.bg).stroke(egui::Stroke::new(1.0, tokens.line_strong)).inner_margin(16).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.set_min_height(crate::theme::CONTROL_H * 3.0);
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal(|ui| {
                 crate::icons::nightly_icon(ui, entry.app.id, entry.app.name, 48.0);
-                ui.vertical(|ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(crate::widgets::heading(entry.app.name, crate::theme::DIALOG_TITLE, tokens.ink_strong));
-                        crate::widgets::badge(ui, tl!("Developer Build"), tokens.accent_ink);
-                    });
-                    if entry.installed.is_some() {
-                        ui.label(RichText::new(tl!("Installed developer build")).color(tokens.ink));
-                    }
-                    if let Some(version) = nightly_card_version(entry, enabled) {
-                        ui.add(egui::Label::new(RichText::new(nightly_build_label(&version, crate::i18n::current())).strong()).wrap());
-                        // A technical identifier is not prose: fill each line instead of
-                        // leaving the base version alone before the first hyphen break.
-                        let mut text =
-                            egui::text::LayoutJob::simple(version, egui::TextStyle::Small.resolve(ui.style()), tokens.muted, ui.available_width());
-                        text.wrap.break_anywhere = true;
-                        ui.add(egui::Label::new(text).wrap());
-                    }
-                    if enabled {
-                        if let Some(status) = self.nightly.statuses.get(entry.app.id) {
-                            let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
-                            nightly_status_labels(ui, status, now);
-                        }
-                        match &entry.latest {
-                            Some(LatestRelease::Failed(_)) => {}
-                            Some(LatestRelease::None) => {
-                                ui.add(egui::Label::new(tl!("No developer build is available yet.")).wrap());
-                            }
-                            Some(LatestRelease::Found(_)) => {}
-                            None => {
-                                ui.label(tl!("Not checked yet"));
-                            }
-                        }
-                    }
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::Label::new(crate::widgets::heading(entry.app.name, crate::theme::DIALOG_TITLE, tokens.ink_strong)).wrap());
+                    crate::widgets::badge(ui, tl!("Developer Build"), tokens.accent_ink);
                 });
             });
-            ui.add_space(8.0);
-            ui.horizontal_wrapped(|ui| {
-                // Existing stable actions always go to the stable backend, never this context.
-                if self.is_installed(entry.app.id) && ui.button(tl!("Open stable")).clicked() {
-                    self.launch_app(entry.app.id);
+            if installed {
+                build_identity(ui, installed_version.as_deref(), tl!("Installed · {date}"), tl!("Installed"), tokens);
+            }
+            if let Some(candidate) = candidate.as_deref() {
+                if installed {
+                    ui.add_space(2.0);
+                    build_identity(ui, Some(candidate), tl!("Update available · {date}"), tl!("Update available"), tokens);
+                } else if can_install {
+                    build_identity(ui, Some(candidate), tl!("Available · {date}"), tl!("Available"), tokens);
+                } else {
+                    build_identity(ui, Some(candidate), tl!("Last seen · {date}"), tl!("Last seen"), tokens);
                 }
-                if entry.installed.is_some() {
-                    if ui.add(egui::Button::new(RichText::new(tl!("Open")).color(tokens.invert_fg)).fill(tokens.invert_bg)).clicked() {
+            }
+            if !installed && !can_install && !needs_verification && candidate.is_some() {
+                ui.add(egui::Label::new(tl!("This build can’t be installed.")).wrap());
+            }
+            let stable_installed = self.is_installed(entry.app.id);
+            let offer_install = entry.job.is_none() && can_install;
+            if installed || offer_install || stable_installed {
+                ui.add_space(8.0);
+                ui.horizontal_wrapped(|ui| {
+                    if installed && ui.add(egui::Button::new(RichText::new(tl!("Open")).color(tokens.invert_fg)).fill(tokens.invert_bg)).clicked() {
                         self.act(UiAction::NightlyCommand(Command::Launch { app: entry.app.id.into(), args: Vec::new() }));
                     }
-                    if ui.button(tl!("Show installed copy")).clicked() {
-                        self.act(UiAction::NightlyCommand(Command::Reveal { app: entry.app.id.into() }));
+                    if offer_install {
+                        let label = if installed { tl!("Update") } else { tl!("Install") };
+                        let button = if installed {
+                            egui::Button::new(label)
+                        } else {
+                            egui::Button::new(RichText::new(label).color(tokens.invert_fg)).fill(tokens.invert_bg)
+                        };
+                        if ui.add(button).clicked() {
+                            self.act(UiAction::NightlyCommand(Command::Install { app: entry.app.id.into() }));
+                        }
                     }
-                    // Removal needs its own confirmation, independent of opt-in or stable records.
-                    let uninstall = ui.button(tl!("Uninstall developer build…"));
-                    if uninstall.clicked() {
-                        self.nightly_uninstall_prompt(entry.app.id, uninstall.id);
+                    if installed {
+                        if ui.button(tl!("Show in folder")).clicked() {
+                            self.act(UiAction::NightlyCommand(Command::Reveal { app: entry.app.id.into() }));
+                        }
+                        // Removal needs its own confirmation, independent of opt-in or stable records.
+                        let uninstall = ui.button(tl!("Uninstall…"));
+                        if uninstall.clicked() {
+                            self.nightly_uninstall_prompt(entry.app.id, uninstall.id);
+                        }
                     }
-                }
-                // A running job replaces the install action with its progress, as on stable cards.
-                if let Some(phase) = entry.job {
-                    let (fraction, caption) = nightly_job_progress(phase);
-                    crate::widgets::progress(ui, fraction, &caption, tokens.accent, ui.available_width());
-                } else if enabled
-                    && !nightly_install_is_redundant(entry)
-                    && ui
-                        .add_enabled(
-                            entry.installable == Some(true)
-                                && self.nightly.statuses.get(entry.app.id).is_some_and(|status| !status.stale && status.verified_at.is_some()),
-                            egui::Button::new(RichText::new(tl!("Install developer build")).color(tokens.invert_fg))
-                                .fill(tokens.invert_bg)
-                                .min_size(egui::vec2(ui.available_width(), crate::theme::CONTROL_H)),
-                        )
-                        .clicked()
-                {
-                    self.act(UiAction::NightlyCommand(Command::Install { app: entry.app.id.into() }));
-                }
-            });
+                    // Existing stable actions always go to the stable backend, never this context.
+                    if stable_installed && ui.button(tl!("Open stable")).clicked() {
+                        self.launch_app(entry.app.id);
+                    }
+                });
+            }
+            if let Some(phase) = entry.job {
+                let (fraction, caption) = nightly_job_progress(phase);
+                crate::widgets::progress(ui, fraction, &caption, tokens.accent, ui.available_width());
+            }
         });
     }
 
@@ -951,13 +1034,13 @@ mod build_date_tests {
             "0.23.1-nightly.20261120.1.1.gxxxxxxxxxxxx",
         ] {
             assert_eq!(nightly_build_date(bad), None, "{bad}");
-            assert_eq!(nightly_build_label(bad, crate::i18n::Lang::EN), "Nightly");
+            assert_eq!(nightly_date_label(bad, crate::i18n::Lang::EN), None);
         }
     }
     #[test]
     fn build_day_uses_the_ui_languages_date_order() {
-        assert_eq!(nightly_build_label(VERSION, crate::i18n::Lang::EN), "Nightly 11/20/2026");
-        assert_eq!(nightly_build_label(VERSION, crate::i18n::Lang::DE), "Nightly 20.11.2026");
+        assert_eq!(nightly_date_label(VERSION, crate::i18n::Lang::EN).as_deref(), Some("11/20/2026"));
+        assert_eq!(nightly_date_label(VERSION, crate::i18n::Lang::DE).as_deref(), Some("20.11.2026"));
     }
     #[test]
     fn build_day_comes_from_the_tag_not_publication_or_a_stale_parsed_version() {
@@ -968,34 +1051,9 @@ mod build_date_tests {
             published_at: Some(1_795_294_800),
             ..Default::default()
         }));
-        let full = nightly_card_version(&entry, true).unwrap();
+        let full = nightly_release_version(&entry).unwrap();
         assert_eq!(full, VERSION);
-        assert_eq!(nightly_build_label(&full, crate::i18n::Lang::EN), "Nightly 11/20/2026");
-    }
-    #[test]
-    fn off_retained_copy_uses_its_version_not_a_newer_cached_release() {
-        let mut entry = entry();
-        let installed = "0.23.1-nightly.20261119.1.1.gace4bfc68195";
-        entry.installed = Some(artcraft_launcher_core::Installed {
-            version: artcraft_launcher_core::version::parse(installed),
-            source: artcraft_launcher_core::InstallSource::Launcher,
-            location: "/apps/PhotoCraft Nightly".into(),
-            package: None,
-            externally_managed: false,
-            origin: None,
-            installation: None,
-        });
-        entry.latest = Some(LatestRelease::Found(artcraft_launcher_core::Release {
-            tag: format!("v{VERSION}"),
-            version: artcraft_launcher_core::version::parse(VERSION),
-            ..Default::default()
-        }));
-        assert_eq!(nightly_card_version(&entry, false).as_deref(), Some(installed));
-        assert_eq!(nightly_card_version(&entry, true).as_deref(), Some(VERSION));
-        entry.latest = Some(LatestRelease::Failed("offline".into()));
-        assert_eq!(nightly_card_version(&entry, true).as_deref(), Some(installed));
-        entry.installed.as_mut().unwrap().version = None;
-        assert!(nightly_card_version(&entry, false).is_none());
+        assert_eq!(nightly_date_label(&full, crate::i18n::Lang::EN).as_deref(), Some("11/20/2026"));
     }
 }
 
@@ -1153,13 +1211,14 @@ mod layout_tests {
     }
 
     #[test]
-    fn full_version_fills_the_first_row_and_retains_its_exact_accessible_value() {
-        let harness = page(1180.0);
+    fn exact_version_is_visible_by_default_and_wraps_inside_the_card() {
+        let harness = page(432.0);
+        harness.get_by_label("Last seen · 11/20/2026");
         let full = harness.get_by_label(VERSION);
         assert_eq!(full.accesskit_node().value().as_deref(), Some(VERSION));
-        let first_row = full.children_recursive().find(|node| node.accesskit_node().role() == egui::accesskit::Role::TextRun).unwrap();
-        let text = first_row.accesskit_node().value().unwrap();
-        assert!(text.contains("nightly."), "do not leave the base version alone before a hyphen break: {text}");
+        assert!(full.rect().right() < 432.0, "the technical identifier stays inside the card");
+        let first = full.children_recursive().find(|node| node.accesskit_node().role() == egui::accesskit::Role::TextRun).unwrap();
+        assert!(first.accesskit_node().value().unwrap().contains("nightly."), "do not wrap immediately before the first hyphen");
     }
 
     #[test]
@@ -1527,7 +1586,78 @@ mod status_tests {
         state.logic(&Settings::default());
         assert!(!state.destination_visible(false), "an error is not consent");
         assert!(state.destination_visible(true));
-        assert!(state.notices.iter().any(|notice| notice == refusal), "after consent the page can show the scoped refusal");
+        assert!(state.storage_notices.iter().any(|(_, notice)| notice == refusal), "after consent the page can show the scoped refusal");
+    }
+
+    #[test]
+    fn reveal_and_last_copy_removal_failures_toast_once_even_while_off() {
+        use egui_kittest::Harness;
+        use egui_kittest::kittest::Queryable;
+        const REVEAL: &str = "Couldn’t show the PhotoCraft developer build: The folder could not be opened.";
+        const REMOVE: &str = "Couldn’t finish uninstalling the PhotoCraft developer build: Could not save the removal record.";
+        struct Host;
+        impl crate::Host for Host {}
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        fake.events.borrow_mut().extend([
+            Event::Detected {
+                app: "photocraft".into(),
+                installed: Some(artcraft_launcher_core::Installed {
+                    version: None,
+                    source: artcraft_launcher_core::InstallSource::Launcher,
+                    location: "/fixtures/PhotoCraft Nightly".into(),
+                    package: None,
+                    externally_managed: false,
+                    origin: None,
+                    installation: None,
+                }),
+            },
+            Event::Progress { app: "photocraft".into(), phase: JobPhase::Removing },
+        ]);
+        let backend = fake.clone();
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(560.0, 900.0)).build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    let launcher = state.get_or_insert_with(|| {
+                        let mut launcher = LauncherUi::new(
+                            ui.ctx(),
+                            Box::new(FakeBackend::default()),
+                            Settings { language: "en".into(), notify: false, ..Default::default() },
+                        );
+                        launcher.nightly = NightlyState::new(Some(Box::new(backend.clone())), None);
+                        launcher.nightly.active = true;
+                        launcher
+                    });
+                    launcher.logic(ui.ctx(), &mut Host);
+                    launcher.ui(ui, &mut Host);
+                },
+                None,
+            );
+        harness.run_steps(5);
+        harness.get_by_label("Removing…");
+        fake.events.borrow_mut().extend([
+            Event::NightlyRevealFailed { app: "photocraft".into(), error: "The folder could not be opened.".into() },
+            Event::JobFinished { app: "gridcraft".into(), result: Ok("Fixture success.".into()) },
+            status(1000, 1000, true, None),
+        ]);
+        harness.run_steps(5);
+        assert_eq!(harness.get_all_by_label(REVEAL).count(), 1);
+        let alert = harness.get_by_role(egui::accesskit::Role::Alert);
+        alert.get_by_label(REVEAL);
+        harness.get_by_label("Removing…");
+        assert!(harness.query_by_label("Fixture success.").is_none());
+        harness.get_by_label(REVEAL).click();
+        harness.run_steps(4);
+        assert!(harness.query_by_label(REVEAL).is_none(), "dismissal must not replay the failure");
+
+        fake.events.borrow_mut().extend([
+            Event::Detected { app: "photocraft".into(), installed: None },
+            Event::JobFinished { app: "photocraft".into(), result: Err("Could not save the removal record.".into()) },
+        ]);
+        harness.run_steps(6);
+        assert!(harness.query_by_label("Developer Builds").is_none(), "off with no copies leaves the destination");
+        harness.get_by_role(egui::accesskit::Role::Alert).get_by_label(REMOVE);
+        assert_eq!(harness.get_all_by_label(REMOVE).count(), 1);
     }
 
     #[test]
@@ -1558,7 +1688,7 @@ mod status_tests {
     }
 
     #[test]
-    fn stale_status_is_visible_in_accessibility_tree_with_distinct_times_and_bounded_failure() {
+    fn expanded_diagnostics_keep_distinct_times_and_bounded_failure() {
         use egui_kittest::Harness;
         use egui_kittest::kittest::Queryable;
         let fake = FakeBackend::default();
@@ -1573,10 +1703,10 @@ mod status_tests {
         value.message = Some("offline".into());
         let mut harness = Harness::new_ui(move |ui| {
             crate::i18n::set_current(crate::i18n::Lang::EN);
-            nightly_status_labels(ui, &value, 500);
+            nightly_status_details(ui, &value, 500);
+            ui.label(retry_line(value.retry_at, 500).unwrap());
         });
         harness.run_steps(3);
-        assert!(harness.query_by_label("Previous verified result is stale. Check again before installing.").is_some());
         assert!(harness.query_by_label("Last verified: 6 min ago").is_some());
         assert!(harness.query_by_label("Last attempt: 1 min ago").is_some());
         assert!(harness.query_by_label("offline").is_some());
@@ -1641,6 +1771,8 @@ mod polish_tests {
                         launcher.nightly.active = true;
                         if let Some(status) = &card.status {
                             launcher.nightly.statuses.insert("photocraft".into(), status.clone());
+                            launcher.nightly.checked_at = status.verified_at;
+                            launcher.nightly.attempted_at = status.attempted_at;
                         }
                         let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
                         photo.detected = true;
@@ -1673,13 +1805,13 @@ mod polish_tests {
             release.version = artcraft_launcher_core::version::parse(OLDER);
         }
         let cases = [
-            ("current", current(), None),
-            ("immutable tag overrides stale cache", stale_cache, None),
-            ("missing", Card { installed: None, installable: Some(true), ..current() }, Some(true)),
-            ("older", Card { installed: Some(Some(OLDER)), installable: Some(true), ..current() }, Some(true)),
-            ("earlier same day", Card { installed: Some(Some(EARLIER_SAME_DAY)), installable: Some(true), ..current() }, Some(true)),
-            ("blocked newer build", Card { installed: Some(Some(OLDER)), ..current() }, Some(false)),
-            ("no verified status", Card { installed: Some(Some(OLDER)), installable: Some(true), status: None, ..current() }, Some(false)),
+            ("current", current(), false),
+            ("immutable tag overrides stale cache", stale_cache, false),
+            ("missing", Card { installed: None, installable: Some(true), ..current() }, true),
+            ("older", Card { installed: Some(Some(OLDER)), installable: Some(true), ..current() }, true),
+            ("earlier same day", Card { installed: Some(Some(EARLIER_SAME_DAY)), installable: Some(true), ..current() }, true),
+            ("blocked newer build", Card { installed: Some(Some(OLDER)), ..current() }, false),
+            ("no verified status", Card { installed: Some(Some(OLDER)), installable: Some(true), status: None, ..current() }, false),
             (
                 "stale verified status",
                 Card {
@@ -1688,42 +1820,163 @@ mod polish_tests {
                     status: Some(NightlyStatus { verified_at: Some(1000), stale: true, ..Default::default() }),
                     ..current()
                 },
-                Some(false),
+                false,
             ),
-            ("non-nightly installed version", Card { installed: Some(Some("0.23.1")), ..current() }, Some(false)),
-            ("unknown installed version", Card { installed: Some(None), ..current() }, Some(false)),
-            ("unknown latest version", Card { latest: Some(release("invalid")), ..current() }, Some(false)),
-            ("failed lookup", Card { latest: Some(LatestRelease::Failed("offline".into())), ..current() }, Some(false)),
-            ("no available release", Card { latest: Some(LatestRelease::None), ..current() }, Some(false)),
-            ("pending lookup", Card { latest: None, ..current() }, Some(false)),
-            ("OFF with cached newer build", Card { installed: Some(Some(OLDER)), installable: Some(true), enabled: false, ..current() }, None),
+            ("non-nightly installed version", Card { installed: Some(Some("0.23.1")), ..current() }, false),
+            ("unknown installed version", Card { installed: Some(None), ..current() }, false),
+            ("unknown latest version", Card { latest: Some(release("invalid")), ..current() }, false),
+            ("failed lookup", Card { latest: Some(LatestRelease::Failed("offline".into())), ..current() }, false),
+            ("no available release", Card { latest: Some(LatestRelease::None), ..current() }, false),
+            ("pending lookup", Card { latest: None, ..current() }, false),
+            ("OFF with cached newer build", Card { installed: Some(Some(OLDER)), installable: Some(true), enabled: false, ..current() }, false),
         ];
         for theme in [ThemeChoice::Light, ThemeChoice::Dark] {
             for width in [560.0, 1180.0] {
                 for (name, card, install) in &cases {
                     let sent = Rc::new(RefCell::new(Vec::new()));
                     let mut harness = page(width, theme, card.clone(), sent.clone());
-                    let button = harness.query_by_label("Install developer build");
-                    if let Some(enabled) = install {
+                    let label = if card.installed.is_some() { "Update" } else { "Install" };
+                    let button = harness.query_by_label(label);
+                    if *install {
                         let button = button.unwrap_or_else(|| panic!("missing install action: {name}"));
-                        assert_eq!(!button.accesskit_node().is_disabled(), *enabled, "{name}");
-                        if *enabled {
-                            button.focus();
-                            harness.key_press(egui::Key::Enter);
-                            harness.run_steps(3);
-                            assert!(sent.borrow().iter().any(|cmd| matches!(cmd, Command::Install { app } if app == "photocraft")), "{name}");
-                        }
+                        assert!(!button.accesskit_node().is_disabled(), "{name}");
+                        assert!(button.rect().right() < width, "{name}: {:?}", button.rect());
+                        button.focus();
+                        harness.key_press(egui::Key::Enter);
+                        harness.run_steps(3);
+                        assert!(sent.borrow().iter().any(|cmd| matches!(cmd, Command::Install { app } if app == "photocraft")), "{name}");
                     } else {
-                        assert!(button.is_none(), "redundant or OFF install action: {name}");
+                        assert!(button.is_none(), "unavailable or redundant install action: {name}");
                     }
                     if card.installed.is_some() {
                         harness.get_by_label("Open");
-                        harness.get_by_label("Show installed copy");
-                        harness.get_by_label("Uninstall developer build…");
+                        harness.get_by_label("Show in folder");
+                        harness.get_by_label("Uninstall…");
                     }
                 }
             }
         }
+    }
+
+    #[test]
+    fn stale_installed_and_first_time_cards_offer_recovery_not_installation() {
+        for installed in [Some(Some(CURRENT)), None] {
+            let card = Card {
+                installed,
+                latest: if installed.is_some() { None } else { Some(release(CURRENT)) },
+                installable: Some(true), // A previous offer does not keep a stale build installable.
+                status: Some(NightlyStatus { stale: true, ..current().status.unwrap() }),
+                ..current()
+            };
+            let sent = Rc::new(RefCell::new(Vec::new()));
+            let mut harness = page(560.0, ThemeChoice::Dark, card, sent.clone());
+            assert!(harness.query_by_label("Check for updates to see what’s available.").is_none());
+            harness.get_by_role_and_label(egui::accesskit::Role::DisclosureTriangle, "Check details");
+            harness.get_by_label(CURRENT);
+            if installed.is_none() {
+                harness.get_by_label("Last seen · 11/21/2026");
+            }
+            assert!(harness.query_by_label("Not checked yet").is_none());
+            assert!(harness.query_by_label("Last verified: just now").is_none());
+            assert!(harness.query_by_label("Install").is_none());
+            assert!(harness.query_by_label("Update").is_none());
+            harness.get_by_label("Check for updates").focus();
+            harness.key_press(egui::Key::Enter);
+            harness.run_steps(3);
+            assert!(sent.borrow().iter().any(|command| matches!(command, Command::CheckForUpdates { force: true })));
+            harness.state_mut().as_mut().unwrap().nightly.checking = true;
+            harness.run_steps(3);
+            harness.get_by_label("Checking for updates…");
+        }
+    }
+
+    #[test]
+    fn same_day_installed_and_available_ids_are_distinct_and_off_hides_the_offer() {
+        let card = Card { installed: Some(Some(EARLIER_SAME_DAY)), installable: Some(true), ..current() };
+        let sent = Rc::new(RefCell::new(Vec::new()));
+        let mut harness = page(560.0, ThemeChoice::Dark, card, sent);
+        harness.get_by_label("Installed · 11/21/2026");
+        harness.get_by_label("Update available · 11/21/2026");
+        let installed = harness.get_by_label(EARLIER_SAME_DAY).rect();
+        let available = harness.get_by_label(CURRENT).rect();
+        assert!(installed.bottom() < available.top(), "both builds read in installed/available order");
+        harness.state_mut().as_mut().unwrap().nightly.statuses.get_mut("photocraft").unwrap().stale = true;
+        harness.run_steps(5);
+        harness.get_by_label(EARLIER_SAME_DAY);
+        assert!(harness.query_by_label(CURRENT).is_none(), "don’t show a stale candidate next to an installed copy");
+        harness.state_mut().as_mut().unwrap().settings.nightly_enabled = false;
+        harness.run_steps(5);
+        harness.get_by_label(EARLIER_SAME_DAY);
+        assert!(harness.query_by_label(CURRENT).is_none());
+        assert!(harness.query_by_label("Check details").is_none());
+        assert!(harness.query_by_label("Check for updates").is_none());
+        assert!(harness.query_by_label("Update").is_none());
+        harness.get_by_label("Open");
+        harness.get_by_label("Show in folder");
+        harness.get_by_label("Uninstall…");
+    }
+
+    #[test]
+    fn channel_check_time_requires_current_results_not_just_saved_timestamps() {
+        let mut harness = page(560.0, ThemeChoice::Dark, current(), Rc::default());
+        harness.get_by_label("Some apps still need to be checked.");
+        let state = &mut harness.state_mut().as_mut().unwrap().nightly;
+        for entry in &mut state.entries {
+            entry.latest = Some(LatestRelease::None);
+            state.statuses.insert(entry.app.id.into(), NightlyStatus { verified_at: Some(1000), ..Default::default() });
+        }
+        harness.run_steps(4);
+        harness.get_by_label("No developer builds available · checked just now");
+        let state = &mut harness.state_mut().as_mut().unwrap().nightly;
+        for entry in &mut state.entries {
+            entry.latest = None;
+        }
+        harness.run_steps(4);
+        assert!(harness.query_by_label("No developer builds available · checked just now").is_none());
+        assert!(harness.state().as_ref().unwrap().nightly_check_status(1000).is_none());
+        assert!(harness.query_by_label("Not checked yet").is_none());
+        assert!(harness.query_by_label("Last verified: just now").is_none());
+        harness.get_by_label("Check details").focus();
+        harness.key_press(egui::Key::Enter);
+        harness.run_steps(10);
+        assert!(harness.get_all_by_label("Last verified: just now").next().is_some());
+        assert!(harness.get_by_label("Check details").accesskit_node().is_focused());
+    }
+
+    #[test]
+    fn mixed_check_keeps_verified_install_available_while_failed_apps_wait() {
+        let card = Card { installed: None, installable: Some(true), ..current() };
+        let mut harness = page(432.0, ThemeChoice::Dark, card, Rc::default());
+        let state = &mut harness.state_mut().as_mut().unwrap().nightly;
+        let grid = state.entries.iter_mut().find(|entry| entry.app.id == "gridcraft").unwrap();
+        grid.latest = Some(LatestRelease::Failed("Offline fixture".into()));
+        state.statuses.insert(
+            "gridcraft".into(),
+            NightlyStatus {
+                attempted_at: Some(975),
+                retry_at: Some(1300),
+                stale: true,
+                message: Some("Offline fixture".into()),
+                ..Default::default()
+            },
+        );
+        harness.run_steps(4);
+        let summary = harness.get_by_label("Some apps couldn’t be checked. Retry available in 5 min");
+        let check = harness.get_by_label("Check for updates");
+        assert!(check.accesskit_node().is_disabled());
+        assert!(check.rect().bottom() < summary.rect().top());
+        assert!(summary.rect().right() < 432.0, "the page summary wraps before the edge");
+        assert!(!harness.get_by_label("Install").accesskit_node().is_disabled());
+        assert!(harness.query_by_label("Offline fixture").is_none());
+        harness.get_by_role_and_label(egui::accesskit::Role::DisclosureTriangle, "Check details").focus();
+        harness.key_press(egui::Key::Enter);
+        harness.run_steps(10);
+        harness.get_by_label("Offline fixture");
+        assert!(harness.get_by_label("Check details").accesskit_node().is_focused());
+        harness.key_press(egui::Key::Enter);
+        harness.run_steps(10);
+        assert!(harness.query_by_label("Offline fixture").is_none());
+        assert!(harness.get_by_label("Check details").accesskit_node().is_focused());
     }
 
     #[test]
@@ -1740,7 +1993,7 @@ mod polish_tests {
                     let sent = Rc::new(RefCell::new(Vec::new()));
                     let mut harness = page(width, theme, Card { enabled, ..current() }, sent.clone());
                     for cancel_key in [egui::Key::Escape, egui::Key::Enter] {
-                        harness.get_by_label("Uninstall developer build…").focus();
+                        harness.get_by_label("Uninstall…").focus();
                         harness.key_press(egui::Key::Enter);
                         harness.run_steps(3);
                         let title = harness.get_by_label("Uninstall developer build?").rect();
@@ -1758,11 +2011,11 @@ mod polish_tests {
                         harness.key_press(cancel_key);
                         harness.run_steps(3);
                         assert!(harness.state().as_ref().unwrap().nightly.uninstall.is_none());
-                        assert!(harness.get_by_label("Uninstall developer build…").accesskit_node().is_focused());
+                        assert!(harness.get_by_label("Uninstall…").accesskit_node().is_focused());
                         assert!(!sent.borrow().iter().any(|cmd| matches!(cmd, Command::Uninstall { .. })));
                         assert!(harness.state().as_ref().unwrap().nightly.entries.iter().any(|entry| entry.installed.is_some()));
                     }
-                    harness.get_by_label("Uninstall developer build…").focus();
+                    harness.get_by_label("Uninstall…").focus();
                     harness.key_press(egui::Key::Enter);
                     harness.run_steps(3);
                     harness.key_press(egui::Key::Tab);
@@ -1794,7 +2047,7 @@ mod polish_tests {
         let sent: Commands = Rc::default();
         let card = Card { installed: None, installable: Some(true), ..current() };
         let mut harness = page(1180.0, ThemeChoice::Light, card, sent);
-        assert!(harness.query_by_label("Install developer build").is_some(), "precondition: an installable build offers the install action");
+        assert!(harness.query_by_label("Install").is_some(), "precondition: an installable build offers the install action");
         let set_job = |harness: &mut Harness<'static, Option<LauncherUi>>, job: Option<JobPhase>| {
             let launcher = harness.state_mut().as_mut().unwrap();
             launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap().job = job;
@@ -1806,16 +2059,13 @@ mod polish_tests {
         ] {
             set_job(&mut harness, Some(phase));
             harness.run_steps(3);
-            assert!(
-                harness.query_by_label("Install developer build").is_none(),
-                "{caption}: the install action must not stay clickable while installing"
-            );
+            assert!(harness.query_by_label("Install").is_none(), "{caption}: the install action must not stay clickable while installing");
             let progress = harness.get_by_label(caption);
             assert_eq!(progress.accesskit_node().role(), egui::accesskit::Role::ProgressIndicator, "{caption}");
         }
         set_job(&mut harness, None);
         harness.run_steps(3);
-        assert!(harness.query_by_label("Install developer build").is_some(), "the action returns when the job ends");
+        assert!(harness.query_by_label("Install").is_some(), "the action returns when the job ends");
     }
 }
 

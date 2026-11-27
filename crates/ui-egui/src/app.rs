@@ -646,7 +646,9 @@ impl LauncherUi {
         // actually show: English where the system has no CJK face for the preference.
         set_current(effective_lang(&self.settings.language));
         self.configure();
-        self.nightly.logic(&self.settings);
+        for error in self.nightly.logic(&self.settings) {
+            self.toast(error, true);
+        }
         // A kept version's card notes a newer release; that needs the app's published list.
         self.request_pinned_lists();
         if !self.started {
@@ -775,7 +777,7 @@ impl LauncherUi {
                 self.on_notice(result);
                 true
             }
-            Event::NightlyStatus { .. } => false, // Nightly metadata never changes Stable scheduling or presentation.
+            Event::NightlyStatus { .. } | Event::NightlyRevealFailed { .. } => false, // Nightly never changes Stable scheduling or presentation.
             Event::LauncherUpdate(r) => self.on_launcher_update(r),
             Event::CheckStarted => {
                 self.checking = true;

@@ -491,6 +491,9 @@ impl LauncherUi {
         // is cut short with "…", never drawn under them.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             widgets::icon_links(ui, icon, &links);
+            if self.nightly.active {
+                return; // Developer Builds has its own check status; this one describes Stable.
+            }
             ui.add_space(8.0);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 // While GitHub is rate limited, saying so matters more than when we last checked.

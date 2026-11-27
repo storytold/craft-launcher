@@ -839,3 +839,13 @@ fn review_unreadable_manifest_keeps_the_last_known_copy_instead_of_publishing_no
     assert!(events.iter().any(|event| matches!(event, Event::Notice { app, result: Err(_) } if app == APP)), "{events:?}");
     assert!(!events.iter().any(|event| matches!(event, Event::Detected { app, installed: None } if app == APP)), "{events:?}");
 }
+
+#[test]
+fn reveal_failure_is_not_a_passive_notice_or_a_terminal_job_event() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut backend = fresh_backend(&paths(temp.path()));
+    backend.poll();
+    // There is no installed copy, so Reveal must report its error without invoking the shell.
+    backend.send(Command::Reveal { app: APP.into() });
+    assert!(matches!(backend.poll().as_slice(), [Event::NightlyRevealFailed { app, error }] if app == APP && !error.is_empty()));
+}
