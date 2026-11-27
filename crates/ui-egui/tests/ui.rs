@@ -2249,6 +2249,8 @@ fn table_view_and_light_theme() {
 /// Pin floats an app above Name sort; reorder via settings is reflected; Hide clears the pin.
 fn pinning_an_app_keeps_it_on_top_until_unpinned() {
     let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    // Keep the alphabetically sorted rows visible as the catalog grows.
+    h.set_size(egui::vec2(1180.0, 3000.0));
     h.run_steps(6);
     // Name sort would put CADCraft before PhotoCraft; a pin must still win.
     h.state_mut().as_mut().unwrap().settings.sort = artcraft_launcher_ui_egui::settings::SortKey::Name;
