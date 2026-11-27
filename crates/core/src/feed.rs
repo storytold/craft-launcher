@@ -61,6 +61,10 @@ pub struct FeedApp {
     /// existed sends neither, and its silence says nothing about betas; a beta that can't be read
     /// says nothing either.
     pub channels: bool,
+    /// The entry sent neither the `releases` version list nor a `latest_prerelease`: a server from
+    /// before the pre-release channel. With pre-releases on, the stable release is then the best
+    /// answer there is (see [`Feed::answer_with_prereleases`]).
+    pub channels_absent: bool,
     /// The newest beta or release candidate. Meaningless unless `channels` is set.
     pub prerelease: Option<FeedRelease>,
     /// The tags of the recent ordinary releases (stable ones and betas), newest first, from the
@@ -76,6 +80,9 @@ pub struct FeedRelease {
     pub published_at: Option<i64>,
     pub html_url: String,
     pub prerelease: bool,
+    /// The `prerelease` flag was missing, `null` or not a boolean, so `prerelease` is a guess from
+    /// the tag. A history holding such a release can't prove that a build is absent.
+    pub prerelease_unreadable: bool,
     pub notes: String,
     pub assets: Vec<(String, u64, String, Option<String>)>,
 }
@@ -152,7 +159,8 @@ impl Feed {
         };
         match &entry.release {
             None => FeedAnswer::Fresh(None),
-            Some(r) => match r.to_release(&repo, self.mirror.as_deref()) {
+            // A nightly in the stable slot is no stable release: it is there, so it isn't "none".
+            Some(r) => match r.to_release(&repo, self.mirror.as_deref()).filter(release::ordinary_release_allowed) {
                 Some(release) => FeedAnswer::Fresh(Some(release)),
                 None => FeedAnswer::Unknown,
             },
@@ -161,14 +169,19 @@ impl Feed {
 
     /// What the feed says about `app` at `now` with pre-releases on: the higher of its stable
     /// release and its newest beta or RC, the higher version of the two. Unknown whenever the
-    /// entry can't settle that: no stable answer (see [`Feed::answer`]), an entry
-    /// without the pre-release channel (an older server), a beta that doesn't hold up, or a
-    /// version list naming a higher ordinary version than the two the feed sent in full.
+    /// entry can't settle that: no stable answer (see [`Feed::answer`]), an entry whose
+    /// pre-release channel can't be read, a beta that doesn't hold up, or a version list naming a
+    /// higher ordinary version than the two the feed sent in full. An entry without any channel
+    /// data (an older server) answers with its stable release.
     pub fn answer_with_prereleases(&self, app: &CraftApp, now: i64) -> FeedAnswer {
         let FeedAnswer::Fresh(stable) = self.answer(app, now) else { return FeedAnswer::Unknown };
-        let Some((entry, repo)) = self.checked(app, now).filter(|(entry, _)| entry.channels) else {
-            return FeedAnswer::Unknown;
-        };
+        let Some((entry, repo)) = self.checked(app, now) else { return FeedAnswer::Unknown };
+        if !entry.channels {
+            // A server from before the channel says nothing about betas, but its stable release is
+            // still the answer, so a user with pre-releases on keeps getting updates. A channel that
+            // is there but can't be read is not that silence.
+            return if entry.channels_absent { FeedAnswer::Fresh(stable) } else { FeedAnswer::Unknown };
+        }
         let beta = match &entry.prerelease {
             None => None,
             Some(r) => match r.to_release(&repo, self.mirror.as_deref()).filter(release::ordinary_release_allowed) {
@@ -258,15 +271,27 @@ impl AppReleases {
         // No list at all is no answer, never a complete empty history.
         let serde_json::Value::Array(items) = raw.releases? else { return None };
         let sent = items.len();
-        let releases: Vec<Release> = items
-            .into_iter()
-            .take(MAX_HISTORY)
-            .filter_map(|item| RawRelease::deserialize(item).ok())
-            .filter_map(RawRelease::into_release)
-            .filter_map(|r| r.to_release(repo, None))
-            .collect();
-        // A release cut off or that couldn't be read leaves the history short of what was sent.
-        let complete = raw.complete && releases.len() == sent;
+        let read: Vec<FeedRelease> =
+            items.into_iter().take(MAX_HISTORY).filter_map(|item| RawRelease::deserialize(item).ok()).filter_map(RawRelease::into_release).collect();
+        // A release whose pre-release flag can't be read could be a nightly: the history then can't
+        // say that a build is absent.
+        let mut complete = raw.complete && sent <= MAX_HISTORY && read.len() == sent && read.iter().all(|r| !r.prerelease_unreadable);
+        // A tag sent twice is listed once. Two different releases under one tag are ambiguous: the
+        // first is kept and the history no longer proves anything.
+        let mut first: std::collections::HashMap<String, &FeedRelease> = std::collections::HashMap::new();
+        let mut kept = Vec::new();
+        for r in &read {
+            match first.get(&r.tag.to_lowercase()) {
+                Some(earlier) => complete &= *earlier == r,
+                None => {
+                    first.insert(r.tag.to_lowercase(), r);
+                    kept.push(r);
+                }
+            }
+        }
+        let releases: Vec<Release> = kept.iter().filter_map(|r| r.to_release(repo, None)).collect();
+        // A release that doesn't hold up for the repo leaves the history short of what was sent.
+        complete &= releases.len() == kept.len();
         Some(Self { complete, releases, fetched_at: Some(fetched_at) })
     }
 }
@@ -395,6 +420,7 @@ impl RawApp {
             ),
             _ => None,
         };
+        let channels_absent = self.releases.is_none() && self.latest_prerelease.is_none();
         let prerelease = read_release(self.latest_prerelease);
         let release = read_release(self.latest_release);
         FeedApp {
@@ -403,6 +429,7 @@ impl RawApp {
             release: release.unwrap_or_default(),
             fetched_at: self.app_last_fetched.as_deref().and_then(parse_rfc3339),
             channels: versions.is_some() && prerelease.is_ok(),
+            channels_absent,
             prerelease: prerelease.unwrap_or_default(),
             versions: versions.unwrap_or_default(),
         }
@@ -419,8 +446,9 @@ struct RawRelease {
     published_at: Option<String>,
     #[serde(default, deserialize_with = "lenient")]
     html_url: Option<String>,
+    /// `None` when missing, `null` or not a boolean: that says nothing, unlike `false`.
     #[serde(default, deserialize_with = "lenient")]
-    prerelease: bool,
+    prerelease: Option<bool>,
     #[serde(default, deserialize_with = "lenient")]
     notes_markdown: Option<String>,
     #[serde(default, deserialize_with = "lenient_vec")]
@@ -430,12 +458,15 @@ struct RawRelease {
 impl RawRelease {
     fn into_release(self) -> Option<FeedRelease> {
         let tag = self.tag.filter(|t| !t.is_empty() && t.len() <= 64)?;
+        let guessed = version::parse(&tag).is_some_and(|v| !v.pre.is_empty());
         Some(FeedRelease {
             tag,
             name: self.name.unwrap_or_default(),
             published_at: self.published_at.as_deref().and_then(parse_rfc3339),
             html_url: self.html_url.unwrap_or_default(),
-            prerelease: self.prerelease,
+            // An unreadable flag is guessed from the tag, and remembered as unreadable.
+            prerelease: self.prerelease.unwrap_or(guessed),
+            prerelease_unreadable: self.prerelease.is_none(),
             notes: self.notes_markdown.unwrap_or_default(),
             assets: self.assets.into_iter().filter_map(|a| Some((a.name?, a.size_bytes, a.download_url?, a.sha256))).take(300).collect(),
         })
@@ -620,10 +651,17 @@ mod tests {
     #[test]
     fn with_pre_releases_the_answer_is_unknown_whenever_the_feed_cant_settle_it() {
         let photo = app("photocraft");
-        // A server from before the channels: its silence says nothing about betas.
-        let old_server = with_channels(None, None);
-        assert_eq!(old_server.answer_with_prereleases(photo, NOW), FeedAnswer::Unknown);
-        assert_eq!(tag(old_server.answer(photo, NOW)).as_deref(), Some("v0.6.0"));
+        // An entry whose channel can't be read (a beta of the wrong shape) isn't silence.
+        let entry = |extra: &str| {
+            Feed::parse(&format!(
+                r#"{{"release_info": {{"apps": {{"photocraft": {{"repo": "storytold/photocraft", "app_last_fetched": "2026-10-09T13:00:00Z",
+                    "latest_release": {{"tag": "v0.6.0", "prerelease": false}}{extra}}}}}}}}}"#
+            ))
+            .unwrap()
+        };
+        for unreadable in [r#", "latest_prerelease": 5"#, r#", "releases": "nope""#, r#", "latest_prerelease": {"name": "x"}"#] {
+            assert_eq!(entry(unreadable).answer_with_prereleases(photo, NOW), FeedAnswer::Unknown, "{unreadable}");
+        }
         // The version list names a higher version than the two sent in full.
         let behind = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.7.0", "v0.7.0-rc.1", "v0.6.0"]));
         assert_eq!(behind.answer_with_prereleases(photo, NOW), FeedAnswer::Unknown);
@@ -636,6 +674,44 @@ mod tests {
         // Stale entries are unknown with pre-releases on too.
         let fresh = with_channels(Some("v0.7.0-rc.1"), Some(&["v0.7.0-rc.1"]));
         assert_eq!(fresh.answer_with_prereleases(photo, NOW + 2 * MAX_AGE), FeedAnswer::Unknown);
+    }
+
+    /// The live feed has no channel data yet: pre-releases on must not cost every app its update.
+    #[test]
+    fn a_server_without_the_channels_answers_with_pre_releases_on_by_its_stable_release() {
+        let photo = app("photocraft");
+        for old_server in [with_channels(None, None), Feed::parse(&sample()).unwrap()] {
+            assert!(!old_server.apps["photocraft"].channels && old_server.apps["photocraft"].channels_absent);
+            assert_eq!(tag(old_server.answer_with_prereleases(photo, NOW)).as_deref(), Some("v0.6.0"));
+            assert_eq!(old_server.answer_with_prereleases(photo, NOW + 2 * MAX_AGE), FeedAnswer::Unknown, "a stale entry is still unknown");
+        }
+        // No stable release yet is still an answer; an app not listed is not.
+        let none = Feed::parse(
+            r#"{"release_info": {"apps": {"photocraft": {"repo": "storytold/photocraft", "app_last_fetched": "2026-10-09T13:00:00Z", "latest_release": null}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(none.answer_with_prereleases(photo, NOW), FeedAnswer::Fresh(None));
+        assert_eq!(none.answer_with_prereleases(app("filmcraft"), NOW), FeedAnswer::Unknown);
+    }
+
+    /// A nightly is never the stable release, whatever slot the feed puts it in.
+    #[test]
+    fn a_nightly_in_the_stable_slot_is_not_a_stable_release() {
+        let photo = app("photocraft");
+        let entry = |tag: &str, flag: &str| {
+            Feed::parse(&format!(
+                r#"{{"release_info": {{"apps": {{"photocraft": {{"repo": "storytold/photocraft", "app_last_fetched": "2026-10-09T13:00:00Z",
+                    "latest_release": {{"tag": "{tag}"{flag}, "assets": [{{"name": "a.dmg", "size_bytes": 1, "sha256": "{HASH}",
+                    "download_url": "https://github.com/storytold/photocraft/releases/download/{tag}/a.dmg"}}]}}}}}}}}}}"#
+            ))
+            .unwrap()
+        };
+        for flag in ["", r#", "prerelease": true"#, r#", "prerelease": false"#] {
+            let feed = entry("v0.7.0-nightly.20261126.1.1", flag);
+            assert_eq!(feed.answer(photo, NOW), FeedAnswer::Unknown, "{flag}");
+            assert_eq!(feed.answer_with_prereleases(photo, NOW), FeedAnswer::Unknown, "{flag}");
+        }
+        assert_eq!(tag(entry("v0.6.0", "").answer(photo, NOW)).as_deref(), Some("v0.6.0"));
     }
 
     #[test]
@@ -778,6 +854,44 @@ mod tests {
         for junk in ["", "[]", "<html>", r#"{"repo": 5}"#] {
             assert!(AppReleases::parse(junk, photo.repo, None, NOW).is_none(), "{junk}");
         }
+    }
+
+    /// A flag that is missing, `null` or not a boolean says nothing about whether a release is a
+    /// nightly, so the history can't vouch for what it lacks. `false` and `true` are readable.
+    #[test]
+    fn a_release_flag_that_cant_be_read_leaves_the_history_incomplete() {
+        let photo = app("photocraft");
+        let release = |tag: &str, flag: &str| format!(r#"{{"tag": "{tag}"{flag}}}"#);
+        let parse = |releases: &[String]| {
+            AppReleases::parse(&history(photo.repo, r#""2026-10-09T13:00:00Z""#, &releases.join(",")), photo.repo, None, NOW).unwrap()
+        };
+        let nightly = "v0.7.0-nightly.20261126.1.1";
+        for flag in ["", r#", "prerelease": null"#, r#", "prerelease": "true""#, r#", "prerelease": 1"#] {
+            let read = parse(&[release("v0.6.0", ""), release(nightly, flag)]);
+            assert!(!read.complete, "{flag:?}");
+            assert_eq!(read.releases.len(), 2, "the release is kept: {flag:?}");
+            // The tag settles what the picker shows, not what is proven.
+            assert!(read.releases[1].prerelease, "{flag:?}");
+        }
+        let read = parse(&[release("v0.6.0", r#", "prerelease": false"#), release(nightly, r#", "prerelease": true"#)]);
+        assert!(read.complete && read.releases[1].prerelease && !read.releases[0].prerelease);
+    }
+
+    #[test]
+    fn a_tag_sent_twice_is_listed_once() {
+        let photo = app("photocraft");
+        let release = |tag: &str, name: &str| format!(r#"{{"tag": "{tag}", "name": "{name}", "prerelease": false}}"#);
+        let parse = |releases: &[String]| {
+            AppReleases::parse(&history(photo.repo, r#""2026-10-09T13:00:00Z""#, &releases.join(",")), photo.repo, None, NOW).unwrap()
+        };
+        let same = parse(&[release("v0.6.0", "a"), release("v0.5.0", "b"), release("v0.6.0", "a")]);
+        let tags: Vec<&str> = same.releases.iter().map(|r| r.tag.as_str()).collect();
+        assert_eq!(tags, ["v0.6.0", "v0.5.0"]);
+        assert!(same.complete, "an exact repeat loses nothing");
+        // Two different releases under one tag: the first stands, and nothing is proven.
+        let differ = parse(&[release("v0.6.0", "a"), release("V0.6.0", "other")]);
+        assert_eq!(differ.releases.len(), 1);
+        assert!(!differ.complete);
     }
 
     #[test]
