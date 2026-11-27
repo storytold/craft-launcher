@@ -1899,20 +1899,44 @@ fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &
 /// [`crate::fast_install::uninstall_app`]): the headless removal's own work, with the manifest
 /// read for its decisions and the record removal committed under this backend's manifest lock,
 /// so the save never lands between the launcher's own commits.
+///
+/// It is also the window's own removal in every other respect: the app's job is reserved first,
+/// so a removal or install started from the window never works on the same app at once, the
+/// card shows the removal and ends with its result, and what the window shows of the app is
+/// looked at again afterwards. A Nightly launcher keeps no record of a fast install (its manifest
+/// is its own), so it refuses rather than take the integration off a copy whose files it would
+/// leave in place.
 #[cfg(windows)]
-fn forwarded_uninstall(shared: &Shared, paths: &Paths, id: &str) -> Result<(), String> {
+fn forwarded_uninstall(shared: &Arc<Shared>, paths: &Paths, id: &str) -> Result<(), String> {
     let app = artcraft_launcher_core::CraftApp::by_id(id).ok_or_else(|| format!("{id} isn't one of the Craft apps this launcher installs."))?;
+    if shared.channel != artcraft_launcher_core::nightly::InstallChannel::Stable {
+        return Err("the launcher that is running is the Nightly one, which keeps no record of this app's files; quit it and try again".into());
+    }
+    let stop = Arc::new(Stop::default());
+    match shared.reserve_job(app.id, stop.clone()) {
+        Admission::Reserved => {}
+        Admission::AlreadyActive => return Err("a job is already running on it in the launcher; let that finish and try again".into()),
+        Admission::Restarting => return Err("ArtCraft Launcher is restarting to finish its update. Try again once it's back.".into()),
+    }
+    let job = JobGuard { shared: shared.clone(), app_id: app.id.to_string() };
+    shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
     let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    let result = crate::fast_install::remove_recorded(app, paths, &|| Ok(manifest.clone()), &mut || {
+    let result = crate::fast_install::remove_recorded(app, paths, &stop, &|| Ok(manifest.clone()), &mut || {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let changed = m.apps.remove(id).is_some() || m.releases.remove(id).is_some();
         if changed { m.save(&paths.manifest()) } else { Ok(()) }
     });
-    if result.is_ok() {
-        // The UI's picture of what is installed follows the manifest: the app is gone from both.
-        shared.installed.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
-        (shared.waker)();
-    }
+    // Look again, as the window's own removal does: what it shows of the app follows what is on
+    // disk now, whichever way the removal went.
+    let platform = native_platform();
+    let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let found = shared.host.detect(app, &manifest, &shared.host.snapshot());
+    shared.invalidate_download_size(app.id);
+    publish_detected(app, found, shared, platform);
+    report_partial(app, shared, paths, platform);
+    drop(job);
+    let finished = result.clone().map(|()| format!("{} was removed", app.name));
+    shared.emit(Event::JobFinished { app: app.id.to_string(), result: finished });
     result
 }
 

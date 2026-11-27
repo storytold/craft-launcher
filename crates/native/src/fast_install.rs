@@ -111,29 +111,22 @@ pub(crate) fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> R
     } else {
         // The transaction is putting the previous files back, or removing a fresh copy's; what
         // Windows was told must describe what is on disk again. A failed update gets the previous
-        // copy's entry rewritten (same shortcut target, its own version), a failed first install
-        // gets everything the install managed to write taken back.
+        // copy's listing back and the Start menu entry it had before the install — the copy the
+        // install saved of the entry it replaced, which is the previous version's own or one the
+        // person (or an MSI package) had put there, never a new one in its place — and a failed
+        // first install gets everything the install managed to write taken back.
         match previous {
             Some(previous) => {
-                if let Some(menu) = start_menu_programs() {
-                    let (restored, failure) = integrate(app, previous, &menu, installed_kb(previous));
-                    match failure {
-                        None => {
-                            drop_shortcut_backup(&restored.shortcut);
-                            drop_shortcut_backup(&written.shortcut);
-                        }
-                        Some(error) => {
-                            log::warn!("{}: couldn't restore the previous version's Start menu entry and listing: {error}", app.name);
-                            // The entry may still say what the failed install said: put the one
-                            // it replaced back, so the entry names the copy that is there now.
-                            if let Some(shortcut) = written.shortcut.take()
-                                && let Err(error) = undo_shortcut(&menu, app, shortcut)
-                            {
-                                log::warn!("{}: {error}", app.name);
-                            }
-                            drop_shortcut_backup(&restored.shortcut);
-                        }
-                    }
+                if written.registration
+                    && let Err(error) = write_registration(app, previous, installed_kb(previous))
+                {
+                    log::warn!("{}: couldn't restore the previous version's Apps & features record: {error}", app.name);
+                }
+                if let Some(menu) = start_menu_programs()
+                    && let Some(shortcut) = written.shortcut.take()
+                    && let Err(error) = undo_shortcut(&menu, app, shortcut)
+                {
+                    log::warn!("{}: {error}", app.name);
                 }
             }
             None => take_back(app, written),
@@ -207,13 +200,13 @@ fn take_back(app: &CraftApp, written: Integrated) {
 
 /// Puts the Start menu entry back the way [`write_shortcut`] found it: one the install created is
 /// removed, one it replaced is restored from the saved copy, so an entry the person (or an MSI
-/// package) had put there is not lost to a failed install.
+/// package) had put there is not lost to a failed install. A copy that cannot be moved back stays
+/// where it is, and the error says where, so the person can put it back by hand.
 fn undo_shortcut(menu: &Path, app: &CraftApp, shortcut: Shortcut) -> Result<(), String> {
     match shortcut {
         Shortcut::Created => remove_shortcut(menu, app),
-        Shortcut::Replaced(backup) => {
-            std::fs::rename(&backup, shortcut_path(menu, app)).map_err(|e| format!("couldn't put the Start menu entry back ({e})"))
-        }
+        Shortcut::Replaced(backup) => std::fs::rename(&backup, shortcut_path(menu, app))
+            .map_err(|e| format!("couldn't put the Start menu entry back ({e}); the entry that was there is saved at {}", backup.display())),
     }
 }
 
@@ -400,6 +393,14 @@ fn remove_registration(app: &CraftApp) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether the Apps & features key a fast install of `id` writes is there, whatever it carries.
+fn registered(id: &str) -> bool {
+    use winreg::RegKey;
+    use winreg::enums::HKEY_CURRENT_USER;
+
+    RegKey::predef(HKEY_CURRENT_USER).open_subkey(uninstall_key(id)).is_ok()
+}
+
 /// The folder the Apps & features record names, when it is still there.
 fn registered_folder(id: &str) -> Option<String> {
     use winreg::RegKey;
@@ -520,9 +521,8 @@ static REMOVALS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 ///
 /// With the launcher's own record of the copy, the removal is the launcher's ordinary one: the
 /// recorded files, the Start menu entry and both registry keys, with the record dropped from the
-/// manifest. Without it — the files were deleted by hand, the manifest was reset — the program
-/// folder cannot be told from the person's own files, so only the registration is taken back and
-/// the folder named in it is left alone, with the reason reported.
+/// manifest. What is removed without that record, and what is left alone, is
+/// [`remove_recorded`]'s to say.
 pub fn uninstall_app(id: &str) -> Result<(), String> {
     let app = CraftApp::by_id(id).ok_or_else(|| format!("{id} isn't one of the Craft apps this launcher installs."))?;
     // This process may be the instance's owner already, or become it: either way, removals other
@@ -567,15 +567,23 @@ fn remove_owned(id: &str) -> Result<(), String> {
         let changed = current.apps.remove(id).is_some() || current.releases.remove(id).is_some();
         if changed { current.save(&manifest) } else { Ok(()) }
     };
-    remove_recorded(app, &paths, &read, &mut commit)
+    remove_recorded(app, &paths, &crate::http::Stop::default(), &read, &mut commit)
 }
 
-/// The removal itself, reading the manifest through `read` for what it decides from and
-/// committing the record's removal through `commit`, so the headless helper and the launcher's
-/// own uninstall each write the file through their own coordination.
+/// The removal itself, stopping when `stop` says so, reading the manifest through `read` for what
+/// it decides from and committing the record's removal through `commit`, so the headless helper
+/// and the launcher's own uninstall each write the file through their own coordination.
+///
+/// With the launcher's own record of the copy, the removal is the launcher's ordinary one: the
+/// recorded files, the Start menu entry and both registry keys, with the record dropped from the
+/// manifest. Without it — the files were deleted by hand, the manifest was reset — the program
+/// folder cannot be told from the person's own files, so only the registration is taken back and
+/// the folder named in it is left alone, with the reason reported. With no registration either,
+/// nothing is touched: the Start menu entry may be an MSI package's or the person's own.
 pub(crate) fn remove_recorded(
     app: &CraftApp,
     paths: &Paths,
+    stop: &crate::http::Stop,
     read: &dyn Fn() -> Result<crate::manifest::Manifest, String>,
     commit: &mut dyn FnMut() -> Result<(), String>,
 ) -> Result<(), String> {
@@ -587,14 +595,20 @@ pub(crate) fn remove_recorded(
     };
     match (record.as_ref(), installed.as_ref()) {
         (Some(record), Some(installed)) if ours(record, installed) => {
-            let stop = crate::http::Stop::default();
             let mut phase = |_: artcraft_launcher_core::protocol::JobPhase| ();
-            crate::install::uninstall(app, installed, Some(record), paths, &stop, &mut phase)?;
+            crate::install::uninstall(app, installed, Some(record), paths, stop, &mut phase)?;
             commit()
         }
+        // Nothing of a fast install is registered: nothing is removed. The files are not the
+        // launcher's to vouch for, and the Start menu entry under the app's name may well be an
+        // MSI package's or the person's own.
+        _ if !registered(app.id) => Err(format!(
+            "{} has no fast install to remove: the launcher has no record of its files and no Apps & features listing of its own, so nothing was touched.",
+            app.name
+        )),
+        // A fast install's listing without its record: take the registration back, and say where
+        // the folder was, rather than deleting a folder it cannot vouch for.
         _ => {
-            // Nothing the launcher can safely remove: take the registration back, and say where
-            // the folder was, rather than deleting a folder it cannot vouch for.
             let folder = registered_folder(app.id);
             remove_integration(app);
             Err(match folder {
@@ -603,7 +617,7 @@ pub(crate) fn remove_recorded(
                     app.name, folder
                 ),
                 _ => format!(
-                    "{} isn't installed by the launcher's fast install, so only its Start menu entry and Apps & features listing were removed.",
+                    "{} isn't installed by the launcher's fast install any more, so only its Start menu entry and Apps & features listing were removed.",
                     app.name
                 ),
             })
