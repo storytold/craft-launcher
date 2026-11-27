@@ -2181,12 +2181,10 @@ fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, sh
     }
 }
 
-/// [`check_plan`] without a local mirror, given what the feed said. The feed serves stable
-/// releases only, so with pre-releases on it can't settle an answer that may be a beta or RC. It
-/// still stands in between GitHub's asks, which keep to the feed's own pace (hourly per app once
-/// everything has loaded), not every check (#713).
+/// The signed catalog describes all channels; legacy JSON only settles stable answers.
+/// Keep GitHub prerelease discovery for legacy feeds at the normal fallback pace (#713).
 fn remote_plan(pre: bool, (feed, fallback): (Option<Feed>, Fallback)) -> (Option<Feed>, Fallback) {
-    if pre { (feed, Fallback { trust_feed: false, ..fallback }) } else { (feed, fallback) }
+    if pre && !feed.as_ref().is_some_and(|f| f.channel_aware) { (feed, Fallback { trust_feed: false, ..fallback }) } else { (feed, fallback) }
 }
 
 /// Answers the apps from a shared queue over a few workers, and returns which sources answered.
@@ -2403,7 +2401,7 @@ fn latest_for(
         // GitHub couldn't answer (its limit, the launcher's budget, the network), or fell back
         // to a saved release older than the feed's: the feed's stable release stands.
         let live = answer.source == Source::GitHubApi && !matches!(answer.latest, LatestRelease::Failed(_));
-        if !live && let Some(stable) = feed_if_newer(feed, app, now, Some(&answer.latest)) {
+        if !live && let Some(stable) = feed_if_newer(feed, app, pre, now, Some(&answer.latest)) {
             return (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed));
         }
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
@@ -2413,17 +2411,20 @@ fn latest_for(
         // named last time, without waiting for GitHub's next turn; so does it when nothing is
         // saved from GitHub for this track yet (pre-releases just turned on). A check reusing a
         // forced one's answers keeps whichever of the two is newer.
-        match feed_if_newer(feed, app, now, cached.as_ref()) {
+        match feed_if_newer(feed, app, pre, now, cached.as_ref()) {
             Some(stable) => (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed)),
             None => (cached, Origin::GitHub, None),
         }
     }
 }
 
-/// The feed's fresh stable release for `app`, when it is newer than `github`'s answer, or that
+/// The feed's fresh selected-channel release for `app`, when it is newer than `github`'s answer, or that
 /// answer is missing, empty or failed.
-fn feed_if_newer(feed: Option<&Feed>, app: &CraftApp, now: i64, github: Option<&LatestRelease>) -> Option<Release> {
-    let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| f.answer(app, now)) else { return None };
+fn feed_if_newer(feed: Option<&Feed>, app: &CraftApp, pre: bool, now: i64, github: Option<&LatestRelease>) -> Option<Release> {
+    let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| if pre && f.channel_aware { f.answer_prerelease(app, now) } else { f.answer(app, now) })
+    else {
+        return None;
+    };
     let newer = match github {
         Some(LatestRelease::Found(saved)) => {
             stable.version.as_ref().zip(saved.version.as_ref()).is_some_and(|(stable, saved)| version::is_newer(stable, saved))
@@ -3850,6 +3851,34 @@ mod tests {
         assert_eq!(github.0.load(Ordering::SeqCst), 1, "a check every 12 minutes asks once in the hour");
         latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
         assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+    }
+
+    #[test]
+    fn signed_channel_aware_plan_uses_rc_and_keeps_it_on_github_failure() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let catalog = Feed::parse_catalog_toml(
+            r#"generated_at = "2026-10-09T13:00:00Z"
+[[apps]]
+id = "photocraft"
+repo = "storytold/photocraft"
+[apps.releases.stable]
+tag = "v0.23.1"
+[apps.releases.prerelease]
+tag = "v0.24.0-rc.1"
+prerelease = true
+"#,
+        )
+        .unwrap();
+        let (feed, plan) = remote_plan(true, (Some(catalog), LOADED));
+        assert!(plan.trust_feed);
+        let github = CountingGitHub::default();
+        let (latest, _, used) = latest_for(photo, feed.as_ref(), plan, &github, &shared(), true, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(r)) if r.tag == "v0.24.0-rc.1"));
+        assert_eq!(used, Some(Source::Feed));
+        assert_eq!(github.0.load(Ordering::SeqCst), 0);
+        let unavailable = Some(LatestRelease::Failed("offline".into()));
+        assert_eq!(feed_if_newer(feed.as_ref(), photo, true, NOW, unavailable.as_ref()).unwrap().tag, "v0.24.0-rc.1");
+        assert_eq!(feed_if_newer(feed.as_ref(), photo, false, NOW, unavailable.as_ref()).unwrap().tag, "v0.23.1");
     }
 
     /// Asking GitHub with pre-releases off doesn't stand in for asking with them on: turning them

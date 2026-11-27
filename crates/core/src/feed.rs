@@ -36,6 +36,8 @@ pub const MAX_AGE: i64 = 24 * 3600;
 pub struct Feed {
     /// By lowercase app name.
     pub apps: BTreeMap<String, FeedApp>,
+    /// Catalog TOML explicitly describes release channels; legacy JSON only describes stable.
+    pub channel_aware: bool,
     /// When the least recently fetched app was fetched (Unix seconds).
     pub last_fetched: Option<i64>,
     pub app_renames: Vec<AppRename>,
@@ -131,7 +133,7 @@ impl Feed {
                 apps.insert(id.to_lowercase(), entry);
             }
         }
-        Ok(Self { apps, last_fetched: generated_at, app_renames: Vec::new(), repo_renames: Vec::new(), mirror: None })
+        Ok(Self { apps, channel_aware: true, last_fetched: generated_at, app_renames: Vec::new(), repo_renames: Vec::new(), mirror: None })
     }
 
     /// Reads the legacy/local-mirror JSON feed. `None` only when the answer isn't JSON (or isn't an object) at all.
@@ -139,6 +141,7 @@ impl Feed {
         let raw: RawResponse = serde_json::from_str(json).ok()?;
         let feed = Feed {
             apps: raw.release_info.apps.into_iter().map(|(k, v)| (k.to_lowercase(), v.into_app())).collect(),
+            channel_aware: false,
             last_fetched: raw.release_info.last_fetched.as_deref().and_then(parse_rfc3339),
             app_renames: raw.app_renames.into_iter().filter_map(RawAppRename::into_rename).collect(),
             repo_renames: raw.repo_renames.into_iter().filter_map(RawRepoRename::into_rename).collect(),
