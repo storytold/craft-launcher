@@ -370,10 +370,18 @@ mod tests {
         document.apps.into_iter().next().unwrap().try_into().unwrap()
     }
 
+    /// Bundled apps the signed website fixture does not list yet. A community app is bundled first; only the website's key can
+    /// sign a fixture that lists it, so the fixture is refreshed from the live website afterwards and this list is emptied.
+    const NOT_ON_THE_WEBSITE_YET: &[&str] = &["tarahi"];
+
     #[test]
     fn website_fixture_verifies_with_the_actual_pinned_public_key() {
         let catalog = VerifiedCatalog::verify(WEBSITE, SIGNATURE).unwrap();
-        assert_eq!(catalog.records.len(), SUITE.len());
+        assert_eq!(catalog.records.len() + NOT_ON_THE_WEBSITE_YET.len(), SUITE.len());
+        for id in NOT_ON_THE_WEBSITE_YET {
+            assert!(SUITE.iter().any(|app| app.id == *id), "{id} is not bundled");
+            assert!(catalog.records.iter().all(|r| r.id != *id), "{id} is in the fixture now: empty NOT_ON_THE_WEBSITE_YET");
+        }
         assert_eq!(catalog.rejected_entries, 0);
         for record in &catalog.records {
             let bundled = SUITE.iter().find(|app| app.id == record.id).unwrap();

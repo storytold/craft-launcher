@@ -1044,3 +1044,48 @@ title = "Files"
 [[apps.details.features]]
 text = "A desktop app, a browser app, a CLI and an MCP server, all running the same commands."
 title = "Desktop, web and agents"
+
+[[apps]]
+bundle = "io.github.baradhili.tarahi"
+color = [104, 99, 231]
+former_bundles = ["com.diagramcraft.app"]
+former_ids = []
+former_names = []
+id = "tarahi"
+binary = "tarahi"
+flatpak_id = "io.github.baradhili.tarahi"
+mac_bundle_id = "io.github.baradhili.tarahi"
+mac_bundle_name = "Tarahi"
+website = "https://github.com/baradhili/Tarahi"
+windows_msi_publisher = "Tarahi contributors"
+deb_package = "tarahi"
+rpm_package = "tarahi"
+desktop_categories = ["Graphics", "VectorGraphics", "Office"]
+startup_wm_class = "Tarahi"
+icon_url = "https://getartcraft.com/launcher-app-icons/tarahi-b8fef28b57a99d8af49ee3b48923bea79fb50182a66ca536d85cec8bc624abba.png"
+icon_sha256 = "b8fef28b57a99d8af49ee3b48923bea79fb50182a66ca536d85cec8bc624abba"
+ink_dark = [160, 156, 255]
+ink_light = [80, 72, 214]
+kind = "community"
+msi_publisher = "Tarahi contributors"
+name = "Tarahi"
+publisher = "Tarahi"
+repo = "baradhili/Tarahi"
+site = "https://github.com/baradhili/Tarahi"
+tagline = "Diagrams for .vsdx files"
+[apps.details]
+headline = "Diagrams that open and save the .vsdx files you already have."
+about = "An open-source diagram editor written in Rust. It reads and writes .vsdx drawings, .vstx templates and .vssx stencils without dropping what it does not show yet, renders them as people expect, and edits them through undoable commands. Built clean-room from file-format and behaviour observations. Early, and already usable."
+platforms = "macOS, Windows, Linux"
+[[apps.details.features]]
+text = "Drawings, templates and stencils opened and saved losslessly, and exported to SVG, PNG and PDF."
+title = "Files"
+[[apps.details.features]]
+text = "Masters, groups, layers, themes, gradients, fill patterns, text fields and per-shape formulas."
+title = "Shapes"
+[[apps.details.features]]
+text = "Connectors that route around shapes and hop where lines cross."
+title = "Connectors"
+[[apps.details.features]]
+text = "A ribbon, stencil panes and a cell sheet for every shape, page and document."
+title = "Desktop app"
