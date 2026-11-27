@@ -48,6 +48,10 @@
 	Install	Instal
 	Update to {v}	Perbarui ke {v}
 	Open	Buka
+	Open {version}	Buka {version}
+	Open {installed} without updating. {latest} stays available.	Buka {installed} tanpa memperbarui. {latest} tetap tersedia.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} sudah rilis, tetapi ArtCraft Launcher tidak dapat memasangnya di atas salinan ini.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher tidak dapat memasang versi {version} di atas salinan ini.
 	Download for {os}	Unduh untuk {os}
 	Download	Unduh
 	Coming soon	Segera hadir
@@ -70,7 +74,15 @@
 	Show in Explorer	Tampilkan di Explorer
 	Show in Files	Tampilkan di Berkas
 	Reinstall	Instal ulang
+	Add desktop shortcut	Tambah pintasan desktop
 	Uninstall…	Uninstal…
+	Launch options…	Opsi peluncuran…
+	{name} launch options	Opsi peluncuran {name}
+	Flags added each time the app is opened	Flag yang ditambahkan setiap kali aplikasi dibuka
+	Separate flags with spaces. Quote a value that has spaces in it.	Pisahkan flag dengan spasi. Kutip nilai yang berisi spasi.
+	A quote isn't closed.	Tanda kutip tidak ditutup.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} tidak dibuka: tanda kutip di opsi peluncurannya tidak ditutup.
+	Save	Simpan
 	All releases	Semua rilis
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} tersedia.
 	Dismiss	Tutup
@@ -86,6 +98,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Hanya saat saya meminta
 	Automatically download and install updates	Unduh dan instal pembaruan secara otomatis
+	Ask for permission once when updating all apps	Minta izin sekali saat memperbarui semua aplikasi
 	Notify me when an installed app has an update	Beri tahu saya saat aplikasi terpasang punya pembaruan
 	Include pre-releases (betas and release candidates)	Sertakan pra-rilis (beta dan kandidat rilis)
 	Installing on Linux	Instalasi di Linux
@@ -95,6 +108,7 @@
 	Updates always use the format an app was installed with.	Pembaruan selalu memakai format saat aplikasi diinstal.
 	Running in the background	Berjalan di latar belakang
 	Keep running in the tray when the window is closed	Tetap berjalan di baki saat jendela ditutup
+	Hide ArtCraft Launcher from the Dock while in the background	Sembunyikan ArtCraft Launcher dari Dock saat di latar belakang
 	ArtCraft Launcher is still running	ArtCraft Launcher masih berjalan
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Ada di baki: buka atau keluar lewat ikon baki, atau matikan ini di pengaturan.
 	Show the window on the current desktop	Tampilkan jendela di desktop saat ini
@@ -120,6 +134,14 @@
 	Apps on this computer	Aplikasi di komputer ini
 	Installed apps with a newer version	Aplikasi terpasang dengan versi lebih baru
 	Apps you can install	Aplikasi yang bisa diinstal
+	Pin to top	Sematkan ke atas
+	Unpin	Lepas sematan
+	Pinned	Disematkan
+	Pin {name} to top	Sematkan {name} ke atas
+	Unpin {name}	Lepas sematan {name}
+	Reorder {name}	Urutkan ulang {name}
+	Move up	Pindah ke atas
+	Move down	Pindah ke bawah
 	Hide App	Sembunyikan aplikasi
 	Unhide App	Tampilkan aplikasi
 	Hidden Apps	Aplikasi tersembunyi
@@ -145,9 +167,14 @@
 	Update cancelled	Pembaruan dibatalkan
 	Uninstall cancelled	Uninstal dibatalkan
 	Retry install	Coba instal lagi
+	Retry update	Coba pembaruan lagi
 	Retry update to {version}	Coba perbarui lagi ke {version}
 	The download is still here. It's checked again, then installed.	Unduhan masih ada. Dicek lagi, lalu diinstal.
 	Waiting for another app…	Menunggu aplikasi lain…
+	Waiting for another download…	Menunggu unduhan lain…
+	Simultaneous downloads	Unduhan simultan
+	No limit	Tanpa batas
+	Downloads running together share your connection, so each one is slower.	Unduhan yang berjalan bersamaan berbagi koneksi Anda, jadi masing-masing lebih lambat.
 	Waiting for other installs…	Menunggu instalasi lain…
 	Installer (.msi)	Penginstal (.msi)
 	Portable (.zip)	Portable (.zip)
@@ -157,6 +184,7 @@
 	Arch package (.pkg.tar.zst)	Paket Arch (.pkg.tar.zst)
 	Flatpak bundle	Bundle Flatpak
 	Tarball (.tar.gz)	Tarball (.tar.gz)
+artcraft	AI image and video creation	Kreasi gambar dan video AI
 photocraft	Image editing	Edit gambar
 vectorcraft	Vector illustration	Ilustrasi vektor
 filmcraft	Video editing, color and sound	Edit video, warna, dan suara
@@ -167,7 +195,9 @@ designcraft	Page layout and publishing	Tata letak halaman dan penerbitan
 wordcraft	Writing and document design	Menulis dan desain dokumen
 deckcraft	Presentations and slide shows	Presentasi dan slideshow
 gridcraft	Spreadsheets and data	Spreadsheet dan data
+craft-anything	Find out how any software works, then craft your own	Pelajari cara kerja perangkat lunak apa pun, lalu buat milik Anda sendiri
 solidcraft	Parametric 3D CAD	CAD 3D parametrik
+mailcraft	Mail, calendar and contacts	Email, kalender, dan kontak
 cadcraft	Computer-aided design and drafting	Desain dan drafting berbantuan komputer
 soundcraft	Recording, editing and mixing audio	Merekam, mengedit, dan mix audio
 figcraft	Interface design and prototyping	Desain antarmuka dan prototipe
@@ -184,8 +214,8 @@ month	Oct	Okt
 month	Nov	Nov
 month	Dec	Des
 	Not checked yet	Belum diperiksa
-	GitHub's hourly limit was reached; full details return in {min} min	Batas per jam GitHub tercapai; detail lengkap kembali dalam {min} mnt
-	GitHub limit hit; back in {min} min	Batas GitHub tercapai; kembali dalam {min} mnt
+	Next GitHub check at {time}	Pemeriksaan GitHub berikutnya pada {time}
+	Next check at {time}	Pemeriksaan berikutnya pada {time}
 	Installing for {platform}	Menginstal untuk {platform}
 	Downloads for {platform}	Unduhan untuk {platform}
 	No downloads for this system	Tidak ada unduhan untuk sistem ini
@@ -261,6 +291,7 @@ filter	Installed	Terpasang
 @plural	{n} h ago|{n} h ago	{n} jam lalu
 @plural	{n} day ago|{n} days ago	{n} hari lalu
 @msg	Couldn't open {name}: {e}	Tidak dapat membuka {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher tidak dapat membuka jendelanya di {backend}: {e}
 @msg	Download cancelled	Unduhan dibatalkan
 @msg	{name} updated to {version}	{name} diperbarui ke {version}
 @msg	{name} installed: {version}	{name} diinstal: {version}
@@ -334,6 +365,7 @@ filter	Installed	Terpasang
 	Loading pictures…	Memuat gambar…
 	Pictures couldn't be loaded. Reopen this page to try again.	Gambar tidak dapat dimuat. Buka lagi halaman ini untuk mencoba ulang.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} pembaruan tersedia
+	Download size: {size}	Ukuran unduhan: {size}
 	Install folder	Folder instalasi
 	Default install folder	Folder instalasi default
 	System default	Default sistem
@@ -348,6 +380,9 @@ filter	Installed	Terpasang
 @msg	custom install folders aren't supported on this system	folder instalasi kustom tidak didukung di sistem ini
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} sudah ada dan tidak diinstal oleh ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	tidak dapat memindahkan {path} ke Tong Sampah ({reason}). Hapus saja di Finder.
+@msg	Desktop shortcut created for {name}	Pintasan desktop untuk {name} dibuat
+@msg	Couldn't create the desktop shortcut: {e}	Tidak dapat membuat pintasan desktop: {e}
+@msg	A desktop shortcut named {name} already exists	Pintasan desktop bernama {name} sudah ada
 	Apps are placed inside this folder.	Aplikasi ditempatkan di dalam folder ini.
 	Replace what's there?	Ganti yang sudah ada?
 	{path} already exists. Installing {name} will overwrite it.	{path} sudah ada. Menginstal {name} akan menimpanya.
@@ -373,3 +408,113 @@ column	Author	Penulis
 	Older launcher versions require a manual reinstall.	Versi launcher lama memerlukan instalasi ulang manual.
 	Your files may not open in older versions.	Berkas Anda mungkin tidak terbuka di versi lama.
 	Enable automatic installs in Settings to follow new nightly builds.	Aktifkan instalasi otomatis di Pengaturan untuk mengikuti build nightly baru.
+texturecraft	3D texture painting	Pengecatan tekstur 3D
+texturecraft	Paint materials on 3D models and export textures.	Cat material pada model 3D dan ekspor tekstur.
+texturecraft	Materials	Material
+texturecraft	Mesh maps	Peta mesh
+texturecraft	Bake mesh maps and use smart materials.	Bake peta mesh dan gunakan smart material.
+texturecraft	Paint textures on 3D models.	Cat tekstur pada model 3D.
+	Hide community apps	Sembunyikan aplikasi komunitas
+materialcraft	Procedural material design	Desain material prosedural
+materialcraft	Build materials with node graphs.	Bangun material dengan node graph.
+materialcraft	Create tileable PBR materials and export texture maps.	Buat material PBR yang dapat di-tile dan ekspor peta tekstur.
+materialcraft	Node graphs	Node graph
+materialcraft	Combine noises, patterns and filters.	Gabungkan noise, pola, dan filter.
+materialcraft	Live previews	Pratinjau langsung
+materialcraft	Preview materials in 2D and on 3D models.	Pratinjau material dalam 2D dan pada model 3D.
+	Advanced	Lanjutan
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Migrasi paket Flatpak ke ArtCraft OCI (eksperimental)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	Saat pembaruan, alihkan aplikasi first-party bila paket yang cocok tersedia. Jika tidak, tetap gunakan bundle.
+	The OCI repository is a preview with GPG verification disabled.	Repositori OCI adalah pratinjau dengan verifikasi GPG dinonaktifkan.
+anicraft	2D vector animation	Animasi vektor 2D
+anicraft	Vector animation on a timeline you know.	Animasi vektor pada timeline yang Anda kenal.
+anicraft	Open-source 2D vector animation, built in pure Rust.	Animasi vektor 2D open-source, dibangun dengan pure Rust.
+anicraft	Familiar by design	Akrab dari desainnya
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Stage, tools, timeline, layers, keyframes, Properties, dan Library di tempat yang diharapkan animator, dengan onion skinning untuk in-betweening.
+anicraft	Tweens that ease	Tween dengan easing
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Tween klasik dengan delapan preset easing dan kurva ease kustom, plus shape tween yang mengubah satu kontur vektor menjadi yang lain.
+	Version pinned to {version}. Click to unlock.	Versi disematkan ke {version}. Klik untuk membuka kunci.
+	Unlock version?	Buka kunci versi?
+	{app} is pinned to {version}. Follow the latest release instead?	{app} disematkan ke {version}. Ikuti rilis terbaru saja?
+	Unlock	Buka kunci
+	AI agents	Agen AI
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Saat aktif, aplikasi AI yang menggunakan MCP, seperti Claude, Cursor, atau LM Studio, dapat bekerja dengan setiap aplikasi Craft terpasang melalui satu entri. Saat nonaktif, tidak ada agen yang dapat menjangkaunya, dan entri yang ditambahkan di sini dihapus.
+	Quick install	Pemasangan cepat
+	Adds the Craft apps to that client. Restart the client afterwards.	Menambahkan aplikasi Craft ke klien itu. Mulai ulang klien setelahnya.
+	Other clients	Klien lain
+	Copy the configuration and paste it into the client's MCP settings.	Salin konfigurasi dan tempel ke pengaturan MCP klien.
+	Copy JSON	Salin JSON
+	Copy for VS Code	Salin untuk VS Code
+	Copy for Codex (TOML)	Salin untuk Codex (TOML)
+	Configuration copied.	Konfigurasi disalin.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} memuat server MCP-nya hanya saat mulai, jadi aplikasi Craft muncul setelah mulai ulang. Mulai ulang menutup {client}, termasuk balasan yang masih ditulis.
+	Restart {client}	Mulai ulang {client}
+	Restarting {client}…	Memulai ulang {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Gateway Craft (craft-ai-mcp) tidak terpasang di samping launcher.
+	Let AI agents use Craft apps	Izinkan agen AI menggunakan aplikasi Craft
+	Apps agents can reach: {count}	Aplikasi yang dapat dijangkau agen: {count}
+	Added	Ditambahkan
+	Remove	Hapus
+	Add	Tambah
+	Fonts	Font
+	Allow font downloads	Izinkan unduhan font
+	Couldn't change the font download setting: {e}	Tidak dapat mengubah pengaturan unduhan font: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Font diunduh dari sumbernya hanya saat Anda memasang satu. Pratinjau font memiliki pengaturan sendiri di bawah. Setiap aplikasi Craft berbagi pengaturan ini.
+	Sources	Sumber
+	Apps	Aplikasi
+	Fonts for every Craft app	Font untuk setiap aplikasi Craft
+	Show font previews	Tampilkan pratinjau font
+	Font preview server	Server pratinjau font
+	Couldn't use this server: {e}	Tidak dapat menggunakan server ini: {e}
+	Couldn't change the font previews setting: {e}	Tidak dapat mengubah pengaturan pratinjau font: {e}
+	Set by {name} in the environment.	Ditetapkan oleh {name} di lingkungan.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Font yang belum dipasang menampilkan pratinjau dari server ini, dan pemasangan mencobanya terlebih dahulu. Kosong menggunakan server default.
+	Enable developer builds	Aktifkan build pengembang
+	Enable developer builds?	Aktifkan build pengembang?
+	Install developer build	Pasang build pengembang
+	New builds as the apps evolve. Stable copies stay separate.	Build baru seiring perkembangan aplikasi. Salinan stabil tetap terpisah.
+	No developer build is available yet.	Belum ada build pengembang yang tersedia.
+	Only this developer build will be removed. Stable copies and user data are kept.	Hanya build pengembang ini yang akan dihapus. Salinan stabil dan data pengguna tetap disimpan.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Hanya build terverifikasi dan terisolasi yang dapat dipasang. Menonaktifkan ini tidak pernah menghapus salinan terpasang atau datanya.
+	Open stable	Buka stabil
+	Developer Builds	Build Pengembang
+	Developer Build	Build Pengembang
+	Developer builds are off. Installed copies and their data are kept.	Build pengembang nonaktif. Salinan terpasang dan datanya tetap disimpan.
+	Developer build installation is unavailable on this platform.	Pemasangan build pengembang tidak tersedia di platform ini.
+	Show installed copy	Tampilkan salinan terpasang
+	Stable	Stabil
+	These are developer builds. They will have issues and may lose work.	Ini adalah build pengembang. Akan ada masalah dan dapat kehilangan pekerjaan.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	Mereka dipasang terpisah dengan pengaturan terpisah. Simpan cadangan: file yang disimpan build yang lebih baru mungkin tidak terbuka di versi stabil.
+	Try nightly builds	Coba build nightly
+	Turn off developer builds	Nonaktifkan build pengembang
+	Uninstall developer build	Copot build pengembang
+	Uninstall developer build?	Copot build pengembang?
+	Uninstall developer build…	Mencopot build pengembang…
+	Developer builds are off.	Build pengembang nonaktif.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Salinan terpasang dan datanya tetap disimpan. Untuk menemukan build baru, aktifkan build pengembang di Pengaturan.
+	Installed developer build	Build pengembang terpasang
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Build nightly menggunakan instalasi dan pengaturan terpisah. Pembaruan stabil tidak berubah.
+	Could not check for developer builds.	Tidak dapat memeriksa build pengembang.
+	No developer builds are available yet.	Belum ada build pengembang yang tersedia.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Saluran pengembang diperbarui otomatis setiap malam dengan kode terbaru. Dapat memiliki bug, masalah performa dan stabilitas, serta pekerjaan yang belum selesai. Gunakan saluran stabil untuk pekerjaan penting.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	Build pengembang memungkinkan Anda mencoba pekerjaan baru lebih awal, tetapi akan ada bug dan dapat kehilangan pekerjaan yang belum disimpan.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	Mereka dipasang di samping aplikasi stabil Anda dengan pengaturan dan data sendiri, tanpa mengubah setup stabil. Selalu cadangkan file penting sebelum membukanya di build pengembang, karena simpanan yang lebih baru mungkin tidak terbuka di versi stabil.
+	You can turn this off at any time without deleting your installed developer builds or their data.	Anda dapat menonaktifkan ini kapan saja tanpa menghapus build pengembang terpasang atau datanya.
+	{month}/{day}/{year}	{day}/{month}/{year}
+	Nightly builds	Build nightly
+	Discover nightly builds (Developer Builds page)	Temukan build nightly (halaman Build Pengembang)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Instalasi, pengaturan, dan data terpisah. Menonaktifkan ini tetap menyimpan salinan terpasang dan datanya.
+	Developer builds aren't available on this platform yet.	Build pengembang belum tersedia di platform ini.
+	Betas and release candidates can replace your stable installation.	Beta dan kandidat rilis dapat mengganti instalasi stabil Anda.
+	Previous verified result is stale. Check again before installing.	Hasil verifikasi sebelumnya sudah usang. Periksa lagi sebelum memasang.
+	Last verified: {ago}	Terakhir diverifikasi: {ago}
+	Last attempt: {ago}	Percobaan terakhir: {ago}
+	Retry available in {minutes} min	Coba lagi tersedia dalam {minutes} mnt
+	Announcements	Pengumuman
+	No announcements	Tidak ada pengumuman
+@plural	Announcements, {n} unread|Announcements, {n} unread	Pengumuman, {n} belum dibaca
+	Go back to {version}?	Kembali ke {version}?
+	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.	{app} {installed} tidak dipublikasikan, jadi jika kembali ke {chosen} gagal, launcher memasang ulang {fallback}. Itu kemungkinan besar versi yang Anda miliki.
+	Go back	Kembali
+	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} tidak lagi dipublikasikan, jadi tidak dapat dikembalikan jika kembali gagal.
+	Going back to an older version of {app} isn't available for this kind of install yet.	Kembali ke versi lama {app} belum tersedia untuk jenis instalasi ini.
