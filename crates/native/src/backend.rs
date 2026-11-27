@@ -16,7 +16,7 @@ use artcraft_launcher_core::release::{Asset, Priority, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
-use crate::http::{self, Http, Stop};
+use crate::http::{self, FeedError, Http, Stop};
 use crate::install::{self, Job};
 use crate::manifest::Manifest;
 use crate::paths::Paths;
@@ -2562,14 +2562,16 @@ struct SignedFeedCache {
 }
 
 /// Fetch and verify both parts of a signed feed using the caller's catalog transport.
-fn signed_feed(url: &str, get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, String>) -> Result<(Feed, SignedFeedCache), String> {
+fn signed_feed(url: &str, get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>) -> Result<(Feed, SignedFeedCache), FeedError> {
     let sig_url = format!("{url}.sig");
-    let catalog = get(url, artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES)?.ok_or("hosted catalog is not published")?;
-    let signature = get(&sig_url, artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES)?.ok_or("catalog signature is not published")?;
-    let feed = Feed::parse_signed_catalog(&catalog, &signature)?;
+    let catalog =
+        get(url, artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES)?.ok_or_else(|| FeedError::failed("hosted catalog is not published"))?;
+    let signature = get(&sig_url, artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES)?
+        .ok_or_else(|| FeedError::failed("catalog signature is not published"))?;
+    let feed = Feed::parse_signed_catalog(&catalog, &signature).map_err(FeedError::failed)?;
     let saved = SignedFeedCache {
-        catalog: String::from_utf8(catalog).map_err(|_| "catalog is not UTF-8")?,
-        signature: String::from_utf8(signature).map_err(|_| "signature is not UTF-8")?,
+        catalog: String::from_utf8(catalog).map_err(|_| FeedError::failed("catalog is not UTF-8"))?,
+        signature: String::from_utf8(signature).map_err(|_| FeedError::failed("signature is not UTF-8"))?,
     };
     Ok((feed, saved))
 }
@@ -2577,6 +2579,17 @@ fn signed_feed(url: &str, get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, S
 /// Asks ArtCraft's signed catalog (or a local-mirror JSON feed) up to `attempts` times, as often
 /// as `throttle` allows (waiting at most [`MAX_THROTTLE_WAIT`] for it), saving a good answer.
 fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrottle>, attempts: usize) -> FeedFetch {
+    fetch_feed_with_catalog(http, paths, url, throttle, attempts, |url, max| http.get_catalog_feed_bytes(url, max))
+}
+
+fn fetch_feed_with_catalog(
+    http: &Http,
+    paths: &Paths,
+    url: &str,
+    throttle: &Mutex<FeedThrottle>,
+    attempts: usize,
+    get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>,
+) -> FeedFetch {
     let mut asked = false;
     let is_signed_catalog = url.ends_with(".toml");
     for attempt in 0..attempts.max(1) {
@@ -2600,7 +2613,7 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
         }
         asked = true;
         let outcome = if is_signed_catalog {
-            let fetched = signed_feed(url, |url, max| http.get_catalog_bytes(url, max));
+            let fetched = signed_feed(url, &get);
             match fetched {
                 Ok((feed, saved)) => {
                     if let Ok(bytes) = serde_json::to_vec(&saved)
@@ -2611,9 +2624,13 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
                     throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(Outcome::Answered, crate::now(), 0.0);
                     return FeedFetch::Answered(feed);
                 }
-                Err(why) => {
-                    log::info!("signed release catalog unavailable (try {}): {why}", attempt + 1);
-                    Outcome::Failed { retry_after: None }
+                Err(e) if e.throttled => {
+                    log::warn!("the signed release catalog asked us to slow down (HTTP 429); holding off");
+                    Outcome::Throttled { retry_after: e.retry_after }
+                }
+                Err(e) => {
+                    log::info!("signed release catalog unavailable (try {}): {}", attempt + 1, e.why);
+                    Outcome::Failed { retry_after: e.retry_after }
                 }
             }
         } else {
@@ -3633,6 +3650,32 @@ mod tests {
         assert_eq!(origin, Origin::ArtCraftApi);
         assert_eq!(used, Some(Source::Feed));
         assert_eq!(github.0.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn signed_catalog_429_stops_retries_and_preserves_backoff_after_restart() {
+        use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_TOML, CATALOG_URL};
+        for throttle_signature in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = Paths::under(dir.path());
+            let http = Http::new().unwrap();
+            let throttle = Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now()));
+            let hits = AtomicUsize::new(0);
+            let get = |url: &str, _| {
+                hits.fetch_add(1, Ordering::SeqCst);
+                if throttle_signature && url == CATALOG_URL {
+                    return Ok(Some(BUILD_CATALOG_TOML.to_vec()));
+                }
+                Err(FeedError { why: "HTTP 429".into(), throttled: true, retry_after: Some(3600) })
+            };
+            assert!(matches!(fetch_feed_with_catalog(&http, &paths, CATALOG_URL, &throttle, FEED_ATTEMPTS, get), FeedFetch::Failed));
+            let expected = if throttle_signature { 2 } else { 1 };
+            assert_eq!(hits.load(Ordering::SeqCst), expected);
+            let restarted = Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now()));
+            assert!(restarted.lock().unwrap().wait(crate::now()) >= 3599);
+            assert!(matches!(fetch_feed_with_catalog(&http, &paths, CATALOG_URL, &restarted, FEED_ATTEMPTS, get), FeedFetch::Held));
+            assert_eq!(hits.load(Ordering::SeqCst), expected);
+        }
     }
 
     #[test]
