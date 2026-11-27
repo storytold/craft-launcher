@@ -95,6 +95,8 @@ const NOWHERE: &str = "Release information couldn't be checked: neither ArtCraft
 /// How long our release API, or github.com, is left alone after it couldn't be reached or answered
 /// a server error, so an outage costs each check one timeout, not one per app.
 const QUIET_FOR: i64 = 60;
+/// How long our API isn't asked again for an app's history it had no usable answer for.
+const MISSING_FOR: i64 = 5 * 60;
 /// The most requests to GitHub's REST API in an hour. Without a token GitHub allows 60 an hour for
 /// a whole network address, which other apps and machines share.
 const GITHUB_PER_HOUR: u32 = 20;
@@ -160,6 +162,9 @@ struct Gate {
     api_quiet_until: Option<i64>,
     github_limited_until: Option<i64>,
     pages_quiet_until: Option<i64>,
+    /// Apps whose history our API had no usable answer for (a 404 before a deploy, or a list that
+    /// doesn't read), by address: asked again after [`MISSING_FOR`], not on every sweep.
+    history_missing_until: HashMap<String, i64>,
     /// The start of the current hour of GitHub API requests (Unix seconds), and how many it has had.
     github_hour: (i64, u32),
 }
@@ -260,21 +265,36 @@ impl ApiSource {
     /// Our release API's history for `query`'s app. Any failure is the caller's cue to ask
     /// GitHub: no answer, an error status, an unreadable or stale answer, or no releases at all.
     fn ask_api(&self, url: &str, query: &ReleaseQuery, now: i64) -> Result<AppReleases, String> {
-        if Gate::held(self.gate.lock().unwrap_or_else(PoisonError::into_inner).api_quiet_until, now) {
-            return Err(UNREACHABLE.into());
+        {
+            let gate = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
+            if Gate::held(gate.api_quiet_until, now) {
+                return Err(UNREACHABLE.into());
+            }
+            if Gate::held(gate.history_missing_until.get(url).copied(), now) {
+                return Err(NOT_LISTED.into());
+            }
         }
+        let missing = || {
+            self.gate.lock().unwrap_or_else(PoisonError::into_inner).history_missing_until.insert(url.to_string(), now + MISSING_FOR);
+        };
         let json = self.net.history(url).map_err(|e| {
             if crate::http::is_unreachable(&e.why) || e.throttled || e.why.contains(" answered HTTP 5") {
                 let until = e.retry_after.map_or(now + QUIET_FOR, |secs| now.saturating_add(secs.clamp(QUIET_FOR, 3600)));
                 self.gate.lock().unwrap_or_else(PoisonError::into_inner).api_quiet_until = Some(until);
+                format!("{UNREACHABLE} ({})", e.why)
+            } else if e.why.contains(" answered HTTP 404") {
+                // The service answered: it just has no history endpoint (yet) or doesn't know the app.
+                missing();
+                format!("{NOT_LISTED} ({})", e.why)
+            } else {
+                format!("{UNREACHABLE} ({})", e.why)
             }
-            format!("{UNREACHABLE} ({})", e.why)
         })?;
-        let history = AppReleases::parse(&json, &query.repo, query.former_repo.as_deref(), now).ok_or(NOT_LISTED)?;
-        if history.releases.is_empty() {
-            return Err(NOT_LISTED.into());
-        }
-        Ok(history)
+        let history = AppReleases::parse(&json, &query.repo, query.former_repo.as_deref(), now).filter(|h| !h.releases.is_empty());
+        history.ok_or_else(|| {
+            missing();
+            NOT_LISTED.to_string()
+        })
     }
 
     /// The history from GitHub: its REST API, then github.com's release feed.
@@ -614,6 +634,36 @@ mod tests {
         assert!(!history.complete, "the release feed names only the newest releases");
         source.lookup(&query(), 0).unwrap();
         assert_eq!(asked_github_api(&net), 1, "GitHub's API isn't asked again while it holds requests back");
+    }
+
+    /// A history our API doesn't have (not deployed yet) is said so, and isn't asked for again on
+    /// every sweep.
+    #[test]
+    fn a_history_our_api_doesnt_have_is_not_asked_for_again_for_a_while() {
+        let net = std::sync::Arc::new(FakeNet {
+            api: Mutex::new(vec![Err(api_error("api.storyteller.ai answered HTTP 404"))]),
+            github: Mutex::new(vec![Err(GitHubApiError { why: "api.github.com answered HTTP 403".into(), limited_until: None })]),
+            ..Default::default()
+        });
+        let source = ApiSource::with_net(Box::new(net.clone()), FEED.into()).without_github();
+        let why = source.lookup(&query(), 0).unwrap_err();
+        assert!(why.starts_with(NOT_LISTED) && !why.contains("couldn't be reached"), "{why}");
+        for _ in 0..3 {
+            assert_eq!(source.lookup(&query(), 0).unwrap_err(), NOT_LISTED);
+        }
+        let asked_api = |net: &FakeNet| net.asked.lock().unwrap().iter().filter(|u| u.contains("storyteller.ai")).count();
+        assert_eq!(asked_api(&net), 1, "one request, then quiet");
+        // Once the wait is over it is asked again: the deploy may have happened.
+        source.gate.lock().unwrap().history_missing_until.clear();
+        source.lookup(&query(), 0).unwrap_err();
+        assert_eq!(asked_api(&net), 2);
+        // An answer that doesn't read counts the same.
+        let junk = std::sync::Arc::new(FakeNet { api: Mutex::new(vec![Ok("<html>".into())]), ..Default::default() });
+        let source = ApiSource::with_net(Box::new(junk.clone()), FEED.into()).without_github();
+        for _ in 0..3 {
+            assert_eq!(source.lookup(&query(), 0).unwrap_err(), NOT_LISTED);
+        }
+        assert_eq!(asked_api(&junk), 1);
     }
 
     /// Our own hourly allowance keeps GitHub's API for the requests that need it most.
