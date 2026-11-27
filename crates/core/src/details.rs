@@ -186,10 +186,7 @@ mod tests {
     #[test]
     fn picture_addresses_come_only_from_the_pages_own_pictures() {
         let page = AppDetails::by_id("photocraft").unwrap();
-        assert_eq!(
-            page.screenshot_url("demo").as_deref(),
-            Some("https://getartcraft.com/launcher-screenshots/v1/photocraft/demo.jpg")
-        );
+        assert_eq!(page.screenshot_url("demo").as_deref(), Some("https://getartcraft.com/launcher-screenshots/v1/photocraft/demo.jpg"));
         assert_eq!(
             page.screenshot_fallback_url("demo").as_deref(),
             Some("https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/photocraft/demo.jpg")

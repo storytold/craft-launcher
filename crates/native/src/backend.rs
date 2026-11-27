@@ -2462,9 +2462,7 @@ fn track_answer(
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
     let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
     if *track == VersionTrack::Nightly {
-        if !force
-            && let Some(FeedAnswer::Fresh(Some(nightly))) = feed.map(|f| f.answer_nightly(app, now))
-        {
+        if !force && let Some(FeedAnswer::Fresh(Some(nightly))) = feed.map(|f| f.answer_nightly(app, now)) {
             return (Some(LatestRelease::Found(nightly)), Origin::ArtCraftApi, Some(Source::Feed));
         }
         // Its own record, apart from the stable track's: asking about one doesn't stand in for

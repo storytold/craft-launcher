@@ -197,9 +197,7 @@ fn load_verified_icon(agent: &ureq::Agent, cache: &Path, app: &App) -> Result<Ve
     if let Ok(override_dir) = env::var("ARTCRAFT_CATALOG_DIR")
         && !override_dir.trim().is_empty()
     {
-        let candidate = PathBuf::from(override_dir)
-            .join("launcher-app-icons")
-            .join(format!("{}-{}.png", app.id, app.icon_sha256));
+        let candidate = PathBuf::from(override_dir).join("launcher-app-icons").join(format!("{}-{}.png", app.id, app.icon_sha256));
         if let Ok(bytes) = fs::read(&candidate)
             && sha256_hex(&bytes) == app.icon_sha256
         {
@@ -220,6 +218,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=assets/launcher-catalog-public-key.pem");
     println!("cargo:rerun-if-env-changed=ARTCRAFT_CATALOG_DIR");
     println!("cargo:rerun-if-env-changed=ARTCRAFT_CATALOG_CACHE_DIR");
+    // The override directory's catalog, signature and icons can change under an unchanged value.
+    if let Ok(override_dir) = env::var("ARTCRAFT_CATALOG_DIR")
+        && !override_dir.trim().is_empty()
+    {
+        println!("cargo:rerun-if-changed={override_dir}");
+    }
 
     let out = PathBuf::from(env::var_os("OUT_DIR").ok_or("OUT_DIR missing")?);
     let cache = cache_dir(&out);

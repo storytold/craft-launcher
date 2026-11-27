@@ -244,10 +244,8 @@ impl Feed {
         if let Some(feed_repo) = &entry.repo
             && !feed_repo.eq_ignore_ascii_case(&repo)
         {
-            match app.former_repo.filter(|former| feed_repo.eq_ignore_ascii_case(former)) {
-                Some(former) => repo = former.to_string(),
-                None => return None,
-            }
+            let former = app.former_repo.filter(|former| feed_repo.eq_ignore_ascii_case(former))?;
+            repo = former.to_string();
         }
         Some((entry, repo))
     }

@@ -340,7 +340,8 @@ fn valid_record(r: &Record) -> bool {
             && p.shots.iter().all(|s| {
                 identifier(&s.key)
                     && (s.url == format!("{}/{}/{}/{}.jpg", crate::details::SCREENSHOTS_BASE, crate::details::SCREENSHOTS_REV, r.id, s.key)
-                        || s.url == format!("{}/{}/{}/{}.jpg", crate::details::SCREENSHOTS_FALLBACK_BASE, crate::details::SCREENSHOTS_REV, r.id, s.key))
+                        || s.url
+                            == format!("{}/{}/{}/{}.jpg", crate::details::SCREENSHOTS_FALLBACK_BASE, crate::details::SCREENSHOTS_REV, r.id, s.key))
             })
     })
 }
