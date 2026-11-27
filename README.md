@@ -258,6 +258,19 @@ releases (`0.4.0` builds as `0.4.1-dev.<commit time>`), which the launcher offer
 `ARTCRAFT_LAUNCHER_DOWNLOAD_BASE` is set (loopback addresses only), the launcher asks only the
 mirror, never GitHub. Only builds with the `local-mirror` feature read it; releases never have it. `cargo xtask local help` lists the options (`--only`, `--no-pull`, `--arch`, …).
 
+To open the apps you build without packaging them, run a launcher with the `local-checkouts`
+feature and choose the folder that holds your checkouts under **Settings → Local builds**:
+
+```sh
+cargo run --release -p artcraft-launcher --features local-checkouts
+```
+
+An app with a checkout there (`<folder>/photocraft`, in any letter case) opens its own
+`target/release/<app>` instead of the installed copy, and its card shows the checkout's version.
+Build it yourself (`cargo build --release -p photocraft`); a checkout that isn't built yet says
+so when you open it. Local builds aren't verified, and the launcher never updates or removes
+them. Release builds don't have the feature and ignore the setting.
+
 New contributors and AI agents: start with [`AGENTS.md`](AGENTS.md). Release packaging lives in
 [`packaging/`](packaging/) and [`.github/workflows/release.yml`](.github/workflows/release.yml).
 

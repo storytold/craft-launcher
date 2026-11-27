@@ -732,6 +732,10 @@ impl Host for DesktopHost {
         dialog.pick_folder().and_then(|p| p.to_str().map(str::to_string))
     }
 
+    fn local_checkouts(&self) -> bool {
+        artcraft_launcher_native::checkout::ENABLED
+    }
+
     fn default_install_folder(&mut self, kind: artcraft_launcher_core::PackageKind, arch: Option<artcraft_launcher_core::Arch>) -> Option<String> {
         if let Some((_, answer)) = self.default_folders.iter().find(|(question, _)| *question == (kind, arch)) {
             return answer.clone();
