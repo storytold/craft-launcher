@@ -85,6 +85,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	Oddziel flagi spacjami. Wartość ze spacjami umieść w cudzysłowie.
 	A quote isn't closed.	Cudzysłów nie jest zamknięty.
 	{name} wasn't opened: a quote in its launch options isn't closed.	Nie otwarto aplikacji {name}: cudzysłów w jej opcjach uruchamiania nie jest zamknięty.
+	Lets agents (MCP) drive the app through this local port.	Pozwala agentom (MCP) sterować aplikacją przez ten port lokalny.
+	File holding the key agents use to connect.	Plik z kluczem, którego agenci używają do połączenia.
+	Draws with the processor, after a graphics driver crash.	Rysuje za pomocą procesora po awarii sterownika graficznego.
+	Starts without plug-ins.	Uruchamia bez wtyczek.
+	Opens a separate copy of the app.	Otwiera osobną kopię aplikacji.
+	Opens files in a new window.	Otwiera pliki w nowym oknie.
+	Graphics mode: default, dx12, low-power or software.	Tryb graficzny: default, dx12, low-power lub software.
+	Starts without asking about unsaved changes.	Uruchamia bez pytania o niezapisane zmiany.
+	Starts without opening an audio device.	Uruchamia bez otwierania urządzenia audio.
+	Graphics card to use, by name.	Karta graficzna do użycia, według nazwy.
+	Graphics power preference: high, low or none.	Preferencja zasilania grafiki: high, low lub none.
+	{flag} needs a value.	{flag} wymaga wartości.
+	Value of {flag}	Wartość {flag}
+	Choices for {flag}	Wartości dla {flag}
+	Add a flag	Dodaj flagę
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	Pozwala agentom (MCP) sterować aplikacją. Wymaga zmiennej FILMCRAFT_CONTROL_TOKEN na tym komputerze.
+	Folder agents may read from.	Folder, z którego agenci mogą czytać.
+	Folder agents may write to.	Folder, w którym agenci mogą zapisywać.
+	How frames reach the screen: fifo, autovsync or novsync.	Sposób wyświetlania klatek: fifo, autovsync lub novsync.
+	macOS: keeps the menus inside the window.	macOS: zostawia menu w oknie.
+	Opens sample content.	Otwiera przykładową zawartość.
+	Starts with an empty project.	Uruchamia z pustym projektem.
+	Recovers unsaved changes without asking.	Odzyskuje niezapisane zmiany bez pytania.
+	Folder for auto-save, recovery and logs.	Folder autozapisu, odzyskiwania i dzienników.
+	Folder of the photo library.	Folder biblioteki zdjęć.
+	Shows two pages side by side.	Pokazuje dwie strony obok siebie.
+	Theme: graphite or high-contrast.	Motyw: graphite lub high-contrast.
+	Interface size, as a percentage.	Rozmiar interfejsu w procentach.
+	Interface language, such as fr; auto follows the system.	Język interfejsu, np. fr; auto oznacza język systemu.
 	Save	Zapisz
 	All releases	Wszystkie wydania
 	ArtCraft Launcher {version} is available.	Dostępna jest nowa wersja ArtCraft Launcher ({version}).

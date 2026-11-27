@@ -84,6 +84,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	A kapcsolókat szóközzel válassza el. A szóközt tartalmazó értéket tegye idézőjelbe.
 	A quote isn't closed.	Egy idézőjel nincs lezárva.
 	{name} wasn't opened: a quote in its launch options isn't closed.	A(z) {name} nem nyílt meg: az indítási beállításaiban egy idézőjel nincs lezárva.
+	Lets agents (MCP) drive the app through this local port.	Az ügynökök (MCP) ezen a helyi porton vezérelhetik az alkalmazást.
+	File holding the key agents use to connect.	Az ügynökök csatlakozási kulcsát tartalmazó fájl.
+	Draws with the processor, after a graphics driver crash.	A processzorral rajzol, a grafikus illesztőprogram összeomlása után.
+	Starts without plug-ins.	Bővítmények nélkül indul.
+	Opens a separate copy of the app.	Az alkalmazás külön példányát nyitja meg.
+	Opens files in a new window.	A fájlokat új ablakban nyitja meg.
+	Graphics mode: default, dx12, low-power or software.	Grafikus mód: default, dx12, low-power vagy software.
+	Starts without asking about unsaved changes.	A mentetlen módosításokra való rákérdezés nélkül indul.
+	Starts without opening an audio device.	Hangeszköz megnyitása nélkül indul.
+	Graphics card to use, by name.	A használandó videokártya neve.
+	Graphics power preference: high, low or none.	Grafikus energiabeállítás: high, low vagy none.
+	{flag} needs a value.	A(z) {flag} értéket igényel.
+	Value of {flag}	{flag} értéke
+	Choices for {flag}	{flag} választható értékei
+	Add a flag	Kapcsoló hozzáadása
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	Az ügynökök (MCP) vezérelhetik az alkalmazást. Ehhez a FILMCRAFT_CONTROL_TOKEN változó szükséges ezen a gépen.
+	Folder agents may read from.	Mappa, amelyből az ügynökök olvashatnak.
+	Folder agents may write to.	Mappa, amelybe az ügynökök írhatnak.
+	How frames reach the screen: fifo, autovsync or novsync.	A képkockák megjelenítési módja: fifo, autovsync vagy novsync.
+	macOS: keeps the menus inside the window.	macOS: a menük az ablakban maradnak.
+	Opens sample content.	Mintatartalmat nyit meg.
+	Starts with an empty project.	Üres projekttel indul.
+	Recovers unsaved changes without asking.	Kérdés nélkül helyreállítja a mentetlen módosításokat.
+	Folder for auto-save, recovery and logs.	Az automatikus mentés, helyreállítás és naplók mappája.
+	Folder of the photo library.	A fotótár mappája.
+	Shows two pages side by side.	Két oldalt mutat egymás mellett.
+	Theme: graphite or high-contrast.	Téma: graphite vagy high-contrast.
+	Interface size, as a percentage.	A felület mérete százalékban.
+	Interface language, such as fr; auto follows the system.	A felület nyelve, például fr; az auto a rendszert követi.
 	Save	Mentés
 	All releases	Minden kiadás
 	ArtCraft Launcher {version} is available.	Elérhető az ArtCraft Launcher új verziója: {version}.

@@ -82,6 +82,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	Разделяйте флаги пробелами. Значение с пробелами заключите в кавычки.
 	A quote isn't closed.	Кавычка не закрыта.
 	{name} wasn't opened: a quote in its launch options isn't closed.	{name} не открыто: в параметрах запуска не закрыта кавычка.
+	Lets agents (MCP) drive the app through this local port.	Позволяет агентам (MCP) управлять приложением через этот локальный порт.
+	File holding the key agents use to connect.	Файл с ключом, по которому подключаются агенты.
+	Draws with the processor, after a graphics driver crash.	Рисует процессором после сбоя графического драйвера.
+	Starts without plug-ins.	Запуск без плагинов.
+	Opens a separate copy of the app.	Открывает отдельную копию приложения.
+	Opens files in a new window.	Открывает файлы в новом окне.
+	Graphics mode: default, dx12, low-power or software.	Графический режим: default, dx12, low-power или software.
+	Starts without asking about unsaved changes.	Запуск без вопроса о несохранённых изменениях.
+	Starts without opening an audio device.	Запуск без открытия аудиоустройства.
+	Graphics card to use, by name.	Видеокарта для использования, по имени.
+	Graphics power preference: high, low or none.	Режим энергопотребления графики: high, low или none.
+	{flag} needs a value.	Для {flag} нужно значение.
+	Value of {flag}	Значение {flag}
+	Choices for {flag}	Варианты для {flag}
+	Add a flag	Добавить флаг
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	Позволяет агентам (MCP) управлять приложением. Нужна переменная FILMCRAFT_CONTROL_TOKEN на этом компьютере.
+	Folder agents may read from.	Папка, из которой агенты могут читать.
+	Folder agents may write to.	Папка, в которую агенты могут записывать.
+	How frames reach the screen: fifo, autovsync or novsync.	Как кадры выводятся на экран: fifo, autovsync или novsync.
+	macOS: keeps the menus inside the window.	macOS: меню остаются внутри окна.
+	Opens sample content.	Открывает пример содержимого.
+	Starts with an empty project.	Запуск с пустым проектом.
+	Recovers unsaved changes without asking.	Восстанавливает несохранённые изменения без вопроса.
+	Folder for auto-save, recovery and logs.	Папка автосохранения, восстановления и журналов.
+	Folder of the photo library.	Папка фотобиблиотеки.
+	Shows two pages side by side.	Показывает две страницы рядом.
+	Theme: graphite or high-contrast.	Тема: graphite или high-contrast.
+	Interface size, as a percentage.	Размер интерфейса в процентах.
+	Interface language, such as fr; auto follows the system.	Язык интерфейса, например fr; auto — как в системе.
 	Save	Сохранить
 	All releases	Все релизы
 	ArtCraft Launcher {version} is available.	Доступен ArtCraft Launcher {version}.

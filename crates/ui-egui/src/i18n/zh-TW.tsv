@@ -110,6 +110,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	以空格分隔各個參數。含有空格的值請加上引號。
 	A quote isn't closed.	有引號未閉合。
 	{name} wasn't opened: a quote in its launch options isn't closed.	未開啟 {name}：其啟動選項中有引號未閉合。
+	Lets agents (MCP) drive the app through this local port.	允許代理程式（MCP）透過此本機連接埠控制應用程式。
+	File holding the key agents use to connect.	存放代理程式連線金鑰的檔案。
+	Draws with the processor, after a graphics driver crash.	在顯示卡驅動程式當機後使用處理器繪圖。
+	Starts without plug-ins.	啟動時不載入外掛程式。
+	Opens a separate copy of the app.	開啟應用程式的另一個獨立複本。
+	Opens files in a new window.	在新視窗中開啟檔案。
+	Graphics mode: default, dx12, low-power or software.	圖形模式：default、dx12、low-power 或 software。
+	Starts without asking about unsaved changes.	啟動時不詢問未儲存的變更。
+	Starts without opening an audio device.	啟動時不開啟音訊裝置。
+	Graphics card to use, by name.	依名稱指定要使用的顯示卡。
+	Graphics power preference: high, low or none.	圖形耗電偏好：high、low 或 none。
+	{flag} needs a value.	{flag} 需要一個值。
+	Value of {flag}	{flag} 的值
+	Choices for {flag}	{flag} 的可選值
+	Add a flag	新增參數
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	允許代理程式（MCP）控制應用程式。需要在這台電腦上設定 FILMCRAFT_CONTROL_TOKEN。
+	Folder agents may read from.	代理程式可以讀取的資料夾。
+	Folder agents may write to.	代理程式可以寫入的資料夾。
+	How frames reach the screen: fifo, autovsync or novsync.	畫面呈現方式：fifo、autovsync 或 novsync。
+	macOS: keeps the menus inside the window.	macOS：將選單保留在視窗內。
+	Opens sample content.	開啟範例內容。
+	Starts with an empty project.	以空白專案啟動。
+	Recovers unsaved changes without asking.	不詢問即復原未儲存的變更。
+	Folder for auto-save, recovery and logs.	自動儲存、復原與記錄檔的資料夾。
+	Folder of the photo library.	相片圖庫的資料夾。
+	Shows two pages side by side.	並排顯示兩頁。
+	Theme: graphite or high-contrast.	主題：graphite 或 high-contrast。
+	Interface size, as a percentage.	介面大小（百分比）。
+	Interface language, such as fr; auto follows the system.	介面語言，例如 fr；auto 依系統設定。
 	Checked {ago}	上次檢查：{ago}
 	just now	剛剛
 	yesterday	昨天

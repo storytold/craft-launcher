@@ -516,6 +516,39 @@ pub fn labelled_button(ui: &mut Ui, text: &str, label: &str, kind: Kind, width: 
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
 }
 
+/// A switch drawn as a block: outlined and muted while off, solid in the inverted colours while
+/// on. `text` is shown as written, in mono.
+pub fn toggle(ui: &mut Ui, text: &str, on: bool, width: f32) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, theme::CONTROL_H), Sense::click());
+    let enabled = ui.is_enabled();
+    let (fill, line, color) = if on { (t.invert_bg, t.invert_bg, t.invert_fg) } else { (t.bg, t.line_strong, t.muted) };
+    // The accent outline marks keyboard focus, and the pointer over it.
+    let line = if resp.has_focus() || resp.hovered() { t.accent } else { line };
+    let stroke = Stroke::new(if resp.has_focus() { 2.0 } else { 1.0 }, line);
+    ui.painter().rect(rect, CornerRadius::ZERO, fill, stroke, egui::StrokeKind::Inside);
+    let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::new(theme::HUD_SIZE, theme::mono_bold()), color);
+    paint_centred(ui, rect, galley, color);
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, on, text));
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A square button with a downward triangle in its middle, opening a list of values. Read out as
+/// `label`.
+pub fn picker(ui: &mut Ui, label: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
+    let enabled = ui.is_enabled();
+    let line = if resp.has_focus() || (resp.hovered() && enabled) { t.accent } else { t.line_strong };
+    let stroke = Stroke::new(if resp.has_focus() { 2.0 } else { 1.0 }, line);
+    ui.painter().rect(rect, CornerRadius::ZERO, t.bg, stroke, egui::StrokeKind::Inside);
+    let c = rect.center();
+    let points = vec![c + vec2(-4.5, -2.5), c + vec2(4.5, -2.5), c + vec2(0.0, 3.0)];
+    ui.painter().add(egui::Shape::convex_polygon(points, if enabled { t.ink } else { t.faint }, Stroke::NONE));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, enabled, label));
+    if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
+}
+
 /// The gap between the halves of a [`split_button`]: a hairline of background, so a hovered
 /// outlined half (which fills in) never runs into a solid neighbour.
 const SPLIT_SEAM: f32 = 1.0;

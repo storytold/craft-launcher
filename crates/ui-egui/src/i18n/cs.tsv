@@ -71,6 +71,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	Přepínače oddělte mezerami. Hodnotu s mezerami dejte do uvozovek.
 	A quote isn't closed.	Uvozovky nejsou uzavřené.
 	{name} wasn't opened: a quote in its launch options isn't closed.	Aplikace {name} nebyla otevřena: uvozovky v jejích možnostech spuštění nejsou uzavřené.
+	Lets agents (MCP) drive the app through this local port.	Umožní agentům (MCP) ovládat aplikaci přes tento místní port.
+	File holding the key agents use to connect.	Soubor s klíčem, kterým se agenti připojují.
+	Draws with the processor, after a graphics driver crash.	Kreslí procesorem po pádu grafického ovladače.
+	Starts without plug-ins.	Spustí se bez zásuvných modulů.
+	Opens a separate copy of the app.	Otevře samostatnou kopii aplikace.
+	Opens files in a new window.	Otevře soubory v novém okně.
+	Graphics mode: default, dx12, low-power or software.	Grafický režim: default, dx12, low-power nebo software.
+	Starts without asking about unsaved changes.	Spustí se bez dotazu na neuložené změny.
+	Starts without opening an audio device.	Spustí se bez otevření zvukového zařízení.
+	Graphics card to use, by name.	Grafická karta, která se má použít, podle názvu.
+	Graphics power preference: high, low or none.	Předvolba napájení grafiky: high, low nebo none.
+	{flag} needs a value.	{flag} vyžaduje hodnotu.
+	Value of {flag}	Hodnota {flag}
+	Choices for {flag}	Možnosti pro {flag}
+	Add a flag	Přidat přepínač
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	Umožní agentům (MCP) ovládat aplikaci. Vyžaduje proměnnou FILMCRAFT_CONTROL_TOKEN v tomto počítači.
+	Folder agents may read from.	Složka, ze které smějí agenti číst.
+	Folder agents may write to.	Složka, do které smějí agenti zapisovat.
+	How frames reach the screen: fifo, autovsync or novsync.	Jak se snímky dostávají na obrazovku: fifo, autovsync nebo novsync.
+	macOS: keeps the menus inside the window.	macOS: ponechá nabídky v okně.
+	Opens sample content.	Otevře ukázkový obsah.
+	Starts with an empty project.	Spustí se s prázdným projektem.
+	Recovers unsaved changes without asking.	Obnoví neuložené změny bez dotazu.
+	Folder for auto-save, recovery and logs.	Složka pro automatické ukládání, obnovu a protokoly.
+	Folder of the photo library.	Složka knihovny fotografií.
+	Shows two pages side by side.	Zobrazí dvě stránky vedle sebe.
+	Theme: graphite or high-contrast.	Motiv: graphite nebo high-contrast.
+	Interface size, as a percentage.	Velikost rozhraní v procentech.
+	Interface language, such as fr; auto follows the system.	Jazyk rozhraní, například fr; auto se řídí systémem.
 	Save	Uložit
 	All releases	Všechna vydání
 	ArtCraft Launcher {version} is available.	Je k dispozici ArtCraft Launcher {version}.

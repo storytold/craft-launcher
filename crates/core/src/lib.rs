@@ -12,6 +12,7 @@ pub mod details;
 pub mod distro;
 pub mod feed;
 pub mod hosted_catalog;
+pub mod launch_flags;
 pub mod mcp_config;
 pub mod nightly;
 pub mod notices;
