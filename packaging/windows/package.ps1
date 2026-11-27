@@ -22,7 +22,8 @@
 #>
 param(
   [ValidateSet('x64', 'x86', 'arm64')] [string] $Arch = 'x64',
-  [switch] $SkipBuild
+  [switch] $SkipBuild,
+  [string] $CatalogOutputDir
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -70,7 +71,28 @@ if (-not $SkipBuild) {
   # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
   $env:ARTCRAFT_LAUNCHER_REQUIRE_WINRES = '1'
   # The launcher and the craft-ai-mcp gateway it ships (Settings › AI agents).
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p $Pkg -p $GatewayPkg --target $Target }
+  # Cargo reports the exact core build-script OUT_DIR, including for a fresh cached build.
+  # Keep compiler diagnostics visible, but select the verified outputs from this build only.
+  Invoke-Native "cargo build ($Target)" {
+    cargo build --release --locked -p $Pkg -p $GatewayPkg --target $Target --message-format=json-render-diagnostics |
+      ForEach-Object {
+        $message = $_ | ConvertFrom-Json
+        if ($message.reason -eq 'compiler-message') { Write-Host $message.message.rendered }
+        if ($message.reason -eq 'build-script-executed' -and
+            (Split-Path (Split-Path $message.out_dir -Parent) -Leaf) -like 'artcraft-launcher-core-*') {
+          $script:CatalogOutputDir = $message.out_dir
+        }
+      }
+  }
+} elseif (-not $CatalogOutputDir) {
+  # -SkipBuild is for a previously built binary. Never guess between stale hashed OUT_DIRs.
+  $outputs = @(Get-ChildItem -Directory -Path (Join-Path $TargetDir "$Target\release\build") -Filter 'artcraft-launcher-core-*' -ErrorAction SilentlyContinue |
+    ForEach-Object { Join-Path $_.FullName 'out' } |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_ 'catalog.toml') })
+  if ($outputs.Count -eq 1) { $CatalogOutputDir = $outputs[0] }
+}
+if (-not $CatalogOutputDir -or -not (Test-Path -LiteralPath (Join-Path $CatalogOutputDir 'catalog.toml'))) {
+  throw 'Missing verified launcher catalog build output. Build the launcher first (ARTCRAFT_CATALOG_DIR supports offline builds), or pass -CatalogOutputDir for the exact prebuilt binary.'
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
@@ -126,49 +148,14 @@ function New-InstallerArt([string] $BannerOut, [string] $DialogOut) {
     'anicraft', 'designcraft', 'figcraft', 'wordcraft', 'soundcraft', 'deckcraft', 'cadcraft', 'gridcraft', 'craft-anything', 'texturecraft', 'materialcraft'
   $mark = [System.Drawing.Image]::FromFile((Join-Path $Root 'assets\app-icon\hicolor\256x256\apps\ai.storyteller.artcraft-launcher.png'))
   $wordmark = [System.Drawing.Image]::FromFile((Join-Path $Root 'docs\brand\artcraft-logo-white.png'))
-  # App icons come from the signed launcher catalog. The build already checked the catalog's Ed25519
-  # signature and every icon's SHA-256 (crates/core/build.rs) and keeps both in artcraft-catalog-cache:
-  # reuse them, so packaging works offline. Without that cache (for example -SkipBuild on a fresh
-  # machine) fetch the catalog over HTTPS; its signature is not checked here, but every icon must still
-  # match the SHA-256 the catalog lists.
-  $catalogCache = @($env:ARTCRAFT_CATALOG_CACHE_DIR, (Join-Path $TargetDir "$Target\artcraft-catalog-cache"), (Join-Path $TargetDir 'artcraft-catalog-cache')) |
-    Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'launcher-catalog.toml')) } | Select-Object -First 1
-  if ($catalogCache) {
-    $catalogText = Get-Content -Raw -LiteralPath (Join-Path $catalogCache 'launcher-catalog.toml')
-    $iconDir = Join-Path $catalogCache 'icons'
-  } else {
-    Write-Warning 'No build-verified launcher catalog found; fetching getartcraft.com/launcher-catalog.toml without checking its signature.'
-    $catalogText = (Invoke-WebRequest -UseBasicParsing -Uri 'https://getartcraft.com/launcher-catalog.toml').Content
-    $iconDir = Join-Path $env:TEMP 'artcraft-launcher-icon-cache'
-  }
-  New-Item -ItemType Directory -Force -Path $iconDir | Out-Null
-  # Read each [[apps]] table's own id, icon_url and icon_sha256, whatever their order or indentation;
-  # any other table header (such as [apps.details]) ends the app's own keys.
-  $catalogApps = @{}
-  $entry = $null
-  foreach ($row in ($catalogText -split "`r?`n")) {
-    if ($row -match '^\s*\[\[apps\]\]\s*(#.*)?$') { $entry = @{}; continue }
-    if ($row -match '^\s*\[') { $entry = $null; continue }
-    if ($null -ne $entry -and $row -match '^\s*(id|icon_url|icon_sha256)\s*=\s*"([^"]*)"') {
-      $entry[$Matches[1]] = $Matches[2]
-      if ($entry['id']) { $catalogApps[$entry['id']] = $entry }
-    }
-  }
+  # Reuse the exact build's signature- and digest-verified icons, including offline overrides.
+  # No independent catalog parser or network fetch is needed at packaging time.
   $icons = $apps | ForEach-Object {
-    $app = $catalogApps[$_]
-    if (-not $app -or -not $app['icon_url'] -or -not $app['icon_sha256']) { throw "launcher-catalog.toml has no icon_url and icon_sha256 for $_" }
-    $sha = $app['icon_sha256'].ToLowerInvariant()
-    if ($sha -notmatch '^[0-9a-f]{64}$') { throw "launcher-catalog.toml lists a malformed icon_sha256 for $_" }
-    if ($app['icon_url'] -notmatch '^https://') { throw "launcher-catalog.toml lists a non-HTTPS icon_url for $_" }
-    $cached = Join-Path $iconDir "$sha.png"
-    if (-not ((Test-Path -LiteralPath $cached) -and ((Get-FileHash -LiteralPath $cached -Algorithm SHA256).Hash.ToLowerInvariant() -eq $sha))) {
-      Invoke-WebRequest -UseBasicParsing -Uri $app['icon_url'] -OutFile $cached
-      if ((Get-FileHash -LiteralPath $cached -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha) {
-        Remove-Item -LiteralPath $cached -Force
-        throw "The icon for $_ does not match the SHA-256 in launcher-catalog.toml"
-      }
+    $icon = Join-Path $CatalogOutputDir "app-icons\$_.png"
+    if (-not (Test-Path -LiteralPath $icon -PathType Leaf)) {
+      throw "Missing verified launcher icon $_ in $CatalogOutputDir; rebuild the launcher."
     }
-    [System.Drawing.Image]::FromFile($cached)
+    [System.Drawing.Image]::FromFile($icon)
   }
   # The site's label face; GDI+ draws a variable font at its default instance (Regular).
   $fonts = New-Object System.Drawing.Text.PrivateFontCollection

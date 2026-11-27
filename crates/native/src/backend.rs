@@ -734,6 +734,9 @@ impl NativeBackend {
         self.check_nightly_at(manual, crate::now());
     }
 
+    // Deliberately use the GitHub Nightly verifier for automatic installation/update checks.
+    // Signed catalog entries are discovery hints; they cannot replace the separately verified
+    // platform-specific Nightly descriptor, checksum, publication and rollback checks.
     fn check_nightly_at(&self, manual: bool, now: i64) {
         let Some(platform) = self.platform else { return };
         let apps = self.nightly_apps();
