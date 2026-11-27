@@ -22,6 +22,8 @@
 //! keys without a window.
 
 use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use artcraft_launcher_core::{CraftApp, InstallSource, PackageKind};
 
@@ -103,21 +105,38 @@ pub(crate) fn install(package: Package<'_>, commit: &mut dyn FnMut(&Record) -> R
         &|_, _| Ok(()),
         &mut commit_with_integration,
     );
-    if result.is_err() {
+    if result.is_ok() {
+        // The install stands: the saved copy of the Start menu entry it replaced is of no use now.
+        drop_shortcut_backup(&written.shortcut);
+    } else {
         // The transaction is putting the previous files back, or removing a fresh copy's; what
         // Windows was told must describe what is on disk again. A failed update gets the previous
         // copy's entry rewritten (same shortcut target, its own version), a failed first install
         // gets everything the install managed to write taken back.
         match previous {
             Some(previous) => {
-                if let Some(menu) = start_menu_programs()
-                    && let (_, failure) = integrate(app, previous, &menu, installed_kb(previous))
-                    && let Some(error) = failure
-                {
-                    log::warn!("{}: couldn't restore the previous version's Start menu entry and listing: {error}", app.name);
+                if let Some(menu) = start_menu_programs() {
+                    let (restored, failure) = integrate(app, previous, &menu, installed_kb(previous));
+                    match failure {
+                        None => {
+                            drop_shortcut_backup(&restored.shortcut);
+                            drop_shortcut_backup(&written.shortcut);
+                        }
+                        Some(error) => {
+                            log::warn!("{}: couldn't restore the previous version's Start menu entry and listing: {error}", app.name);
+                            // The entry may still say what the failed install said: put the one
+                            // it replaced back, so the entry names the copy that is there now.
+                            if let Some(shortcut) = written.shortcut.take()
+                                && let Err(error) = undo_shortcut(&menu, app, shortcut)
+                            {
+                                log::warn!("{}: {error}", app.name);
+                            }
+                            drop_shortcut_backup(&restored.shortcut);
+                        }
+                    }
                 }
             }
-            None => take_back(app, &written),
+            None => take_back(app, written),
         }
     }
     result
@@ -141,8 +160,19 @@ pub(crate) fn remove(app: &CraftApp, record: &Record) -> Result<(), String> {
 /// that and nothing the previous version (or the person) had put there.
 #[derive(Default)]
 struct Integrated {
-    shortcut: bool,
+    shortcut: Option<Shortcut>,
     registration: bool,
+}
+
+/// What writing the Start menu entry did to the entry that was in its place, so a rollback
+/// undoes exactly that and nothing the person (or an MSI package) had put there.
+#[derive(Debug)]
+enum Shortcut {
+    /// The entry's place was empty: the install created the entry.
+    Created,
+    /// A shortcut file was in the entry's place and is saved at the path, to be put back when
+    /// the install is taken back and dropped once the install stands.
+    Replaced(PathBuf),
 }
 
 /// Writes the Start menu entry and the two registry keys, stopping at the first failure and
@@ -150,7 +180,7 @@ struct Integrated {
 fn integrate(app: &CraftApp, record: &Record, menu: &Path, size_kb: u32) -> (Integrated, Option<String>) {
     let mut written = Integrated::default();
     match write_shortcut(menu, app, &record.path) {
-        Ok(()) => written.shortcut = true,
+        Ok(shortcut) => written.shortcut = Some(shortcut),
         Err(error) => return (written, Some(error)),
     }
     match write_registration(app, record, size_kb) {
@@ -162,17 +192,38 @@ fn integrate(app: &CraftApp, record: &Record, menu: &Path, size_kb: u32) -> (Int
 
 /// Takes back what [`integrate`] wrote. Best effort: a removal that fails is logged, not fatal —
 /// the caller is already reporting the failure that caused the undo.
-fn take_back(app: &CraftApp, written: &Integrated) {
-    if written.shortcut
+fn take_back(app: &CraftApp, written: Integrated) {
+    let Integrated { shortcut, registration } = written;
+    if let Some(shortcut) = shortcut
         && let Some(menu) = start_menu_programs()
-        && let Err(error) = remove_shortcut(&menu, app)
+        && let Err(error) = undo_shortcut(&menu, app, shortcut)
     {
-        log::warn!("{}: couldn't remove the Start menu entry it had written: {error}", app.name);
+        log::warn!("{}: couldn't undo the Start menu entry it had written: {error}", app.name);
     }
-    if written.registration
-        && let Err(error) = remove_registration(app)
-    {
+    if registration && let Err(error) = remove_registration(app) {
         log::warn!("{}: couldn't remove the Apps & features record it had written: {error}", app.name);
+    }
+}
+
+/// Puts the Start menu entry back the way [`write_shortcut`] found it: one the install created is
+/// removed, one it replaced is restored from the saved copy, so an entry the person (or an MSI
+/// package) had put there is not lost to a failed install.
+fn undo_shortcut(menu: &Path, app: &CraftApp, shortcut: Shortcut) -> Result<(), String> {
+    match shortcut {
+        Shortcut::Created => remove_shortcut(menu, app),
+        Shortcut::Replaced(backup) => {
+            std::fs::rename(&backup, shortcut_path(menu, app)).map_err(|e| format!("couldn't put the Start menu entry back ({e})"))
+        }
+    }
+}
+
+/// The saved copy of an entry the install replaced is of no use once the install stands, or once
+/// its undo has happened: drop it, best effort.
+fn drop_shortcut_backup(shortcut: &Option<Shortcut>) {
+    if let Some(Shortcut::Replaced(backup)) = shortcut
+        && let Err(error) = std::fs::remove_file(backup)
+    {
+        log::warn!("couldn't remove the saved copy of the Start menu entry it replaced: {error}");
     }
 }
 
@@ -181,6 +232,17 @@ fn take_back(app: &CraftApp, written: &Integrated) {
 enum Registered {
     Sz(String),
     Dword(u32),
+}
+
+impl Registered {
+    /// The value as the registry stores it.
+    fn reg_value(&self) -> winreg::RegValue {
+        use winreg::types::ToRegValue;
+        match self {
+            Registered::Sz(text) => text.as_str().to_reg_value(),
+            Registered::Dword(number) => number.to_reg_value(),
+        }
+    }
 }
 
 /// The values a fast install's Apps & features record carries. Pure data, so its layout — what
@@ -216,24 +278,108 @@ fn installed_kb(record: &Record) -> u32 {
     u32::try_from(bytes / 1024).unwrap_or(u32::MAX)
 }
 
-/// Writes the Apps & features record and the App Paths key under `HKCU`.
+/// The values a registry key carried before the install rewrote it, so a failed write leaves the
+/// key exactly as it was: a key the install created is taken away again, and one that was there
+/// (the previous version's, or a same-named one an MSI package wrote) gets its values back.
+struct KeySnapshot {
+    existed: bool,
+    values: Vec<(String, winreg::RegValue)>,
+}
+
+impl KeySnapshot {
+    /// What `path` carries now. A key that cannot be read refuses the write before anything is
+    /// written: the install only writes a registry key it can put back.
+    fn take(hkcu: &winreg::RegKey, path: &str) -> std::io::Result<Self> {
+        match hkcu.open_subkey(path) {
+            Ok(key) => {
+                let values = key.enum_values().collect::<Result<Vec<_>, _>>()?;
+                Ok(Self { existed: true, values })
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self { existed: false, values: Vec::new() }),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Puts back what [`write_values`] put into the key: every name in `written` gets the value
+    /// it carried before, or is deleted when the key had none, and a key the install created is
+    /// removed. Best effort: a value that cannot be put back is left as the failed write left it.
+    fn undo(&self, hkcu: &winreg::RegKey, path: &str, written: &[String]) {
+        if !self.existed {
+            let _ = hkcu.delete_subkey(path);
+            return;
+        }
+        if let Ok(key) = hkcu.open_subkey(path) {
+            for name in written {
+                match self.values.iter().find(|(had, _)| had == name) {
+                    Some((_, value)) => {
+                        let _ = key.set_raw_value(name, value);
+                    }
+                    None => {
+                        let _ = key.delete_value(name);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Writes `values` into `key` in order, stopping at the first failure and reporting both the
+/// names that got written and what went wrong, so the caller can undo exactly those.
+fn write_values(
+    key: &winreg::RegKey,
+    values: impl IntoIterator<Item = (&'static str, winreg::RegValue)>,
+    what: &str,
+) -> (Vec<String>, Option<String>) {
+    let mut written = Vec::new();
+    for (name, value) in values {
+        if let Err(error) = key.set_raw_value(name, &value) {
+            return (written, Some(format!("{what} ({error})")));
+        }
+        written.push(name.to_string());
+    }
+    (written, None)
+}
+
+/// Writes the Apps & features record and the App Paths key under `HKCU`. Each key is written so a
+/// failure anywhere leaves it exactly as it was, and the record's key is undone again when the
+/// Run registration fails, so the install leaves no half listing behind: [`take_back`] sees
+/// either a finished write or nothing at all.
 fn write_registration(app: &CraftApp, record: &Record, size_kb: u32) -> Result<(), String> {
-    use winreg::RegKey;
     use winreg::enums::HKEY_CURRENT_USER;
 
     let launcher = std::env::current_exe().map_err(|e| format!("couldn't find the launcher's own program ({e})"))?;
     let uninstall = uninstall_command(&launcher, app.id);
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (entry, _) = hkcu.create_subkey(uninstall_key(app.id)).map_err(|e| format!("couldn't list the app in Apps & features ({e})"))?;
-    for (name, value) in registration_values(app, record, size_kb, &uninstall) {
-        match value {
-            Registered::Sz(text) => entry.set_value(name, &text),
-            Registered::Dword(number) => entry.set_value(name, &number),
-        }
-        .map_err(|e| format!("couldn't write the Apps & features record ({e})"))?;
+    let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
+
+    // The Apps & features record first: the Run registration failing must take its values back
+    // too, not only the failing key's own.
+    let uninstall_path = uninstall_key(app.id);
+    let undo_record = KeySnapshot::take(&hkcu, &uninstall_path).map_err(|e| format!("couldn't read the app's Apps & features record ({e})"))?;
+    let (entry, _) = hkcu.create_subkey(&uninstall_path).map_err(|e| format!("couldn't list the app in Apps & features ({e})"))?;
+    let values = registration_values(app, record, size_kb, &uninstall);
+    let (written, failure) =
+        write_values(&entry, values.iter().map(|(name, value)| (*name, value.reg_value())), "couldn't write the Apps & features record");
+    if let Some(error) = failure {
+        undo_record.undo(&hkcu, &uninstall_path, &written);
+        return Err(error);
     }
-    let (paths, _) = hkcu.create_subkey(app_paths_key(app.id)).map_err(|e| format!("couldn't register the app for the Run dialog ({e})"))?;
-    paths.set_value("", &record.path.display().to_string()).map_err(|e| format!("couldn't register the app for the Run dialog ({e})"))?;
+
+    let app_paths_path = app_paths_key(app.id);
+    let undo_run = KeySnapshot::take(&hkcu, &app_paths_path).map_err(|e| {
+        undo_record.undo(&hkcu, &uninstall_path, &written);
+        format!("couldn't read the app's Run registration ({e})")
+    })?;
+    let (paths, _) = hkcu.create_subkey(&app_paths_path).map_err(|e| {
+        undo_record.undo(&hkcu, &uninstall_path, &written);
+        format!("couldn't register the app for the Run dialog ({e})")
+    })?;
+    let target = Registered::Sz(record.path.display().to_string()).reg_value();
+    let (written_run, failure) = write_values(&paths, [("", target)], "couldn't register the app for the Run dialog");
+    if let Some(error) = failure {
+        undo_run.undo(&hkcu, &app_paths_path, &written_run);
+        undo_record.undo(&hkcu, &uninstall_path, &written);
+        return Err(error);
+    }
     Ok(())
 }
 
@@ -263,10 +409,16 @@ fn registered_folder(id: &str) -> Option<String> {
     entry.get_value::<String, _>("InstallLocation").ok()
 }
 
+/// Counts the shortcut writes this process has made, so their side files (the staging copy and
+/// the saved copy of a replaced entry) never take each other's names.
+static WRITE_SEQUENCE: AtomicU32 = AtomicU32::new(0);
+
 /// Writes the Start menu shortcut pointing at `target`, replacing the one a previous fast install
 /// of the same app left, whose target is the same exe. A folder or a link in the shortcut's place
-/// is refused rather than replaced: only a shortcut file may be swapped for a shortcut.
-fn write_shortcut(menu: &Path, app: &CraftApp, target: &Path) -> Result<(), String> {
+/// is refused rather than replaced: only a shortcut file may be swapped for a shortcut. What was
+/// in the entry's place is reported ([`Shortcut`]), so a rollback puts it back instead of
+/// deleting an entry the person or an MSI package had put there.
+fn write_shortcut(menu: &Path, app: &CraftApp, target: &Path) -> Result<Shortcut, String> {
     if !target.is_file() {
         return Err(format!("{} isn't where it was installed", target.display()));
     }
@@ -289,16 +441,44 @@ fn write_shortcut(menu: &Path, app: &CraftApp, target: &Path) -> Result<(), Stri
     }
     // Write beside the entry, then publish with a rename, so a crash never leaves a half shortcut
     // and the swap with the previous version's entry is one step.
-    let temp = menu.join(format!(".{}.{}.lnk.tmp", app.id, std::process::id()));
+    let serial = WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let temp = menu.join(format!(".{}.{}.{}.lnk.tmp", app.id, std::process::id(), serial));
     let _ = std::fs::remove_file(&temp);
     if let Err(e) = link.create_lnk(&temp) {
         let _ = std::fs::remove_file(&temp);
         return Err(e.to_string());
     }
-    std::fs::rename(&temp, &lnk).map_err(|e| {
-        let _ = std::fs::remove_file(&temp);
-        format!("couldn't publish the Start menu entry ({e})")
-    })
+    // A shortcut file already in the entry's place is moved aside first: on Windows, a rename
+    // does not replace the file it lands on, so publishing over it fails on the second install
+    // and on every update. The moved copy goes with the answer ([`Shortcut::Replaced`]) — a
+    // rollback puts it back — and a move that cannot happen (the file is held open, say) refuses
+    // the write rather than publish half of it.
+    let saved = match std::fs::symlink_metadata(&lnk) {
+        Ok(_) => {
+            let backup = menu.join(format!(".{}.{}.{}.lnk.prev", app.id, std::process::id(), serial));
+            match std::fs::rename(&lnk, &backup) {
+                Ok(()) => Some(backup),
+                Err(e) => {
+                    let _ = std::fs::remove_file(&temp);
+                    return Err(format!("couldn't replace the Start menu entry ({e})"));
+                }
+            }
+        }
+        Err(_) => None,
+    };
+    match std::fs::rename(&temp, &lnk) {
+        Ok(()) => Ok(saved.map_or(Shortcut::Created, Shortcut::Replaced)),
+        Err(e) => {
+            let mut error = format!("couldn't publish the Start menu entry ({e})");
+            if let Some(backup) = &saved
+                && std::fs::rename(backup, &lnk).is_err()
+            {
+                error.push_str(&format!(", and the entry it replaced is saved at {}", backup.display()));
+            }
+            let _ = std::fs::remove_file(&temp);
+            Err(error)
+        }
+    }
 }
 
 /// Removes the Start menu shortcut, if it is still a shortcut file.
@@ -323,8 +503,20 @@ fn remove_integration(app: &CraftApp) {
     }
 }
 
+/// The manifest is written by one removal at a time in this process: the owner runs its own
+/// removal and, on other threads, the ones other processes hand it.
+static REMOVALS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Removes a fast-installed app without a window: what the Apps & features record's Uninstall
 /// command runs (`<launcher> --uninstall <app>`).
+///
+/// The manifest that says what may be removed is one file for the whole account, and the running
+/// launcher commits to it as it installs and removes other apps: this helper never writes the
+/// file beside a launcher that is running. When one holds the account's instance and proves it,
+/// the removal is handed to it and its answer is this one's
+/// ([`crate::single_instance::forward_uninstall`]); when none does, this process holds the
+/// instance for the duration ([`crate::single_instance::Held`]), so a launcher starting meanwhile
+/// defers to it instead of racing the save, and the removal is its own ([`remove_owned`]).
 ///
 /// With the launcher's own record of the copy, the removal is the launcher's ordinary one: the
 /// recorded files, the Start menu entry and both registry keys, with the record dropped from the
@@ -333,9 +525,62 @@ fn remove_integration(app: &CraftApp) {
 /// the folder named in it is left alone, with the reason reported.
 pub fn uninstall_app(id: &str) -> Result<(), String> {
     let app = CraftApp::by_id(id).ok_or_else(|| format!("{id} isn't one of the Craft apps this launcher installs."))?;
+    // This process may be the instance's owner already, or become it: either way, removals other
+    // processes hand over are served here too (two headless removals starting together).
+    crate::single_instance::set_uninstall_handler(std::sync::Arc::new(remove_owned));
+    for _ in 0..3 {
+        match crate::single_instance::forward_uninstall(id) {
+            crate::single_instance::Forwarded::Answered(result) => return result,
+            crate::single_instance::Forwarded::Free => {
+                if let Some(held) = crate::single_instance::Held::take() {
+                    let result = remove_owned(id);
+                    drop(held);
+                    return result;
+                }
+            }
+            crate::single_instance::Forwarded::Held => {
+                return Err(format!(
+                    "{} couldn't be removed: something holds the launcher's instance and didn't take the removal, so its record of installed apps was left alone. Quit it and try again.",
+                    app.name
+                ));
+            }
+        }
+        // The instance changed hands while this removal was starting (another removal, or a
+        // launcher being replaced): one more look, and then an honest refusal rather than a
+        // write beside whoever holds it.
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    Err(format!("{} couldn't be removed: the launcher's instance kept changing hands while the removal started. Try again.", app.name))
+}
+
+/// The removal the instance's owner performs: its own `--uninstall`, or a removal another process
+/// handed over. One at a time ([`REMOVALS`]), and the commit reads the manifest again before it
+/// saves, so the records of apps removed or installed alongside survive.
+fn remove_owned(id: &str) -> Result<(), String> {
+    let _removal = REMOVALS.lock().unwrap_or_else(PoisonError::into_inner);
     let paths = Paths::new()?;
-    let mut manifest = crate::manifest::Manifest::load(&paths.manifest());
-    let record = manifest.apps.get(id).cloned();
+    let app = CraftApp::by_id(id).ok_or_else(|| format!("{id} isn't one of the Craft apps this launcher installs."))?;
+    let manifest = paths.manifest();
+    let read = || -> Result<crate::manifest::Manifest, String> { Ok(crate::manifest::Manifest::load(&manifest)) };
+    let mut commit = || {
+        let mut current = crate::manifest::Manifest::load(&manifest);
+        let changed = current.apps.remove(id).is_some() || current.releases.remove(id).is_some();
+        if changed { current.save(&manifest) } else { Ok(()) }
+    };
+    remove_recorded(app, &paths, &read, &mut commit)
+}
+
+/// The removal itself, reading the manifest through `read` for what it decides from and
+/// committing the record's removal through `commit`, so the headless helper and the launcher's
+/// own uninstall each write the file through their own coordination.
+pub(crate) fn remove_recorded(
+    app: &CraftApp,
+    paths: &Paths,
+    read: &dyn Fn() -> Result<crate::manifest::Manifest, String>,
+    commit: &mut dyn FnMut() -> Result<(), String>,
+) -> Result<(), String> {
+    let manifest = read()?;
+    let record = manifest.apps.get(app.id).cloned();
     let installed = crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take());
     let ours = |record: &Record, installed: &artcraft_launcher_core::Installed| {
         record.kind == PackageKind::FastInstall && installed.source == InstallSource::Launcher
@@ -344,15 +589,13 @@ pub fn uninstall_app(id: &str) -> Result<(), String> {
         (Some(record), Some(installed)) if ours(record, installed) => {
             let stop = crate::http::Stop::default();
             let mut phase = |_: artcraft_launcher_core::protocol::JobPhase| ();
-            crate::install::uninstall(app, installed, Some(record), &paths, &stop, &mut phase)?;
-            manifest.apps.remove(id);
-            manifest.releases.remove(id);
-            manifest.save(&paths.manifest()).map_err(|e| format!("couldn't save the launcher's record of what was removed ({e})"))
+            crate::install::uninstall(app, installed, Some(record), paths, &stop, &mut phase)?;
+            commit()
         }
         _ => {
             // Nothing the launcher can safely remove: take the registration back, and say where
             // the folder was, rather than deleting a folder it cannot vouch for.
-            let folder = registered_folder(id);
+            let folder = registered_folder(app.id);
             remove_integration(app);
             Err(match folder {
                 Some(folder) if !folder.is_empty() => format!(
@@ -465,7 +708,9 @@ mod tests {
     }
 
     /// A shortcut is written for a real executable, replaces the previous version's entry (the
-    /// same target), refuses to replace a folder, and is removed by name.
+    /// same target) and reports the copy it saved, refuses to replace a folder, and is removed by
+    /// name. A rollback puts a replaced entry back instead of deleting it, and one the install
+    /// created is removed.
     #[test]
     fn the_start_menu_shortcut_is_written_replaced_and_removed() {
         let menu = tempfile::tempdir().unwrap();
@@ -473,15 +718,21 @@ mod tests {
         let program = menu.path().join("program.exe");
         std::fs::write(&program, b"MZ").unwrap();
 
-        write_shortcut(menu.path(), app, &program).unwrap();
+        let shortcut = write_shortcut(menu.path(), app, &program).unwrap();
         let lnk = shortcut_path(menu.path(), app);
+        assert!(matches!(shortcut, Shortcut::Created), "an empty entry's place makes the entry the install's own");
         assert!(lnk.is_file(), "the shortcut is published under the app's name");
-        // The previous version's entry is replaced, not left beside a second one.
+
+        // The previous version's entry is replaced, not left beside a second one, and what it
+        // replaced is saved for a rollback rather than dropped.
         std::fs::write(&lnk, b"the previous version's shortcut").unwrap();
-        write_shortcut(menu.path(), app, &program).unwrap();
+        let replaced = write_shortcut(menu.path(), app, &program).unwrap();
         assert!(lnk.is_file());
+        let Shortcut::Replaced(backup) = replaced else {
+            panic!("a replaced entry is reported with its saved copy");
+        };
         let left: Vec<_> = std::fs::read_dir(menu.path()).unwrap().map(|entry| entry.unwrap().file_name()).collect();
-        assert_eq!(left.len(), 2, "only the program and the entry remain, no temporary shortcut: {left:?}");
+        assert_eq!(left.len(), 3, "the program, the entry and its saved copy are there, no temporary shortcut: {left:?}");
 
         // The shortcut points at the program as UTF-16, like any .lnk.
         let data = std::fs::read(&lnk).unwrap();
@@ -489,8 +740,17 @@ mod tests {
         let needle: Vec<u8> = "program.exe".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert!(data.windows(needle.len()).any(|w| w == needle.as_slice()), "shortcut missing its target");
 
+        // A rollback of an install that replaced an entry puts it back, not deletes it.
+        std::fs::write(&backup, b"a shortcut the person made").unwrap();
+        undo_shortcut(menu.path(), app, Shortcut::Replaced(backup.clone())).unwrap();
+        assert_eq!(std::fs::read(&lnk).unwrap(), b"a shortcut the person made");
+        assert!(!backup.exists(), "the saved copy moved back into the entry's place");
+
+        // A rollback of an install that created the entry removes it.
+        undo_shortcut(menu.path(), app, Shortcut::Created).unwrap();
+        assert!(!lnk.exists());
+
         // A folder in the shortcut's place is refused, not replaced.
-        std::fs::remove_file(&lnk).unwrap();
         std::fs::create_dir(&lnk).unwrap();
         let error = write_shortcut(menu.path(), app, &program).unwrap_err();
         assert!(error.contains("isn't a shortcut"), "{error}");
@@ -504,6 +764,20 @@ mod tests {
         std::fs::create_dir(&lnk).unwrap();
         remove_shortcut(menu.path(), app).unwrap();
         assert!(lnk.is_dir(), "only a shortcut file is removed");
+    }
+
+    /// A saved copy of a replaced entry that is of no more use is dropped, best effort, so a
+    /// committed install leaves none of its side files behind.
+    #[test]
+    fn a_committed_install_drops_the_copy_of_the_entry_it_replaced() {
+        let menu = tempfile::tempdir().unwrap();
+        let backup = menu.path().join(".photocraft.0.1.lnk.prev");
+        std::fs::write(&backup, b"the previous version's shortcut").unwrap();
+        drop_shortcut_backup(&Some(Shortcut::Replaced(backup.clone())));
+        assert!(!backup.exists(), "the copy of a committed install's entry is gone");
+        // An entry the install created, or wrote nothing about, has no copy to drop.
+        drop_shortcut_backup(&Some(Shortcut::Created));
+        drop_shortcut_backup(&None);
     }
 
     /// A missing target is never linked to.

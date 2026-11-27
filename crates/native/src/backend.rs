@@ -534,6 +534,16 @@ impl NativeBackend {
         if let Some(path) = &pins {
             crate::pins::prepare_folder(path);
         }
+        // A headless uninstaller (an app's Apps & features entry) hands its removal to the
+        // launcher that is running, so the one manifest of installed apps is written by the
+        // process that owns it, never beside it (see `fast_install::uninstall_app`): answer
+        // through this backend's manifest lock.
+        #[cfg(windows)]
+        {
+            let handler_shared = shared.clone();
+            let handler_paths = paths.clone();
+            crate::single_instance::set_uninstall_handler(std::sync::Arc::new(move |id| forwarded_uninstall(&handler_shared, &handler_paths, id)));
+        }
         let spawn: Spawn = Arc::new(|work| {
             std::thread::spawn(work);
         });
@@ -1883,6 +1893,27 @@ fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &
     if let Err(e) = m.save(&paths.manifest()) {
         log::warn!("couldn't save the install record: {e}");
     }
+}
+
+/// The removal a headless uninstaller hands to the launcher that is running (see
+/// [`crate::fast_install::uninstall_app`]): the headless removal's own work, with the manifest
+/// read for its decisions and the record removal committed under this backend's manifest lock,
+/// so the save never lands between the launcher's own commits.
+#[cfg(windows)]
+fn forwarded_uninstall(shared: &Shared, paths: &Paths, id: &str) -> Result<(), String> {
+    let app = artcraft_launcher_core::CraftApp::by_id(id).ok_or_else(|| format!("{id} isn't one of the Craft apps this launcher installs."))?;
+    let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let result = crate::fast_install::remove_recorded(app, paths, &|| Ok(manifest.clone()), &mut || {
+        let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+        let changed = m.apps.remove(id).is_some() || m.releases.remove(id).is_some();
+        if changed { m.save(&paths.manifest()) } else { Ok(()) }
+    });
+    if result.is_ok() {
+        // The UI's picture of what is installed follows the manifest: the app is gone from both.
+        shared.installed.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
+        (shared.waker)();
+    }
+    result
 }
 
 /// Whether an install may write over what is at its destination.
