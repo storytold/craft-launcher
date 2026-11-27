@@ -106,6 +106,7 @@
 	Installing on Windows	Встановлення у Windows
 	Install new apps as	Встановлювати нові застосунки як
 	System package (recommended)	Системний пакет (рекомендовано)
+	Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator.	Швидке встановлення розпаковує застосунок у вашу власну теку Program Files, додає ярлик у меню «Пуск» і показує його у списку «Програми та можливості» — без запиту прав адміністратора.
 	Updates always use the format an app was installed with.	Оновлення завжди використовують формат, у якому застосунок було встановлено.
 	Running in the background	Робота у фоновому режимі
 	Keep running in the tray when the window is closed	Продовжувати роботу в треї після закриття вікна
@@ -176,6 +177,7 @@
 	Waiting for other installs…	Очікування інших встановлень…
 
 # Package formats offered for download (PackageKind::label)
+	Fast install (recommended)	Швидке встановлення (рекомендовано)
 	Installer (.msi)	Програма встановлення (.msi)
 	Portable (.zip)	Портативна версія (.zip)
 	Disk image (.dmg)	Образ диска (.dmg)

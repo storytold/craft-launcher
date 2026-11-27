@@ -103,6 +103,7 @@
 	Installing on Windows	ინსტალაცია Windows-ზე
 	Install new apps as	ახალი აპლიკაციების ინსტალაციის ფორმატი
 	System package (recommended)	სისტემის პაკეტი (რეკომენდებული)
+	Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator.	სწრაფი დაყენება აპლიკაციას თქვენივე Programs საქაღალდეში გაშლის, Start მენიუში ჩანაწერს დაამატებს და „აპლიკაციებისა და ფუნქციების“ სიაში გამოიტანს — ადმინისტრატორის ნებართვის გარეშე.
 	Updates always use the format an app was installed with.	განახლება ყოველთვის იმ ფორმატს იყენებს, რომლითაც აპლიკაცია დაინსტალირდა.
 	Running in the background	ფონურ რეჟიმში მუშაობა
 	Keep running in the tray when the window is closed	ფანჯრის დახურვის შემდეგ მუშაობის გაგრძელება შეტყობინებების არეში
@@ -185,6 +186,7 @@
 	Waiting for other installs…	სხვა ინსტალაციების მოლოდინი…
 
 # Package formats offered for download (PackageKind::label)
+	Fast install (recommended)	სწრაფი დაყენება (რეკომენდებულია)
 	Installer (.msi)	ინსტალერი (.msi)
 	Portable (.zip)	პორტატული (.zip)
 	Disk image (.dmg)	დისკის იმიჯი (.dmg)

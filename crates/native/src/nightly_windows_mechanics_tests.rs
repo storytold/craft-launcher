@@ -200,6 +200,7 @@ fn removal_accepts_the_record_the_portable_installer_produces_with_ordinary_path
             app,
             file: &file,
             version: "1.0.0-nightly.20261123.1.1.gabcdefabcdef",
+            kind: artcraft_launcher_core::PackageKind::PortableZip,
             previous: None,
             paths: &paths,
             directory: None,

@@ -2030,8 +2030,14 @@ fn planned_asset_on(
         && existing.is_none()
         && record.is_none()
         && options.install_locations.folder(app.id).is_some();
-    let kinds = if existing.is_none() && record.is_some_and(|r| r.kind == PackageKind::PortableZip) {
-        vec![PackageKind::PortableZip]
+    // A launcher-managed Windows copy whose files are gone still reinstalls as the kind it was
+    // recorded as, so it lands in the folder the record names (a fast install and a portable copy
+    // keep different folders, and the transaction reads the record either way).
+    let recorded_kind = record.filter(|r| matches!(r.kind, PackageKind::PortableZip | PackageKind::FastInstall)).map(|r| r.kind);
+    let kinds = if existing.is_none()
+        && let Some(kind) = recorded_kind
+    {
+        vec![kind]
     } else if custom_linux {
         vec![artcraft_launcher_core::PackageKind::AppImage]
     } else {
