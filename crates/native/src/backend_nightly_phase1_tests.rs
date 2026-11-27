@@ -17,7 +17,7 @@ fn complete(shared: &Shared, paths: &Paths, platform: Platform, run: u64) {
     let key = nightly_lookup::key(app(), platform);
     let now = crate::now();
     shared.nightly_state.lock().unwrap().begin(&[key], &Default::default(), now, true, true);
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(run))), shared, paths);
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(run))), Origin::GitHub, shared, paths);
     shared.nightly_state.lock().unwrap().finish();
 }
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))] // A Nightly install plan is staged only there.
@@ -35,6 +35,7 @@ fn selection_ui_and_install_gate_agree_and_failed_refresh_retains_stale_success(
         platform,
         0,
         Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "offline".into(), retry_at: Some(crate::now() + 120) }),
+        Origin::GitHub,
         &shared,
         &paths,
     );
@@ -53,10 +54,10 @@ fn later_off_and_off_then_on_drop_older_generation_without_promoting_or_advancin
     let before = shared.nightly_state.lock().unwrap().record(&key).verified_at;
     shared.options.lock().unwrap().nightly_enabled = false;
     shared.nightly_state.lock().unwrap().invalidate();
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(30))), &shared, &paths);
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(30))), Origin::GitHub, &shared, &paths);
     shared.options.lock().unwrap().nightly_enabled = true;
     shared.nightly_state.lock().unwrap().invalidate();
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(30))), &shared, &paths);
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(30))), Origin::GitHub, &shared, &paths);
     assert_eq!(shared.latest.lock().unwrap().get("photocraft"), Some(&previous));
     assert_eq!(shared.nightly_state.lock().unwrap().record(&key).verified_at, before);
     assert!(nightly_install_plan(app(), &shared, &paths, Some(platform)).is_err());
@@ -67,7 +68,7 @@ fn an_older_complete_response_does_not_implicitly_regress_the_verified_selection
     complete(&shared, &paths, platform, 20);
     let key = nightly_lookup::key(app(), platform);
     let before = shared.nightly_state.lock().unwrap().record(&key).verified_at;
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(10))), &shared, &paths);
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(10))), Origin::GitHub, &shared, &paths);
     assert!(shared.latest.lock().unwrap().get("photocraft").unwrap().tag.contains(".20.1."));
     let record = shared.nightly_state.lock().unwrap().record(&key);
     assert_eq!(record.verified_at, before);
@@ -104,15 +105,17 @@ fn actual_backend_fresh_off_schedules_nothing_and_later_off_cancels_queued_sweep
     task();
     assert!(queued.lock().unwrap().is_empty());
     assert!(shared.nightly_verified.lock().unwrap().is_empty());
-    // An automatic sweep looks at its three-app discovery allowance now, not at the whole roster,
-    // so check the apps it chose rather than assuming a particular one is among them.
+    // The signed catalog sweep schedules the whole due roster, but withdrawing consent
+    // before the worker starts still prevents every lookup and verified promotion.
     let state = shared.nightly_state.lock().unwrap();
     let attempted: Vec<_> = artcraft_launcher_core::hosted_catalog::apps()
         .iter()
         .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
         .filter(|app| state.record(&nightly_lookup::key(app, platform)).attempted_at.is_some())
         .collect();
-    assert_eq!(attempted.len(), 3, "the sweep marks the apps it chose as attempted");
+    let eligible =
+        artcraft_launcher_core::hosted_catalog::apps().iter().filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os)).count();
+    assert_eq!(attempted.len(), eligible, "catalog sweep schedules every due app");
     assert!(attempted.iter().all(|app| state.record(&nightly_lookup::key(app, platform)).verified_at.is_none()));
     assert!(!shared.checking.load(Ordering::SeqCst));
 }
@@ -167,6 +170,7 @@ fn failed_result_save_retains_maximum_known_retry_and_flushes_it_before_admissio
         platform,
         0,
         Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(deadline) }),
+        Origin::GitHub,
         &shared,
         &paths,
     );
@@ -229,6 +233,7 @@ fn unreadable_existing_metadata_blocks_restart_without_replacement_until_valid_r
         platform,
         0,
         Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(deadline) }),
+        Origin::GitHub,
         &original,
         &paths,
     );
@@ -270,4 +275,17 @@ fn unreadable_existing_metadata_blocks_restart_without_replacement_until_valid_r
     assert_eq!(std::fs::read(paths.nightly_checks()).unwrap(), bytes);
     backend.check_nightly_at(true, deadline);
     assert_eq!(spawned.load(Ordering::SeqCst), 1, "admission resumes only after valid recovery and the absolute deadline");
+}
+
+#[test]
+fn catalog_verified_nightly_publishes_the_same_install_gate_with_feed_origin() {
+    let (_temp, shared, paths, platform) = fixture();
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(20))), Origin::ArtCraftApi, &shared, &paths);
+    let events = shared.events.lock().unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Latest {app, latest: LatestRelease::Found(_), from: Origin::ArtCraftApi} if app == "photocraft"))
+    );
+    assert!(events.iter().any(|event| matches!(event, Event::Installable { app, installable: true } if app == "photocraft")));
 }

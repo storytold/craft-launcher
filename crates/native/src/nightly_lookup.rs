@@ -18,7 +18,7 @@ pub(crate) const EVERY: i64 = 6 * 60 * 60;
 const INSTALLED_EVERY: i64 = 60 * 60;
 /// At most this many apps nobody has installed are looked up in one automatic sweep, so the whole
 /// roster stays inside its six-hour cadence without spending an hour's GitHub budget at once.
-const DISCOVERY_PER_SWEEP: usize = 3;
+pub(crate) const DISCOVERY_PER_SWEEP: usize = 3;
 const MANUAL_COALESCE: i64 = 60;
 const PER_PAGE: usize = 100;
 const MAX_PAGES: usize = 5;
@@ -28,6 +28,19 @@ const MAX_BYTES: usize = 32 * 1024 * 1024;
 const MAX_TIME: Duration = Duration::from_secs(30);
 const MAX_RECORDS: usize = 64;
 const MAX_METADATA: u64 = 64 * 1024;
+
+/// Only per-app GitHub enumeration spends the automatic discovery allowance. Installed apps
+/// and manual checks keep their existing priority; catalog answers need no allowance.
+pub(crate) fn reserve_fallback(manual: bool, installed: bool, used: &mut usize) -> bool {
+    if manual || installed {
+        return true;
+    }
+    if *used >= DISCOVERY_PER_SWEEP {
+        return false;
+    }
+    *used += 1;
+    true
+}
 
 type Fetch<'a> = dyn FnMut(&str, usize, Duration, i64) -> Result<Option<Vec<u8>>, NightlyHttpError> + 'a;
 
@@ -106,8 +119,14 @@ impl Budget<'_> {
         Ok(())
     }
 
-    fn verify(&mut self, app: &CraftApp, mut release: Release, platform: Platform) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
-        if let Some(sums) = release.sums_asset() {
+    fn verify(
+        &mut self,
+        app: &CraftApp,
+        mut release: Release,
+        platform: Platform,
+        fetch_sums: bool,
+    ) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
+        if fetch_sums && let Some(sums) = release.sums_asset() {
             if !artcraft_launcher_core::release::valid_file_name(&sums.name)
                 || sums.url != format!("https://github.com/{}/releases/download/{}/{}", app.repo, release.tag, sums.name)
             {
@@ -151,6 +170,55 @@ pub(crate) fn lookup<'a>(
         Ok(None) => Outcome::NoCompatibleBuild,
         Err(error) => Outcome::Indeterminate(error),
     }
+}
+
+/// The catalog is one signed publication snapshot, not a proof that every older target is absent.
+/// Only a fresh compatible entry can avoid the GitHub enumeration. Missing/incomplete entries,
+/// older selections and unsupported targets fall back to complete bounded GitHub discovery.
+pub(crate) fn catalog_candidate(feed: &artcraft_launcher_core::feed::Feed, app: &CraftApp, now: i64, previous_tag: Option<&str>) -> Option<Release> {
+    use artcraft_launcher_core::feed::FeedAnswer;
+    // The server reconciles releases hourly. Do not let a day-old snapshot hide new nightlies.
+    let at = feed.last_fetched?;
+    if !feed.channel_aware || !(0..=2 * 60 * 60).contains(&now.saturating_sub(at)) {
+        return None;
+    }
+    let FeedAnswer::Fresh(Some(release)) = feed.answer_nightly(app, now) else { return None };
+    let version = artcraft_launcher_core::release::canonical_nightly_version(&release)?;
+    if previous_tag.and_then(artcraft_launcher_core::version::parse).is_some_and(|old| artcraft_launcher_core::version::is_newer(&old, &version))
+        || release.published_at.is_none_or(|at| at <= 0 || at > now)
+        || !release.assets.iter().any(|a| a.name == artcraft_launcher_core::nightly::MANIFEST_NAME && a.size > 0 && a.sha256.is_some())
+    {
+        return None;
+    }
+    Some(release)
+}
+
+/// Verify the catalog's exact immutable candidate with the same descriptor, adapter and size/hash
+/// checks as the GitHub path. Its signed checksums came from the published SHA256SUMS, so we need
+/// only the descriptor body, not another checksum-list or release API call. A previously verified
+/// identical snapshot needs no descriptor download either. Never synthesize a token from metadata.
+pub(crate) fn verify_catalog<'a>(
+    app: &CraftApp,
+    platform: Platform,
+    now: i64,
+    candidate: (Release, Option<&VerifiedRelease>),
+    fetch: &'a mut Fetch<'a>,
+    elapsed: &'a dyn Fn() -> Duration,
+    enabled: &'a dyn Fn() -> bool,
+) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
+    let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
+    crate::nightly_profile::admit_new(app, platform).map_err(failure)?;
+    let (release, previous) = candidate;
+    budget.coverage_complete()?;
+    if let Some(previous) = previous
+        && previous.release() == &release
+        && crate::nightly_profile::for_app(app, platform).ok() == Some(previous.adapter())
+    {
+        return Ok(Some(previous.clone()));
+    }
+    let selected = budget.verify(app, release, platform, false)?;
+    budget.coverage_complete()?;
+    Ok(selected)
 }
 
 fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
@@ -205,7 +273,7 @@ fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<O
     for release in
         artcraft_launcher_core::release::ranked_nightly_candidates(&candidates, artcraft_launcher_core::release::NightlySelection::Canonical)
     {
-        if let Some(verified) = budget.verify(app, release.clone(), platform)? {
+        if let Some(verified) = budget.verify(app, release.clone(), platform, true)? {
             budget.coverage_complete()?;
             return Ok(Some(verified));
         }
@@ -385,21 +453,7 @@ impl State {
             let attempted_at = self.records.get(*key).and_then(|record| record.attempted_at);
             (!installed.contains(*key), attempted_at, (*key).clone())
         });
-        let mut chosen = Vec::new();
-        let mut discovered = 0;
-        for key in due {
-            if !manual && !installed.contains(key) {
-                // The roster is sorted installed-first, so the cap ends the sweep here.
-                if discovered >= DISCOVERY_PER_SWEEP {
-                    break;
-                }
-                discovered += 1;
-            }
-            chosen.push(key.clone());
-            if chosen.len() >= MAX_RECORDS {
-                break;
-            }
-        }
+        let chosen: Vec<_> = due.into_iter().take(MAX_RECORDS).cloned().collect();
         if chosen.is_empty() {
             return chosen;
         }

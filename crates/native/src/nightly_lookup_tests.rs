@@ -44,7 +44,12 @@ fn every_app_is_verified_within_six_hours_under_the_developers_budget() {
     for _ in 0..6 {
         let chosen = state.begin(&keys, &installed, now, false, true);
         let mut refused = false;
+        let mut used = 0;
         for key in &chosen {
+            if !reserve_fallback(false, false, &mut used) {
+                state.defer(key);
+                continue;
+            }
             if refused || budget.take(Priority::Discovery, now).is_err() {
                 refused = true;
                 refusals += 1;
@@ -91,10 +96,15 @@ fn a_sweep_takes_installed_first_then_never_attempted_then_the_longest_waiting()
     }
     assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["installed", "never", "stale", "fresh"]);
     state.finish();
-    // An automatic sweep stops at its three-app discovery allowance.
+    // Catalog discovery can inspect every due app; only fallback uses the old three-app allowance.
     let mut state = State::default();
     let keys: Vec<String> = ["a", "b", "c", "d", "e"].iter().map(|key| key.to_string()).collect();
-    assert_eq!(state.begin(&keys, &BTreeSet::new(), NOW, false, true), vec!["a", "b", "c"]);
+    assert_eq!(state.begin(&keys, &BTreeSet::new(), NOW, false, true), vec!["a", "b", "c", "d", "e"]);
+    let mut used = 0;
+    assert!((0..3).all(|_| reserve_fallback(false, false, &mut used)));
+    assert!(!reserve_fallback(false, false, &mut used));
+    assert!(reserve_fallback(false, true, &mut used));
+    assert!(reserve_fallback(true, false, &mut used));
 }
 
 #[test]
@@ -102,9 +112,10 @@ fn a_deferred_key_keeps_its_place_and_finish_forgets_its_old_values() {
     let installed = BTreeSet::new();
     let keys: Vec<String> = ["a", "b", "c", "d"].iter().map(|key| key.to_string()).collect();
     let mut state = State::default();
-    assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["a", "b", "c"]);
+    assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["a", "b", "c", "d"]);
     state.defer("b");
     state.defer("c");
+    state.defer("d");
     assert_eq!(state.records.get("b").and_then(|record| record.attempted_at), None, "the refusal never happened");
     assert!(state.deferred_from.contains_key("b"), "the sweep remembers what it stamped");
     state.finish();
@@ -784,4 +795,162 @@ fn shared_selection_unconfigured_platform_lookup_refuses_before_any_network_body
     );
     assert!(matches!(result, Outcome::Indeterminate(_)));
     assert_eq!(requests, 0);
+}
+
+#[test]
+fn signed_catalog_selects_all_due_apps_without_the_fallback_cap() {
+    let keys: Vec<_> = (0..15).map(|index| format!("app-{index:02}")).collect();
+    let mut state = State::default();
+    assert_eq!(state.begin(&keys, &BTreeSet::new(), NOW, false, true), keys);
+}
+
+fn catalog_fixture(tag: &str, linux: bool) -> (artcraft_launcher_core::feed::Feed, String, Vec<u8>) {
+    use artcraft_launcher_core::feed::{Feed, FeedApp, FeedRelease};
+    let (item, url, body) = candidate(tag, linux);
+    let release = artcraft_launcher_core::release::parse_github_release(&item.to_string(), app().repo).unwrap();
+    let feed = Feed {
+        channel_aware: true,
+        last_fetched: Some(NOW),
+        apps: [(
+            app().id.into(),
+            FeedApp {
+                repo: Some(app().repo.into()),
+                fetched_at: Some(NOW),
+                nightly: Some(FeedRelease {
+                    tag: release.tag,
+                    published_at: release.published_at,
+                    prerelease: true,
+                    assets: release.assets.into_iter().map(|a| (a.name, a.size, a.url, a.sha256)).collect(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )]
+        .into(),
+        ..Default::default()
+    };
+    (feed, url, body)
+}
+
+#[test]
+fn complete_catalog_candidate_uses_only_descriptor_then_reuses_same_verified_identity() {
+    let (feed, descriptor_url, body) = catalog_fixture(&tag(20), true);
+    // The fixture represents an already verified signed document. Signature verification is
+    // separately tested at the ingestion boundary; this tests the native selection boundary.
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let mut calls = Vec::new();
+    let verified = verify_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        (release.clone(), None),
+        &mut |url, _, _, _| {
+            calls.push(url.to_owned());
+            Ok(Some(body.clone()))
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(calls, [descriptor_url]);
+    assert_eq!(verified.release().tag, tag(20));
+    let again = verify_catalog(
+        app(),
+        platform(),
+        NOW + 2,
+        (release, Some(&verified)),
+        &mut |_, _, _, _| panic!("unchanged catalog needs no GitHub request"),
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(again.release().tag, tag(20));
+}
+
+#[test]
+fn stale_missing_or_incomplete_catalog_and_a_newer_remembered_tag_require_github() {
+    let (mut feed, _, _) = catalog_fixture(&tag(20), true);
+    assert!(catalog_candidate(&feed, app(), NOW + 2 * 3600 + 1, None).is_none());
+    assert!(catalog_candidate(&feed, app(), NOW + 1, Some(&tag(30))).is_none());
+    feed.apps.get_mut(app().id).unwrap().nightly.as_mut().unwrap().published_at = None;
+    assert!(catalog_candidate(&feed, app(), NOW + 1, None).is_none());
+    feed.apps.get_mut(app().id).unwrap().nightly = None;
+    assert!(catalog_candidate(&feed, app(), NOW + 1, None).is_none());
+}
+
+#[test]
+fn catalog_without_the_current_platform_target_is_not_authoritative_absence() {
+    let (feed, _, body) = catalog_fixture(&tag(20), false);
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let selected =
+        verify_catalog(app(), platform(), NOW + 1, (release, None), &mut |_, _, _, _| Ok(Some(body.clone())), &|| Duration::ZERO, &|| true).unwrap();
+    assert!(selected.is_none(), "caller must fall back to other GitHub candidates");
+}
+
+#[test]
+fn catalog_uses_each_admitted_app_and_platform_row() {
+    use artcraft_launcher_core::feed::{Feed, FeedApp, FeedRelease};
+    let mut checked = 0;
+    for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|app| app.has_separate_nightly_channel()) {
+        for (platform, os, arch, format, suffix) in [
+            (Platform { os: Os::Linux, arch: Arch::X64 }, "linux", "x86_64", "tar_gz", "linux-x86_64-nightly.tar.gz"),
+            (Platform { os: Os::MacOs, arch: Arch::Arm64 }, "macos", "aarch64", "portable_zip", "macos-aarch64-nightly.zip"),
+            (Platform { os: Os::Windows, arch: Arch::X64 }, "windows", "x86_64", "portable_zip", "windows-x86_64-nightly.zip"),
+        ] {
+            let adapter = crate::nightly_profile::admit_new(app, platform).unwrap();
+            let tag = tag(20);
+            let version = version::parse(&tag).unwrap();
+            let prefix = format!("https://github.com/{}/releases/download/{tag}/", app.repo);
+            let name = format!("{}-{version}-{suffix}", app.id);
+            let url = format!("{prefix}{name}");
+            let sha = "a".repeat(64);
+            let mut artifact = json!({"target":{"os":os,"arch":arch,"format":format}, "asset":{"name":name,"url":url,"size":123,"sha256":sha},"isolation":{"package_identity":format!("ai.storyteller.{}.nightly",app.id),"profile_contract":"nightly","profile_version":1,"associations":"none"}});
+            let mut assets = vec![(name.clone(), 123, url, Some(sha))];
+            if os == "linux" {
+                let signature = format!("{name}.asc");
+                let url = format!("{prefix}{signature}");
+                let sha = "b".repeat(64);
+                artifact["signature"] = json!({"name":signature,"url":url,"size":123,"sha256":sha});
+                assets.push((signature, 123, url, Some(sha)));
+            }
+            let descriptor = serde_json::to_vec(&json!({"schema":"craft-nightly/v2","channel":"nightly","app":app.id,"repository":app.repo,"tag":tag,"source_commit":"abcdefabcdefabcdefabcdefabcdefabcdefabcd","published_at":NOW,"artifacts":[artifact]})).unwrap();
+            let descriptor_url = format!("{prefix}NIGHTLY.json");
+            assets.push(("NIGHTLY.json".into(), descriptor.len() as u64, descriptor_url.clone(), Some(format!("{:x}", Sha256::digest(&descriptor)))));
+            let feed = Feed {
+                channel_aware: true,
+                last_fetched: Some(NOW),
+                apps: [(
+                    app.id.into(),
+                    FeedApp {
+                        repo: Some(app.repo.into()),
+                        fetched_at: Some(NOW),
+                        nightly: Some(FeedRelease { tag, published_at: Some(NOW), prerelease: true, assets, ..Default::default() }),
+                        ..Default::default()
+                    },
+                )]
+                .into(),
+                ..Default::default()
+            };
+            let release = catalog_candidate(&feed, app, NOW + 1, None).unwrap();
+            let result = verify_catalog(
+                app,
+                platform,
+                NOW + 1,
+                (release, None),
+                &mut |url, _, _, _| {
+                    assert_eq!(url, descriptor_url);
+                    Ok(Some(descriptor.clone()))
+                },
+                &|| Duration::ZERO,
+                &|| true,
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(result.adapter(), adapter);
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 45, "all 15 current separate-channel apps have the three admitted platform rows");
 }

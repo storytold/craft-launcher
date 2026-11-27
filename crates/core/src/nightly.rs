@@ -77,8 +77,8 @@ pub struct Isolation {
 
 /// Validate a bounded, checksum-verified descriptor against a published nightly release.
 ///
-/// `release` must come from the existing non-draft GitHub versions parser and have its published
-/// SHA256SUMS applied, or API digests present. No descriptor-provided URL, command, environment,
+/// `release` must come from the non-draft GitHub versions parser with published checksums, or
+/// the verified signed catalog with exact published asset sizes, time and checksums. No descriptor-provided URL, command, environment,
 /// path, platform signature or claimed profile capability is accepted on its own authority.
 ///
 /// # Errors
