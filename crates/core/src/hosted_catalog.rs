@@ -379,7 +379,8 @@ mod tests {
     #[test]
     fn website_fixture_verifies_with_the_actual_pinned_public_key() {
         let catalog = VerifiedCatalog::verify(WEBSITE, SIGNATURE).unwrap();
-        assert_eq!(catalog.records.len(), SUITE.len());
+        let document: Document = toml::from_str(std::str::from_utf8(WEBSITE).unwrap()).unwrap();
+        assert_eq!(catalog.records.len(), document.apps.len());
         assert_eq!(catalog.rejected_entries, 0);
         for record in &catalog.records {
             let bundled = SUITE.iter().find(|app| app.id == record.id).unwrap();
@@ -413,7 +414,7 @@ mod tests {
         let text = std::str::from_utf8(BUNDLED).unwrap();
         let text = format!("unknown_top_level = true\n{text}\n[[apps]]\nid = 42\n");
         let verified = signed(text.as_bytes()).unwrap();
-        assert_eq!(verified.records.len(), SUITE.len());
+        assert_eq!(verified.records.len(), VerifiedCatalog::verify(BUNDLED, SIGNATURE).unwrap().records.len());
         assert_eq!(verified.rejected_entries, 1);
         assert!(signed(b"not = [valid").is_err());
         assert!(signed(b"apps = []").is_err());

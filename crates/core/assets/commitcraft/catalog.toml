@@ -1,0 +1,35 @@
+[[apps]]
+id = "commitcraft"
+name = "CommitCraft"
+binary = "commitcraft"
+mac_bundle_id = "io.github.srt8hellcat2-ui.commitcraft"
+mac_bundle_name = "CommitCraft"
+windows_msi_publisher = "CommitCraft"
+deb_package = "commitcraft"
+desktop_categories = ["Development", "RevisionControl", "Graphics"]
+startup_wm_class = "io.github.srt8hellcat2-ui.commitcraft"
+tagline = "Visual Git for creatives — see your art's history"
+kind = "community"
+publisher = "CommitCraft"
+msi_publisher = "CommitCraft"
+repo = "srt8hellcat2-ui/commitcraft"
+bundle = "io.github.srt8hellcat2-ui.commitcraft"
+site = "https://github.com/srt8hellcat2-ui/commitcraft"
+color = [167, 151, 255]
+ink_light = [80, 55, 157]
+ink_dark = [198, 188, 255]
+icon_url = "https://getartcraft.com/launcher-app-icons/commitcraft-8fd5ffa40d1fdab0e778f4cf4c8ee577e44b1043defe4d81fd65479253005aa1.png"
+icon_sha256 = "8fd5ffa40d1fdab0e778f4cf4c8ee577e44b1043defe4d81fd65479253005aa1"
+
+[apps.details]
+headline = "See what changed"
+about = "CommitCraft is an Apache-2.0 desktop Git client for creative projects. Compare image and video revisions, preview 3D assets, and see metadata from project.craft files alongside the commit."
+platforms = "macOS, Windows and Linux"
+
+[[apps.details.features]]
+title = "Visual comparisons"
+text = "Compare images and sampled video frames, and preview 3D files in history."
+
+[[apps.details.features]]
+title = "Creative project history"
+text = "Browse variations, inspect .craft metadata and restore a committed file."
