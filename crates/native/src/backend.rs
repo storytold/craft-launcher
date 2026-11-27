@@ -3615,7 +3615,14 @@ mod tests {
             _ => panic!("unexpected URL {url}"),
         })
         .unwrap();
-        assert!(!feed.apps.is_empty());
+        // The build fixture selected by ARTCRAFT_CATALOG_DIR may describe the app
+        // catalog without publishing any release channels. Only signed source
+        // bytes belong in the feed cache; bundled app entries are generated separately.
+        let catalog = std::str::from_utf8(BUILD_CATALOG_TOML).unwrap();
+        assert_eq!(feed, Feed::parse_catalog_toml(catalog).unwrap());
+        assert!(feed.channel_aware);
+        assert_eq!(saved.catalog.as_bytes(), BUILD_CATALOG_TOML);
+        assert_eq!(saved.signature.as_bytes(), BUILD_CATALOG_SIG);
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::under(dir.path());
         crate::paths::write_atomic(&paths.feed_cache(), &serde_json::to_vec(&saved).unwrap()).unwrap();
