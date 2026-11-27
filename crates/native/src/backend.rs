@@ -2173,6 +2173,12 @@ fn planned_download(
 /// What one check asks: which feed to poll (a local mirror trumps everything), and how much to
 /// lean on GitHub.
 fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, shared: &Arc<Shared>) -> (Option<Feed>, Fallback) {
+    // Backend harnesses use a stub release source; do not let current production releases
+    // supersede the fixture. The signed catalog paths have their own deterministic tests.
+    #[cfg(test)]
+    if matches!(&shared.host, HostDetection::Stub(_)) {
+        return (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY });
+    }
     if let Some(base) = mirror {
         // A local mirror answers for everything: GitHub is never asked.
         (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
