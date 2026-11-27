@@ -91,6 +91,11 @@ pub fn count(text: &str, flag: &str, takes_value: bool) -> usize {
     words(text).map_or(0, |words| find(&words, flag, takes_value).len())
 }
 
+/// Whether any place `text` gives `flag`, one that takes a value, leaves that value out or empty.
+pub fn lacks_value(text: &str, flag: &str) -> bool {
+    words(text).is_ok_and(|words| find(&words, flag, true).iter().any(|found| found.value.as_deref().is_none_or(str::is_empty)))
+}
+
 /// `value` as one word of launch options.
 fn quoted(value: &str) -> String {
     if !value.contains(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
@@ -98,8 +103,8 @@ fn quoted(value: &str) -> String {
     } else if !value.contains('"') {
         format!("\"{value}\"")
     } else {
-        // A value with both kinds of quote can't be written: the single ones are dropped.
-        format!("'{}'", value.replace('\'', ""))
+        // Both kinds of quote: single-quoted runs, joined by each `'` written as `"'"`.
+        format!("'{}'", value.replace('\'', r#"'"'"'"#))
     }
 }
 
@@ -116,8 +121,14 @@ pub fn set_flag(text: &str, flag: &str, takes_value: bool, to: Option<Option<&st
         if at == here
             && let Some(value) = to
         {
-            out.push(flag.to_string());
-            out.extend(value.filter(|v| !v.is_empty()).map(quoted));
+            match value.filter(|v| !v.is_empty()) {
+                // Apart from its flag, a value starting with `--` would read as the next flag.
+                Some(v) if v.starts_with("--") => out.push(format!("{flag}={}", quoted(v))),
+                v => {
+                    out.push(flag.to_string());
+                    out.extend(v.map(quoted));
+                }
+            }
         }
         if !found.iter().any(|f| (f.at..f.at + f.len).contains(&at)) {
             out.extend(words.get(at).map(|w| w.typed.to_string()));
@@ -172,6 +183,16 @@ mod tests {
     }
 
     #[test]
+    fn a_required_value_left_out_or_empty_is_noticed_wherever_the_flag_is_given() {
+        for text in ["--root", "--root=", r#"--root """#, "--root --root /tmp", "--root /tmp --root="] {
+            assert!(lacks_value(text, "--root"), "{text}");
+        }
+        for text in ["", "--root /tmp", "--root=/a --root /b", "-- --root"] {
+            assert!(!lacks_value(text, "--root"), "{text}");
+        }
+    }
+
+    #[test]
     fn setting_a_flag_keeps_the_other_arguments_as_typed() {
         let text = r#"--dir "My Docs" --control 1 'a b'"#;
         assert_eq!(set_flag(text, "--control", true, Some(Some("2"))).unwrap(), r#"--dir "My Docs" --control 2 'a b'"#);
@@ -183,7 +204,7 @@ mod tests {
 
     #[test]
     fn a_value_with_spaces_or_a_quote_is_read_back_as_one() {
-        for value in [r"C:\My Files\key", "it's here", r#"say "hi""#] {
+        for value in [r"C:\My Files\key", "it's here", r#"say "hi""#, r#"it's a "key""#, "--key", "--my key"] {
             let text = set_flag("", "--control-token-file", true, Some(Some(value))).unwrap();
             assert_eq!(flag(&text, "--control-token-file", true), Some(Some(value.into())), "{text}");
         }

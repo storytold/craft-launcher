@@ -258,11 +258,17 @@ impl LauncherUi {
         Self::title(ui, crate::icons::app(id), &fmt(tl!("{name} launch options"), &[("name", app.name)]), "");
         // Scrolls in a short window, so the text field and buttons stay in reach.
         let room = (ui.ctx().content_rect().height() - 340.0).max(120.0);
-        let missing = egui::ScrollArea::vertical().max_height(room).show(ui, |ui| launch_flag_switches(ui, id, flags)).inner;
+        egui::ScrollArea::vertical().max_height(room).show(ui, |ui| launch_flag_switches(ui, id, flags));
         let label = ui.label(tl!("Flags added each time the app is opened"));
         ui.add(egui::TextEdit::singleline(flags).id_salt("launch_flags").hint_text("--flag \"…\"").desired_width(f32::INFINITY))
             .labelled_by(label.id);
         let split = args::split(flags);
+        // Read after both the switches and the field, so Save checks the text it saves.
+        let missing = launch_flags::for_app(id)
+            .iter()
+            .chain(launch_flags::extras(id))
+            .find(|f| f.value.is_some() && args::lacks_value(flags, f.flag))
+            .map(|f| f.flag);
         let (note, color) = match (&split, missing) {
             (Err(_), _) => (tl!("A quote isn't closed.").to_string(), t.bad),
             (Ok(_), Some(flag)) => (fmt(tl!("{flag} needs a value."), &[("flag", flag)]), t.bad),
@@ -438,11 +444,9 @@ fn effect_text(effect: Effect) -> &'static str {
 }
 
 /// A switch for each flag the app accepts, with a field for its value. They read and write
-/// `flags`, the launch options as typed, so the two never disagree. Returns a flag that is on
-/// without the value it needs.
-fn launch_flag_switches(ui: &mut egui::Ui, id: &str, flags: &mut String) -> Option<&'static str> {
+/// `flags`, the launch options as typed, so the two never disagree.
+fn launch_flag_switches(ui: &mut egui::Ui, id: &str, flags: &mut String) {
     let t = Tokens::get(ui.ctx());
-    let mut missing = None;
     let readable = args::split(flags).is_ok();
     // The common flags, then the others the text already gives.
     let given_extra = |f: &&launch_flags::LaunchFlag| args::flag(flags, f.flag, f.value.is_some()).is_some();
@@ -495,9 +499,6 @@ fn launch_flag_switches(ui: &mut egui::Ui, id: &str, flags: &mut String) -> Opti
         {
             *flags = text;
         }
-        if takes_value && args::flag(flags, known.flag, true) == Some(None) {
-            missing = Some(known.flag);
-        }
     }
     let others: Vec<_> = extras.iter().filter(|f| args::flag(flags, f.flag, f.value.is_some()).is_none()).collect();
     if readable && !others.is_empty() {
@@ -517,5 +518,4 @@ fn launch_flag_switches(ui: &mut egui::Ui, id: &str, flags: &mut String) -> Opti
             *flags = text;
         }
     }
-    missing
 }
