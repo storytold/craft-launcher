@@ -289,3 +289,47 @@ fn catalog_verified_nightly_publishes_the_same_install_gate_with_feed_origin() {
     );
     assert!(events.iter().any(|event| matches!(event, Event::Installable { app, installable: true } if app == "photocraft")));
 }
+
+#[test]
+fn nightly_catalog_fetches_one_signed_snapshot_and_reverifies_held_cache() {
+    use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_SIG, BUILD_CATALOG_TOML, CATALOG_URL, SIGNATURE_URL};
+    let (_temp, _shared, paths, _) = fixture();
+    let http = Http::new().unwrap();
+    let throttle = Mutex::new(FeedThrottle::new());
+    let hits = std::cell::Cell::new(0);
+    let get = |url: &str, _| {
+        hits.set(hits.get() + 1);
+        match url {
+            CATALOG_URL => Ok(Some(BUILD_CATALOG_TOML.to_vec())),
+            SIGNATURE_URL => Ok(Some(BUILD_CATALOG_SIG.to_vec())),
+            _ => panic!("unexpected URL"),
+        }
+    };
+    let feed = nightly_catalog_with_fetch(&http, &paths, &throttle, &|| true, get).unwrap();
+    assert!(feed.channel_aware);
+    assert_eq!(hits.get(), 2, "document and detached signature exactly once");
+    assert_eq!(nightly_catalog_with_fetch(&http, &paths, &throttle, &|| true, get), Some(feed));
+    assert_eq!(hits.get(), 2, "held request reuses the pinned-key-verified cache");
+    crate::paths::write_atomic(&paths.feed_cache(), b"not a signed catalog").unwrap();
+    assert!(nightly_catalog_with_fetch(&http, &paths, &throttle, &|| true, get).is_none());
+    assert_eq!(hits.get(), 2);
+    assert!(nightly_catalog_with_fetch(&http, &paths, &throttle, &|| false, get).is_none());
+}
+
+#[test]
+fn nightly_catalog_fetch_stops_before_signature_if_consent_is_withdrawn() {
+    use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_TOML, CATALOG_URL};
+    let (_temp, _shared, paths, _) = fixture();
+    let http = Http::new().unwrap();
+    let throttle = Mutex::new(FeedThrottle::new());
+    let enabled = std::cell::Cell::new(true);
+    assert!(
+        nightly_catalog_with_fetch(&http, &paths, &throttle, &|| enabled.get(), |url, _| {
+            assert_eq!(url, CATALOG_URL);
+            enabled.set(false);
+            Ok(Some(BUILD_CATALOG_TOML.to_vec()))
+        })
+        .is_none()
+    );
+    assert!(!paths.feed_cache().exists());
+}

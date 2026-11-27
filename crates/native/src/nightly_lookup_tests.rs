@@ -954,3 +954,136 @@ fn catalog_uses_each_admitted_app_and_platform_row() {
     }
     assert_eq!(checked, 45, "all 15 current separate-channel apps have the three admitted platform rows");
 }
+
+#[test]
+fn catalog_first_lookup_preserves_fallback_selection_and_the_request_allowance() {
+    let (feed, descriptor_url, body) = catalog_fixture(&tag(20), true);
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let mut used = DISCOVERY_PER_SWEEP;
+    let mut calls = Vec::new();
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy { candidate: Some(release.clone()), previous: None, backoff: None, manual: false, installed: false, fallback_used: &mut used },
+        &mut |url, _, _, _| {
+            calls.push(url.to_owned());
+            Ok(Some(body.clone()))
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert_eq!(answer.1, Origin::ArtCraftApi);
+    let Outcome::Verified(verified) = answer.0 else { panic!("catalog candidate must verify") };
+    assert_eq!(calls, [descriptor_url]);
+    assert_eq!(used, DISCOVERY_PER_SWEEP);
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 2,
+        LookupPolicy {
+            candidate: Some(release),
+            previous: Some(&verified),
+            backoff: None,
+            manual: false,
+            installed: false,
+            fallback_used: &mut used,
+        },
+        &mut |_, _, _, _| panic!("unchanged candidate needs no request"),
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert!(matches!(answer, (Outcome::Verified(_), Origin::ArtCraftApi)));
+    assert!(
+        lookup_prefer_catalog(
+            app(),
+            platform(),
+            NOW + 2,
+            LookupPolicy { candidate: None, previous: None, backoff: None, manual: false, installed: false, fallback_used: &mut used },
+            &mut |_, _, _, _| panic!("cap must defer missing catalog entries"),
+            &|| Duration::ZERO,
+            &|| true
+        )
+        .is_none()
+    );
+
+    let (api_row, api_descriptor, api_body) = candidate(&tag(10), true);
+    let data = fixtures(vec![api_row], vec![(api_descriptor, api_body)]);
+    let (unsupported_feed, unsupported_url, unsupported_body) = catalog_fixture(&tag(20), false);
+    let unsupported = catalog_candidate(&unsupported_feed, app(), NOW + 1, None).unwrap();
+    let mut used = 0;
+    let mut asked = Vec::new();
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy { candidate: Some(unsupported), previous: None, backoff: None, manual: false, installed: false, fallback_used: &mut used },
+        &mut |url, _, _, _| {
+            asked.push(url.to_owned());
+            if url == unsupported_url { Ok(Some(unsupported_body.clone())) } else { Ok(data.get(url).cloned()) }
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert_eq!(answer.1, Origin::GitHub);
+    assert!(matches!(answer.0,Outcome::Verified(v) if v.release().tag==tag(10)));
+    assert_eq!(used, 1);
+    assert_eq!(asked[0], unsupported_url);
+    assert_eq!(asked[1], api(1));
+}
+
+#[test]
+fn catalog_first_lookup_respects_backoff_and_falls_back_if_descriptor_is_unavailable() {
+    let (feed, _, _) = catalog_fixture(&tag(20), true);
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let mut used = 0;
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy {
+            candidate: Some(release.clone()),
+            previous: None,
+            backoff: Some(NOW + 600),
+            manual: true,
+            installed: false,
+            fallback_used: &mut used,
+        },
+        &mut |_, _, _, _| panic!("no network during backoff"),
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert!(matches!(answer.0,Outcome::Indeterminate(e) if e.retry_at==Some(NOW+600)));
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy { candidate: Some(release.clone()), previous: None, backoff: None, manual: true, installed: false, fallback_used: &mut used },
+        &mut |_, _, _, _| Err(NightlyHttpError { over_budget: false, why: "server backoff".into(), retry_at: Some(NOW + 600) }),
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert!(matches!(answer,(Outcome::Indeterminate(e),Origin::ArtCraftApi) if e.retry_at==Some(NOW+600)));
+    let mut calls = Vec::new();
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy { candidate: Some(release), previous: None, backoff: None, manual: true, installed: false, fallback_used: &mut used },
+        &mut |url, _, _, _| {
+            calls.push(url.to_owned());
+            if url == api(1) { Ok(Some(b"[]".to_vec())) } else { Ok(None) }
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert!(matches!(answer, (Outcome::NoCompatibleBuild, Origin::GitHub)));
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1], api(1));
+}

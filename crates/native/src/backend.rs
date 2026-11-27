@@ -841,58 +841,39 @@ impl NativeBackend {
                 let candidate =
                     catalog.as_ref().and_then(|feed| crate::nightly_lookup::catalog_candidate(feed, &app, crate::now(), previous_tag.as_deref()));
                 let previous = shared.nightly_verified.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
-                let catalog_outcome = candidate.filter(|_| backoff.is_none()).and_then(|release| {
-                    let http = http.as_ref()?;
-                    match crate::nightly_lookup::verify_catalog(
+                let (outcome, origin) = if let Some(http) = &http {
+                    let policy = crate::nightly_lookup::LookupPolicy {
+                        candidate,
+                        previous: previous.as_ref(),
+                        backoff,
+                        manual,
+                        installed: installed.contains(key),
+                        fallback_used: &mut discovery_fallbacks,
+                    };
+                    let Some(answer) = crate::nightly_lookup::lookup_prefer_catalog(
                         &app,
                         platform,
                         now,
-                        (release, previous.as_ref()),
+                        policy,
                         &mut |url, max, timeout, now| http.nightly_get_as(url, max, timeout, now, priority),
                         &|| started.elapsed(),
                         &enabled,
-                    ) {
-                        Ok(Some(verified)) => Some(crate::nightly_lookup::Outcome::Verified(Box::new(verified))),
-                        Ok(None) => None,
-                        Err(error) if error.over_budget || error.retry_at.is_some() => Some(crate::nightly_lookup::Outcome::Indeterminate(error)),
-                        Err(error) => {
-                            log::info!("{}: catalog Nightly could not be verified; falling back: {}", app.id, error.why);
-                            None
-                        }
-                    }
-                });
-                let origin = if catalog_outcome.is_some() { Origin::ArtCraftApi } else { Origin::GitHub };
-                let outcome = if let Some(outcome) = catalog_outcome {
-                    outcome
-                } else if let Some(retry_at) = backoff {
-                    crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
-                        over_budget: false,
-                        why: "Nightly discovery is waiting for server backoff.".into(),
-                        retry_at: Some(retry_at),
-                    })
-                } else if let Some(http) = &http {
-                    // Catalog-backed entries do not spend the automatic discovery allowance.
-                    // Keep the old cap and queue ordering for apps that actually need GitHub.
-                    if !crate::nightly_lookup::reserve_fallback(manual, installed.contains(key), &mut discovery_fallbacks) {
+                    ) else {
                         shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).defer(key);
                         deferred = true;
                         continue;
-                    }
-                    used_github = true;
-                    crate::nightly_lookup::lookup(
-                        &app,
-                        platform,
-                        now,
-                        &mut |url, max, timeout, now| http.nightly_get_as(url, max, timeout, now, priority),
-                        &|| started.elapsed(),
-                        &enabled,
-                    )
+                    };
+                    used_github |= answer.1 == Origin::GitHub;
+                    answer
                 } else {
-                    crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
-                        over_budget: false,
-                        why: "Secure Nightly connections are unavailable.".into(),
-                        retry_at: None,
-                    })
+                    (
+                        crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
+                            over_budget: false,
+                            why: "Secure Nightly connections are unavailable.".into(),
+                            retry_at: None,
+                        }),
+                        Origin::GitHub,
+                    )
                 };
                 if let crate::nightly_lookup::Outcome::Indeterminate(error) = &outcome
                     && error.over_budget
@@ -2730,13 +2711,26 @@ fn nightly_catalog(http: &Http, paths: &Paths, shared: &Shared, enabled: &impl F
     if cfg!(test) || local_mirror().is_some() || !enabled() {
         return None;
     }
+    nightly_catalog_with_fetch(http, paths, &shared.feed_throttle, enabled, |url, max| http.get_catalog_feed_bytes(url, max))
+}
+
+fn nightly_catalog_with_fetch(
+    http: &Http,
+    paths: &Paths,
+    throttle: &Mutex<FeedThrottle>,
+    enabled: &impl Fn() -> bool,
+    get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>,
+) -> Option<Feed> {
+    if !enabled() {
+        return None;
+    }
     crate::nightly_profile::validate_paths(paths).ok()?;
     crate::nightly_profile::validate_file(&paths.feed_cache()).ok()?;
-    match fetch_feed_with_catalog(http, paths, artcraft_launcher_core::feed::FEED_URL, &shared.feed_throttle, 1, |url, max| {
+    match fetch_feed_with_catalog(http, paths, artcraft_launcher_core::feed::FEED_URL, throttle, 1, |url, max| {
         if !enabled() {
             return Err(FeedError::failed("Developer build discovery was turned off."));
         }
-        http.get_catalog_feed_bytes(url, max)
+        get(url, max)
     }) {
         FeedFetch::Answered(feed) => Some(feed),
         FeedFetch::Held => load_signed_nightly_feed(paths),

@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::time::Duration;
 
-use artcraft_launcher_core::protocol::NightlyStatus;
+use artcraft_launcher_core::protocol::{NightlyStatus, Origin};
 use artcraft_launcher_core::{CraftApp, Platform, Release, version};
 use serde::{Deserialize, Serialize};
 
@@ -156,6 +156,7 @@ impl Budget<'_> {
 /// Complete bounded release-page coverage, then verify candidates in canonical preference
 /// order. Invalid potentially winning evidence is indeterminate; a compatible winner proves
 /// dominated descriptor bodies unnecessary. A full last page never proves complete coverage.
+#[cfg(test)]
 pub(crate) fn lookup<'a>(
     app: &CraftApp,
     platform: Platform,
@@ -165,7 +166,11 @@ pub(crate) fn lookup<'a>(
     enabled: &'a dyn Fn() -> bool,
 ) -> Outcome {
     let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
-    match scan(app, platform, &mut budget) {
+    outcome(scan(app, platform, &mut budget))
+}
+
+fn outcome(result: Result<Option<VerifiedRelease>, NightlyHttpError>) -> Outcome {
+    match result {
         Ok(Some(verified)) => Outcome::Verified(Box::new(verified)),
         Ok(None) => Outcome::NoCompatibleBuild,
         Err(error) => Outcome::Indeterminate(error),
@@ -197,6 +202,7 @@ pub(crate) fn catalog_candidate(feed: &artcraft_launcher_core::feed::Feed, app: 
 /// checks as the GitHub path. Its signed checksums came from the published SHA256SUMS, so we need
 /// only the descriptor body, not another checksum-list or release API call. A previously verified
 /// identical snapshot needs no descriptor download either. Never synthesize a token from metadata.
+#[cfg(test)]
 pub(crate) fn verify_catalog<'a>(
     app: &CraftApp,
     platform: Platform,
@@ -207,6 +213,15 @@ pub(crate) fn verify_catalog<'a>(
     enabled: &'a dyn Fn() -> bool,
 ) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
     let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
+    verify_catalog_candidate(app, platform, candidate, &mut budget)
+}
+
+fn verify_catalog_candidate(
+    app: &CraftApp,
+    platform: Platform,
+    candidate: (Release, Option<&VerifiedRelease>),
+    budget: &mut Budget<'_>,
+) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
     crate::nightly_profile::admit_new(app, platform).map_err(failure)?;
     let (release, previous) = candidate;
     budget.coverage_complete()?;
@@ -219,6 +234,52 @@ pub(crate) fn verify_catalog<'a>(
     let selected = budget.verify(app, release, platform, false)?;
     budget.coverage_complete()?;
     Ok(selected)
+}
+
+/// Inputs to one app's lookup; the fallback allowance is shared by the entire sweep.
+pub(crate) struct LookupPolicy<'a> {
+    pub candidate: Option<Release>,
+    pub previous: Option<&'a VerifiedRelease>,
+    pub backoff: Option<i64>,
+    pub manual: bool,
+    pub installed: bool,
+    pub fallback_used: &'a mut usize,
+}
+
+/// A compatible catalog result avoids release enumeration. Fallback uses the same cumulative
+/// request/byte/deadline budget, and `None` means the app retains its place in the next sweep.
+pub(crate) fn lookup_prefer_catalog<'a>(
+    app: &CraftApp,
+    platform: Platform,
+    now: i64,
+    policy: LookupPolicy<'_>,
+    fetch: &'a mut Fetch<'a>,
+    elapsed: &'a dyn Fn() -> Duration,
+    enabled: &'a dyn Fn() -> bool,
+) -> Option<(Outcome, Origin)> {
+    if let Some(retry_at) = policy.backoff {
+        return Some((
+            Outcome::Indeterminate(NightlyHttpError {
+                over_budget: false,
+                why: "Nightly discovery is waiting for server backoff.".into(),
+                retry_at: Some(retry_at),
+            }),
+            Origin::GitHub,
+        ));
+    }
+    let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
+    if let Some(release) = policy.candidate {
+        match verify_catalog_candidate(app, platform, (release, policy.previous), &mut budget) {
+            Ok(Some(verified)) => return Some((Outcome::Verified(Box::new(verified)), Origin::ArtCraftApi)),
+            Ok(None) => {}
+            Err(error) if error.over_budget || error.retry_at.is_some() => return Some((Outcome::Indeterminate(error), Origin::ArtCraftApi)),
+            Err(error) => log::info!("{}: catalog Nightly could not be verified; falling back: {}", app.id, error.why),
+        }
+    }
+    if !reserve_fallback(policy.manual, policy.installed, policy.fallback_used) {
+        return None;
+    }
+    Some((outcome(scan(app, platform, &mut budget)), Origin::GitHub))
 }
 
 fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
