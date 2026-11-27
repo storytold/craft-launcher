@@ -131,8 +131,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("catalog.json");
         let mut saved = Saved {
-            catalog: include_str!("../../core/tests/fixtures/hosted-catalog.toml").into(),
-            signature: include_str!("../../core/tests/fixtures/hosted-catalog.toml.sig").into(),
+            catalog: std::str::from_utf8(artcraft_launcher_core::hosted_catalog::BUILD_CATALOG_TOML).unwrap().into(),
+            signature: std::str::from_utf8(artcraft_launcher_core::hosted_catalog::BUILD_CATALOG_SIG).unwrap().into(),
         };
         write_atomic(&path, &serde_json::to_vec(&saved).unwrap()).unwrap();
         assert!(saved_catalog(&path).is_some());

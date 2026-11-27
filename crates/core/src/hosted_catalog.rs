@@ -18,6 +18,10 @@ use crate::details::{AppDetails, Feature, Shot};
 pub const CATALOG_URL: &str = "https://getartcraft.com/launcher-catalog.toml";
 pub const SIGNATURE_URL: &str = "https://getartcraft.com/launcher-catalog.toml.sig";
 pub const PUBLIC_KEY_PEM: &str = include_str!("../assets/launcher-catalog-public-key.pem");
+/// Signed catalog bytes fetched and verified at build time from [`CATALOG_URL`].
+pub const BUILD_CATALOG_TOML: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/catalog.toml"));
+/// Detached Ed25519 signature fetched and verified at build time from [`SIGNATURE_URL`].
+pub const BUILD_CATALOG_SIG: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/catalog.toml.sig"));
 pub const MAX_CATALOG_BYTES: usize = 1 << 20;
 pub const MAX_SIGNATURE_BYTES: usize = 128;
 pub const MAX_ICON_BYTES: usize = 256 << 10;
@@ -335,7 +339,8 @@ fn valid_record(r: &Record) -> bool {
             && p.shots.len() <= 16
             && p.shots.iter().all(|s| {
                 identifier(&s.key)
-                    && s.url == format!("{}/{}/{}/{}.jpg", crate::details::SCREENSHOTS_BASE, crate::details::SCREENSHOTS_REV, r.id, s.key)
+                    && (s.url == format!("{}/{}/{}/{}.jpg", crate::details::SCREENSHOTS_BASE, crate::details::SCREENSHOTS_REV, r.id, s.key)
+                        || s.url == format!("{}/{}/{}/{}.jpg", crate::details::SCREENSHOTS_FALLBACK_BASE, crate::details::SCREENSHOTS_REV, r.id, s.key))
             })
     })
 }
@@ -355,9 +360,9 @@ mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
 
-    const BUNDLED: &[u8] = include_bytes!("../catalog.toml");
-    const WEBSITE: &[u8] = include_bytes!("../tests/fixtures/hosted-catalog.toml");
-    const SIGNATURE: &[u8] = include_bytes!("../tests/fixtures/hosted-catalog.toml.sig");
+    const BUNDLED: &[u8] = BUILD_CATALOG_TOML;
+    const WEBSITE: &[u8] = BUILD_CATALOG_TOML;
+    const SIGNATURE: &[u8] = BUILD_CATALOG_SIG;
 
     fn signed(bytes: &[u8]) -> Result<VerifiedCatalog, String> {
         let key = SigningKey::from_bytes(&[7; 32]);

@@ -636,10 +636,10 @@ impl NativeBackend {
         }
         let options = self.options();
         let pre = options.prereleases;
-        let feed = if pre { None } else { load_feed(&self.paths) };
+        let feed = load_feed(&self.paths);
         let now = crate::now();
         for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os))) {
-            let answer = match feed.as_ref().map(|f| f.answer(app, now)) {
+            let answer = match feed.as_ref().map(|f| if pre { f.answer_prerelease(app, now) } else { f.answer(app, now) }) {
                 Some(FeedAnswer::Fresh(Some(r))) => Some((LatestRelease::Found(r), Origin::ArtCraftApi)),
                 Some(FeedAnswer::Fresh(None)) => Some((LatestRelease::None, Origin::ArtCraftApi)),
                 _ => self.source.as_ref().and_then(|s| s.cached(&release_query(feed.as_ref(), app), pre)).map(|l| (l, Origin::GitHub)),
@@ -2373,7 +2373,7 @@ fn latest_for(
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
     let repo = feed_repo(feed, app);
     if fallback.trust_feed {
-        match feed.map(|f| f.answer(app, now)) {
+        match feed.map(|f| if pre { f.answer_prerelease(app, now) } else { f.answer(app, now) }) {
             // The feed can lag GitHub by some minutes after a release. A check the user pressed
             // looks past it when GitHub's quota-free redirect names something newer (#91); one
             // reusing the last forced check's answers then takes GitHub's saved answer.
@@ -2462,6 +2462,11 @@ fn track_answer(
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
     let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
     if *track == VersionTrack::Nightly {
+        if !force
+            && let Some(FeedAnswer::Fresh(Some(nightly))) = feed.map(|f| f.answer_nightly(app, now))
+        {
+            return (Some(LatestRelease::Found(nightly)), Origin::ArtCraftApi, Some(Source::Feed));
+        }
         // Its own record, apart from the stable track's: asking about one doesn't stand in for
         // the other when the app switches tracks.
         let key = format!("{}@nightly", app.id);
@@ -2542,15 +2547,22 @@ enum FeedFetch {
     Held,
 }
 
-/// Asks ArtCraft's release feed up to `attempts` times, as often as `throttle` allows (waiting at
-/// most [`MAX_THROTTLE_WAIT`] for it), saving a good answer.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SignedFeedCache {
+    catalog: String,
+    signature: String,
+}
+
+/// Asks ArtCraft's signed catalog (or a local-mirror JSON feed) up to `attempts` times, as often
+/// as `throttle` allows (waiting at most [`MAX_THROTTLE_WAIT`] for it), saving a good answer.
 fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrottle>, attempts: usize) -> FeedFetch {
     let mut asked = false;
+    let is_signed_catalog = url.ends_with(".toml");
     for attempt in 0..attempts.max(1) {
         let wait = throttle.lock().unwrap_or_else(PoisonError::into_inner).wait(crate::now());
         if wait > MAX_THROTTLE_WAIT {
             if !asked {
-                log::info!("holding off the ArtCraft API for {wait} s");
+                log::info!("holding off the release catalog for {wait} s");
             }
             break;
         }
@@ -2566,27 +2578,60 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
             throttle.sending(now);
         }
         asked = true;
-        let outcome = match http.get_feed(url) {
-            Ok(body) => match Feed::parse(&body) {
-                Some(feed) => {
-                    if let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), body.as_bytes()) {
-                        log::warn!("couldn't save the release feed: {e}");
+        let outcome = if is_signed_catalog {
+            let sig_url = format!("{url}.sig");
+            let fetched = http
+                .get_catalog_bytes(url, artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES)
+                .and_then(|c| c.ok_or_else(|| "hosted catalog is not published".to_string()))
+                .and_then(|catalog| {
+                    let signature = http
+                        .get_catalog_bytes(&sig_url, artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES)?
+                        .ok_or_else(|| "catalog signature is not published".to_string())?;
+                    let feed = Feed::parse_signed_catalog(&catalog, &signature)?;
+                    let saved = SignedFeedCache {
+                        catalog: String::from_utf8(catalog).map_err(|_| "catalog is not UTF-8".to_string())?,
+                        signature: String::from_utf8(signature).map_err(|_| "signature is not UTF-8".to_string())?,
+                    };
+                    Ok((feed, saved))
+                });
+            match fetched {
+                Ok((feed, saved)) => {
+                    if let Ok(bytes) = serde_json::to_vec(&saved)
+                        && let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), &bytes)
+                    {
+                        log::warn!("couldn't save the release catalog: {e}");
                     }
                     throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(Outcome::Answered, crate::now(), 0.0);
                     return FeedFetch::Answered(feed);
                 }
-                None => {
-                    log::warn!("the release feed answered with something unreadable (try {})", attempt + 1);
+                Err(why) => {
+                    log::info!("signed release catalog unavailable (try {}): {why}", attempt + 1);
                     Outcome::Failed { retry_after: None }
                 }
-            },
-            Err(e) if e.throttled => {
-                log::warn!("the ArtCraft API asked us to slow down (HTTP 429); holding off");
-                Outcome::Throttled { retry_after: e.retry_after }
             }
-            Err(e) => {
-                log::info!("release feed unavailable (try {}): {}", attempt + 1, e.why);
-                Outcome::Failed { retry_after: e.retry_after }
+        } else {
+            match http.get_feed(url) {
+                Ok(body) => match Feed::parse(&body) {
+                    Some(feed) => {
+                        if let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), body.as_bytes()) {
+                            log::warn!("couldn't save the release feed: {e}");
+                        }
+                        throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(Outcome::Answered, crate::now(), 0.0);
+                        return FeedFetch::Answered(feed);
+                    }
+                    None => {
+                        log::warn!("the release feed answered with something unreadable (try {})", attempt + 1);
+                        Outcome::Failed { retry_after: None }
+                    }
+                },
+                Err(e) if e.throttled => {
+                    log::warn!("the release feed asked us to slow down (HTTP 429); holding off");
+                    Outcome::Throttled { retry_after: e.retry_after }
+                }
+                Err(e) => {
+                    log::info!("release feed unavailable (try {}): {}", attempt + 1, e.why);
+                    Outcome::Failed { retry_after: e.retry_after }
+                }
             }
         };
         throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(outcome, crate::now(), feed_throttle::jitter());
@@ -2676,9 +2721,14 @@ fn mirror_chosen(app: &CraftApp, feed: Option<&Feed>, now: i64, track: &VersionT
     (chosen, origin, source)
 }
 
-/// The last saved feed answer, if any.
+/// The last saved feed answer, if any. Signed catalog caches are always reverified against the
+/// pinned Ed25519 key before parsing.
 fn load_feed(paths: &Paths) -> Option<Feed> {
-    std::fs::read_to_string(paths.feed_cache()).ok().and_then(|body| Feed::parse(&body))
+    let body = std::fs::read_to_string(paths.feed_cache()).ok()?;
+    if let Ok(signed) = serde_json::from_str::<SignedFeedCache>(&body) {
+        return Feed::parse_signed_catalog(signed.catalog.as_bytes(), signed.signature.as_bytes()).ok();
+    }
+    Feed::parse(&body)
 }
 
 /// The machine's real architecture: an x64 launcher on Windows on ARM should still pick ARM64

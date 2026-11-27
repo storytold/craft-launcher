@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Build, sign and package ArtCraft Launcher for Windows.
 
@@ -126,7 +126,24 @@ function New-InstallerArt([string] $BannerOut, [string] $DialogOut) {
     'anicraft', 'designcraft', 'figcraft', 'wordcraft', 'soundcraft', 'deckcraft', 'cadcraft', 'gridcraft', 'craft-anything', 'texturecraft', 'materialcraft'
   $mark = [System.Drawing.Image]::FromFile((Join-Path $Root 'assets\app-icon\hicolor\256x256\apps\ai.storyteller.artcraft-launcher.png'))
   $wordmark = [System.Drawing.Image]::FromFile((Join-Path $Root 'docs\brand\artcraft-logo-white.png'))
-  $icons = $apps | ForEach-Object { [System.Drawing.Image]::FromFile((Join-Path $Root "assets\app-icons\$_.png")) }
+  # Fetch app icons from the live signed website catalog (cached in TEMP for repeated builds).
+  $iconCache = Join-Path $env:TEMP 'artcraft-launcher-icon-cache'
+  New-Item -ItemType Directory -Force -Path $iconCache | Out-Null
+  $catalogText = (Invoke-WebRequest -UseBasicParsing -Uri 'https://getartcraft.com/launcher-catalog.toml').Content
+  $iconUrls = @{}
+  $currentId = $null
+  foreach ($line in ($catalogText -split "`r?`n")) {
+    if ($line -match '^id\s*=\s*"([^"]+)"') { $currentId = $Matches[1] }
+    elseif ($currentId -and $line -match '^icon_url\s*=\s*"([^"]+)"') { $iconUrls[$currentId] = $Matches[1] }
+  }
+  $icons = $apps | ForEach-Object {
+    $url = $iconUrls[$_]
+    if (-not $url) { throw "Missing icon_url in launcher-catalog.toml for $_" }
+    $fileName = [System.IO.Path]::GetFileName(([System.Uri]$url).AbsolutePath)
+    $cached = Join-Path $iconCache $fileName
+    if (-not (Test-Path $cached)) { Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $cached }
+    [System.Drawing.Image]::FromFile($cached)
+  }
   # The site's label face; GDI+ draws a variable font at its default instance (Regular).
   $fonts = New-Object System.Drawing.Text.PrivateFontCollection
   $fonts.AddFontFile((Join-Path $Root 'assets\fonts\GeistMono-Variable.ttf'))

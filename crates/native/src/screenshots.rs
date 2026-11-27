@@ -67,7 +67,12 @@ pub fn fetch_all(http: Option<&Http>, paths: &Paths, details: &AppDetails, mut e
             continue;
         }
         let result = match (http, details.screenshot_url(shot.key)) {
-            (Some(http), Some(url)) => download(http, &url, &saved),
+            (Some(http), Some(url)) => download(http, &url, &saved).or_else(|primary_err| {
+                match details.screenshot_fallback_url(shot.key) {
+                    Some(fallback) => download(http, &fallback, &saved).map_err(|_| primary_err),
+                    None => Err(primary_err),
+                }
+            }),
             (None, _) => Err(Failure::Network("HTTPS isn't available".into())),
             (_, None) => Err(Failure::Picture("this page has no such picture".into())),
         };
