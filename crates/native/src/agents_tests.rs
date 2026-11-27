@@ -262,3 +262,19 @@ fn a_gateway_of_the_same_size_but_other_bytes_replaces_the_copy() {
     install_gateway(&src, dir.path()).unwrap();
     assert_eq!(std::fs::read(&copy).unwrap(), b"bbbb");
 }
+
+thread_local! {
+    /// Stands in for the `AI-MCP` flag in [`flag_on`] on this test's thread.
+    pub(super) static FLAG: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+#[test]
+fn with_the_flag_off_no_client_configuration_is_read() {
+    FLAG.set(Some(false));
+    let agents = state(&[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    FLAG.set(None);
+    assert!(!agents.flag_on && !agents.enabled);
+    // Each client's row comes from reading its configuration, so no row means no read.
+    assert!(agents.clients.is_empty(), "{:?}", agents.clients);
+    assert!(agents.gateway.is_none());
+}
