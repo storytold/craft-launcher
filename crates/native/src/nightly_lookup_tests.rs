@@ -425,6 +425,30 @@ fn scheduling_write_refuses_shared_or_aliased_files_without_touching_stable_data
     assert_eq!(std::fs::read(stable.manifest()).unwrap(), b"stable sentinel");
 }
 
+/// A release whose `prerelease` flag is missing, `null` or not a boolean could be a Nightly, so the
+/// history read from our API (its real wire format) can't prove that no build exists.
+#[test]
+fn an_unreadable_prerelease_flag_never_becomes_authoritative_absence() {
+    let history_with = |flag: &str| {
+        let body = format!(
+            r#"{{"repo":"{}","app_last_fetched":"2026-11-20T16:00:00Z","complete":true,"releases":[
+                {{"tag":"v1.0.0","prerelease":false}},{{"tag":"{}"{flag},"assets":[]}}]}}"#,
+            app().repo,
+            tag(20)
+        );
+        AppReleases::parse(&body, app().repo, None, NOW).unwrap()
+    };
+    let ask_with = |flag: &str| {
+        let history = history_with(flag);
+        lookup(app(), platform(), NOW, &mut || Ok((history.clone(), 1)), &mut |_, _, _, _| Ok(None), &|| Duration::ZERO, &|| true)
+    };
+    for flag in ["", r#","prerelease":null"#, r#","prerelease":"true""#] {
+        assert!(matches!(ask_with(flag), Outcome::Indeterminate(_)), "{flag:?}");
+    }
+    // The same history with a readable `false` is an ordinary release: no Nightly, so no build.
+    assert!(matches!(ask_with(r#","prerelease":false"#), Outcome::NoCompatibleBuild));
+}
+
 /// Authored normal producer fixture: checksums plus isolation descriptor are distinct GETs.
 fn producer_candidate(tag: &str, linux: bool) -> (Value, Vec<(String, Vec<u8>)>) {
     let (mut item, descriptor_url, body) = candidate(tag, linux);
