@@ -22,7 +22,8 @@
 #>
 param(
   [ValidateSet('x64', 'x86', 'arm64')] [string] $Arch = 'x64',
-  [switch] $SkipBuild
+  [switch] $SkipBuild,
+  [string] $CatalogOutputDir
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -70,7 +71,29 @@ if (-not $SkipBuild) {
   # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
   $env:ARTCRAFT_LAUNCHER_REQUIRE_WINRES = '1'
   # The launcher and the craft-ai-mcp gateway it ships (Settings › AI agents).
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p $Pkg -p $GatewayPkg --target $Target }
+  # Cargo reports the exact core build-script OUT_DIR, including for a fresh cached build.
+  # Keep compiler diagnostics visible, but select the verified outputs from this build only.
+  Invoke-Native "cargo build ($Target)" {
+    cargo build --release --locked -p $Pkg -p $GatewayPkg --target $Target --message-format=json-render-diagnostics |
+      ForEach-Object {
+        $message = $_ | ConvertFrom-Json
+        if ($message.reason -eq 'compiler-message') { Write-Host $message.message.rendered }
+        if ($message.reason -eq 'build-script-executed' -and
+            $message.package_id -match '#artcraft-launcher-core@') {
+          $script:CatalogOutputDir = $message.out_dir
+        }
+      }
+  }
+} elseif (-not $CatalogOutputDir) {
+  # -SkipBuild is for a previously built binary. Never guess between stale hashed OUT_DIRs.
+  $outputs = @(Get-ChildItem -Directory -Path (Join-Path $TargetDir "$Target\release\build") -Filter 'out' -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.Parent.Name -like 'artcraft-launcher-core-*' -or $_.Parent.Parent.Name -eq 'artcraft-launcher-core' } |
+    ForEach-Object { $_.FullName } |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_ 'catalog.toml') })
+  if ($outputs.Count -eq 1) { $CatalogOutputDir = $outputs[0] }
+}
+if (-not $CatalogOutputDir -or -not (Test-Path -LiteralPath (Join-Path $CatalogOutputDir 'catalog.toml'))) {
+  throw 'Missing verified launcher catalog build output. Build the launcher first (ARTCRAFT_CATALOG_DIR supports offline builds), or pass -CatalogOutputDir for the exact prebuilt binary.'
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
@@ -121,12 +144,19 @@ function New-InstallerArt([string] $BannerOut, [string] $DialogOut) {
   $accent = [System.Drawing.ColorTranslator]::FromHtml('#2d81ff')
   $muted = [System.Drawing.Color]::FromArgb(153, 242, 241, 238)
   $line = [System.Drawing.Color]::FromArgb(38, 242, 241, 238)
-  # The Craft App Suite, in the launcher's order (crates/core/src/catalog.rs).
-  $apps = 'photocraft', 'vectorcraft', 'filmcraft', 'lightcraft', 'pdfcraft', 'effectcraft',
-    'anicraft', 'designcraft', 'figcraft', 'wordcraft', 'soundcraft', 'deckcraft', 'cadcraft', 'gridcraft', 'craft-anything', 'texturecraft', 'materialcraft'
+  # Official apps in the signed catalog's order. Limit the art to its five-row grid.
+  $apps = @(Get-Content -LiteralPath (Join-Path $CatalogOutputDir 'installer-apps.txt') | Select-Object -First 20)
   $mark = [System.Drawing.Image]::FromFile((Join-Path $Root 'assets\app-icon\hicolor\256x256\apps\ai.storyteller.artcraft-launcher.png'))
   $wordmark = [System.Drawing.Image]::FromFile((Join-Path $Root 'docs\brand\artcraft-logo-white.png'))
-  $icons = $apps | ForEach-Object { [System.Drawing.Image]::FromFile((Join-Path $Root "assets\app-icons\$_.png")) }
+  # Reuse the exact build's signature- and digest-verified icons, including offline overrides.
+  # No independent catalog parser or network fetch is needed at packaging time.
+  $icons = $apps | ForEach-Object {
+    $icon = Join-Path $CatalogOutputDir "app-icons\$_.png"
+    if (-not (Test-Path -LiteralPath $icon -PathType Leaf)) {
+      throw "Missing verified launcher icon $_ in $CatalogOutputDir; rebuild the launcher."
+    }
+    [System.Drawing.Image]::FromFile($icon)
+  }
   # The site's label face; GDI+ draws a variable font at its default instance (Regular).
   $fonts = New-Object System.Drawing.Text.PrivateFontCollection
   $fonts.AddFontFile((Join-Path $Root 'assets\fonts\GeistMono-Variable.ttf'))
@@ -160,7 +190,7 @@ function New-InstallerArt([string] $BannerOut, [string] $DialogOut) {
             $x += $g.MeasureString([string]$ch, $labelFont, 100, [System.Drawing.StringFormat]::GenericTypographic).Width + 1.35
           }
           $brush.Dispose()
-          # The seventeen apps in four columns of 30 px cells: x=22..142, y=118..268.
+          # The suite apps in four columns of 30 px cells: x=22..142, y=118..268.
           $pen = New-Object System.Drawing.Pen $line, 1
           $left = 22; $top = 118; $cell = 30; $columns = 4
           for ($i = 0; $i -lt $icons.Count; $i++) {

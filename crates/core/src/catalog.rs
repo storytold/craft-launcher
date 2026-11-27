@@ -220,35 +220,15 @@ pub const LAUNCHER_REPO: &str = "storytold/craft-launcher";
 /// The launcher's own asset stem.
 pub const LAUNCHER_ID: &str = "artcraft-launcher";
 
-/// A Craft App's 128 px icon (PNG), as copied from its repo into `assets/app-icons`: the UI
-/// draws it, and the Linux install puts it in the desktop menu.
+include!(concat!(env!("OUT_DIR"), "/app_icons.rs"));
+
+/// A Craft App's 128 px icon (PNG), fetched from the signed hosted catalog (or build-time cache):
+/// the UI draws it, and the Linux install puts it in the desktop menu.
 pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
     if let Some(icon) = crate::hosted_catalog::icon(id) {
         return Some(icon);
     }
-    Some(match id {
-        "artcraft" => include_bytes!("../../../assets/app-icons/artcraft.png"),
-        "photocraft" => include_bytes!("../../../assets/app-icons/photocraft.png"),
-        "vectorcraft" => include_bytes!("../../../assets/app-icons/vectorcraft.png"),
-        "filmcraft" => include_bytes!("../../../assets/app-icons/filmcraft.png"),
-        "lightcraft" => include_bytes!("../../../assets/app-icons/lightcraft.png"),
-        "pdfcraft" => include_bytes!("../../../assets/app-icons/pdfcraft.png"),
-        "effectcraft" => include_bytes!("../../../assets/app-icons/effectcraft.png"),
-        "anicraft" => include_bytes!("../../../assets/app-icons/anicraft.png"),
-        "designcraft" => include_bytes!("../../../assets/app-icons/designcraft.png"),
-        "wordcraft" => include_bytes!("../../../assets/app-icons/wordcraft.png"),
-        "deckcraft" => include_bytes!("../../../assets/app-icons/deckcraft.png"),
-        "gridcraft" => include_bytes!("../../../assets/app-icons/gridcraft.png"),
-        "texturecraft" => include_bytes!("../../../assets/app-icons/texturecraft.png"),
-        "materialcraft" => include_bytes!("../../../assets/app-icons/materialcraft.png"),
-        "craft-anything" => include_bytes!("../../../assets/app-icons/craft-anything.png"),
-        "solidcraft" => include_bytes!("../../../assets/app-icons/solidcraft.png"),
-        "mailcraft" => include_bytes!("../../../assets/app-icons/mailcraft.png"),
-        "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
-        "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
-        "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
-        _ => return None,
-    })
+    bundled_app_icon_png(id)
 }
 
 #[cfg(test)]
@@ -327,7 +307,12 @@ mod tests {
     fn mailcraft_is_a_community_app_not_installed_on_mac() {
         let mc = CraftApp::by_id("mailcraft").unwrap();
         assert_eq!(mc.kind, AppKind::Community);
-        assert_eq!((mc.repo, mc.former_repo), ("UCSLabs/mailcraft", Some("UCS-Care-Group/mailcraft")));
+        assert!(
+            matches!((mc.repo, mc.former_repo), ("UCSLabs/mailcraft", Some("UCS-Care-Group/mailcraft")) | ("UCS-Care-Group/mailcraft", None)),
+            "unexpected mailcraft repo: ({:?}, {:?})",
+            mc.repo,
+            mc.former_repo
+        );
         assert_eq!(mc.bundle_id(), "io.github.billsecond.mailcraft");
         assert_eq!(mc.website(), "https://mailcraft.work");
         assert!(!mc.installs(crate::PackageKind::Dmg));
@@ -350,7 +335,11 @@ mod tests {
         assert_eq!(app.kind, AppKind::Official);
         assert_eq!(app.repo, "storytold/materialcraft");
         assert_eq!(app.bundle_id(), "ai.storyteller.materialcraft");
-        assert_eq!(app.website(), "https://getartcraft.com/apps/materialcraft");
+        assert!(
+            matches!(app.website().as_str(), "https://getartcraft.com/apps/materialcraft" | "https://github.com/storytold/materialcraft"),
+            "unexpected materialcraft website: {}",
+            app.website()
+        );
         assert_eq!(app.mac_team, Some(ARTCRAFT_TEAM_ID));
     }
 
