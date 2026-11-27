@@ -240,6 +240,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let out_icons = out.join("app-icons");
     fs::create_dir_all(&out_icons)?;
 
+    // Installer artwork uses the same verified catalog order, with no hard-coded app list.
+    let installer_apps = manifest.apps.iter().filter(|app| app.kind == "official").map(|app| app.id.as_str()).collect::<Vec<_>>().join("\n");
+    fs::write(out.join("installer-apps.txt"), installer_apps)?;
     let mut apps = format!("pub const SUITE: [CraftApp; {}] = [\n", manifest.apps.len());
     let count = manifest.apps.iter().filter(|a| a.details.is_some()).count();
     let mut details = format!("pub const DETAILS: [AppDetails; {count}] = [\n");

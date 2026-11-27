@@ -79,15 +79,16 @@ if (-not $SkipBuild) {
         $message = $_ | ConvertFrom-Json
         if ($message.reason -eq 'compiler-message') { Write-Host $message.message.rendered }
         if ($message.reason -eq 'build-script-executed' -and
-            (Split-Path (Split-Path $message.out_dir -Parent) -Leaf) -like 'artcraft-launcher-core-*') {
+            $message.package_id -match '#artcraft-launcher-core@') {
           $script:CatalogOutputDir = $message.out_dir
         }
       }
   }
 } elseif (-not $CatalogOutputDir) {
   # -SkipBuild is for a previously built binary. Never guess between stale hashed OUT_DIRs.
-  $outputs = @(Get-ChildItem -Directory -Path (Join-Path $TargetDir "$Target\release\build") -Filter 'artcraft-launcher-core-*' -ErrorAction SilentlyContinue |
-    ForEach-Object { Join-Path $_.FullName 'out' } |
+  $outputs = @(Get-ChildItem -Directory -Path (Join-Path $TargetDir "$Target\release\build") -Filter 'out' -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.Parent.Name -like 'artcraft-launcher-core-*' -or $_.Parent.Parent.Name -eq 'artcraft-launcher-core' } |
+    ForEach-Object { $_.FullName } |
     Where-Object { Test-Path -LiteralPath (Join-Path $_ 'catalog.toml') })
   if ($outputs.Count -eq 1) { $CatalogOutputDir = $outputs[0] }
 }
@@ -143,9 +144,8 @@ function New-InstallerArt([string] $BannerOut, [string] $DialogOut) {
   $accent = [System.Drawing.ColorTranslator]::FromHtml('#2d81ff')
   $muted = [System.Drawing.Color]::FromArgb(153, 242, 241, 238)
   $line = [System.Drawing.Color]::FromArgb(38, 242, 241, 238)
-  # The Craft App Suite, in the launcher's order (crates/core/src/catalog.rs).
-  $apps = 'photocraft', 'vectorcraft', 'filmcraft', 'lightcraft', 'pdfcraft', 'effectcraft',
-    'anicraft', 'designcraft', 'figcraft', 'wordcraft', 'soundcraft', 'deckcraft', 'cadcraft', 'gridcraft', 'craft-anything', 'texturecraft', 'materialcraft'
+  # Official apps in the signed catalog's order. Limit the art to its five-row grid.
+  $apps = @(Get-Content -LiteralPath (Join-Path $CatalogOutputDir 'installer-apps.txt') | Select-Object -First 20)
   $mark = [System.Drawing.Image]::FromFile((Join-Path $Root 'assets\app-icon\hicolor\256x256\apps\ai.storyteller.artcraft-launcher.png'))
   $wordmark = [System.Drawing.Image]::FromFile((Join-Path $Root 'docs\brand\artcraft-logo-white.png'))
   # Reuse the exact build's signature- and digest-verified icons, including offline overrides.
@@ -190,7 +190,7 @@ function New-InstallerArt([string] $BannerOut, [string] $DialogOut) {
             $x += $g.MeasureString([string]$ch, $labelFont, 100, [System.Drawing.StringFormat]::GenericTypographic).Width + 1.35
           }
           $brush.Dispose()
-          # The seventeen apps in four columns of 30 px cells: x=22..142, y=118..268.
+          # The suite apps in four columns of 30 px cells: x=22..142, y=118..268.
           $pen = New-Object System.Drawing.Pen $line, 1
           $left = 22; $top = 118; $cell = 30; $columns = 4
           for ($i = 0; $i -lt $icons.Count; $i++) {
