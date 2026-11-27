@@ -331,6 +331,53 @@ mod tests {
         }
     }
 
+    /// Tarahi 0.2.20's files, as its release lists them: the launcher's names next to the older `Tarahi_<version>_…` ones.
+    const TARAHI: &[&str] = &[
+        "SHA256SUMS.txt",
+        "tarahi-0.2.20-linux-aarch64.AppImage",
+        "tarahi-0.2.20-linux-aarch64.deb",
+        "tarahi-0.2.20-linux-aarch64.rpm",
+        "tarahi-0.2.20-linux-x86_64.AppImage",
+        "tarahi-0.2.20-linux-x86_64.deb",
+        "tarahi-0.2.20-linux-x86_64.rpm",
+        "tarahi-0.2.20-macos-universal.dmg",
+        "tarahi-0.2.20-windows-x64-portable.zip",
+        "tarahi_0.1.0-1_amd64.deb",
+        "tarahi_0.1.0-1_arm64.deb",
+        "Tarahi_0.2.20_aarch64.AppImage",
+        "Tarahi_0.2.20_aarch64.AppImage.zsync",
+        "Tarahi_0.2.20_amd64.rpm",
+        "Tarahi_0.2.20_arm64.rpm",
+        "Tarahi_0.2.20_universal.dmg",
+        "Tarahi_0.2.20_windows_x64.zip",
+        "Tarahi_0.2.20_windows_x64_setup.exe",
+        "Tarahi_0.2.20_x86_64.AppImage",
+        "Tarahi_0.2.20_x86_64.AppImage.zsync",
+    ];
+
+    #[test]
+    fn tarahi_selects_its_launcher_named_assets() {
+        let r = release(TARAHI);
+        for (os, arch, kind, expected) in [
+            (Os::Linux, Arch::X64, PackageKind::AppImage, "tarahi-0.2.20-linux-x86_64.AppImage"),
+            (Os::Linux, Arch::X64, PackageKind::Deb, "tarahi-0.2.20-linux-x86_64.deb"),
+            (Os::Linux, Arch::X64, PackageKind::Rpm, "tarahi-0.2.20-linux-x86_64.rpm"),
+            (Os::Linux, Arch::Arm64, PackageKind::AppImage, "tarahi-0.2.20-linux-aarch64.AppImage"),
+            (Os::Linux, Arch::Arm64, PackageKind::Deb, "tarahi-0.2.20-linux-aarch64.deb"),
+            (Os::Windows, Arch::X64, PackageKind::PortableZip, "tarahi-0.2.20-windows-x64-portable.zip"),
+            (Os::MacOs, Arch::Arm64, PackageKind::Dmg, "tarahi-0.2.20-macos-universal.dmg"),
+            (Os::MacOs, Arch::X64, PackageKind::Dmg, "tarahi-0.2.20-macos-universal.dmg"),
+        ] {
+            let (asset, selected) = pick_asset(&r, &["tarahi"], Platform { os, arch }, &[kind]).unwrap();
+            assert_eq!(asset.name, expected);
+            assert_eq!(selected, kind);
+        }
+        // No MSI: Windows gets the portable zip whichever kinds are asked for first.
+        let (asset, _) =
+            pick_asset(&r, &["tarahi"], Platform { os: Os::Windows, arch: Arch::X64 }, &[PackageKind::Msi, PackageKind::PortableZip]).unwrap();
+        assert_eq!(asset.name, "tarahi-0.2.20-windows-x64-portable.zip");
+    }
+
     /// ArtCraft Studio's release fixture resolves the right asset across macOS, Windows, and Linux.
     #[test]
     fn artcraft_studio_selects_published_desktop_assets() {
