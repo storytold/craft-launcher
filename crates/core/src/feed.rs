@@ -791,6 +791,26 @@ mod tests {
     }
 
     #[test]
+    fn catalog_channels_fall_back_independently_and_empty_records_are_ignored() {
+        let photo = app("photocraft");
+        let parsed = |channels: &str| {
+            Feed::parse_catalog_toml(&format!(
+                "generated_at = \"2026-10-09T13:00:00Z\"\n[[apps]]\nid = \"photocraft\"\nrepo = \"storytold/photocraft\"\n{channels}"
+            ))
+            .unwrap()
+        };
+        let stable = parsed("[apps.releases.stable]\ntag = \"v1.0.0\"\n");
+        assert!(matches!(stable.answer_prerelease(photo, NOW), FeedAnswer::Fresh(Some(r)) if r.tag == "v1.0.0"));
+        assert_eq!(stable.answer_nightly(photo, NOW), FeedAnswer::AskGitHub);
+        let pre = parsed("[apps.releases.prerelease]\ntag = \"v1.1.0-rc.1\"\n");
+        assert!(matches!(pre.answer_prerelease(photo, NOW), FeedAnswer::Fresh(Some(r)) if r.tag == "v1.1.0-rc.1"));
+        let empty = parsed("[apps.releases]\n");
+        assert!(empty.apps.is_empty());
+        assert_eq!(empty.answer_prerelease(photo, NOW), FeedAnswer::AskGitHub);
+        assert_eq!(pre.answer_prerelease(photo, NOW + MAX_AGE * 2), FeedAnswer::AskGitHub);
+    }
+
+    #[test]
     fn signed_catalog_toml_answers_stable_prerelease_nightly_and_launcher() {
         use base64::{Engine as _, engine::general_purpose::STANDARD};
         use ed25519_dalek::{Signer as _, SigningKey};

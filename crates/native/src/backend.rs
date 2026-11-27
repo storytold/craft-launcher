@@ -2554,6 +2554,19 @@ struct SignedFeedCache {
     signature: String,
 }
 
+/// Fetch and verify both parts of a signed feed using the caller's catalog transport.
+fn signed_feed(url: &str, get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, String>) -> Result<(Feed, SignedFeedCache), String> {
+    let sig_url = format!("{url}.sig");
+    let catalog = get(url, artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES)?.ok_or("hosted catalog is not published")?;
+    let signature = get(&sig_url, artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES)?.ok_or("catalog signature is not published")?;
+    let feed = Feed::parse_signed_catalog(&catalog, &signature)?;
+    let saved = SignedFeedCache {
+        catalog: String::from_utf8(catalog).map_err(|_| "catalog is not UTF-8")?,
+        signature: String::from_utf8(signature).map_err(|_| "signature is not UTF-8")?,
+    };
+    Ok((feed, saved))
+}
+
 /// Asks ArtCraft's signed catalog (or a local-mirror JSON feed) up to `attempts` times, as often
 /// as `throttle` allows (waiting at most [`MAX_THROTTLE_WAIT`] for it), saving a good answer.
 fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrottle>, attempts: usize) -> FeedFetch {
@@ -2580,21 +2593,7 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
         }
         asked = true;
         let outcome = if is_signed_catalog {
-            let sig_url = format!("{url}.sig");
-            let fetched = http
-                .get_catalog_bytes(url, artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES)
-                .and_then(|c| c.ok_or_else(|| "hosted catalog is not published".to_string()))
-                .and_then(|catalog| {
-                    let signature = http
-                        .get_catalog_bytes(&sig_url, artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES)?
-                        .ok_or_else(|| "catalog signature is not published".to_string())?;
-                    let feed = Feed::parse_signed_catalog(&catalog, &signature)?;
-                    let saved = SignedFeedCache {
-                        catalog: String::from_utf8(catalog).map_err(|_| "catalog is not UTF-8".to_string())?,
-                        signature: String::from_utf8(signature).map_err(|_| "signature is not UTF-8".to_string())?,
-                    };
-                    Ok((feed, saved))
-                });
+            let fetched = signed_feed(url, |url, max| http.get_catalog_bytes(url, max));
             match fetched {
                 Ok((feed, saved)) => {
                     if let Ok(bytes) = serde_json::to_vec(&saved)
@@ -3581,6 +3580,52 @@ mod tests {
             }
         });
         (url, hits)
+    }
+
+    #[test]
+    fn signed_feed_round_trips_through_offline_cache_and_rejects_tampering() {
+        use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_SIG, BUILD_CATALOG_TOML, CATALOG_URL, SIGNATURE_URL};
+        let (feed, mut saved) = signed_feed(CATALOG_URL, |url, _| match url {
+            CATALOG_URL => Ok(Some(BUILD_CATALOG_TOML.to_vec())),
+            SIGNATURE_URL => Ok(Some(BUILD_CATALOG_SIG.to_vec())),
+            _ => panic!("unexpected URL {url}"),
+        })
+        .unwrap();
+        assert!(!feed.apps.is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        crate::paths::write_atomic(&paths.feed_cache(), &serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert_eq!(load_feed(&paths), Some(feed));
+        saved.catalog.push('\n');
+        crate::paths::write_atomic(&paths.feed_cache(), &serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert!(load_feed(&paths).is_none());
+        assert!(signed_feed(CATALOG_URL, |_, _| Ok(None)).is_err());
+        assert!(signed_feed(CATALOG_URL, |url, _| Ok((url == CATALOG_URL).then(|| BUILD_CATALOG_TOML.to_vec()))).is_err());
+    }
+
+    #[test]
+    fn nightly_track_prefers_a_fresh_catalog_answer_without_requesting_github() {
+        let github = CountingGitHub::default();
+        let shared = shared();
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let tag = "v0.24.0-nightly.20261009.1.1";
+        let mut feed = feed();
+        feed.apps.get_mut(photo.id).unwrap().nightly = Some(artcraft_launcher_core::feed::FeedRelease {
+            tag: tag.into(),
+            prerelease: true,
+            assets: vec![(
+                "SHA256SUMS.txt".into(),
+                1,
+                format!("https://github.com/{}/releases/download/{tag}/SHA256SUMS.txt", photo.repo),
+                Some("a".repeat(64)),
+            )],
+            ..Default::default()
+        });
+        let (latest, origin, used) = track_answer(photo, &VersionTrack::Nightly, Some(&feed), &github, &shared, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(r)) if r.tag == tag));
+        assert_eq!(origin, Origin::ArtCraftApi);
+        assert_eq!(used, Some(Source::Feed));
+        assert_eq!(github.0.load(Ordering::SeqCst), 0);
     }
 
     #[test]
