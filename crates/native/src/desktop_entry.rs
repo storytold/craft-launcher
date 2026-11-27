@@ -40,6 +40,7 @@ pub fn meta(app: &CraftApp) -> (&'static str, Option<&'static str>) {
         "texturecraft" => ("Graphics;3DGraphics;", Some("texturecraft")),
         "materialcraft" => ("Graphics;3DGraphics;", Some("materialcraft")),
         "craft-anything" => ("Development;Debugger;", None),
+        "commitcraft" => ("Development;RevisionControl;Graphics;", Some("io.github.srt8hellcat2-ui.commitcraft")),
         _ => ("Graphics;", None),
     }
 }
@@ -165,6 +166,13 @@ mod tests {
         assert!(!no_icon.contains("Icon="));
         assert!(no_icon.contains("StartupWMClass=ai.storyteller.wordcraft\n"));
         assert!(no_icon.contains("Categories=Office;WordProcessor;\n"));
+    }
+
+    #[test]
+    fn writes_bundled_commitcraft_desktop_metadata() {
+        let text = render(app("commitcraft"), Path::new("/x/CommitCraft.AppImage"), true).unwrap();
+        assert!(text.lines().any(|line| line == "Categories=Development;RevisionControl;Graphics;"));
+        assert!(text.lines().any(|line| line == "StartupWMClass=io.github.srt8hellcat2-ui.commitcraft"));
     }
 
     #[test]
