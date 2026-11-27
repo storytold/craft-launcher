@@ -83,19 +83,25 @@ the route.
 - v0.11.0 was revoked, and its release page points users to v0.10.0. v0.10.0 also contains this
   route, so its users stay exposed until a release with #1077 ships.
 - #1076, an alternative that also removed the downgrade route, was closed in favour of #1077.
+- #1082: `msi_context.rs` ran a hidden, non-elevated PowerShell lookup on MSI updates. It now
+  reads Windows Installer's own registration keys for this account and the machine instead, so no
+  update starts PowerShell.
 
 ## Still open
 
 - **All-users downgrades:** `downgrade_elevated` still uses the same elevated PowerShell script,
   and the command strings are still in the binary. Anyone downgrading an all-users app could trigger
   the same detection.
+- **The one-prompt batch route returns, differently (#1083):** "Update all" again asks once for a
+  batch of all-users apps, but by elevating the launcher's own signed exe with `ShellExecuteEx`
+  (`runas` verb) — no PowerShell, nothing encoded, nothing hidden — and every package is still held
+  and re-hashed before `msiexec` runs it with its own visible progress window
+  (`crates/native/src/install/msi_session.rs`). It owes the same behavioural-antivirus confirmation
+  test below before it ships in a release.
 - **Release:** no release includes #1077 yet.
 - **Confirmation:** test on a Windows VM with Kaspersky and behaviour detection on. Run Update all
   with two or more outdated all-users apps on an affected build, then on a build with #1077. The
   test only counts if the affected build reproduces the flag.
-- **Remaining lookup:** `msi_context.rs` runs a hidden, non-elevated PowerShell lookup on MSI
-  updates. It runs for single-app updates too, which #1027 says are fine, so it was left in place.
-  If flags continue, look there next.
 - **Affected users:** the revert does not repair installs the antivirus has already damaged. The
   "isn't where it was installed" errors are tracked in #993.
 

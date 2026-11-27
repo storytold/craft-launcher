@@ -13,7 +13,7 @@ pub(crate) enum ProbeError {
     Unknown,
     /// The same product is registered for this account and for everyone.
     Conflicting,
-    /// The lookup could not run (a blocked shell, a timeout, a slow first start). Carries the real
+    /// The lookup could not run (a registration key it may not read, no account identity). Carries the real
     /// error so it can be logged.
     Unavailable(String),
 }
@@ -72,12 +72,14 @@ pub(crate) fn valid_product_code(code: &str) -> bool {
         })
 }
 
-fn parse_contexts(output: &str) -> Result<MsiScope, ProbeError> {
+/// The one context the product is registered in: 1 and 2 (managed and unmanaged, this account) are
+/// per-user, 4 is the machine. None, any other value, or both kinds is never guessed from.
+fn scope_of(contexts: &[u32]) -> Result<MsiScope, ProbeError> {
     let mut scope = None;
-    for line in output.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        let context = match line {
-            "1" | "2" => MsiScope::PerUser,
-            "4" => MsiScope::PerMachine,
+    for context in contexts {
+        let context = match context {
+            1 | 2 => MsiScope::PerUser,
+            4 => MsiScope::PerMachine,
             _ => return Err(ProbeError::Unknown),
         };
         if scope.is_some_and(|previous| previous != context) {
@@ -88,26 +90,59 @@ fn parse_contexts(output: &str) -> Result<MsiScope, ProbeError> {
     scope.ok_or(ProbeError::Unknown)
 }
 
+/// Windows Installer's packed form of a validated product code, the name of its registration keys:
+/// the first three groups reversed, then each remaining byte's two digits swapped.
+fn packed_code(code: &str) -> Option<String> {
+    if !valid_product_code(code) {
+        return None;
+    }
+    let hex: Vec<char> = code.chars().filter(char::is_ascii_hexdigit).map(|c| c.to_ascii_uppercase()).collect();
+    let (groups, rest) = hex.split_at_checked(16)?;
+    let mut packed = String::with_capacity(32);
+    for range in [0..8, 8..12, 12..16] {
+        packed.extend(groups.get(range)?.iter().rev());
+    }
+    for pair in rest.chunks(2) {
+        packed.extend(pair.iter().rev());
+    }
+    Some(packed)
+}
+
+/// Reads the product's registration for this account and the machine, as `ProductsEx` does, from
+/// Windows Installer's own keys: no other account, and never `Win32_Product` (which repairs).
 #[cfg(windows)]
 pub(crate) fn probe(product_code: &str) -> Result<MsiScope, ProbeError> {
-    use std::path::PathBuf;
-    use std::time::Duration;
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 
-    if !valid_product_code(product_code) {
-        return Err(ProbeError::Unknown);
+    let packed = packed_code(product_code).ok_or(ProbeError::Unknown)?;
+    let sid = current_user_sid().map_err(ProbeError::Unavailable)?;
+    let keys = [
+        (1, HKEY_LOCAL_MACHINE, format!(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\Managed\{sid}\Installer\Products\{packed}")),
+        (2, HKEY_CURRENT_USER, format!(r"Software\Microsoft\Installer\Products\{packed}")),
+        (4, HKEY_LOCAL_MACHINE, format!(r"SOFTWARE\Classes\Installer\Products\{packed}")),
+    ];
+    let mut contexts = Vec::new();
+    for (context, hive, path) in keys {
+        match RegKey::predef(hive).open_subkey_with_flags(&path, KEY_READ | KEY_WOW64_64KEY) {
+            Ok(_) => contexts.push(context),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            // A key we may not read is a lookup that didn't run, not a product that isn't there.
+            Err(e) => return Err(ProbeError::Unavailable(format!("couldn't read the Windows Installer registration ({e})"))),
+        }
     }
-    let root = std::env::var_os("SystemRoot")
-        .map(PathBuf::from)
-        .filter(|root| root.is_absolute())
-        .ok_or_else(|| ProbeError::Unavailable("SystemRoot is not set to an absolute path".into()))?;
-    let powershell = root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
-    // Only a validated GUID is interpolated. ProductsEx reads registration for the current
-    // account and the machine, never another account and never Win32_Product (which repairs).
-    let script = format!("$code='{product_code}';\n{}", include_str!("msi_context.ps1"));
-    let mut command = crate::process::command(powershell);
-    command.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-    let output = crate::process::run_command(command, "Windows installation lookup", Duration::from_secs(10)).map_err(ProbeError::Unavailable)?;
-    parse_contexts(&output)
+    scope_of(&contexts)
+}
+
+/// This account's SID, which names its managed (policy-installed) registrations.
+#[cfg(windows)]
+fn current_user_sid() -> Result<String, String> {
+    use winsafe::{HACCESSTOKEN, TokenInfo, co};
+    let failed = |e: winsafe::co::ERROR| format!("couldn't identify this account ({e})");
+    match HACCESSTOKEN::GetCurrentProcessToken().GetTokenInformation(co::TOKEN_INFORMATION_CLASS::User).map_err(failed)? {
+        TokenInfo::User(user) => user.User.Sid().map(|sid| sid.to_string()).ok_or_else(|| "couldn't identify this account".into()),
+        _ => Err("couldn't identify this account".into()),
+    }
 }
 
 #[cfg(test)]
@@ -118,23 +153,53 @@ mod tests {
 
     #[test]
     fn authoritative_machine_context_is_preserved() {
-        assert_eq!(parse_contexts("4\r\n"), Ok(MsiScope::PerMachine));
+        assert_eq!(scope_of(&[4]), Ok(MsiScope::PerMachine));
     }
 
     #[test]
     fn managed_and_unmanaged_accounts_are_both_per_user() {
-        assert_eq!(parse_contexts("1\n"), Ok(MsiScope::PerUser));
-        assert_eq!(parse_contexts("2\n"), Ok(MsiScope::PerUser));
-        assert_eq!(parse_contexts("1\n2\n"), Ok(MsiScope::PerUser));
+        assert_eq!(scope_of(&[1]), Ok(MsiScope::PerUser));
+        assert_eq!(scope_of(&[2]), Ok(MsiScope::PerUser));
+        assert_eq!(scope_of(&[1, 2]), Ok(MsiScope::PerUser));
     }
 
     #[test]
     fn missing_unknown_or_conflicting_contexts_are_not_guessed() {
-        for output in ["", " \r\n", "0", "7", "user", "2\n4", "4\n1", "4\nnoise"] {
-            assert!(parse_contexts(output).is_err(), "{output:?}");
+        for contexts in [&[][..], &[0], &[7], &[2, 4], &[4, 1], &[4, 3]] {
+            assert!(scope_of(contexts).is_err(), "{contexts:?}");
         }
-        assert_eq!(parse_contexts("4\n1"), Err(ProbeError::Conflicting));
-        assert_eq!(parse_contexts("7"), Err(ProbeError::Unknown));
+        assert_eq!(scope_of(&[4, 1]), Err(ProbeError::Conflicting));
+        assert_eq!(scope_of(&[7]), Err(ProbeError::Unknown));
+    }
+
+    #[test]
+    fn a_product_code_packs_the_way_windows_installer_names_its_keys() {
+        assert_eq!(packed_code("{12345678-ABCD-EF01-2345-6789ABCDEF01}").as_deref(), Some("87654321DCBA10FE32547698BADCFE10"));
+        assert_eq!(packed_code("{12345678-abcd-ef01-2345-6789abcdef01}").as_deref(), Some("87654321DCBA10FE32547698BADCFE10"));
+        for code in ["", "12345678-ABCD-EF01-2345-6789ABCDEF01", "{12345678-ABCD-EF01-2345-6789ABCDEF0Z}", r"{1234567\-ABCD-EF01-2345-6789ABCDEF01}"]
+        {
+            assert_eq!(packed_code(code), None, "{code:?}");
+        }
+    }
+
+    /// A product nobody installed is registered nowhere: the lookup runs and finds no context.
+    #[cfg(windows)]
+    #[test]
+    fn a_product_that_is_not_installed_has_no_context() {
+        assert_eq!(probe("{00000000-1111-2222-3333-444444444444}"), Err(ProbeError::Unknown));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn this_accounts_sid_is_found() {
+        // Local and domain accounts are S-1-5-..., Microsoft Entra ID accounts S-1-12-1-...: only the
+        // shape is the same, `S-1-` and then numbers.
+        let sid = current_user_sid().unwrap();
+        let parts: Vec<&str> = sid.split('-').collect();
+        let numbers = parts.get(1..).unwrap_or_default();
+        assert!(parts.first() == Some(&"S") && numbers.len() >= 3, "{sid}");
+        assert!(numbers.iter().all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())), "{sid}");
+        assert_eq!(numbers.first(), Some(&"1"), "{sid}");
     }
 
     #[test]
@@ -168,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn malformed_product_codes_stop_before_any_shell_call() {
+    fn malformed_product_codes_stop_before_any_lookup() {
         for code in ["", "not-a-guid", "{12345678-1234-1234-1234-123456789ABZ}", "';exit 0;#", "{12345678-1234-1234-1234-123456789ABC}\n"] {
             let called = std::cell::Cell::new(false);
             assert!(
@@ -200,7 +265,7 @@ mod tests {
             let result = update_scope(
                 true,
                 Some(CODE),
-                |_| Err(ProbeError::Unavailable("PowerShell is blocked".into())),
+                |_| Err(ProbeError::Unavailable("the registry could not be read".into())),
                 |code| {
                     *seen.borrow_mut() = code.to_owned();
                     Some(scope)

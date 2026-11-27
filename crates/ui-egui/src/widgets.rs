@@ -4,6 +4,7 @@
 //! Upper-case text is drawn upper case but announced to screen readers as written.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use egui::{Color32, CornerRadius, Galley, Rect, Response, RichText, Sense, Stroke, Ui, vec2};
 
@@ -20,10 +21,37 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
     }
 }
 
+/// Whether the Georgian face in use draws Mtavruli (U+1C90–U+1CBF), the capitals Unicode maps
+/// Georgian letters to. Set when the face loads; until then, and without one, Georgian stays as
+/// written, since a face without them (DejaVu Sans, older Sylfaen) would draw boxes.
+static GEORGIAN_CAPS: AtomicBool = AtomicBool::new(false);
+
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+pub(crate) fn set_georgian_caps(on: bool) {
+    GEORGIAN_CAPS.store(on, Ordering::Relaxed);
+}
+
+/// `text` in upper case. Georgian goes to Mtavruli only when the face draws it.
+fn upper(text: &str) -> String {
+    upper_with(text, GEORGIAN_CAPS.load(Ordering::Relaxed))
+}
+
+/// [`upper`] with the face's Georgian capitals given rather than read from [`GEORGIAN_CAPS`].
+fn upper_with(text: &str, georgian_caps: bool) -> String {
+    text.chars().fold(String::with_capacity(text.len()), |mut out, c| {
+        if !georgian_caps && ('\u{10d0}'..='\u{10ff}').contains(&c) {
+            out.push(c);
+        } else {
+            out.extend(c.to_uppercase());
+        }
+        out
+    })
+}
+
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
-    ui.painter().layout_job(egui::text::LayoutJob::single_section(text.to_uppercase(), format))
+    ui.painter().layout_job(egui::text::LayoutJob::single_section(upper(text), format))
 }
 
 /// A `.hud-label`: 11 px Geist Mono, upper case, widely spaced.
@@ -67,7 +95,7 @@ pub fn hud_elided_spans(ui: &mut Ui, spans: &[(&str, Color32)], max_width: f32) 
             extra_letter_spacing: theme::HUD_SPACING,
             ..Default::default()
         };
-        job.append(&text.to_uppercase(), 0.0, format);
+        job.append(&upper(text), 0.0, format);
     }
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));
     let galley = ui.painter().layout_job(job);
@@ -110,9 +138,9 @@ pub fn rule(ui: &mut Ui, height: f32) {
     ui.painter().vline(rect.center().x, rect.y_range(), t.hairline());
 }
 
-/// A square header cell with a drawn glyph and a hairline on its left; inverts on hover. While
-/// `busy` it shows a spinner and can't be clicked.
-pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -> Response {
+/// A square header cell with an icon (white, tinted here) and a hairline on its left; inverts on
+/// hover. While `busy` it shows a spinner and can't be clicked.
+pub fn nav_icon(ui: &mut Ui, icon: egui::ImageSource<'static>, tip: &str, height: f32, busy: bool) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(height, height), if busy { Sense::hover() } else { Sense::click() });
     let p = ui.painter();
@@ -124,7 +152,8 @@ pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -
     if busy {
         egui::Spinner::new().size(16.0).color(t.muted).paint_at(ui, Rect::from_center_size(rect.center(), vec2(16.0, 16.0)));
     } else {
-        paint_glyph(p, rect, glyph, if hovered { t.invert_fg } else { t.muted });
+        let tint = if hovered { t.invert_fg } else { t.muted };
+        egui::Image::new(icon).tint(tint).paint_at(ui, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)));
     }
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !busy, tip));
     let resp = resp.on_hover_text(tip);
@@ -134,6 +163,8 @@ pub fn nav_icon(ui: &mut Ui, glyph: Glyph, tip: &str, height: f32, busy: bool) -
 /// How far in from the window's edges a custom title bar's window resizes ([`window_edges`]).
 /// The title bar's own controls leave this band alone.
 const RESIZE_EDGE: f32 = 5.0;
+/// Width of one caption button, as Windows' own.
+const CAPTION_W: f32 = 46.0;
 
 /// How wide the resize band along the window's edges is right now: nothing while the window is
 /// maximized or full screen, when `window_edges` offers no resizing and the edges are the screen's,
@@ -150,14 +181,78 @@ pub fn title_bar_drag(ui: &mut Ui) {
     let band = resize_band(ui.ctx());
     let rect = Rect::from_min_max(r.min + vec2(band, band), r.max - vec2(band, 0.0));
     let resp = ui.interact(rect, ui.scope_id().with("title-bar"), Sense::click_and_drag());
-    if resp.drag_started_by(egui::PointerButton::Primary) {
+    // Each press moves the window at most once (`sent`). Where the release always arrives —
+    // Windows, macOS, the web — egui's own `drag_started_by` says it and nothing else runs.
+    // On Linux and the BSDs the window system never reports the release that ends a move
+    // (rust-windowing/winit#2999, emilk/egui#7959): egui keeps the button pressed and its drag
+    // bookkeeping never ends, so the next press is no press and every second drag attempt does
+    // nothing (#1358). A held press from an earlier frame that moves over the bar is taken as
+    // that next attempt's start, under three limits: it must have begun on the bar with the
+    // primary button (a press belongs to the widget it started on — a card being dragged keeps
+    // its drag — and `contains_pointer` cannot say whose the press is; a secondary press over
+    // the bar arms nothing), never on a press's own frame, and only
+    // once egui itself rules the press a drag rather than a click-sized wander
+    // (`is_decidedly_dragging`). A fresh press re-arms everything, and so does a button egui
+    // saw go up ([`let_the_button_go`] makes that happen the frame after a move starts).
+    let pressed = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::PointerButton { pressed: true, .. })));
+    let sent = egui::Id::unique("window-move-sent");
+    if pressed || !ui.input(|i| i.pointer.primary_down()) {
+        ui.ctx().data_mut(|d| d.remove::<bool>(sent));
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let held_move = {
+        let began = egui::Id::unique("window-move-began");
+        let press = ui.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } => Some(*pos),
+                _ => None,
+            })
+        });
+        let (down, moved, decidedly) =
+            ui.input(|i| (i.pointer.primary_down(), i.pointer.delta() != vec2(0.0, 0.0), i.pointer.is_decidedly_dragging()));
+        if press.is_some() || !down {
+            ui.ctx().data_mut(|d| {
+                if press.is_some_and(|p| resp.rect.contains(p)) {
+                    d.insert_temp(began, true);
+                } else {
+                    d.remove::<bool>(began);
+                }
+            });
+        }
+        ui.ctx().data_mut(|d| d.get_temp::<bool>(began).unwrap_or(false)) && press.is_none() && down && moved && decidedly && resp.contains_pointer()
+    };
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    let held_move = false;
+    if (resp.drag_started_by(egui::PointerButton::Primary) || held_move) && !ui.ctx().data_mut(|d| d.get_temp::<bool>(sent).unwrap_or(false)) {
+        ui.ctx().data_mut(|d| d.insert_temp(sent, true));
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        let_the_button_go(ui.ctx());
     }
     if resp.double_clicked() {
         let maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
     }
 }
+
+/// On Linux and the BSDs the window system takes the pointer once a window move or resize
+/// starts, and the button release that ends it never reaches the app
+/// (rust-windowing/winit#2999, emilk/egui#7959): egui keeps the button pressed and its drag
+/// bookkeeping never ends. The pointer is let go the moment the move starts, as though the
+/// button had gone up, which is what makes the next press a fresh one — and the drag owner is
+/// dropped with [`egui::Context::stop_dragging`], or the bar stays "the dragged widget" in egui's
+/// interaction snapshot, no release ever ends that drag, and the next press's drag never
+/// "starts": a press that leaves the bar before its wander window closes is then outside
+/// `contains_pointer`, where even the held-press fallback cannot see it. The pointer's position
+/// is unknown for a frame, which nothing here reads while the window is moving anyway. Where
+/// the release does arrive — Windows, macOS, the web — there is nothing to put back.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn let_the_button_go(ctx: &egui::Context) {
+    ctx.input_mut(|i| i.pointer = egui::PointerState::default());
+    ctx.stop_dragging();
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn let_the_button_go(_: &egui::Context) {}
 
 /// A window button in a custom title bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -169,20 +264,40 @@ enum WindowButton {
 }
 
 /// Minimize, maximize (or restore) and close, `height` tall, for a right-to-left layout: close
-/// ends up at the right.
+/// ends up at the right. Under a dialog egui ignores the header, so there they are drawn in a
+/// layer above the dialog's backdrop, as a system title bar is: the first click on Close closes
+/// the window, not the dialog (#853). The details drawer and the lightbox still cover them, since
+/// their own controls and the apps' menus can sit in that corner.
+pub(crate) fn window_buttons_width() -> f32 {
+    3.0 * CAPTION_W + 1.0
+}
+
 pub fn window_buttons(ui: &mut Ui, height: f32) {
     let ctx = ui.ctx().clone();
     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-    if window_button(ui, WindowButton::Close, height).clicked() {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    let (rect, _) = ui.allocate_exact_size(vec2(3.0 * CAPTION_W, height), Sense::hover());
+    let mut row = egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::Center));
+    let mut sense = Sense::click();
+    if !ctx.memory(|m| m.is_above_modal_layer(ui.layer_id())) {
+        row = row.layer_id(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("window-buttons")));
+        // Pointer only: Tab stays in the dialog.
+        sense = Sense::CLICK;
     }
-    let size = if maximized { WindowButton::Restore } else { WindowButton::Maximize };
-    if window_button(ui, size, height).clicked() {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-    }
-    if window_button(ui, WindowButton::Minimize, height).clicked() {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-    }
+    // The first frame after a restore hit-tests the maximized buttons, so an edge press can land on them.
+    let inside = ctx.content_rect().shrink(resize_band(&ctx));
+    let clicked = |resp: Response| resp.clicked() && resp.interact_pointer_pos().is_none_or(|p| inside.contains(p));
+    ui.scope_builder(row, |ui| {
+        if clicked(window_button(ui, WindowButton::Minimize, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        }
+        let size = if maximized { WindowButton::Restore } else { WindowButton::Maximize };
+        if clicked(window_button(ui, size, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+        }
+        if clicked(window_button(ui, WindowButton::Close, height, sense)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    });
     rule(ui, height);
 }
 
@@ -190,15 +305,15 @@ pub fn window_buttons(ui: &mut Ui, height: f32) {
 /// command. Hit-testing excludes the top resize band (and, for close, the right-edge band) so
 /// the window edges stay resizable; when maximized there is no band and close reaches the
 /// corner.
-fn window_button(ui: &mut Ui, button: WindowButton, height: f32) -> Response {
+fn window_button(ui: &mut Ui, button: WindowButton, height: f32, sense: Sense) -> Response {
     let t = Tokens::get(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(46.0, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(CAPTION_W, height), Sense::hover());
     // Clickable below the resize band along the top (and, for close, the right edge); maximized,
     // there is no band and the close button takes the screen's corner, as Windows' own does.
     let band = resize_band(ui.ctx());
     let right = if button == WindowButton::Close { band } else { 0.0 };
     let hit = Rect::from_min_max(rect.min + vec2(0.0, band), rect.max - vec2(right, 0.0));
-    let resp = ui.interact(hit, ui.scope_id().with(("window-button", button as u8)), Sense::click());
+    let resp = ui.interact(hit, ui.scope_id().with(("window-button", button as u8)), sense);
     let (fill, ink) = match (button, resp.hovered()) {
         (WindowButton::Close, true) => (Color32::from_rgb(0xc4, 0x2b, 0x1c), Color32::WHITE),
         (_, true) => (t.line, t.ink_strong),
@@ -255,6 +370,17 @@ pub fn window_edges(ctx: &egui::Context) {
         t.hairline(),
         egui::StrokeKind::Inside,
     );
+    // Above every layer, so egui's click tolerance can't hand a resize's press to what's nearby (#571).
+    let e = RESIZE_EDGE;
+    let bands = [r.with_max_y(r.top() + e), r.with_min_y(r.bottom() - e), r.with_max_x(r.left() + e), r.with_min_x(r.right() - e)];
+    for (edge, rect) in bands.into_iter().enumerate() {
+        egui::Area::new(egui::Id::unique(("window-edge", edge)))
+            .order(egui::Order::Tooltip)
+            .movable(false)
+            .constrain(false)
+            .fixed_pos(rect.min)
+            .show(ctx, |ui| ui.allocate_response(rect.size(), egui::Sense::CLICK));
+    }
     let Some(p) = ctx.input(|i| i.pointer.hover_pos()).filter(|p| r.contains(*p)) else { return };
     let near = |d: f32| d < RESIZE_EDGE;
     // A corner takes a little of each edge next to it.
@@ -281,8 +407,12 @@ pub fn window_edges(ctx: &egui::Context) {
     };
     if let Some((direction, cursor)) = hit {
         ctx.set_cursor_icon(cursor);
+        // A press on the band is a resize; the frame after it starts, [`let_the_button_go`]
+        // makes the next press a fresh one, so no second attempt is ever lost to the release
+        // the window system never reports (#1358).
         if ctx.input(|i| i.pointer.primary_pressed()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
+            let_the_button_go(ctx);
         }
     }
 }
@@ -361,6 +491,11 @@ pub fn button_width(ui: &Ui, text: &str, minimum: f32) -> f32 {
 
 /// A square button with a mono upper-case label, at least `width` wide.
 pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
+    labelled_button(ui, text, text, kind, width)
+}
+
+/// [`button`], read out by assistive technology as `label` rather than its (shortened) `text`.
+pub fn labelled_button(ui: &mut Ui, text: &str, label: &str, kind: Kind, width: f32) -> Response {
     let t = Tokens::get(ui.ctx());
     let galley = button_label(ui, text);
     let size = vec2(button_width_of(&galley, width), theme::CONTROL_H);
@@ -377,8 +512,106 @@ pub fn button(ui: &mut Ui, text: &str, kind: Kind, width: f32) -> Response {
     let fade = |c: Color32| if enabled { c } else { c.gamma_multiply(0.5) };
     ui.painter().rect(rect, CornerRadius::ZERO, fade(fill), Stroke::new(stroke.width, fade(stroke.color)), egui::StrokeKind::Inside);
     paint_centred(ui, rect, galley, fade(color));
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, text));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp }
+}
+
+/// The gap between the halves of a [`split_button`]: a hairline of background, so a hovered
+/// outlined half (which fills in) never runs into a solid neighbour.
+const SPLIT_SEAM: f32 = 1.0;
+
+/// One half of a [`split_button`]: the `label` assistive technology reads (the visible text is
+/// the one [`split_fit`] chose), and its look.
+pub struct Half<'a> {
+    pub label: &'a str,
+    pub kind: Kind,
+    /// A disabled half is drawn faded and reports itself disabled; the other half still works.
+    pub enabled: bool,
+}
+
+/// The labels of a side-by-side [`split_button`], and the width each half takes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SplitFit<'a> {
+    pub left: &'a str,
+    pub right: &'a str,
+    pub left_w: f32,
+    pub right_w: f32,
+}
+
+/// How a [`split_button`] is laid out.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Split<'a> {
+    /// Side by side, left then right.
+    Side(SplitFit<'a>),
+    /// One above the other, each the full `width`: for labels too long to sit side by side (a
+    /// language with long words in a narrow slot), where the place has the height to spare.
+    Stacked { top: &'a str, bottom: &'a str, width: f32 },
+}
+
+/// The height of a [`Split::Stacked`] button: two buttons and the seam between them.
+pub const STACKED_H: f32 = 2.0 * theme::CONTROL_H + SPLIT_SEAM;
+
+/// Lays out a [`split_button`] within `width`: side by side when a pair of labels fits
+/// ([`split_fit`]); else, where `can_stack`, stacked, with the first pair whose labels each fit the
+/// width. `None` when neither fits, so the caller shows a single button instead.
+pub fn split_layout<'a>(ui: &Ui, width: f32, lefts: &[&'a str], rights: &[&'a str], can_stack: bool) -> Option<Split<'a>> {
+    if let Some(fit) = split_fit(ui, width, lefts, rights) {
+        return Some(Split::Side(fit));
+    }
+    if !can_stack {
+        return None;
+    }
+    let top = lefts.iter().copied().find(|l| button_width(ui, l, 0.0) <= width)?;
+    let bottom = rights.iter().copied().find(|r| button_width(ui, r, 0.0) <= width)?;
+    Some(Split::Stacked { top, bottom, width })
+}
+
+/// Picks the first pair of labels, longest first and the left one shortened last, that fits two
+/// halves within `width`: equal halves when both labels fit half the room, else halves sized to
+/// their labels with the room left over shared. `None` when even the shortest pair doesn't fit.
+fn split_fit<'a>(ui: &Ui, width: f32, lefts: &[&'a str], rights: &[&'a str]) -> Option<SplitFit<'a>> {
+    let room = width - SPLIT_SEAM;
+    let half = room / 2.0;
+    let rights: Vec<(&str, f32)> = rights.iter().map(|&r| (r, button_width(ui, r, 0.0))).collect();
+    for &left in lefts {
+        let lw = button_width(ui, left, 0.0);
+        for &(right, rw) in &rights {
+            let left_w = if lw.max(rw) <= half {
+                half
+            } else if lw + rw <= room {
+                lw + (room - lw - rw) / 2.0
+            } else {
+                continue;
+            };
+            return Some(SplitFit { left, right, left_w, right_w: room - left_w });
+        }
+    }
+    None
+}
+
+/// Two buttons as one control, laid out as [`split_layout`] chose: `left` first (on top when
+/// stacked), which is also the keyboard order. Returns each half's response.
+pub fn split_button(ui: &mut Ui, left: Half<'_>, right: Half<'_>, split: Split<'_>) -> (Response, Response) {
+    ui.scope(|ui| match split {
+        Split::Side(fit) => {
+            ui.spacing_mut().item_spacing.x = SPLIT_SEAM;
+            let l = ui.add_enabled_ui(left.enabled, |ui| labelled_button(ui, fit.left, left.label, left.kind, fit.left_w)).inner;
+            let r = ui.add_enabled_ui(right.enabled, |ui| labelled_button(ui, fit.right, right.label, right.kind, fit.right_w)).inner;
+            (l, r)
+        }
+        // Its exact size, so the row centres the pair on its line like any other control (a plain
+        // vertical group would start at the top of the row).
+        Split::Stacked { top, bottom, width } => {
+            ui.allocate_ui_with_layout(vec2(width, STACKED_H), egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = SPLIT_SEAM;
+                let l = ui.add_enabled_ui(left.enabled, |ui| labelled_button(ui, top, left.label, left.kind, width)).inner;
+                let r = ui.add_enabled_ui(right.enabled, |ui| labelled_button(ui, bottom, right.label, right.kind, width)).inner;
+                (l, r)
+            })
+            .inner
+        }
+    })
+    .inner
 }
 
 /// One option in a [`cells`] group.
@@ -513,14 +746,21 @@ pub fn human_bytes(n: u64) -> String {
 pub enum Glyph {
     Pause,
     Close,
-    Settings,
     Refresh,
+    /// An exact version is locked until the user confirms unlocking it.
+    Lock,
+    /// Six-dot grip for reordering pinned apps.
+    Grip,
+    /// Outline bookmark: pin an unpinned app to the top.
+    Pin,
+    /// Filled bookmark: unpin a pinned app.
+    PinFilled,
 }
 
 /// Paints one of the launcher's symbols with the painter, centred in `rect`.
 ///
 /// These are shapes rather than font characters: the bundled Inter, Archivo and Geist Mono faces
-/// have no gear or refresh symbol. The app enables egui's monochrome emoji fonts for arbitrary
+/// have no refresh or lock symbol. The app enables egui's monochrome emoji fonts for arbitrary
 /// release-note/feed text, but these fixed controls stay painter-drawn so their geometry and
 /// accessible names do not depend on font selection.
 pub fn paint_glyph(p: &egui::Painter, rect: Rect, glyph: Glyph, color: Color32) {
@@ -545,16 +785,6 @@ fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
                 egui::Shape::line_segment([m + vec2(-s, s), m + vec2(s, -s)], Stroke::new(1.5, color)),
             ]
         }
-        Glyph::Settings => {
-            let stroke = Stroke::new(1.5, color);
-            let mut shapes = vec![egui::Shape::circle_stroke(m, 3.2, stroke)];
-            for i in 0..8 {
-                let angle = std::f32::consts::TAU * i as f32 / 8.0;
-                let (sin, cos) = angle.sin_cos();
-                shapes.push(egui::Shape::line_segment([m + vec2(cos, sin) * 4.8, m + vec2(cos, sin) * 6.6], stroke));
-            }
-            shapes
-        }
         Glyph::Refresh => {
             let stroke = Stroke::new(1.5, color);
             let radius = 6.0;
@@ -571,7 +801,70 @@ fn glyph_shapes(rect: Rect, glyph: Glyph, color: Color32) -> Vec<egui::Shape> {
                 egui::Shape::convex_polygon(vec![tip + vec2(-2.4, -0.6), tip + vec2(1.6, -3.0), tip + vec2(1.2, 1.8)], color, Stroke::NONE),
             ]
         }
+        Glyph::Lock => {
+            let stroke = Stroke::new(1.4, color);
+            vec![
+                egui::Shape::line(
+                    vec![m + vec2(-3.0, -1.0), m + vec2(-3.0, -5.0), m + vec2(0.0, -6.0), m + vec2(3.0, -5.0), m + vec2(3.0, -1.0)],
+                    stroke,
+                ),
+                egui::Shape::rect_stroke(
+                    Rect::from_min_max(m + vec2(-5.0, -1.0), m + vec2(5.0, 6.0)),
+                    CornerRadius::ZERO,
+                    stroke,
+                    egui::StrokeKind::Inside,
+                ),
+                egui::Shape::line_segment([m + vec2(0.0, 1.0), m + vec2(0.0, 3.5)], stroke),
+            ]
+        }
+        Glyph::Grip => {
+            let mut shapes = Vec::with_capacity(6);
+            for (dx, dy) in [(-3.0, -3.5), (3.0, -3.5), (-3.0, 0.0), (3.0, 0.0), (-3.0, 3.5), (3.0, 3.5)] {
+                shapes.push(egui::Shape::circle_filled(m + vec2(dx, dy), 1.35, color));
+            }
+            shapes
+        }
+        Glyph::Pin | Glyph::PinFilled => {
+            // Bookmark ribbon with a V cut at the bottom — reads clearly at CONTROL_H.
+            let half_w = 4.2;
+            let top = m.y - 6.5;
+            let notch_y = m.y + 3.0;
+            let tip = egui::pos2(m.x, m.y + 6.5);
+            let left = m.x - half_w;
+            let right = m.x + half_w;
+            let tl = egui::pos2(left, top);
+            let tr = egui::pos2(right, top);
+            let bl = egui::pos2(left, notch_y);
+            let br = egui::pos2(right, notch_y);
+            if glyph == Glyph::PinFilled {
+                // Fill is convex-only: body rect + tip triangle (the outline path is concave).
+                vec![
+                    egui::Shape::rect_filled(Rect::from_min_max(tl, br), CornerRadius::ZERO, color),
+                    egui::Shape::convex_polygon(vec![bl, br, tip], color, Stroke::NONE),
+                ]
+            } else {
+                vec![egui::Shape::closed_line(vec![tl, tr, br, tip, bl], Stroke::new(1.5, color))]
+            }
+        }
     }
+}
+
+/// A drag handle for reordering pinned apps: same outline as [`glyph_button`], grab cursor.
+pub fn grip_button(ui: &mut Ui, tip: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::drag());
+    let hovered = resp.hovered() || resp.dragged();
+    let p = ui.painter();
+    if hovered {
+        p.rect_filled(rect, CornerRadius::ZERO, t.invert_bg);
+    } else {
+        p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+    }
+    let c = if hovered { t.invert_fg } else { t.muted };
+    paint_glyph(p, rect, Glyph::Grip, c);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    let cursor = if resp.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab };
+    resp.on_hover_text(tip).on_hover_cursor(cursor)
 }
 
 /// A small outlined square button with a drawn glyph; inverts on hover.
@@ -587,6 +880,44 @@ pub fn glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     }
     let c = if hovered { t.invert_fg } else { t.muted };
     paint_glyph(p, rect, glyph, c);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Pin toggle: outline bookmark when unpinned, filled accent bookmark when pinned.
+pub fn pin_button(ui: &mut Ui, pinned: bool, tip: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(theme::CONTROL_H, theme::CONTROL_H), Sense::click());
+    let hovered = resp.hovered();
+    let p = ui.painter();
+    if hovered {
+        p.rect_filled(rect, CornerRadius::ZERO, t.invert_bg);
+    } else if pinned {
+        p.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
+    } else {
+        p.rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+    }
+    let c = if hovered {
+        t.invert_fg
+    } else if pinned {
+        t.accent
+    } else {
+        t.muted
+    };
+    let glyph = if pinned { Glyph::PinFilled } else { Glyph::Pin };
+    paint_glyph(p, rect, glyph, c);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+    resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A small glyph beside inline text, with the same accessible name and hover help as a tool button.
+pub fn inline_glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::click());
+    if resp.hovered() || resp.has_focus() {
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, t.sunken);
+    }
+    paint_glyph(ui.painter(), rect, glyph, t.muted);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -692,13 +1023,270 @@ pub fn heading(text: &str, size: f32, color: Color32) -> RichText {
 mod tests {
     use super::*;
 
-    /// The drawn glyphs replace the old `⚙`/`⟳` text (which 0.37 no longer has a fallback font
+    /// The release that ends a window move is never delivered on Linux and the BSDs (#1358), so
+    /// both drags below are left unreleased on purpose: each must still start its own move.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn every_title_bar_drag_attempt_starts_a_window_move() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |_| {}).drop_without_applying_deltas();
+        let frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+            let out = ctx.run_ui(input, title_bar_drag);
+            let commands = out
+                .viewport_output
+                .values()
+                .flat_map(|viewport| viewport.commands.iter())
+                .any(|command| matches!(command, egui::ViewportCommand::StartDrag));
+            out.drop_without_applying_deltas();
+            commands
+        };
+        let drag = |from: egui::Pos2, to: egui::Pos2| {
+            frame(vec![egui::Event::PointerButton {
+                pos: from,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            }]);
+            frame(vec![egui::Event::PointerMoved(to)])
+        };
+        assert!(drag(egui::pos2(100.0, 20.0), egui::pos2(140.0, 24.0)), "the first drag starts a window move");
+        assert!(drag(egui::pos2(300.0, 20.0), egui::pos2(340.0, 24.0)), "with the release never arriving, the next drag must still start one");
+    }
+
+    /// A press that began on the content below — a pinned app's card mid-drag, say — keeps its
+    /// owner when the pointer crosses the bar: no window move starts, and the button is not
+    /// taken from the widget that holds it.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn a_press_from_below_the_bar_keeps_its_owner() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |_| {}).drop_without_applying_deltas();
+        let bar = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 40.0));
+        let frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+            let out = ctx.run_ui(input, |ui| {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(bar), title_bar_drag);
+            });
+            let moved = out
+                .viewport_output
+                .values()
+                .flat_map(|viewport| viewport.commands.iter())
+                .any(|command| matches!(command, egui::ViewportCommand::StartDrag));
+            out.drop_without_applying_deltas();
+            moved
+        };
+        frame(vec![egui::Event::PointerButton {
+            pos: egui::pos2(400.0, 300.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert!(!frame(vec![egui::Event::PointerMoved(egui::pos2(400.0, 20.0))]), "the bar may not take a press that began on the content below it");
+        assert!(ctx.input(|i| i.pointer.primary_down()), "the widget that owns the press keeps its button");
+    }
+
+    /// After a move starts the bar stays the dragged widget in egui's books — the release that
+    /// would end the drag never arrives (#1358) — and that stale owner swallows the next press:
+    /// its drag never "starts". A second attempt pressed on the bar and out of it before the
+    /// wander window closes — past `contains_pointer`, where the held-press fallback cannot see
+    /// it — must still move the window.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn a_second_attempt_that_leaves_the_bar_quickly_still_moves_the_window() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |_| {}).drop_without_applying_deltas();
+        let bar = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 40.0));
+        let frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+            let out = ctx.run_ui(input, |ui| {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(bar), title_bar_drag);
+            });
+            let moved = out
+                .viewport_output
+                .values()
+                .flat_map(|viewport| viewport.commands.iter())
+                .any(|command| matches!(command, egui::ViewportCommand::StartDrag));
+            out.drop_without_applying_deltas();
+            moved
+        };
+        // An empty frame first, so the bar is already in egui's widget rects when the first
+        // press is hit-tested — in production the bar is painted every frame, and the first
+        // drag must go through egui's own `drag_started_by`, which is what leaves the stale
+        // owner behind.
+        frame(vec![]);
+        // The first move starts and the button is let go; the release never arrives (#1358).
+        frame(vec![egui::Event::PointerButton {
+            pos: egui::pos2(100.0, 20.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert!(frame(vec![egui::Event::PointerMoved(egui::pos2(140.0, 24.0))]), "the first drag starts a window move");
+        // The second attempt is out of the bar in one step, beyond any click-sized wander.
+        frame(vec![egui::Event::PointerButton {
+            pos: egui::pos2(300.0, 20.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert!(
+            frame(vec![egui::Event::PointerMoved(egui::pos2(500.0, 300.0))]),
+            "a second attempt that leaves the bar quickly must still move the window"
+        );
+    }
+
+    /// The held-press fallback is armed by a primary press on the bar and by nothing else: a
+    /// secondary press over the bar while a primary content drag is under way — a card being
+    /// dragged up over the header, say — must not arm it, or the next drag-sized movement would
+    /// start a window move and, through [`let_the_button_go`], take the button and the drag from
+    /// the content below. The content below is a real draggable widget here, as it is in the
+    /// app: egui keeps the press its owner started, and only our own bookkeeping could go wrong.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn a_secondary_press_over_the_bar_does_not_steal_a_content_drag() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |_| {}).drop_without_applying_deltas();
+        let bar = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 40.0));
+        let content = egui::Rect::from_min_max(egui::pos2(0.0, 100.0), egui::pos2(800.0, 500.0));
+        let frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+            let out = ctx.run_ui(input, |ui| {
+                ui.interact(content, egui::Id::unique("content"), egui::Sense::click_and_drag());
+                ui.scope_builder(egui::UiBuilder::new().max_rect(bar), title_bar_drag);
+            });
+            let moved = out
+                .viewport_output
+                .values()
+                .flat_map(|viewport| viewport.commands.iter())
+                .any(|command| matches!(command, egui::ViewportCommand::StartDrag));
+            out.drop_without_applying_deltas();
+            moved
+        };
+        let button = |pos: egui::Pos2, button: egui::PointerButton, pressed: bool| {
+            vec![egui::Event::PointerButton { pos, button, pressed, modifiers: egui::Modifiers::NONE }]
+        };
+        // A primary drag of the content below, held over the bar, keeps its owner.
+        frame(vec![]);
+        frame(button(egui::pos2(400.0, 300.0), egui::PointerButton::Primary, true));
+        assert!(!frame(vec![egui::Event::PointerMoved(egui::pos2(400.0, 20.0))]), "the bar may not take a press that began on the content below it");
+        // A secondary press over the bar mid-drag must not arm the held-press fallback.
+        frame(button(egui::pos2(400.0, 20.0), egui::PointerButton::Secondary, true));
+        assert!(!frame(vec![egui::Event::PointerMoved(egui::pos2(450.0, 22.0))]), "a secondary press over the bar must not start a window move");
+        assert!(ctx.input(|i| i.pointer.primary_down()), "the content drag keeps its button");
+    }
+
+    /// A click-sized wander while the button is held is a click — egui's own verdict, which the
+    /// window buttons and the double-click rely on — and once the movement is drag-sized, the
+    /// move still starts.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn a_click_sized_wander_over_the_bar_is_no_window_move() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |_| {}).drop_without_applying_deltas();
+        let frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+            let out = ctx.run_ui(input, title_bar_drag);
+            let moved = out
+                .viewport_output
+                .values()
+                .flat_map(|viewport| viewport.commands.iter())
+                .any(|command| matches!(command, egui::ViewportCommand::StartDrag));
+            out.drop_without_applying_deltas();
+            moved
+        };
+        frame(vec![egui::Event::PointerButton {
+            pos: egui::pos2(100.0, 20.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert!(!frame(vec![egui::Event::PointerMoved(egui::pos2(103.0, 21.0))]), "a click-sized wander is still a click");
+        assert!(frame(vec![egui::Event::PointerMoved(egui::pos2(140.0, 24.0))]), "a drag-sized movement still starts a window move");
+    }
+
+    /// Each press moves the window at most once: the movements after the one that started it
+    /// send nothing.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn only_the_first_movement_of_a_held_press_moves_the_window() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |_| {}).drop_without_applying_deltas();
+        let frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+            let out = ctx.run_ui(input, title_bar_drag);
+            let moved = out
+                .viewport_output
+                .values()
+                .flat_map(|viewport| viewport.commands.iter())
+                .any(|command| matches!(command, egui::ViewportCommand::StartDrag));
+            out.drop_without_applying_deltas();
+            moved
+        };
+        frame(vec![egui::Event::PointerButton {
+            pos: egui::pos2(100.0, 20.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert!(frame(vec![egui::Event::PointerMoved(egui::pos2(140.0, 24.0))]));
+        assert!(!frame(vec![egui::Event::PointerMoved(egui::pos2(180.0, 28.0))]));
+        assert!(!frame(vec![egui::Event::PointerMoved(egui::pos2(220.0, 32.0))]));
+    }
+
+    /// The same swallowed release ends a resize (#1358): both presses on the top edge below are
+    /// left unreleased on purpose, and each must still start its own resize.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn every_edge_resize_attempt_starts_a_resize() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+        ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |_| {}).drop_without_applying_deltas();
+        let frame = |events: Vec<egui::Event>| {
+            let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+            let out = ctx.run_ui(input, |ctx| window_edges(ctx));
+            let commands = out
+                .viewport_output
+                .values()
+                .flat_map(|viewport| viewport.commands.iter())
+                .any(|command| matches!(command, egui::ViewportCommand::BeginResize(_)));
+            out.drop_without_applying_deltas();
+            commands
+        };
+        let resize = |from: egui::Pos2, to: egui::Pos2| {
+            let press = frame(vec![egui::Event::PointerButton {
+                pos: from,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            }]);
+            let pull = frame(vec![egui::Event::PointerMoved(to)]);
+            press || pull
+        };
+        assert!(resize(egui::pos2(400.0, 2.0), egui::pos2(400.0, 20.0)), "the first press on the edge starts a resize");
+        assert!(resize(egui::pos2(500.0, 2.0), egui::pos2(500.0, 22.0)), "with the release never arriving, the next press must still start one");
+    }
+
+    /// The drawn glyphs replace the old `⟳`-style text (which 0.37 no longer has a fallback font
     /// for). Their geometry is production code: every shape must stay inside the control, at both
     /// the tool-button and header-cell sizes, or a click target would draw outside its hit rect.
     #[test]
     fn every_painter_glyph_stays_inside_its_control() {
-        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh] {
-            for side in [crate::theme::CONTROL_H, 48.0] {
+        for glyph in [Glyph::Pause, Glyph::Close, Glyph::Refresh, Glyph::Lock, Glyph::Grip, Glyph::Pin, Glyph::PinFilled] {
+            for side in [20.0, crate::theme::CONTROL_H, 48.0] {
                 let rect = Rect::from_min_size(egui::pos2(100.0, 200.0), egui::vec2(side, side));
                 let shapes = glyph_shapes(rect, glyph, Color32::WHITE);
                 assert!(!shapes.is_empty(), "{glyph:?} draws nothing at {side} px");
@@ -708,6 +1296,51 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A split button's labels always fit its halves, which fill the width less the seam; the
+    /// left label keeps its version longest, and below the shortest pair there is no split at all.
+    #[test]
+    fn a_split_fits_its_width_and_steps_down_to_one_button() {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, None);
+        ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
+        let lefts = ["Open 0.4.1", "Open"];
+        let rights = ["Update to 0.5.0", "Update"];
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            let natural = |s: &str| button_width(ui, s, 0.0);
+            let wide = split_fit(ui, 400.0, &lefts, &rights).expect("400 px fits the full labels");
+            assert_eq!((wide.left, wide.right), (lefts[0], rights[0]));
+            assert_eq!(wide.left_w, wide.right_w, "room for both: equal halves");
+
+            let shortest = natural("Open") + natural("Update") + SPLIT_SEAM;
+            for w in (0..=80).map(|i| 60.5 + i as f32 * 5.0) {
+                let fit = split_fit(ui, w, &lefts, &rights);
+                assert_eq!(fit.is_none(), w < shortest, "at {w} px (shortest pair {shortest} px): {fit:?}");
+                if let Some(f) = fit {
+                    assert!(natural(f.left) <= f.left_w + 0.01 && natural(f.right) <= f.right_w + 0.01, "at {w} px: {f:?}");
+                    assert!((f.left_w + f.right_w + SPLIT_SEAM - w).abs() < 0.01, "at {w} px the halves fill the width: {f:?}");
+                }
+            }
+
+            let tight = natural("Open 0.4.1") + natural("Update") + SPLIT_SEAM + 0.5;
+            let f = split_fit(ui, tight, &lefts, &rights).expect("the version and the short update label fit");
+            assert_eq!((f.left, f.right), ("Open 0.4.1", "Update"), "the update label shortens before Open loses its version");
+
+            // Too narrow to sit side by side: stacked where the place allows, each label fitting.
+            let narrow = shortest - 10.0;
+            assert_eq!(split_layout(ui, narrow, &lefts, &rights, false), None);
+            match split_layout(ui, narrow, &lefts, &rights, true) {
+                Some(Split::Stacked { top, bottom, width }) => {
+                    assert!(natural(top) <= width && natural(bottom) <= width, "{top} / {bottom} in {width}");
+                    assert_eq!(top, "Open 0.4.1", "a stacked Open has the whole width for its version");
+                }
+                other => panic!("expected a stacked split, got {other:?}"),
+            }
+            assert!(matches!(split_layout(ui, 400.0, &lefts, &rights, true), Some(Split::Side(_))), "side by side when it fits");
+            assert_eq!(split_layout(ui, 20.0, &lefts, &rights, true), None, "nothing fits 20 px");
+        })
+        .drop_without_applying_deltas();
     }
 
     /// The URLs the context has asked to open in its current output, for asserting that the opener
@@ -755,25 +1388,36 @@ mod tests {
         assert_eq!(opened_urls(&ctx), vec![artcraft_launcher_core::catalog::DISCORD_APP_URL.to_string()]);
     }
 
-    /// Each glyph must be distinct geometry, not the same fallback shape for all four.
+    /// Each glyph must be distinct geometry, not the same fallback shape for every variant.
     #[test]
     fn each_glyph_has_its_own_shapes() {
         let rect = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(crate::theme::CONTROL_H, crate::theme::CONTROL_H));
-        let bounds: Vec<[u32; 4]> = [Glyph::Pause, Glyph::Close, Glyph::Settings, Glyph::Refresh]
-            .into_iter()
-            .map(|glyph| {
-                let union = glyph_shapes(rect, glyph, Color32::WHITE)
-                    .into_iter()
-                    .map(|shape| shape.visual_bounding_rect())
-                    .reduce(|a, b| a.union(b))
-                    .expect("every glyph draws at least one shape");
-                [union.min.x.to_bits(), union.min.y.to_bits(), union.max.x.to_bits(), union.max.y.to_bits()]
-            })
-            .collect();
-        for (i, a) in bounds.iter().enumerate() {
-            for b in &bounds[i + 1..] {
-                assert_ne!(a, b, "two glyphs share one bounding box");
+        let box_of = |glyph: Glyph| {
+            let union = glyph_shapes(rect, glyph, Color32::WHITE)
+                .into_iter()
+                .map(|shape| shape.visual_bounding_rect())
+                .reduce(|a, b| a.union(b))
+                .expect("every glyph draws at least one shape");
+            [union.min.x.to_bits(), union.min.y.to_bits(), union.max.x.to_bits(), union.max.y.to_bits()]
+        };
+        // PinFilled is outline vs fill of Pin — may differ by stroke width; treat Pin as the
+        // representative and require every other glyph pair to differ.
+        let distinct = [Glyph::Pause, Glyph::Close, Glyph::Refresh, Glyph::Lock, Glyph::Grip, Glyph::Pin];
+        let bounds: Vec<_> = distinct.iter().map(|g| (*g, box_of(*g))).collect();
+        for (i, (ga, a)) in bounds.iter().enumerate() {
+            for (gb, b) in &bounds[i + 1..] {
+                assert_ne!(a, b, "{ga:?} and {gb:?} share one bounding box");
             }
         }
+        // PinFilled still draws (covered by every_painter_glyph_stays_inside_its_control).
+        let _ = box_of(Glyph::PinFilled);
+    }
+
+    #[test]
+    fn upper_keeps_georgian_unless_the_face_has_capitals() {
+        // The capability is passed in: `GEORGIAN_CAPS` is shared with tests that load a face.
+        assert_eq!(super::upper_with("Update all (2)", false), "UPDATE ALL (2)");
+        assert_eq!(super::upper_with("ყველას განახლება (2) · ArtCraft", false), "ყველას განახლება (2) · ARTCRAFT");
+        assert_eq!(super::upper_with("ყველას განახლება · ArtCraft", true), "ᲧᲕᲔᲚᲐᲡ ᲒᲐᲜᲐᲮᲚᲔᲑᲐ · ARTCRAFT");
     }
 }

@@ -11,3 +11,6 @@ workspace = true
 [dependencies]
 jiff = { workspace = true }
 semver = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

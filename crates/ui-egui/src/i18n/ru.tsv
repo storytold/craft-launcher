@@ -48,6 +48,10 @@
 	Install	Установить
 	Update to {v}	Обновить до {v}
 	Open	Открыть
+	Open {version}	Открыть {version}
+	Open {installed} without updating. {latest} stays available.	Открыть {installed} без обновления. Версия {latest} останется доступной.
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Вышла версия {latest}, но ArtCraft Launcher не может установить её поверх этой копии.
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher не может установить версию {version} поверх этой копии.
 	Download for {os}	Скачать для {os}
 	Download	Скачать
 	Coming soon	Скоро
@@ -70,7 +74,15 @@
 	Show in Explorer	Показать в Проводнике
 	Show in Files	Показать в файловом менеджере
 	Reinstall	Переустановить
+	Add desktop shortcut	Добавить ярлык на рабочий стол
 	Uninstall…	Удалить…
+	Launch options…	Параметры запуска…
+	{name} launch options	Параметры запуска {name}
+	Flags added each time the app is opened	Флаги, добавляемые при каждом открытии приложения
+	Separate flags with spaces. Quote a value that has spaces in it.	Разделяйте флаги пробелами. Значение с пробелами заключите в кавычки.
+	A quote isn't closed.	Кавычка не закрыта.
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} не открыто: в параметрах запуска не закрыта кавычка.
+	Save	Сохранить
 	All releases	Все релизы
 	ArtCraft Launcher {version} is available.	Доступен ArtCraft Launcher {version}.
 	Dismiss	Закрыть
@@ -86,6 +98,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	Только по запросу
 	Automatically download and install updates	Автоматически скачивать и устанавливать обновления
+	Ask for permission once when updating all apps	Запрашивать разрешение один раз при обновлении всех приложений
 	Notify me when an installed app has an update	Уведомлять, когда у установленного приложения есть обновление
 	Include pre-releases (betas and release candidates)	Включать предварительные релизы (бета и RC)
 	Installing on Linux	Установка в Linux
@@ -95,6 +108,7 @@
 	Updates always use the format an app was installed with.	Обновления всегда используют формат, с которым приложение было установлено.
 	Running in the background	Работа в фоне
 	Keep running in the tray when the window is closed	Оставаться в трее при закрытии окна
+	Hide ArtCraft Launcher from the Dock while in the background	Скрывать ArtCraft Launcher из Dock при работе в фоне
 	ArtCraft Launcher is still running	ArtCraft Launcher продолжает работать
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	Он в трее: откройте или закройте его через значок в трее, либо отключите это в настройках.
 	Show the window on the current desktop	Показывать окно на текущем рабочем столе
@@ -121,6 +135,14 @@
 	Apps on this computer	Приложения на этом компьютере
 	Installed apps with a newer version	Установленные приложения, у которых есть новая версия
 	Apps you can install	Приложения, которые можно установить
+	Pin to top	Закрепить сверху
+	Unpin	Открепить
+	Pinned	Закреплённые
+	Pin {name} to top	Закрепить {name} сверху
+	Unpin {name}	Открепить {name}
+	Reorder {name}	Изменить порядок: {name}
+	Move up	Выше
+	Move down	Ниже
 	Hide App	Скрыть приложение
 	Unhide App	Показать приложение
 	Hidden Apps	Скрытые приложения
@@ -146,9 +168,14 @@
 	Update cancelled	Обновление отменено
 	Uninstall cancelled	Удаление отменено
 	Retry install	Повторить установку
+	Retry update	Повторить обновление
 	Retry update to {version}	Повторить обновление до {version}
 	The download is still here. It's checked again, then installed.	Скачанный файл сохранён. Он будет проверен ещё раз, затем установлен.
 	Waiting for another app…	Ожидание другого приложения…
+	Waiting for another download…	Ожидание другой загрузки…
+	Simultaneous downloads	Одновременные загрузки
+	No limit	Без ограничений
+	Downloads running together share your connection, so each one is slower.	Одновременные загрузки делят ваше подключение, поэтому каждая идёт медленнее.
 	Waiting for other installs…	Ожидание других установок…
 
 # Package formats offered for download (PackageKind::label)
@@ -162,6 +189,7 @@
 	Tarball (.tar.gz)	Архив (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	Создание изображений и видео с помощью ИИ
 photocraft	Image editing	Редактирование изображений
 vectorcraft	Vector illustration	Векторная иллюстрация
 filmcraft	Video editing, color and sound	Монтаж видео, цветокоррекция и звук
@@ -172,7 +200,9 @@ designcraft	Page layout and publishing	Вёрстка и издательско�
 wordcraft	Writing and document design	Тексты и оформление документов
 deckcraft	Presentations and slide shows	Презентации и слайд-шоу
 gridcraft	Spreadsheets and data	Электронные таблицы и данные
+craft-anything	Find out how any software works, then craft your own	Узнайте, как устроена любая программа, и создайте свою
 solidcraft	Parametric 3D CAD	Параметрический 3D CAD
+mailcraft	Mail, calendar and contacts	Почта, календарь и контакты
 cadcraft	Computer-aided design and drafting	Автоматизированное проектирование и черчение
 soundcraft	Recording, editing and mixing audio	Запись, редактирование и сведение звука
 figcraft	Interface design and prototyping	Дизайн интерфейсов и прототипирование
@@ -191,8 +221,8 @@ month	Oct	окт.
 month	Nov	нояб.
 month	Dec	дек.
 	Not checked yet	Ещё не проверялось
-	GitHub's hourly limit was reached; full details return in {min} min	Достигнут часовой лимит GitHub; полные детали вернутся через {min} мин
-	GitHub limit hit; back in {min} min	Лимит GitHub исчерпан; вернётся через {min} мин
+	Next GitHub check at {time}	Следующая проверка GitHub в {time}
+	Next check at {time}	Следующая проверка в {time}
 	Installing for {platform}	Установка для {platform}
 	Downloads for {platform}	Скачивание для {platform}
 	No downloads for this system	Нет загрузок для этой системы
@@ -275,6 +305,7 @@ filter	Installed	Установлены
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	Не удалось открыть {name}: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	Не удалось открыть окно ArtCraft Launcher на {backend}: {e}
 @msg	Download cancelled	Скачивание отменено
 @msg	{name} updated to {version}	Приложение {name} обновлено до {version}
 @msg	{name} installed: {version}	Приложение {name} установлено: {version}
@@ -352,6 +383,8 @@ filter	Installed	Установлены
 	Loading pictures…	Загрузка изображений…
 	Pictures couldn't be loaded. Reopen this page to try again.	Не удалось загрузить изображения. Откройте страницу снова, чтобы повторить попытку.
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} обновление|ArtCraft Launcher · {n} обновления|ArtCraft Launcher · {n} обновлений
+
+	Download size: {size}	Размер загрузки: {size}
 	Install folder	Папка установки
 	Default install folder	Папка установки по умолчанию
 	System default	По умолчанию в системе
@@ -366,6 +399,9 @@ filter	Installed	Установлены
 @msg	custom install folders aren't supported on this system	в этой системе выбор папки установки не поддерживается
 @msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} уже существует и не был установлен через ArtCraft Launcher
 @msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	не удалось переместить {path} в Корзину ({reason}). Удалите его через Finder.
+@msg	Desktop shortcut created for {name}	Ярлык на рабочем столе создан для {name}
+@msg	Couldn't create the desktop shortcut: {e}	Не удалось создать ярлык на рабочем столе: {e}
+@msg	A desktop shortcut named {name} already exists	Ярлык на рабочем столе с именем {name} уже существует
 	Apps are placed inside this folder.	Приложения размещаются внутри этой папки.
 	Replace what's there?	Заменить существующее?
 	{path} already exists. Installing {name} will overwrite it.	{path} уже существует. Установка {name} перезапишет его.
@@ -391,3 +427,133 @@ column	Author	Автор
 	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
 	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.
 	Enable automatic installs in Settings to follow new nightly builds.	Чтобы получать новые ночные сборки, включите автоматическую установку в настройках.
+texturecraft	3D texture painting	Рисование 3D-текстур
+texturecraft	Paint materials on 3D models and export textures.	Рисуйте материалы на 3D-моделях и экспортируйте текстуры.
+texturecraft	Materials	Материалы
+texturecraft	Mesh maps	Карты сетки
+texturecraft	Bake mesh maps and use smart materials.	Запекайте карты сетки и используйте умные материалы.
+texturecraft	Paint textures on 3D models.	Рисуйте текстуры на 3D-моделях.
+	Hide community apps	Скрыть приложения сообщества
+materialcraft	Procedural material design	Создание процедурных материалов
+materialcraft	Build materials with node graphs.	Создавайте материалы с помощью графов узлов.
+materialcraft	Create tileable PBR materials and export texture maps.	Создавайте бесшовные PBR-материалы и экспортируйте карты текстур.
+materialcraft	Node graphs	Графы узлов
+materialcraft	Combine noises, patterns and filters.	Комбинируйте шумы, узоры и фильтры.
+materialcraft	Live previews	Предпросмотр в реальном времени
+materialcraft	Preview materials in 2D and on 3D models.	Просматривайте материалы в 2D и на 3D-моделях.
+	Advanced	Дополнительно
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Переводить пакеты Flatpak на ArtCraft OCI (экспериментально)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	При обновлении переводить приложения ArtCraft на репозиторий, если доступен соответствующий пакет. Иначе продолжать использовать отдельные пакеты.
+	The OCI repository is a preview with GPG verification disabled.	Репозиторий OCI работает в предварительном режиме с отключённой проверкой GPG.
+anicraft	2D vector animation	2D-векторная анимация
+anicraft	Vector animation on a timeline you know.	Векторная анимация на привычной временной шкале.
+anicraft	Open-source 2D vector animation, built in pure Rust.	2D-векторная анимация с открытым исходным кодом на чистом Rust.
+anicraft	Familiar by design	Привычный интерфейс
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	Сцена, инструменты, шкала времени, слои, ключевые кадры, Свойства и Библиотека там, где их ждут аниматоры, со шлейфом калькирования.
+anicraft	Tweens that ease	Плавные твины
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	Классические твины с восемью пресетами замедления и кривыми, а также твины формы.
+	Version pinned to {version}. Click to unlock.	Версия закреплена на {version}. Нажмите, чтобы разблокировать.
+	Unlock version?	Разблокировать версию?
+	{app} is pinned to {version}. Follow the latest release instead?	Для {app} закреплена версия {version}. Перейти на последнюю версию?
+	Unlock	Разблокировать
+
+	AI agents	ИИ-агенты
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	Пока этот параметр включён, ИИ-приложения с поддержкой MCP, например Claude, Cursor или LM Studio, могут работать со всеми установленными приложениями Craft через одну запись. Когда он выключен, ни один агент не получит к ним доступ, а добавленные здесь записи удаляются.
+	Quick install	Быстрая установка
+	Adds the Craft apps to that client. Restart the client afterwards.	Добавляет приложения Craft в этот клиент. Затем перезапустите клиент.
+	Other clients	Другие клиенты
+	Copy the configuration and paste it into the client's MCP settings.	Скопируйте конфигурацию и вставьте её в настройки MCP клиента.
+	Copy JSON	Копировать JSON
+	Copy for VS Code	Копировать для VS Code
+	Copy for Codex (TOML)	Копировать для Codex (TOML)
+	Configuration copied.	Конфигурация скопирована.
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} загружает MCP-серверы только при запуске, поэтому приложения Craft появятся после перезапуска. Перезапуск закроет {client}, включая ответ, который он ещё пишет.
+	Restart {client}	Перезапустить {client}
+	Restarting {client}…	Перезапуск {client}…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Шлюз Craft (craft-ai-mcp) не установлен рядом с лаунчером.
+	Let AI agents use Craft apps	Разрешить ИИ-агентам использовать приложения Craft
+	Apps agents can reach: {count}	Приложения, доступные агентам: {count}
+	Added	Добавлено
+	Remove	Удалить
+	Add	Добавить
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	Шрифты
+	Allow font downloads	Разрешить загрузку шрифтов
+	Couldn't change the font download setting: {e}	Не удалось изменить параметр загрузки шрифтов: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	Шрифты загружаются из их источников, только когда вы устанавливаете шрифт. У предпросмотра шрифтов есть отдельный параметр ниже. Этот параметр общий для всех приложений Craft.
+	Sources	Источники
+	Apps	Приложения
+	Fonts for every Craft app	Шрифты для всех приложений Craft
+# The font preview settings in Settings' Fonts box.
+	Show font previews	Показывать предпросмотр шрифтов
+	Font preview server	Сервер предпросмотра шрифтов
+	Couldn't use this server: {e}	Не удалось использовать этот сервер: {e}
+	Couldn't change the font previews setting: {e}	Не удалось изменить параметр предпросмотра шрифтов: {e}
+	Set by {name} in the environment.	Задано переменной {name} в окружении.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	Неустановленные шрифты показывают предпросмотр с этого сервера, и установка сначала пробует его. Пустое поле — сервер по умолчанию.
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	Канал предварительных версий автоматически обновляется каждую ночь самым свежим кодом. В нём могут быть ошибки, проблемы с производительностью и стабильностью, а также незавершённые функции. Для важной работы используйте стабильный канал.
+
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	Предварительные версии позволяют раньше попробовать новые возможности, но в них будут ошибки и возможна потеря несохранённой работы.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	Они устанавливаются рядом со стабильными приложениями и используют собственные настройки и данные, не меняя ваше стабильное окружение. Всегда создавайте резервные копии важных файлов перед открытием в предварительной версии: файлы, сохранённые в более новых версиях, могут не открываться в стабильных.
+	You can turn this off at any time without deleting your installed developer builds or their data.	Вы можете отключить эту возможность в любой момент, не удаляя установленные предварительные версии приложений и их данные.
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{day}.{month}.{year}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	Ночные сборки
+	Discover nightly builds (Developer Builds page)	Искать ночные сборки (страница Developer Builds)
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	Отдельные установки, настройки и данные. При отключении установленные копии и их данные сохраняются.
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	Бета-версии и кандидаты в релиз могут заменить стабильную установку.
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	Объявления
+	No announcements	Нет объявлений
+@plural	Announcements, {n} unread|Announcements, {n} unread	Объявления, {n} непрочитанное|Объявления, {n} непрочитанных|Объявления, {n} непрочитанных
+# Going back from a copy whose version has no release of its own (English fallback; translations are maintained in craft-i18n).
+	Go back to {version}?	Go back to {version}?
+	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.
+	Go back	Go back
+	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
+	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.

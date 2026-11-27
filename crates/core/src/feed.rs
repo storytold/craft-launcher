@@ -38,8 +38,6 @@ pub struct Feed {
     pub app_renames: Vec<AppRename>,
     /// Repositories that moved, both under [`GITHUB_OWNER`]: a rename anywhere else is dropped.
     pub repo_renames: Vec<RepoRename>,
-    pub announcements: Vec<Notice>,
-    pub alerts: Vec<Notice>,
     /// A local mirror's address (ending in `/`): downloads under it are accepted alongside GitHub's.
     /// Never read from the feed itself; the caller sets it with [`Feed::with_mirror`].
     pub mirror: Option<String>,
@@ -83,18 +81,6 @@ pub struct RepoRename {
     pub renamed_at: Option<i64>,
 }
 
-/// An announcement (shown inline, dismissible) or an alert (a popup the user acknowledges).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Notice {
-    /// Stable, so a dismissal sticks across launches and refreshes.
-    pub id: String,
-    pub title: String,
-    pub body: String,
-    /// Only `https://` / `http://` links survive parsing.
-    pub link: Option<String>,
-    pub created_at: Option<i64>,
-}
-
 /// What the feed says about one app, once checked.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FeedAnswer {
@@ -104,32 +90,20 @@ pub enum FeedAnswer {
     AskGitHub,
 }
 
-const MAX_NOTICES: usize = 20;
+/// The most text kept from one rename's description.
 const MAX_TEXT: usize = 4000;
 
 impl Feed {
     /// Reads the feed. `None` only when the answer isn't JSON (or isn't an object) at all.
     pub fn parse(json: &str) -> Option<Self> {
         let raw: RawResponse = serde_json::from_str(json).ok()?;
-        let mut feed = Feed {
+        let feed = Feed {
             apps: raw.release_info.apps.into_iter().map(|(k, v)| (k.to_lowercase(), v.into_app())).collect(),
             last_fetched: raw.release_info.last_fetched.as_deref().and_then(parse_rfc3339),
             app_renames: raw.app_renames.into_iter().filter_map(RawAppRename::into_rename).collect(),
             repo_renames: raw.repo_renames.into_iter().filter_map(RawRepoRename::into_rename).collect(),
-            announcements: raw.important_notices.announcements.into_iter().filter_map(|n| n.into_notice("announcement")).take(MAX_NOTICES).collect(),
-            alerts: raw.important_notices.alerts.into_iter().filter_map(|n| n.into_notice("alert")).take(MAX_NOTICES).collect(),
             mirror: None,
         };
-        // App renames are news too: show them with the announcements.
-        for r in &feed.app_renames {
-            feed.announcements.push(Notice {
-                id: format!("rename:{}:{}", r.old_name_lower, r.new_name_lower),
-                title: format!("{} is now {}", r.old_name, r.new_name),
-                body: r.description.clone(),
-                link: None,
-                created_at: r.renamed_at,
-            });
-        }
         Some(feed)
     }
 
@@ -164,14 +138,20 @@ impl Feed {
         if self.mirror.is_none() && now.saturating_sub(fetched_at) > MAX_AGE {
             return FeedAnswer::AskGitHub;
         }
-        // The feed's repo must be the app's, or one the feed says it moved to.
-        let repo = self.repo_for(app);
+        // The feed's repo must be the app's, one the feed says it moved to, or the app's former repo
+        // (downloads are then checked against that one).
+        let mut repo = self.repo_for(app);
         if let Some(feed_repo) = &entry.repo
             && !feed_repo.eq_ignore_ascii_case(&repo)
         {
-            return FeedAnswer::AskGitHub;
+            match app.former_repo.filter(|former| feed_repo.eq_ignore_ascii_case(former)) {
+                Some(former) => repo = former.to_string(),
+                None => return FeedAnswer::AskGitHub,
+            }
         }
         match &entry.release {
+            // The app's other name may have the release: GitHub is asked about both.
+            None if app.former_repo.is_some() => FeedAnswer::AskGitHub,
             None => FeedAnswer::Fresh(None),
             Some(r) => match r.to_release(&repo, self.mirror.as_deref()) {
                 Some(release) => FeedAnswer::Fresh(Some(release)),
@@ -183,9 +163,9 @@ impl Feed {
 
 impl FeedRelease {
     /// The release with only the downloads that belong to `repo` (or sit under `mirror`). `None`
-    /// when it doesn't hold up (no tag, or not a version).
+    /// when it doesn't hold up (no tag, a tag with odd characters, or not a version).
     fn to_release(&self, repo: &str, mirror: Option<&str>) -> Option<Release> {
-        let version = version::parse(&self.tag)?;
+        let version = version::parse(&self.tag).filter(|_| release::valid_tag(&self.tag))?;
         let allowed = |name: &str, url: &str| {
             (release::download_url_under(url, &release::download_prefix(repo))
                 && url == format!("{}{}/{}", release::download_prefix(repo), self.tag, name))
@@ -232,9 +212,8 @@ fn lenient<'de, D: Deserializer<'de>, T: DeserializeOwned + Default>(d: D) -> Re
 /// A list where entries of the wrong shape are dropped rather than spoiling the rest.
 fn lenient_vec<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<Vec<T>, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
-    let items = match value {
-        serde_json::Value::Array(items) => items,
-        _ => return Ok(Vec::new()),
+    let serde_json::Value::Array(items) = value else {
+        return Ok(Vec::new());
     };
     Ok(items.into_iter().filter_map(|v| T::deserialize(v).ok()).collect())
 }
@@ -242,9 +221,8 @@ fn lenient_vec<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<V
 /// A map where entries of the wrong shape are dropped.
 fn lenient_map<'de, D: Deserializer<'de>, T: DeserializeOwned>(d: D) -> Result<BTreeMap<String, T>, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
-    let entries = match value {
-        serde_json::Value::Object(entries) => entries,
-        _ => return Ok(BTreeMap::new()),
+    let serde_json::Value::Object(entries) = value else {
+        return Ok(BTreeMap::new());
     };
     Ok(entries.into_iter().filter_map(|(k, v)| T::deserialize(v).ok().map(|t| (k, t))).collect())
 }
@@ -257,8 +235,6 @@ struct RawResponse {
     app_renames: Vec<RawAppRename>,
     #[serde(default, deserialize_with = "lenient_vec")]
     repo_renames: Vec<RawRepoRename>,
-    #[serde(default, deserialize_with = "lenient")]
-    important_notices: RawNotices,
 }
 
 #[derive(Deserialize, Default)]
@@ -390,48 +366,6 @@ impl RawRepoRename {
     }
 }
 
-#[derive(Deserialize, Default)]
-struct RawNotices {
-    #[serde(default, deserialize_with = "lenient_vec")]
-    announcements: Vec<RawNotice>,
-    #[serde(default, deserialize_with = "lenient_vec")]
-    alerts: Vec<RawNotice>,
-}
-
-#[derive(Deserialize, Default)]
-struct RawNotice {
-    #[serde(default, deserialize_with = "lenient")]
-    title: String,
-    #[serde(default, deserialize_with = "lenient")]
-    body: String,
-    #[serde(default, deserialize_with = "lenient")]
-    maybe_web_link: Option<String>,
-    #[serde(default, deserialize_with = "lenient")]
-    created_at: Option<String>,
-}
-
-impl RawNotice {
-    fn into_notice(self, kind: &str) -> Option<Notice> {
-        if self.title.trim().is_empty() && self.body.trim().is_empty() {
-            return None;
-        }
-        // The link may reach the system opener (whose WSL fallback shells out), so refuse any
-        // shell/cmd metacharacter or control character in it as well as whitespace (CWE-78).
-        let link = self.maybe_web_link.filter(|l| {
-            (l.starts_with("https://") || l.starts_with("http://"))
-                && l.len() <= 2000
-                && !l.chars().any(|c| c.is_whitespace() || c.is_control() || release::is_shell_meta(c))
-        });
-        Some(Notice {
-            id: format!("{kind}:{}:{}", self.created_at.as_deref().unwrap_or(""), self.title.trim()),
-            title: truncate(self.title.trim(), 200),
-            body: truncate(self.body.trim(), MAX_TEXT),
-            link,
-            created_at: self.created_at.as_deref().and_then(parse_rfc3339),
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,6 +439,33 @@ mod tests {
     }
 
     #[test]
+    fn an_app_with_a_former_repo_is_matched_under_either_name() {
+        // MailCraft moved from `UCS-Care-Group` to `UCSLabs` (#1593): a feed still naming the former
+        // repo is used, with downloads checked against that repo, and "no release" under one name
+        // sends the launcher to GitHub, where the other name is asked too.
+        let mailcraft = app("mailcraft");
+        let former = mailcraft.former_repo.unwrap();
+        let entry = |repo: &str, release: &str| {
+            format!(
+                r#"{{"release_info": {{"apps": {{"mailcraft": {{"repo": "{repo}", "app_last_fetched": "2026-10-09T13:00:00Z", "latest_release": {release}}}}}}}}}"#
+            )
+        };
+        let asset = |repo: &str| {
+            format!(
+                r#"{{"name": "mailcraft-0.15.0-x.msi", "size_bytes": 1, "download_url": "https://github.com/{repo}/releases/download/v0.15.0/mailcraft-0.15.0-x.msi", "sha256": "{HASH}"}}"#
+            )
+        };
+        let release = format!(r#"{{"tag": "v0.15.0", "assets": [{}, {}]}}"#, asset(former), asset(mailcraft.repo));
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&entry(former, &release)).unwrap().answer(mailcraft, NOW) else { panic!() };
+        assert_eq!(r.assets.len(), 1);
+        assert!(r.assets[0].url.starts_with(&release::download_prefix(former)));
+        for repo in [mailcraft.repo, former] {
+            assert_eq!(Feed::parse(&entry(repo, "null")).unwrap().answer(mailcraft, NOW), FeedAnswer::AskGitHub, "{repo}");
+        }
+        assert_eq!(Feed::parse(&entry("someone/mailcraft", &release)).unwrap().answer(mailcraft, NOW), FeedAnswer::AskGitHub);
+    }
+
+    #[test]
     fn survives_anything_the_server_might_send() {
         for junk in ["", "null", "[]", "42", "<html>502 Bad Gateway</html>", "{\"success\":tru"] {
             let feed = Feed::parse(junk);
@@ -519,7 +480,7 @@ mod tests {
         "important_notices": {"announcements": [null, {"title": 3}], "alerts": "x"}}"#;
         let feed = Feed::parse(weird).unwrap();
         assert_eq!(feed.answer(app("photocraft"), NOW), FeedAnswer::AskGitHub);
-        assert!(feed.repo_renames.is_empty() && feed.announcements.is_empty() && feed.alerts.is_empty());
+        assert!(feed.repo_renames.is_empty());
         // An empty object is a feed that knows nothing.
         assert_eq!(Feed::parse("{}").unwrap(), Feed::default());
     }
@@ -622,32 +583,10 @@ mod tests {
     }
 
     #[test]
-    fn reads_notices_and_renames() {
-        let with_notices = sample()
-            .replace(
-                "\"announcements\": []",
-                r#""announcements": [{"title": "New: CADCraft 1.0", "body": "It's here.", "created_at": "2026-10-09T09:00:00Z"}]"#,
-            )
-            .replace(
-                "\"alerts\": []",
-                r#""alerts": [
-            {"title": "Security update", "body": "Update PdfCraft now.", "maybe_web_link": "https://getartcraft.com/security", "created_at": null},
-            {"title": "Bad link", "body": "x", "maybe_web_link": "javascript:alert(1)"},
-            {"title": "Shell link", "body": "x", "maybe_web_link": "https://getartcraft.com/a|calc.exe"}]"#,
-            )
-            .replace(
-                "\"app_renames\": []",
-                r#""app_renames": [{"old_name": "PdfCraft", "old_name_lower": "pdfcraft", "new_name": "DocuCraft",
-            "new_name_lower": "docucraft", "description": "Same app, new name.", "renamed_at": "2026-10-09T08:00:00Z"}]"#,
-            );
-        let feed = Feed::parse(&with_notices).unwrap();
-        assert_eq!(feed.alerts.len(), 3);
-        assert_eq!(feed.alerts[0].link.as_deref(), Some("https://getartcraft.com/security"));
-        assert_eq!(feed.alerts[1].link, None, "only web links are kept");
-        assert_eq!(feed.alerts[2].link, None, "a link with shell metacharacters is dropped");
-        let titles: Vec<&str> = feed.announcements.iter().map(|n| n.title.as_str()).collect();
-        assert_eq!(titles, ["New: CADCraft 1.0", "PdfCraft is now DocuCraft"]);
-        // Ids are stable across parses, so dismissals stick.
-        assert_eq!(Feed::parse(&with_notices).unwrap().alerts[0].id, feed.alerts[0].id);
+    fn a_feed_release_with_an_odd_tag_asks_github() {
+        for odd in ["v0.6.0~beta-\\u202e", "v0.6.0~beta-a/b"] {
+            let feed = sample().replace("\"tag\": \"v0.6.0\"", &format!("\"tag\": \"{odd}\""));
+            assert_eq!(Feed::parse(&feed).unwrap().answer(app("photocraft"), NOW), FeedAnswer::AskGitHub, "{odd:?}");
+        }
     }
 }

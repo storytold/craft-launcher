@@ -28,7 +28,7 @@ impl Backend for Fake {
         std::mem::take(&mut self.events)
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true }
+        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: self.os, arch: Arch::Arm64 })
@@ -77,6 +77,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed });
     }
@@ -96,20 +99,24 @@ fn harness_on(view: ViewMode, os: Os) -> Harness<'static, Option<LauncherUi>> {
     let mut backend = Some(Fake { events: events(), clock: Rc::new(Cell::new(NOW)), os });
     let settings =
         Settings { view, notify: false, language: "hu".into(), theme: artcraft_launcher_ui_egui::theme::ThemeChoice::Dark, ..Settings::default() };
-    Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(egui::Theme::Dark).build_ui_state(
-        move |ui, state: &mut Option<LauncherUi>| {
-            if state.is_none()
-                && let Some(b) = backend.take()
-            {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), settings.clone()));
-            }
-            if let Some(l) = state.as_mut() {
-                l.logic(&ui.ctx().clone(), &mut DesktopHost);
-                l.ui(ui, &mut DesktopHost);
-            }
-        },
-        None,
-    )
+    Harness::builder()
+        .with_context_setup(artcraft_launcher_ui_egui::framework::install_headless)
+        .with_size(egui::vec2(1180.0, 900.0))
+        .with_theme(egui::Theme::Dark)
+        .build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none()
+                    && let Some(b) = backend.take()
+                {
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), settings.clone()));
+                }
+                if let Some(l) = state.as_mut() {
+                    l.logic(&ui.ctx().clone(), &mut DesktopHost);
+                    l.ui(ui, &mut DesktopHost);
+                }
+            },
+            None,
+        )
 }
 
 fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {

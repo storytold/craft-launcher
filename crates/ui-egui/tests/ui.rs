@@ -55,6 +55,7 @@ struct Fake {
     pictures: Rc<Cell<Pictures>>,
     /// Apps whose pictures were asked for and not answered yet.
     asked: Vec<String>,
+    downloads: std::collections::BTreeMap<String, (artcraft_launcher_core::PackageKind, u64)>,
     clock: Rc<Cell<i64>>,
 }
 
@@ -66,6 +67,17 @@ impl Backend for Fake {
         self.sent.borrow_mut().push(command);
     }
     fn poll(&mut self) -> Vec<Event> {
+        for event in &self.events {
+            if let Event::Latest { app, latest: LatestRelease::Found(release), .. } = event
+                && let Some(def) = artcraft_launcher_core::CraftApp::by_id(app)
+            {
+                let platform = self.platform().unwrap();
+                let stems: Vec<_> = def.stems().collect();
+                if let Some((asset, kind)) = artcraft_launcher_core::platform::pick_asset(release, &stems, platform, platform.default_kinds()) {
+                    self.downloads.insert(app.clone(), (kind, asset.size));
+                }
+            }
+        }
         let mut out = std::mem::take(&mut self.events);
         if self.pictures.get() != Pictures::Silent {
             for app in std::mem::take(&mut self.asked) {
@@ -83,13 +95,16 @@ impl Backend for Fake {
         out
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage }
+        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
     }
     fn now(&self) -> i64 {
         self.clock.get()
+    }
+    fn download_size(&self, app: &str) -> Option<(artcraft_launcher_core::PackageKind, u64)> {
+        self.downloads.get(app).copied()
     }
 }
 
@@ -133,6 +148,7 @@ fn test_harness_builder<State>(theme: egui::Theme) -> egui_kittest::HarnessBuild
         .with_accessibility_check(true)
         .with_render_cursor(false)
         .with_context_setup(move |ctx| {
+            artcraft_launcher_ui_egui::framework::install_headless(ctx);
             artcraft_launcher_ui_egui::theme::install_fonts(ctx, None);
             egui_extras::install_image_loaders(ctx);
             artcraft_launcher_ui_egui::theme::apply(ctx, choice);
@@ -189,6 +205,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }
@@ -284,7 +303,7 @@ fn harness_full(
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let fake = Fake { events, sent: sent2, manage, pictures, asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let fake = Fake { events, sent: sent2, manage, pictures, asked: Vec::new(), downloads: Default::default(), clock: Rc::new(Cell::new(NOW)) };
     let mut backend: Option<Box<dyn Backend>> = Some(match platform {
         Some(platform) => Box::new(PlatformFake { inner: fake, platform }),
         None => Box::new(fake),
@@ -348,6 +367,7 @@ fn folder_harness(picked: Rc<RefCell<Option<String>>>) -> (Harness<'static, Opti
         manage: true,
         pictures: Rc::default(),
         asked: vec![],
+        downloads: Default::default(),
         clock: Rc::new(Cell::new(NOW)),
     });
     let mut host = Picker(picked);
@@ -438,6 +458,8 @@ struct VersionsFake {
     events: Rc<RefCell<Vec<Event>>>,
     sent: Rc<RefCell<Vec<Command>>>,
     answer: Vec<Release>,
+    platform: Platform,
+    launcher_kind: Option<artcraft_launcher_core::PackageKind>,
 }
 
 impl Backend for VersionsFake {
@@ -450,11 +472,14 @@ impl Backend for VersionsFake {
     fn poll(&mut self) -> Vec<Event> {
         std::mem::take(&mut *self.events.borrow_mut())
     }
+    fn launcher_kind(&self) -> Option<artcraft_launcher_core::PackageKind> {
+        self.launcher_kind
+    }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true }
+        Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
-        Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
+        Some(self.platform)
     }
     fn now(&self) -> i64 {
         NOW
@@ -470,20 +495,48 @@ fn signed_photocraft(v: &str) -> Release {
 
 type VersionsHarness = (Harness<'static, Option<LauncherUi>>, Rc<RefCell<Vec<Command>>>, Rc<RefCell<Vec<Event>>>);
 
-/// The suite (PhotoCraft 0.4.1 installed) with `latest` as PhotoCraft's checked release and
-/// `answer` as its published versions, opened on PhotoCraft's expanded version menu.
-fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
+/// The machine a [`VersionsFake`] harness stands for.
+struct Machine {
+    platform: Platform,
+    theme: egui::Theme,
+    preferred: Vec<artcraft_launcher_core::PackageKind>,
+    /// Events after the suite's (such as how PhotoCraft is installed).
+    more: Vec<Event>,
+    /// What the backend says the running launcher was installed as.
+    launcher_kind: Option<artcraft_launcher_core::PackageKind>,
+}
+
+impl Default for Machine {
+    fn default() -> Self {
+        Machine {
+            platform: Platform { os: Os::MacOs, arch: Arch::Arm64 },
+            theme: egui::Theme::Dark,
+            preferred: Settings::default().preferred_kinds,
+            more: vec![],
+            launcher_kind: None,
+        }
+    }
+}
+
+/// The suite on `machine` with `latest` as PhotoCraft's checked release (if any) and `answer` as
+/// every version list.
+fn versions_harness(machine: Machine, latest: Option<Release>, answer: Vec<Release>) -> VersionsHarness {
     struct DummyHost;
     impl Host for DummyHost {}
+    let Machine { platform, theme, preferred, more, launcher_kind } = machine;
     let mut ev = events();
-    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    ev.extend(more);
+    if let Some(latest) = latest {
+        ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    }
     let sent = Rc::new(RefCell::new(Vec::new()));
     let queue = Rc::new(RefCell::new(ev));
-    let mut backend = Some(VersionsFake { events: queue.clone(), sent: sent.clone(), answer });
-    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+    let mut backend = Some(VersionsFake { events: queue.clone(), sent: sent.clone(), answer, platform, launcher_kind });
+    let mut h = test_harness_builder(theme).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if let Some(backend) = backend.take() {
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { notify: false, ..Default::default() }));
+                let settings = Settings { notify: false, preferred_kinds: preferred.clone(), ..Default::default() };
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings));
             }
             if let Some(launcher) = state {
                 launcher.logic(ui.ctx(), &mut DummyHost);
@@ -493,12 +546,37 @@ fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
         None,
     );
     h.run_steps(6);
+    (h, sent, queue)
+}
+
+/// The suite (PhotoCraft 0.4.1 installed) with `latest` as PhotoCraft's checked release and
+/// `answer` as its published versions, opened on PhotoCraft's expanded version menu.
+fn version_menu(latest: Release, answer: Vec<Release>) -> VersionsHarness {
+    version_menu_on(Machine::default(), latest, answer)
+}
+
+/// [`version_menu`] on `machine`.
+fn version_menu_on(machine: Machine, latest: Release, answer: Vec<Release>) -> VersionsHarness {
+    let (mut h, sent, queue) = versions_harness(machine, Some(latest), answer);
+    // Not installed, PhotoCraft's card is further down.
+    h.get_by_label("More actions for PhotoCraft").scroll_to_me();
+    h.run_steps(3);
     h.get_by_label("More actions for PhotoCraft").click();
     h.run_steps(3);
     h.get_by_label("Choose version").click();
     h.run_steps(4);
     h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Version").click();
     h.run_steps(4);
+    (h, sent, queue)
+}
+
+/// The launcher's own version list in Settings on `machine`, expanded, with `answer` published.
+fn launcher_menu_on(machine: Machine, answer: Vec<Release>) -> VersionsHarness {
+    let (mut h, sent, queue) = versions_harness(machine, None, answer);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
+    h.run_steps(5);
     (h, sent, queue)
 }
 
@@ -546,7 +624,7 @@ fn choosing_an_app_version_turns_its_main_action_into_install() {
         .click();
     h.run_steps(4);
     assert!(sent.borrow().iter().any(|c| matches!(c, Command::Install { app } if app == "photocraft")));
-    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Launch { app } if app == "photocraft")));
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Launch { app, .. } if app == "photocraft")));
     assert!(h.query_by_label("Version").is_none(), "installing closes the dialog");
     assert!(h.query_by_label("Install version v0.4.0").is_some(), "installing from the dialog keeps the chosen version");
     // Once the pinned version is the installed copy, the card opens it again.
@@ -558,11 +636,477 @@ fn choosing_an_app_version_turns_its_main_action_into_install() {
             source: InstallSource::MacApp,
             location: "/Applications/PhotoCraft.app".into(),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         }),
     });
     h.run_steps(4);
     assert!(h.query_by_label("Install version v0.4.0").is_none(), "an installed pin is not offered again");
     assert_eq!(h.query_all_by_label("Open").count(), opens + 1, "PhotoCraft shows Open");
+}
+
+/// The date and size painted beside the version row named `label`, and their colour. `None` when
+/// the row paints nothing beside its name.
+fn painted_facts(h: &Harness<'static, Option<LauncherUi>>, label: &str) -> Option<(String, egui::Color32)> {
+    fn texts(shape: &egui::Shape, out: &mut Vec<(egui::Pos2, String, egui::Color32)>) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| texts(s, out)),
+            egui::Shape::Text(t) => out.push((t.pos, t.galley.text().to_string(), t.override_text_color.unwrap_or(t.fallback_color))),
+            _ => {}
+        }
+    }
+    let row = h.query_all_by_role_and_label(egui::accesskit::Role::Button, label).next()?.rect();
+    let mut found = Vec::new();
+    h.output().shapes.iter().for_each(|clipped| texts(&clipped.shape, &mut found));
+    // Shapes come in paint order: what the row paints beside its name comes right after the name,
+    // which keeps out the text under the open menu.
+    let name = found.iter().rposition(|(pos, text, _)| row.contains(*pos) && text == label).expect("the row paints its name");
+    found.into_iter().skip(name + 1).find(|(pos, _, _)| row.contains(*pos)).map(|(_, text, color)| (text, color))
+}
+
+/// The accessible description of the version row named `label` (its date and size).
+fn row_facts(h: &Harness<'static, Option<LauncherUi>>, label: &str) -> Option<String> {
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, label).next()?.accesskit_node().description()
+}
+
+/// WCAG contrast ratio of two opaque colours.
+fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
+    let lum = |c: egui::Color32| {
+        let ch = |v: u8| {
+            let v = f32::from(v) / 255.0;
+            if v <= 0.039_28 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * ch(c.r()) + 0.7152 * ch(c.g()) + 0.0722 * ch(c.b())
+    };
+    let (x, y) = (lum(a), lum(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+#[test]
+fn version_rows_show_the_release_date_and_download_size() {
+    // A release that publishes neither a date nor its size keeps a plain row.
+    let mut undated = signed_photocraft("0.4.0");
+    undated.published_at = None;
+    undated.assets[0].size = 0;
+    for theme in [egui::Theme::Dark, egui::Theme::Light] {
+        let answer = vec![signed_photocraft("0.5.0"), undated.clone(), signed_photocraft("0.3.0")];
+        let (mut h, _, _) = version_menu_on(Machine { theme, ..Machine::default() }, signed_photocraft("0.5.0"), answer);
+        // The row's name stays the version; its date and the size of this Mac's download ride beside
+        // it, drawn and as its description. The day itself depends on the zone the test runs in.
+        let facts = row_facts(&h, "v0.5.0 (latest release)").unwrap_or_default();
+        assert!(facts.starts_with("Oct ") && facts.ends_with(", 2026 · 150 MB"), "{theme:?}: {facts:?}");
+        let (painted, on_accent) = painted_facts(&h, "v0.5.0 (latest release)").expect("the selected row paints its date and size");
+        assert_eq!(painted, facts);
+        // The selected row sits on the accent, where the muted grey can't be read: its date and
+        // size take the row's own text colour there.
+        let style = h.ctx.global_style();
+        let (accent, muted) = (style.visuals.selection.bg_fill, artcraft_launcher_ui_egui::theme::Tokens::get(&h.ctx).muted);
+        assert_eq!(on_accent, style.visuals.selection.stroke.color, "{theme:?}: the selected row's text colour");
+        assert!(contrast(on_accent, accent) > contrast(muted, accent) + 1.0, "{theme:?}: {on_accent:?} on {accent:?}");
+        // Other rows keep the muted colour.
+        let (_, plain) = painted_facts(&h, "v0.3.0").expect("an older row paints its date and size");
+        assert_eq!(plain, muted, "{theme:?}");
+        assert_eq!(row_facts(&h, "v0.4.0"), None, "nothing to add beside a bare tag");
+        assert_eq!(painted_facts(&h, "v0.4.0"), None);
+        h.check_accessibility();
+        if theme == egui::Theme::Dark {
+            snapshot(&mut h, "version-list-dates-and-sizes");
+        }
+    }
+}
+
+/// A release named `stem`-`v` with one signed asset per `(name tail, MB)`.
+fn release_with(stem: &str, v: &str, assets: &[(&str, u64)]) -> Release {
+    let mut r = release(stem, v, NOW);
+    r.assets = assets
+        .iter()
+        .map(|(tail, mb)| {
+            let name = format!("{stem}-{v}-{tail}");
+            Asset { url: format!("https://x/{name}"), name, size: mb << 20, sha256: Some("0".repeat(64)) }
+        })
+        .collect();
+    r
+}
+
+/// A PhotoCraft release for Windows with an MSI of 120 MB and a portable ZIP of 90 MB.
+fn windows_photocraft(v: &str) -> Release {
+    release_with("photocraft", v, &[("windows-x64.msi", 120), ("windows-x64-portable.zip", 90)])
+}
+
+fn photocraft_installed(source: InstallSource) -> Event {
+    let installed = Installed {
+        version: version::parse("0.4.1"),
+        source,
+        location: "C:/Users/me/PhotoCraft".into(),
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    Event::Detected { app: "photocraft".into(), installed: Some(installed) }
+}
+
+fn photocraft_not_installed() -> Event {
+    Event::Detected { app: "photocraft".into(), installed: None }
+}
+
+/// The size is that of the package the backend would install: the installed copy's format first,
+/// then the preferred one, so a portable copy shows the ZIP even where the MSI is preferred.
+#[test]
+fn a_version_row_sizes_the_package_this_install_would_use() {
+    use artcraft_launcher_core::PackageKind::{Msi, PortableZip};
+    let windows = Platform { os: Os::Windows, arch: Arch::X64 };
+    let cases = [
+        (Some(InstallSource::Launcher), vec![Msi], "90 MB", "the launcher's portable copy updates from the ZIP"),
+        (Some(InstallSource::Msi), vec![PortableZip], "120 MB", "an MSI install updates from the MSI"),
+        (None, vec![PortableZip], "90 MB", "a fresh install takes the preferred ZIP"),
+        (None, vec![], "120 MB", "a fresh install takes the MSI by default"),
+    ];
+    for (source, preferred, size, why) in cases {
+        let more = vec![source.map_or_else(photocraft_not_installed, photocraft_installed)];
+        let machine = Machine { platform: windows, preferred, more, ..Machine::default() };
+        let (h, _, _) = version_menu_on(machine, windows_photocraft("0.5.0"), vec![windows_photocraft("0.5.0")]);
+        let facts = row_facts(&h, "v0.5.0 (latest release)").unwrap_or_default();
+        assert!(facts.ends_with(&format!(" · {size}")), "{why}: {facts:?}");
+        assert_eq!(painted_facts(&h, "v0.5.0 (latest release)").map(|(text, _)| text), Some(facts), "{why}");
+    }
+}
+
+/// On Linux a fresh install's format, and a package's, depend on the package managers the backend
+/// finds, which the UI can't see: the row gives the date and no size rather than a guess. An
+/// AppImage, which the backend always installs, updates as one, so its size is certain.
+#[test]
+fn a_linux_version_row_sizes_only_a_certain_package() {
+    let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+    let r = release_with("photocraft", "0.5.0", &[("linux-x86_64.AppImage", 150), ("linux-x86_64.deb", 100)]);
+    let cases = [
+        (photocraft_not_installed(), None, "a fresh install depends on the package managers"),
+        (photocraft_installed(InstallSource::Deb), None, "a package depends on the package managers"),
+        (photocraft_installed(InstallSource::AppImage), Some("150 MB"), "an AppImage updates as an AppImage"),
+    ];
+    for (detected, size, why) in cases {
+        let machine = Machine { platform: linux, more: vec![detected], ..Machine::default() };
+        let (h, _, _) = version_menu_on(machine, r.clone(), vec![r.clone()]);
+        let facts = row_facts(&h, "v0.5.0 (latest release)").unwrap_or_default();
+        let tail = size.map_or_else(|| ", 2026".to_string(), |size| format!(", 2026 · {size}"));
+        assert!(facts.starts_with("Oct ") && facts.ends_with(&tail), "{why}: {facts:?}");
+    }
+}
+
+/// FreeBSD installs only the tarball, so its size is certain.
+#[test]
+fn a_freebsd_version_row_sizes_the_tarball() {
+    let freebsd = Platform { os: Os::FreeBsd, arch: Arch::X64 };
+    let r = release_with("photocraft", "0.5.0", &[("freebsd-x86_64.tar.gz", 140)]);
+    let machine = Machine { platform: freebsd, more: vec![photocraft_not_installed()], ..Machine::default() };
+    let (h, _, _) = version_menu_on(machine, r.clone(), vec![r]);
+    let facts = row_facts(&h, "v0.5.0 (latest release)").unwrap_or_default();
+    assert!(facts.ends_with(", 2026 · 140 MB"), "{facts:?}");
+}
+
+/// The launcher's own list in Settings sizes the launcher's download for this machine.
+#[test]
+fn the_launcher_version_list_sizes_the_launchers_download() {
+    let mut r = release("artcraft-launcher", "0.9.0", NOW);
+    r.assets[0].sha256 = Some("0".repeat(64));
+    let mut ev = events();
+    ev.push(Event::Versions { app: artcraft_launcher_core::catalog::LAUNCHER_ID.into(), result: Ok(vec![r]) });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").click();
+    h.run_steps(5);
+    let facts = row_facts(&h, "v0.9.0 (latest release)").unwrap_or_default();
+    assert!(facts.starts_with("Oct ") && facts.ends_with(", 2026 · 150 MB"), "{facts:?}");
+    assert_eq!(painted_facts(&h, "v0.9.0 (latest release)").map(|(text, _)| text), Some(facts));
+}
+
+/// The launcher updates itself from the format it was installed as; until the backend knows it,
+/// the manual download stands in, but not on Linux, where any format could be running.
+#[test]
+fn the_launcher_version_list_sizes_what_its_self_update_downloads() {
+    use artcraft_launcher_core::PackageKind::{AppImage, PortableZip};
+    let windows = Platform { os: Os::Windows, arch: Arch::X64 };
+    let linux = Platform { os: Os::Linux, arch: Arch::X64 };
+    let on_windows = release_with("artcraft-launcher", "0.9.0", &[("windows-x64.msi", 120), ("windows-x64-portable.zip", 90)]);
+    let on_linux = release_with("artcraft-launcher", "0.9.0", &[("linux-x86_64.AppImage", 150), ("linux-x86_64.deb", 100)]);
+    let cases = [
+        (windows, Some(PortableZip), &on_windows, Some("90 MB"), "a portable launcher updates from the ZIP"),
+        (windows, None, &on_windows, Some("120 MB"), "not known yet: the manual download, the MSI"),
+        (linux, Some(AppImage), &on_linux, Some("150 MB"), "an AppImage launcher updates from the AppImage"),
+        (linux, None, &on_linux, None, "not known on Linux: no guess"),
+    ];
+    for (platform, launcher_kind, r, size, why) in cases {
+        let (h, _, _) = launcher_menu_on(Machine { platform, launcher_kind, ..Machine::default() }, vec![r.clone()]);
+        let facts = row_facts(&h, "v0.9.0 (latest release)").unwrap_or_default();
+        let tail = size.map_or_else(|| ", 2026".to_string(), |size| format!(", 2026 · {size}"));
+        assert!(facts.starts_with("Oct ") && facts.ends_with(&tail), "{why}: {facts:?}");
+    }
+}
+
+#[test]
+/// The version dialog's Install follows the same answer as the card's "Install version X": for a
+/// copy the backend can't replace with the chosen version (installed outside the launcher, say),
+/// it is greyed out, says why on hover, and clicking it sends no install.
+fn the_version_dialog_wont_install_a_version_the_install_would_refuse() {
+    let pin = signed_photocraft("0.4.0");
+    let (mut h, sent, queue) = version_menu(pin.clone(), vec![signed_photocraft("0.5.0"), pin]);
+    queue.borrow_mut().push(Event::Installable { app: "photocraft".into(), installable: false });
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.4.0").next().unwrap().click();
+    h.run_steps(8);
+    sent.borrow_mut().clear();
+    let row = h.get_by_label("Close").rect().center().y;
+    let install = h
+        .get_all_by_label("Install version v0.4.0")
+        .find(|n| (n.rect().center().y - row).abs() < 4.0)
+        .expect("the dialog shows Install for the chosen version");
+    assert!(install.accesskit_node().is_disabled(), "the install would be refused");
+    install.hover();
+    h.run_steps(4);
+    assert!(h.query_all_by_label_contains("can't install version v0.4.0 over this copy").next().is_some(), "it says why");
+    h.get_all_by_label("Install version v0.4.0").find(|n| (n.rect().center().y - row).abs() < 4.0).unwrap().click();
+    h.run_steps(4);
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })), "{:?}", sent.borrow());
+}
+
+/// Windows, with PhotoCraft as Windows Installer registered it: `v` holds only what the registry has.
+fn windows_with_msi_photocraft(v: &str) -> Machine {
+    let installed = Installed {
+        version: version::parse(v),
+        source: InstallSource::Msi,
+        location: r"C:\Program Files\ArtCraft\PhotoCraft\photocraft.exe".into(),
+        package: Some("{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".into()),
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    Machine {
+        platform: Platform { os: Os::Windows, arch: Arch::X64 },
+        more: vec![Event::Detected { app: "photocraft".into(), installed: Some(installed) }],
+        ..Default::default()
+    }
+}
+
+/// PhotoCraft's published releases in #1617: a release candidate and the latest release.
+fn rc_and_latest() -> (Release, Release) {
+    let mut rc = windows_photocraft("0.24.0-rc.1");
+    rc.prerelease = true;
+    (rc, windows_photocraft("0.23.1"))
+}
+
+/// The installs `sent` asked for.
+fn installs(sent: &RefCell<Vec<Command>>) -> Vec<Command> {
+    sent.borrow()
+        .iter()
+        .filter(|c| matches!(c, Command::Install { .. } | Command::InstallChosen { .. } | Command::InstallAll { .. }))
+        .cloned()
+        .collect()
+}
+
+/// The dialog's own button labelled `label`, on its Close button's row (the card can show the same label).
+fn dialog_button<'h>(h: &'h Harness<'static, Option<LauncherUi>>, label: &'h str) -> egui_kittest::Node<'h> {
+    let row = h.get_by_label("Close").rect().center().y;
+    h.get_all_by_label(label).find(|n| (n.rect().center().y - row).abs() < 4.0).expect("the dialog shows the button")
+}
+
+#[test]
+/// A chosen version the launcher already knows it won't install (going back from a copy whose
+/// version isn't published, so nothing could be put back) leaves Open as the card's main action,
+/// with the install beside it greyed out and saying why (#1616).
+fn a_chosen_version_that_cant_go_back_keeps_open_on_the_card() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, _) = versions_harness(windows_with_msi_photocraft("0.24.0"), Some(rc.clone()), vec![rc, latest]);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.24.0-rc.1".into()));
+    h.run_steps(8);
+    h.get_by_label("More actions for PhotoCraft").scroll_to_me();
+    h.run_steps(3);
+    let install = h.get_by_label("Install version v0.24.0-rc.1");
+    assert!(install.accesskit_node().is_disabled(), "going back would be refused");
+    install.hover();
+    h.run_steps(4);
+    h.get_by_label_contains("PhotoCraft 0.24.0 isn't published any more");
+    sent.borrow_mut().clear();
+    h.get_by_label("Open 0.24.0").click();
+    h.run_steps(3);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "Open works: {:?}", sent.borrow());
+    sent.borrow_mut().clear();
+    h.get_by_label("Install version v0.24.0-rc.1").click();
+    h.run_steps(3);
+    assert!(installs(&sent).is_empty(), "the refused install sends nothing: {:?}", sent.borrow());
+}
+
+#[test]
+/// Going back from an installed release candidate to the latest release, picked in the version
+/// dialog, asks the backend to go back by name and keeps following the latest release, so the
+/// next release is offered as an update again (#1617).
+fn going_back_to_the_latest_release_keeps_following_releases() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0-rc.1"), latest.clone(), vec![rc, latest]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    sent.borrow_mut().clear();
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    let picked = Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: None };
+    assert_eq!(installs(&sent), [picked], "{:?}", sent.borrow());
+    assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), None, "still following the latest release");
+    // Rolled back, and a newer release comes out: it is an update again.
+    let mut back = windows_with_msi_photocraft("0.23.1").more;
+    back.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(windows_photocraft("0.23.2")), from: Origin::GitHub });
+    queue.borrow_mut().extend(back);
+    h.run_steps(6);
+    h.get_by_label_contains("Update to 0.23.2");
+}
+
+#[test]
+/// A copy Windows registered as 0.24.0, with no record of which release it was, can go back to the
+/// latest release once the person agrees that a failure puts the 0.24.0 release candidate back.
+fn a_stuck_copy_goes_back_to_the_latest_release_after_a_warning() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0"), latest.clone(), vec![rc, latest]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    queue.borrow_mut().extend([
+        Event::GoBackFallback { app: "photocraft".into(), installed: "0.24.0".into(), chosen: "v0.23.1".into(), fallback: "v0.24.0-rc.1".into() },
+        Event::JobFinished {
+            app: "photocraft".into(),
+            result: Err("PhotoCraft 0.24.0 isn't published, so going back waits for your answer.".into()),
+        },
+    ]);
+    h.run_steps(6);
+    h.get_by_label_contains("if going back to 0.23.1 fails, the launcher reinstalls 0.24.0-rc.1 instead");
+    assert!(h.query_by_label_contains("waits for your answer").is_none(), "the question says it all, without an error toast");
+    sent.borrow_mut().clear();
+    h.get_by_label("Go back").click();
+    h.run_steps(4);
+    let agreed = Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: Some("v0.24.0-rc.1".into()) };
+    assert_eq!(installs(&sent), std::slice::from_ref(&agreed), "{:?}", sent.borrow());
+    // The connection drops mid-download: Resume asks for the same release by name, with the same answer.
+    queue.borrow_mut().extend([
+        Event::Paused { app: "photocraft".into(), download: Some(PausedDownload { done: 10 << 20, total: 120 << 20 }) },
+        Event::JobFinished { app: "photocraft".into(), result: Err(artcraft_launcher_core::protocol::PAUSED.into()) },
+    ]);
+    h.run_steps(6);
+    sent.borrow_mut().clear();
+    let resumes = h.query_all_by_label_contains("Resume").count();
+    for n in 0..resumes {
+        let node = h.query_all_by_label_contains("Resume").nth(n).expect("still there");
+        node.scroll_to_me();
+        h.run_steps(2);
+        h.query_all_by_label_contains("Resume").nth(n).expect("still there").click();
+        h.run_steps(3);
+    }
+    assert!(installs(&sent).contains(&agreed), "{:?}", sent.borrow());
+    assert!(!installs(&sent).contains(&Command::Install { app: "photocraft".into() }), "{:?}", sent.borrow());
+}
+
+#[test]
+/// A download paused because the connection keeps dropping ends the job as a pause, not a
+/// failure: the agreed request by name survives, and Resume sends it again with the same release
+/// and the same fallback rather than a plain install (#1621).
+fn a_connection_caused_pause_keeps_the_agreed_version() {
+    let (rc, latest) = rc_and_latest();
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0"), latest.clone(), vec![rc, latest]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    queue.borrow_mut().extend([
+        Event::GoBackFallback { app: "photocraft".into(), installed: "0.24.0".into(), chosen: "v0.23.1".into(), fallback: "v0.24.0-rc.1".into() },
+        Event::JobFinished {
+            app: "photocraft".into(),
+            result: Err("PhotoCraft 0.24.0 isn't published, so going back waits for your answer.".into()),
+        },
+    ]);
+    h.run_steps(6);
+    sent.borrow_mut().clear();
+    h.get_by_label("Go back").click();
+    h.run_steps(4);
+    let agreed = Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: Some("v0.24.0-rc.1".into()) };
+    assert_eq!(installs(&sent), std::slice::from_ref(&agreed), "{:?}", sent.borrow());
+    // The connection keeps dropping: the download pauses, and the job ends as a pause that says so.
+    queue.borrow_mut().extend([
+        Event::Paused { app: "photocraft".into(), download: Some(PausedDownload { done: 10 << 20, total: 120 << 20 }) },
+        Event::JobFinished { app: "photocraft".into(), result: Err(artcraft_launcher_core::protocol::PAUSED_BY_CONNECTION.into()) },
+    ]);
+    h.run_steps(6);
+    h.get_by_label_contains("the connection keeps dropping");
+    sent.borrow_mut().clear();
+    let resumes = h.query_all_by_label_contains("Resume").count();
+    for n in 0..resumes {
+        let node = h.query_all_by_label_contains("Resume").nth(n).expect("still there");
+        node.scroll_to_me();
+        h.run_steps(2);
+        h.query_all_by_label_contains("Resume").nth(n).expect("still there").click();
+        h.run_steps(3);
+    }
+    assert!(installs(&sent).contains(&agreed), "{:?}", sent.borrow());
+    assert!(!installs(&sent).contains(&Command::Install { app: "photocraft".into() }), "{:?}", sent.borrow());
+}
+
+#[test]
+/// The version dialog installs the latest release its list names, the row the person picked, and
+/// waits while the check still has an older release on screen.
+fn the_dialog_waits_for_the_latest_release_it_names() {
+    let (rc, latest) = rc_and_latest();
+    let older = windows_photocraft("0.23.0");
+    let (mut h, sent, queue) = version_menu_on(windows_with_msi_photocraft("0.24.0-rc.1"), older.clone(), vec![rc, latest.clone(), older]);
+    h.query_all_by_role_and_label(egui::accesskit::Role::Button, "v0.23.1 (latest release)").next().expect("the latest release is offered").click();
+    h.run_steps(4);
+    assert!(dialog_button(&h, "Install version v0.23.1").accesskit_node().is_disabled(), "v0.23.0 is still the checked release");
+    assert!(h.query_by_label("Install version v0.23.0").is_none(), "the older checked release is never offered");
+    queue.borrow_mut().push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
+    h.run_steps(4);
+    sent.borrow_mut().clear();
+    dialog_button(&h, "Install version v0.23.1").click();
+    h.run_steps(4);
+    assert_eq!(installs(&sent), [Command::InstallChosen { app: "photocraft".into(), tag: "v0.23.1".into(), fallback: None }]);
+}
+
+#[test]
+/// A Debian package can't go back to an older version (nothing could put it back), so the chosen
+/// older version is greyed out with the reason, beside Open.
+fn a_system_package_cant_go_back_and_says_why() {
+    let mut ev = events();
+    ev.push(Event::Detected {
+        app: "photocraft".into(),
+        installed: Some(Installed {
+            version: version::parse("0.4.1"),
+            source: InstallSource::Deb,
+            location: "/usr/bin/photocraft".into(),
+            package: Some("photocraft".into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }),
+    });
+    ev.push(Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.4.0", NOW)), from: Origin::GitHub });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.4.0".into()));
+    h.run_steps(8);
+    let install = h.get_by_label("Install version v0.4.0");
+    assert!(install.accesskit_node().is_disabled(), "a system package can't go back");
+    install.hover();
+    h.run_steps(4);
+    h.get_by_label_contains("isn't available for this kind of install yet");
+    sent.borrow_mut().clear();
+    h.get_by_label("Install version v0.4.0").click();
+    h.run_steps(2);
+    assert!(installs(&sent).is_empty(), "{:?}", sent.borrow());
 }
 
 #[test]
@@ -670,6 +1214,7 @@ fn the_install_folder_fields_default_to_the_hosts_answer() {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let sent = Rc::new(RefCell::new(Vec::new()));
     let mut backend = Some(Fake {
+        downloads: Default::default(),
         events: vec![
             Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(release("photocraft", "0.6.0", NOW)), from: Origin::GitHub },
             Event::Detected { app: "photocraft".into(), installed: None },
@@ -757,7 +1302,15 @@ fn windows_package_harness(
         events.push(Event::Latest { app: (*id).into(), latest: LatestRelease::Found(latest), from: Origin::GitHub });
         events.push(Event::Detected { app: (*id).into(), installed: None });
     }
-    let fake = Fake { events, sent: Rc::default(), manage: true, pictures: Rc::default(), asked: vec![], clock: Rc::new(Cell::new(NOW)) };
+    let fake = Fake {
+        downloads: Default::default(),
+        events,
+        sent: Rc::default(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: vec![],
+        clock: Rc::new(Cell::new(NOW)),
+    };
     let mut backend: Option<Box<dyn Backend>> = Some(Box::new(PlatformFake { inner: fake, platform: Platform { os: Os::Windows, arch: Arch::X64 } }));
     let initial = Rc::new(RefCell::new(None));
     let mut host = PackageHost { initial: initial.clone() };
@@ -868,14 +1421,10 @@ fn a_narrow_settings_row_keeps_its_control_clear_of_its_label() {
     h.get_by_role_and_label(egui::accesskit::Role::Label, "Install new apps as").scroll_to_me();
     h.run_steps(3);
     let label = h.get_by_role_and_label(egui::accesskit::Role::Label, "Install new apps as").rect();
-    // Several combo boxes are on the settings page; the format chooser is the one nearest the
-    // label, whichever column the dialog's size puts it in.
+    // Several combo boxes are on the settings page; the format chooser is the one with this label.
     let combo = h
         .query_all_by_role(egui::accesskit::Role::ComboBox)
-        .min_by_key(|node| {
-            let r = node.rect();
-            ((r.center().x - label.center().x).abs() + (r.center().y - label.center().y).abs()) as i32
-        })
+        .find(|node| node.accesskit_node().label().as_deref() == Some("Install new apps as"))
         .expect("the install-format chooser is on screen")
         .rect();
     assert!(!label.intersects(combo), "the label {label:?} overlaps its combo box {combo:?}");
@@ -895,7 +1444,7 @@ fn drive_launcher(launcher: &mut LauncherUi, ctx: &egui::Context, events: Vec<eg
         events,
         ..Default::default()
     };
-    let _ = ctx.run_ui(input, |root| {
+    let mut out = ctx.run_ui(input, |root| {
         if first {
             first = false;
             root.ctx().request_discard("test: force a second pass");
@@ -903,6 +1452,8 @@ fn drive_launcher(launcher: &mut LauncherUi, ctx: &egui::Context, events: Vec<eg
         launcher.logic(&root.ctx().clone(), &mut NoHost);
         launcher.ui(root, &mut NoHost);
     });
+    // Headless: no renderer consumes texture deltas (pin icons, fonts). Clear before drop.
+    out.textures_delta.clear();
 }
 
 /// Drives one pointer gesture as move, press and release over separate frames, optionally
@@ -954,7 +1505,8 @@ fn drive_accesskit_click(
     two_passes: bool,
 ) {
     let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1180.0, 1200.0));
-    let _ = ctx.run_ui(egui::RawInput { screen_rect: Some(screen_rect), time: Some(time), ..Default::default() }, |_| {});
+    let mut priming = ctx.run_ui(egui::RawInput { screen_rect: Some(screen_rect), time: Some(time), ..Default::default() }, |_| {});
+    priming.textures_delta.clear();
     let passes = if two_passes { 2 } else { 1 };
     for pass in 0..passes {
         ctx.begin_pass(egui::RawInput {
@@ -976,7 +1528,8 @@ fn drive_accesskit_click(
                 });
             });
         });
-        let _ = ctx.end_pass();
+        let mut out = ctx.end_pass();
+        out.textures_delta.clear();
     }
 }
 
@@ -1052,6 +1605,259 @@ fn the_actual_open_button_launches_once_across_a_discarded_pass() {
     assert_eq!(launcher.settings.launches.values().copied().sum::<u32>(), before + 1, "the launch count increments once");
 }
 
+/// What the Open half beside PhotoCraft's update reads out (0.4.1 installed, 0.5.0 out).
+const KEEP_PHOTOCRAFT: &str = "Open 0.4.1 without updating. 0.5.0 stays available.";
+
+/// The commands `sent` holds for `app`: how many launches and how many installs, counting a
+/// batched `InstallAll` (always used on Linux) that includes it.
+fn launches_and_installs(sent: &RefCell<Vec<Command>>, app: &str) -> (usize, usize) {
+    let sent = sent.borrow();
+    let launches = sent.iter().filter(|c| matches!(c, Command::Launch { app: a, .. } if a == app)).count();
+    let installs = sent
+        .iter()
+        .filter(|c| match c {
+            Command::Install { app: a } => a == app,
+            Command::InstallAll { apps } => apps.iter().any(|a| a == app),
+            _ => false,
+        })
+        .count();
+    (launches, installs)
+}
+
+#[test]
+/// While an update waits, the main button is split: Open keeps the installed copy and only opens
+/// it, Update installs. Open, Update and the `⋯` menu sit in that order on one line in the grid
+/// and in the table's narrower action column.
+fn an_update_can_open_the_installed_copy_without_updating() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(8);
+        let open = h.get_by_label(KEEP_PHOTOCRAFT).rect();
+        let update = h.get_by_label("Update to 0.5.0").rect();
+        let menu = h.get_by_label("More actions for PhotoCraft").rect();
+        assert!((open.center().y - update.center().y).abs() < 1.0, "{view:?}: one line: {open:?} {update:?}");
+        assert!(open.right() < update.left() && update.right() < menu.left(), "{view:?}: Open, Update, menu: {open:?} {update:?} {menu:?}");
+
+        sent.borrow_mut().clear();
+        h.get_by_label(KEEP_PHOTOCRAFT).click();
+        h.run_steps(2);
+        assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "{view:?}: Open launches and installs nothing: {:?}", sent.borrow());
+
+        sent.borrow_mut().clear();
+        h.get_by_label("Update to 0.5.0").click();
+        h.run_steps(2);
+        assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 1), "{view:?}: Update installs: {:?}", sent.borrow());
+    }
+}
+
+#[test]
+/// Only an update offers the split: up-to-date apps keep their single Open, and an app not
+/// installed has nothing to open. An update whose download is already here (Retry update) is
+/// split too.
+fn only_a_waiting_update_splits_the_main_button() {
+    let mut ev = events();
+    ev.push(Event::ReadyToInstall { app: "effectcraft".into(), ready: true });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    let splits: Vec<String> = h.query_all_by_label_contains("without updating").filter_map(|n| n.accesskit_node().label()).collect();
+    assert_eq!(splits.len(), 2, "PhotoCraft and EffectCraft wait for updates: {splits:?}");
+    assert!(splits.iter().any(|l| l == "Open 0.5.0 without updating. 0.6.0 stays available."), "{splits:?}");
+    // LightCraft and WordCraft are up to date: each still has one plain Open.
+    assert!(h.query_all_by_label("Open").count() >= 2);
+    h.get_by_label("Retry install");
+
+    sent.borrow_mut().clear();
+    h.get_by_label("Retry update to 0.6.0").click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "effectcraft"), (0, 1), "{:?}", sent.borrow());
+}
+
+#[test]
+/// A newer release with nothing for this computer is no update: the app opens as it is, isn't
+/// counted in Update all, and has no Update button that would fail with "has no download".
+fn a_newer_release_without_a_download_here_is_not_offered_as_an_update() {
+    let ev = no_photocraft_download_here(events());
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update to 0.5.0").is_none(), "nothing to install here");
+    assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none(), "no split without an update");
+    h.get_by_label("Update to 0.6.0");
+    h.get_by_label("Update 1 app");
+    h.get_by_label_contains("0.4.1 · latest 0.5.0");
+    // PhotoCraft's main button is a plain Open, which launches it.
+    // Cards share a row, so PhotoCraft's Open is the one right before its own menu.
+    let menu = h.get_by_label("More actions for PhotoCraft").rect();
+    sent.borrow_mut().clear();
+    h.get_all_by_label("Open")
+        .filter(|n| (n.rect().center().y - menu.center().y).abs() < 1.0 && n.rect().right() <= menu.left())
+        .max_by(|a, b| a.rect().right().total_cmp(&b.rect().right()))
+        .expect("PhotoCraft's Open")
+        .click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "{:?}", sent.borrow());
+}
+
+#[test]
+/// The backend's answer outranks the UI's guess: a release with a Mac download that can't replace
+/// how PhotoCraft was installed (say an AppImage when only a .deb is out) is no update either.
+fn the_backends_installability_answer_decides_an_update() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    let (mut h, _sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_by_label("Update to 0.5.0").is_none(), "the backend can't install it");
+    assert!(h.query_by_label(KEEP_PHOTOCRAFT).is_none());
+    h.get_by_label("Update 1 app");
+    // Still a sign the release is out: a quiet note beside the installed version, saying why.
+    h.get_by_label_contains("0.4.1 · latest 0.5.0").hover();
+    h.run_steps(4);
+    h.get_by_label_contains(OUT_OF_REACH_TIP);
+}
+
+/// The tooltip on the note beside a copy behind a release it can't take.
+const OUT_OF_REACH_TIP: &str = "0.5.0 is out, but ArtCraft Launcher can't install it over this copy.";
+
+#[test]
+/// The note beside a copy behind a release it can't take shows in the table too.
+fn the_table_notes_a_newer_release_that_cant_install_here() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    let (mut h, _) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("0.4.1 · latest 0.5.0").hover();
+    h.run_steps(4);
+    h.get_by_label_contains(OUT_OF_REACH_TIP);
+}
+
+#[test]
+/// A copy its repository updates (a Flatpak from FlatPark) knows nothing of GitHub's latest, so a
+/// newer release there gets no "can't install" note: its repository may well have it.
+fn a_repository_copy_gets_no_out_of_reach_note() {
+    let mut ev = events();
+    ev.push(Event::Detected {
+        app: "lightcraft".into(),
+        installed: Some(Installed {
+            version: version::parse("0.3.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.lightcraft".into(),
+            package: None,
+            externally_managed: true,
+            origin: Some("flatpark".into()),
+            installation: Some("user".into()),
+        }),
+    });
+    ev.push(Event::Installable { app: "lightcraft".into(), installable: false });
+    let (mut h, _) = harness_with(ev, ViewMode::Table, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    assert!(h.query_all_by_label("0.3.0").next().is_some(), "LightCraft's version shows");
+    assert!(h.query_by_label_contains("0.3.0 · latest").is_none(), "no note for a repository copy");
+}
+
+#[test]
+/// Kept on an exact version, the release on screen can be the old track's until the check
+/// finishes, so an install of it is refused for that alone: no "can't install it" note then. And
+/// "Install version X" for a version that can't replace this copy is greyed out with the reason.
+fn a_kept_version_gets_no_out_of_reach_note_and_says_why_it_cant_install() {
+    let mut ev = events();
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label_contains("0.4.1 · latest 0.5.0");
+    h.state_mut()
+        .as_mut()
+        .expect("the harness built the launcher")
+        .settings
+        .versions
+        .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into()));
+    h.run_steps(4);
+    assert!(h.query_by_label_contains("latest 0.5.0").is_none(), "no note while a version is kept");
+    let install = h.get_by_label("Install version v0.5.0");
+    assert!(install.accesskit_node().is_disabled(), "it can't replace this copy");
+    install.hover();
+    h.run_steps(4);
+    h.get_by_label_contains("can't install version v0.5.0 over this copy");
+    sent.borrow_mut().clear();
+    h.get_by_label("Install version v0.5.0").click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "a greyed-out Install sends nothing: {:?}", sent.borrow());
+}
+
+#[test]
+/// A Flatpak its repository updates keeps Reinstall, the launcher's way to run `flatpak update`
+/// on it, where the backend says that update would run.
+fn a_repository_flatpak_keeps_reinstall() {
+    let mut ev = events();
+    ev.push(Event::Detected {
+        app: "lightcraft".into(),
+        installed: Some(Installed {
+            version: version::parse("0.4.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.lightcraft".into(),
+            package: None,
+            externally_managed: true,
+            origin: Some("flatpark".into()),
+            installation: Some("user".into()),
+        }),
+    });
+    ev.push(Event::Installable { app: "lightcraft".into(), installable: true });
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("More actions for LightCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Reinstall");
+}
+
+#[test]
+/// Reinstall only shows where an install would go ahead: an up-to-date copy the backend can't
+/// replace (installed outside the launcher, say) has none, so it can't end in "has no download".
+fn reinstall_needs_an_install_that_would_go_ahead() {
+    for installable in [true, false] {
+        let mut ev = events();
+        ev.push(Event::Installable { app: "lightcraft".into(), installable });
+        let (mut h, sent) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        h.get_by_label("More actions for LightCraft").click();
+        h.run_steps(3);
+        assert_eq!(h.query_by_label("Reinstall").is_some(), installable, "installable: {installable}");
+        if installable {
+            sent.borrow_mut().clear();
+            h.get_by_label("Reinstall").click();
+            h.run_steps(2);
+            assert_eq!(launches_and_installs(&sent, "lightcraft"), (0, 1), "Reinstall installs: {:?}", sent.borrow());
+        }
+    }
+}
+
+/// `events`, with PhotoCraft's 0.5.0 published for Windows only: nothing the test's Mac can install.
+fn no_photocraft_download_here(mut ev: Vec<Event>) -> Vec<Event> {
+    for e in &mut ev {
+        if let Event::Latest { app, latest: LatestRelease::Found(r), .. } = e
+            && app == "photocraft"
+        {
+            for a in &mut r.assets {
+                a.name = "photocraft-0.5.0-windows-x64.msi".into();
+                a.url = "https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-windows-x64.msi".into();
+            }
+        }
+    }
+    ev
+}
+
+#[test]
+/// The details drawer's actions split the same way, and its Open half only opens the app.
+fn the_details_drawer_splits_a_waiting_update_too() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(8);
+    let card = h.get_by_label(KEEP_PHOTOCRAFT).rect();
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    assert_eq!(h.query_all_by_label(KEEP_PHOTOCRAFT).count(), 2, "the card's and the drawer's");
+    sent.borrow_mut().clear();
+    h.get_all_by_label(KEEP_PHOTOCRAFT).find(|n| n.rect() != card).expect("the drawer's Open half").click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "{:?}", sent.borrow());
+}
+
 #[test]
 /// A toast created by logic while no window ran is shown once on the first drawing pass and
 /// expires relative to that pass.
@@ -1059,6 +1865,7 @@ fn a_job_finished_while_hidden_shows_one_fresh_toast_on_the_next_frame() {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let sent = Rc::new(RefCell::new(Vec::new()));
     let backend = Fake {
+        downloads: Default::default(),
         events: vec![Event::JobFinished { app: "photocraft".into(), result: Ok("PhotoCraft updated to 0.5.0".into()) }],
         sent: sent.clone(),
         manage: true,
@@ -1143,8 +1950,15 @@ fn install_locations_survive_settings_save_and_older_settings_use_system_default
 /// the update cards.
 fn keeps_working_with_no_window_then_draws_in_a_new_one() {
     let sent = Rc::new(RefCell::new(Vec::new()));
-    let backend =
-        Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) };
+    let backend = Fake {
+        events: events(),
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    };
     let windowless = egui::Context::default();
     let mut ui = LauncherUi::new(&windowless, Box::new(backend), Settings { notify: false, ..Settings::default() });
     // No window: the backend's news is still taken in.
@@ -1195,9 +2009,25 @@ fn grid_shows_every_status_and_installs_on_click() {
     h.get_by_label_contains("48 MB of 131 MB");
     h.get_by_label("Update all (2)").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
-    assert_eq!(installs.len(), 2, "{installs:?}");
-    assert!(installs.contains(&"photocraft".to_string()) && installs.contains(&"effectcraft".to_string()));
+    assert_update_commands(&sent, &["photocraft", "effectcraft"]);
+}
+
+/// With `batch_updates` off (the default): one `InstallAll` for `apps` on Linux, where updates
+/// are always batched, and one `Install` per app elsewhere.
+fn assert_update_commands(sent: &RefCell<Vec<Command>>, apps: &[&str]) {
+    let mut installs: Vec<Command> =
+        sent.borrow().iter().filter(|c| matches!(c, Command::Install { .. } | Command::InstallAll { .. })).cloned().collect();
+    for c in &mut installs {
+        if let Command::InstallAll { apps } = c {
+            apps.sort();
+        }
+    }
+    installs.sort_by_key(|c| format!("{c:?}"));
+    let mut apps: Vec<String> = apps.iter().map(|a| a.to_string()).collect();
+    apps.sort();
+    let expected =
+        if cfg!(target_os = "linux") { vec![Command::InstallAll { apps }] } else { apps.into_iter().map(|app| Command::Install { app }).collect() };
+    assert_eq!(installs, expected);
 }
 
 #[test]
@@ -1282,9 +2112,10 @@ fn a_dismissed_install_prompt_is_not_called_a_cancelled_download() {
 }
 
 #[test]
-/// A ready update names its version and installs on Retry, while an up-to-date app offers
-/// Reinstall instead of Download again.
-fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again() {
+/// A ready update installs on Retry (the table's narrow button leaves the version to its column,
+/// while its accessible name keeps it), while an up-to-date app offers Reinstall instead of
+/// Download again.
+fn a_kept_update_installs_on_retry_and_an_up_to_date_app_is_not_downloaded_again() {
     let mut ev = events();
     for app in ["effectcraft", "wordcraft"] {
         ev.push(Event::ReadyToInstall { app: app.into(), ready: true });
@@ -1304,6 +2135,30 @@ fn a_kept_update_names_its_version_and_an_up_to_date_app_is_not_downloaded_again
     h.get_by_label("Reinstall");
     h.check_accessibility();
     assert!(h.query_by_label("Download again").is_none());
+}
+
+#[test]
+/// A Retry update button too wide for its slot drops the version instead of pushing the menu out
+/// of the row (#956): it is no wider than an Install button in the same view. Its accessible name
+/// keeps the full label either way.
+fn a_retry_update_button_keeps_to_its_slot_and_leaves_room_for_the_menu() {
+    for view in [ViewMode::Table, ViewMode::Grid] {
+        let mut ev = events();
+        // Two-digit minor, as in the report: "Retry update to 0.12.0".
+        ev.push(Event::Latest {
+            app: "effectcraft".into(),
+            latest: LatestRelease::Found(release("effectcraft", "0.12.0", NOW)),
+            from: Origin::ArtCraftApi,
+        });
+        ev.push(Event::ReadyToInstall { app: "effectcraft".into(), ready: true });
+        let (mut h, _) = harness_with(ev, view, egui::Theme::Dark, true, 1.0);
+        h.run_steps(8);
+        let retry = h.get_by_label("Retry update to 0.12.0").rect();
+        let install = h.query_all_by_label("Install").next().unwrap().rect();
+        let menu = h.get_by_label("More actions for EffectCraft").rect();
+        assert!(retry.width() <= install.width() + 0.5, "{view:?}: retry {retry:?} wider than install {install:?}");
+        assert!(retry.right() <= menu.left(), "{view:?}: retry {retry:?} overlaps menu {menu:?}");
+    }
 }
 
 #[test]
@@ -1391,6 +2246,229 @@ fn table_view_and_light_theme() {
 }
 
 #[test]
+/// Pin floats an app above Name sort; reorder via settings is reflected; Hide clears the pin.
+fn pinning_an_app_keeps_it_on_top_until_unpinned() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    // Name sort would put CADCraft before PhotoCraft; a pin must still win.
+    h.state_mut().as_mut().unwrap().settings.sort = artcraft_launcher_ui_egui::settings::SortKey::Name;
+    h.state_mut().as_mut().unwrap().settings.sort_descending = false;
+    h.run_steps(2);
+    // Card/row pin button (menu Pin to top is covered by pinned_app_menu_offers_unpin).
+    h.get_by_label("Pin PhotoCraft to top").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
+    let ids = h.state().as_ref().unwrap().visible_ids_for_test();
+    assert_eq!(ids.first().copied(), Some("photocraft"), "pinned app stays first under Name sort: {ids:?}");
+    h.state_mut().as_mut().unwrap().settings.pin_app("filmcraft");
+    h.state_mut().as_mut().unwrap().settings.reorder_pinned_to("photocraft", 2);
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["filmcraft".to_string(), "photocraft".to_string()]);
+    assert_eq!(&h.state().as_ref().unwrap().visible_ids_for_test()[..2], &["filmcraft", "photocraft"]);
+    h.get_all_by_label_contains("Reorder").next().expect("pinned rows expose reorder handles");
+}
+
+#[test]
+/// Hiding a pinned app also removes it from the pin list.
+fn hide_clears_pin() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(2);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Hide App").click();
+    h.run_steps(4);
+    assert!(h.state().as_ref().unwrap().settings.pinned.is_empty());
+    assert!(h.state().as_ref().unwrap().settings.hidden.contains("photocraft"));
+}
+
+#[test]
+/// After pinning from the menu, opening it again offers Unpin and clears the pin.
+fn pinned_app_menu_offers_unpin() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Pin to top").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Pin to top").is_none(), "pinned apps must not keep offering Pin to top");
+    h.get_by_label("Unpin").click();
+    h.run_steps(4);
+    assert!(h.state().as_ref().unwrap().settings.pinned.is_empty());
+}
+
+#[test]
+/// Escape during a pin drag restores the order from drag start (live hover already mutated pins).
+fn escape_cancels_pin_drag_and_restores_order() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.pin_app("photocraft");
+        ui.settings.pin_app("filmcraft");
+        ui.settings.pin_app("wordcraft");
+        assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft", "wordcraft"]);
+        ui.begin_pin_drag_for_test("photocraft");
+        // Mid-drag: pointer has already reordered via drop targets.
+        ui.settings.pinned = vec!["filmcraft".into(), "photocraft".into(), "wordcraft".into()];
+    }
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    let ui = h.state().as_ref().unwrap();
+    assert!(!ui.pin_dragging_for_test());
+    assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft", "wordcraft"]);
+}
+
+#[test]
+/// Escape still restores pin order when search hides every app (grid/table never run).
+fn escape_cancels_pin_drag_with_empty_results() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    {
+        let ui = h.state_mut().as_mut().unwrap();
+        ui.settings.pin_app("photocraft");
+        ui.settings.pin_app("filmcraft");
+        ui.begin_pin_drag_for_test("photocraft");
+        ui.settings.pinned = vec!["filmcraft".into(), "photocraft".into()];
+        // Apply search without an intervening empty frame (pointer-up would end the drag).
+        ui.set_search_for_test("zzzz-no-match");
+        assert!(ui.visible_ids_for_test().is_empty());
+        assert!(ui.pin_dragging_for_test());
+    }
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    let ui = h.state().as_ref().unwrap();
+    assert!(!ui.pin_dragging_for_test());
+    assert_eq!(ui.settings.pinned, ["photocraft", "filmcraft"]);
+}
+
+#[test]
+/// Grid shows a Pinned section label once at least one app is pinned.
+fn grid_shows_pinned_section_header() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    assert!(h.query_by_label("Pinned").is_none());
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(4);
+    h.get_by_label("Pinned");
+    h.get_all_by_label_contains("Reorder PhotoCraft").next().expect("pinned card exposes a reorder handle");
+}
+
+#[test]
+/// A pinned table row's grip leads its actions without taking room from them: its Open button is
+/// as wide as an unpinned row's, and the menus stay in one line (#956: a squeezed button pushes
+/// the menu out of the column).
+fn a_pinned_table_row_keeps_its_buttons_in_line() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    // LightCraft and WordCraft are both installed and up to date: each row offers Open.
+    h.state_mut().as_mut().unwrap().settings.pin_app("lightcraft");
+    h.run_steps(4);
+    let grip = h.get_all_by_label_contains("Reorder LightCraft").next().expect("pinned row has a grip").rect();
+    let open_in_row = |menu: egui::Rect| {
+        let row = menu.y_range();
+        h.query_all_by_label("Open").map(|n| n.rect()).find(|r| row.contains(r.center().y)).expect("an Open button in the row")
+    };
+    let (pinned_menu, other_menu) = (h.get_by_label("More actions for LightCraft").rect(), h.get_by_label("More actions for WordCraft").rect());
+    let (pinned_open, other_open) = (open_in_row(pinned_menu), open_in_row(other_menu));
+    assert!(grip.right() <= pinned_open.left(), "grip {grip:?} leads the row's Open {pinned_open:?}");
+    assert!((pinned_open.width() - other_open.width()).abs() < 0.5, "pinned {pinned_open:?} vs unpinned {other_open:?}");
+    assert!((pinned_open.left() - other_open.left()).abs() < 0.5, "pinned {pinned_open:?} vs unpinned {other_open:?}");
+    assert!((pinned_menu.right() - other_menu.right()).abs() < 0.5, "pinned {pinned_menu:?} vs unpinned {other_menu:?}");
+}
+
+#[test]
+fn pin_drag_ignores_targets_clipped_by_the_scroll_viewport() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(6);
+        let pins = vec!["photocraft".to_string(), "lightcraft".to_string(), "wordcraft".to_string()];
+        h.state_mut().as_mut().unwrap().settings.pinned = pins.clone();
+        h.run_steps(4);
+        let grip = h.get_by_label("Reorder PhotoCraft").rect().center();
+        let target = h.get_by_label("WordCraft details").rect();
+        let at = match view {
+            ViewMode::Grid => egui::pos2(target.right() - 10.0, target.bottom() - 20.0),
+            ViewMode::Table => egui::pos2(h.get_by_label("Reorder WordCraft").rect().center().x, target.bottom() - 10.0),
+        };
+        h.hover_at(grip);
+        h.run_steps(2);
+        h.drag_at(grip);
+        h.run_steps(2);
+        h.hover_at(grip + egui::vec2(0.0, -8.0));
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().pin_dragging_for_test(), "{view:?}: real grip starts drag");
+        // Keep the target's layout position, but clip it behind the window footer.
+        h.set_size(egui::vec2(1180.0, at.y + 2.0));
+        h.hover_at(at);
+        h.run_steps(2);
+        assert_eq!(h.state().as_ref().unwrap().settings.pinned, pins, "{view:?}: clipped hover");
+        h.drop_at(at);
+        h.run_steps(2);
+        assert_eq!(h.state().as_ref().unwrap().settings.pinned, pins, "{view:?}: clipped release");
+        assert!(!h.state().as_ref().unwrap().pin_dragging_for_test());
+    }
+}
+
+#[test]
+fn pin_drag_accepts_the_table_grip_column() {
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.pinned = vec!["photocraft".into(), "lightcraft".into(), "wordcraft".into()];
+    h.run_steps(4);
+    let from = h.get_by_label("Reorder PhotoCraft").rect().center();
+    let target = h.get_by_label("Reorder WordCraft").rect();
+    h.hover_at(from);
+    h.run_steps(2);
+    h.drag_at(from);
+    h.run_steps(2);
+    h.hover_at(from + egui::vec2(0.0, -8.0));
+    h.run_steps(2);
+    assert!(h.state().as_ref().unwrap().pin_dragging_for_test());
+    // Release directly in the last column, outside the first app cell's clip rectangle.
+    h.drop_at(egui::pos2(target.center().x, target.bottom() - 2.0));
+    h.run_steps(2);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, ["lightcraft", "wordcraft", "photocraft"]);
+    assert!(!h.state().as_ref().unwrap().pin_dragging_for_test());
+}
+
+#[test]
+/// The card pin button pins without opening the … menu, then offers Unpin {name}.
+fn pin_toggle_button_pins_and_unpins() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Pin PhotoCraft to top").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.pinned, vec!["photocraft".to_string()]);
+    h.get_by_label("Pinned");
+    assert!(h.query_by_label("Pin PhotoCraft to top").is_none());
+    h.get_by_label("Unpin PhotoCraft").click();
+    h.run_steps(4);
+    assert!(h.state().as_ref().unwrap().settings.pinned.is_empty());
+    h.get_by_label("Pin PhotoCraft to top");
+}
+
+#[test]
+/// Hidden apps do not show a pin toggle (Pin to top stays out of their menu too).
+fn hidden_app_has_no_pin_toggle_button() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.hidden.insert("photocraft".into());
+    h.state_mut().as_mut().unwrap().settings.filter = artcraft_launcher_ui_egui::settings::Filter::Hidden;
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::Label, "PhotoCraft");
+    assert!(h.query_by_label("Pin PhotoCraft to top").is_none());
+    assert!(h.query_by_label("Unpin PhotoCraft").is_none());
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Pin to top").is_none());
+}
+
+#[test]
 /// Hide removes an app from All into Hidden Apps; Unhide restores it, clears the hidden set and
 /// returns the filter to All.
 fn hiding_an_app_removes_it_until_it_is_unhidden() {
@@ -1416,6 +2494,65 @@ fn hiding_an_app_removes_it_until_it_is_unhidden() {
     assert!(h.query_by_label("Hidden Apps 1").is_none());
     assert!(h.state().as_ref().unwrap().settings.hidden.is_empty());
     assert_eq!(h.state().as_ref().unwrap().settings.filter, artcraft_launcher_ui_egui::settings::Filter::All);
+}
+
+#[test]
+fn launch_options_are_saved_per_app_and_passed_when_it_opens() {
+    use egui::accesskit::Role;
+    let (mut h, sent) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    let menu = |h: &mut Harness<'static, Option<LauncherUi>>| {
+        h.get_by_label("More actions for WordCraft").click();
+        h.run_steps(3);
+    };
+    menu(&mut h);
+    h.get_by_label("Launch options…").click();
+    h.run_steps(3);
+    let field = "Flags added each time the app is opened";
+    h.get_by_role_and_label(Role::TextInput, field).click();
+    h.get_by_role_and_label(Role::TextInput, field).type_text(r#"--dir "My Docs" --open"#);
+    h.run_steps(3);
+    h.get_by_label("Save").click();
+    h.run_steps(3);
+    assert_eq!(h.state().as_ref().unwrap().settings.launch_flags.get("wordcraft").map(String::as_str), Some(r#"--dir "My Docs" --open"#));
+
+    menu(&mut h);
+    h.get_all_by_label("Open").last().unwrap().click(); // the menu's
+    h.run_steps(3);
+    let args: Vec<String> = ["--dir", "My Docs", "--open"].map(String::from).into();
+    assert!(sent.borrow().contains(&Command::Launch { app: "wordcraft".into(), args }));
+    // The other apps open with nothing added.
+    assert!(!h.state().as_ref().unwrap().settings.launch_flags.contains_key("lightcraft"));
+}
+
+#[test]
+fn launch_options_with_an_unclosed_quote_are_not_saved_or_launched() {
+    use egui::accesskit::Role;
+    let (mut h, sent) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("More actions for WordCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Launch options…").click();
+    h.run_steps(3);
+    let field = "Flags added each time the app is opened";
+    h.get_by_role_and_label(Role::TextInput, field).click();
+    h.get_by_role_and_label(Role::TextInput, field).type_text(r#"--dir "My Docs"#);
+    h.run_steps(3);
+    h.get_by_label("A quote isn't closed.");
+    h.get_by_label("Save").click();
+    h.run_steps(3);
+    assert!(h.state().as_ref().unwrap().settings.launch_flags.is_empty());
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+
+    // Flags edited by hand in the settings file: the app isn't opened with half of them.
+    h.state_mut().as_mut().unwrap().settings.launch_flags.insert("wordcraft".into(), "'oops".into());
+    sent.borrow_mut().clear();
+    h.get_by_label("More actions for WordCraft").click();
+    h.run_steps(3);
+    h.get_all_by_label("Open").last().unwrap().click(); // the menu's
+    h.run_steps(3);
+    assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Launch { .. })));
 }
 
 #[test]
@@ -1536,6 +2673,41 @@ fn the_first_close_to_the_tray_is_explained_once() {
     assert_eq!(host.0.len(), 1, "{:?}", host.0);
     assert_eq!(host.0[0].0, "ArtCraft Launcher is still running");
     assert!(host.0[0].1.contains("tray icon"), "{}", host.0[0].1);
+}
+
+#[test]
+fn community_apps_can_be_hidden_and_restored_in_settings() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(6);
+        assert!(!h.state().as_ref().unwrap().settings.hide_community_apps);
+        assert!(h.query_by_label("SolidCraft details").is_some());
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Hide community apps").click();
+        h.run_steps(2);
+        assert!(h.state().as_ref().unwrap().settings.hide_community_apps);
+        h.get_by_label("Done").click();
+        h.run_steps(4);
+        assert!(h.query_by_label("SolidCraft details").is_none());
+        assert!(h.query_by_label("PhotoCraft details").is_some());
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Hide community apps").click();
+        h.run_steps(2);
+        h.get_by_label("Done").click();
+        h.run_steps(4);
+        assert!(h.query_by_label("SolidCraft details").is_some());
+    }
+}
+
+#[test]
+fn community_visibility_preference_round_trips_and_defaults_off_for_old_settings() {
+    let old: Settings = serde_json::from_str("{}").unwrap();
+    assert!(!old.hide_community_apps);
+    let settings = Settings { hide_community_apps: true, ..old };
+    let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+    assert!(restored.hide_community_apps);
 }
 
 #[test]
@@ -1711,8 +2883,15 @@ fn discord_link_opens_app_when_discord_is_installed() {
 fn looks_again_at_installed_apps_every_few_minutes_not_every_frame() {
     let sent = Rc::new(RefCell::new(Vec::new()));
     let clock = Rc::new(Cell::new(NOW));
-    let mut backend =
-        Some(Fake { events: events(), sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: clock.clone() });
+    let mut backend = Some(Fake {
+        events: events(),
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: clock.clone(),
+    });
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -1778,7 +2957,15 @@ fn the_launcher_updates_itself_and_quits_to_restart() {
     let quit = Rc::new(Cell::new(false));
     let mut host = QuitHost(quit.clone());
     let mut backend = Some(Scripted {
-        inner: Fake { events, sent: sent.clone(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) },
+        inner: Fake {
+            events,
+            sent: sent.clone(),
+            manage: true,
+            pictures: Rc::default(),
+            asked: Vec::new(),
+            downloads: Default::default(),
+            clock: Rc::new(Cell::new(NOW)),
+        },
         later: shared_events.clone(),
     });
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
@@ -1856,16 +3043,17 @@ fn the_current_desktop_setting_is_only_offered_where_the_os_has_desktops() {
 }
 
 #[test]
-/// A feed alert is acknowledged only by OK (persisted), while an inline announcement stays until
-/// its own Dismiss is clicked.
+/// A feed alert is acknowledged only by OK (persisted). An announcement waits in the header's bell,
+/// counted as unread until the bell is opened, and stays listed until its own Dismiss is clicked.
 fn feed_announcements_and_alerts_show_until_dismissed() {
-    use artcraft_launcher_core::feed::Notice;
+    use artcraft_launcher_core::notices::Notice;
     let notice = |id: &str, title: &str, link: Option<&str>| Notice {
         id: id.into(),
         title: title.into(),
         body: format!("{title} body"),
         link: link.map(str::to_string),
         created_at: None,
+        expires: None,
     };
     let sent = Rc::new(RefCell::new(Vec::new()));
     let mut evs = events();
@@ -1873,7 +3061,15 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
         announcements: vec![notice("a1", "CADCraft 1.0 is out", Some("https://getartcraft.com/news"))],
         alerts: vec![notice("x1", "Security update", Some("https://getartcraft.com/security"))],
     });
-    let mut backend = Some(Fake { events: evs, sent, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events: evs,
+        sent,
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -1896,13 +3092,24 @@ fn feed_announcements_and_alerts_show_until_dismissed() {
     h.run_steps(4);
     assert!(h.query_by_label("Security update").is_none());
     assert!(h.state().as_ref().unwrap().settings.dismissed_notices.contains("x1"));
-    // The announcement stays inline until dismissed.
+    // The announcement is not drawn over the apps: only the bell says it is there.
+    assert!(h.query_by_label("CADCraft 1.0 is out").is_none());
+    h.get_by_label("Announcements, 1 unread").click();
+    h.run_steps(4);
     h.get_by_label("CADCraft 1.0 is out");
     h.get_by_label("Learn more");
+    // Opening the bell read it: the count is gone, and stays gone after closing.
+    assert!(h.query_by_label("Announcements, 1 unread").is_none());
+    assert!(h.state().as_ref().unwrap().settings.read_notices.contains("a1"));
     h.get_all_by_label("Dismiss").next().unwrap().click();
     h.run_steps(4);
     assert!(h.query_by_label("CADCraft 1.0 is out").is_none());
     assert!(h.state().as_ref().unwrap().settings.dismissed_notices.contains("a1"));
+    h.get_by_label("No announcements");
+    h.key_press(egui::Key::Escape);
+    h.run_steps(4);
+    assert!(h.query_by_label("No announcements").is_none());
+    assert!(h.query_by_label("Announcements, 1 unread").is_none());
 }
 
 #[test]
@@ -1922,8 +3129,15 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
     ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend =
-        Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events: ev,
+        sent: sent2,
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -1939,10 +3153,133 @@ fn automatic_updates_queue_installs_for_outdated_apps_and_launcher() {
         None,
     );
     h.run_steps(4);
+    assert_update_commands(&sent, &["photocraft", "effectcraft"]);
     let commands = sent.borrow().clone();
-    assert!(commands.contains(&Command::Install { app: "photocraft".into() }), "outdated photocraft should be queued for install: {commands:?}");
-    assert!(commands.contains(&Command::Install { app: "effectcraft".into() }), "outdated effectcraft should be queued for install: {commands:?}");
     assert!(commands.contains(&Command::UpdateLauncher), "launcher update should be queued: {commands:?}");
+}
+
+#[test]
+/// Automatic updates and update notices skip a newer release with nothing for this computer: its
+/// install could only fail. The other update still goes ahead.
+fn automatic_updates_skip_a_release_without_a_download_here() {
+    let ev = no_photocraft_download_here(events());
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let sent2 = sent.clone();
+    let mut backend = Some(Fake {
+        events: ev,
+        sent: sent2,
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { auto_update: true, notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut NoHost);
+                l.ui(ui, &mut NoHost);
+            }
+        },
+        None,
+    );
+    h.run_steps(4);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "{:?}", sent.borrow());
+    assert_eq!(launches_and_installs(&sent, "effectcraft"), (0, 1), "{:?}", sent.borrow());
+    let notified = &h.state().as_ref().expect("the harness built the launcher").settings.notified;
+    assert!(!notified.contains_key("photocraft") && notified.contains_key("effectcraft"), "{notified:?}");
+}
+
+#[test]
+/// FreeBSD: PhotoCraft 0.4.1 sits in /usr/local/bin, installed outside the launcher, and 0.5.0
+/// publishes a matching FreeBSD tarball. The launcher won't replace a system binary, and its
+/// backend says so, so with notifications and automatic updates on there is no Update button or
+/// count, no notice (and 0.5.0 isn't recorded as announced), no install queued; Open still opens it.
+fn a_freebsd_system_binary_is_not_offered_an_update_it_would_refuse() {
+    struct Notices(Rc<RefCell<Vec<String>>>);
+    impl Host for Notices {
+        fn notify(&mut self, title: &str, _body: &str) {
+            self.0.borrow_mut().push(title.to_string());
+        }
+    }
+    let name = "photocraft-0.5.0-freebsd-x86_64.tar.gz";
+    let tarball = Release {
+        assets: vec![Asset {
+            name: name.into(),
+            size: 150 << 20,
+            url: format!("https://github.com/storytold/photocraft/releases/download/v0.5.0/{name}"),
+            sha256: None,
+        }],
+        ..release("photocraft", "0.5.0", NOW - 86_400)
+    };
+    let system = Installed {
+        version: version::parse("0.4.1"),
+        source: InstallSource::Binary,
+        location: "/usr/local/bin/photocraft".into(),
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    };
+    let mut ev = vec![Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(tarball), from: Origin::ArtCraftApi }];
+    for app in &SUITE {
+        ev.push(Event::Detected { app: app.id.into(), installed: (app.id == "photocraft").then(|| system.clone()) });
+    }
+    // What the native backend answers for this copy: an install would refuse it.
+    ev.push(Event::Installable { app: "photocraft".into(), installable: false });
+    ev.push(Event::CheckFinished { at: NOW - 180, source: Source::GitHubApi, rate_limited_until: None });
+
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let notices = Rc::new(RefCell::new(Vec::new()));
+    let fake = Fake {
+        events: ev,
+        sent: sent.clone(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    };
+    let mut backend = Some(PlatformFake { inner: fake, platform: Platform { os: Os::FreeBsd, arch: Arch::X64 } });
+    let host_notices = notices.clone();
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { auto_update: true, notify: true, ..Settings::default() }));
+            }
+            let mut host = Notices(host_notices.clone());
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut host);
+                l.ui(ui, &mut host);
+            }
+        },
+        None,
+    );
+    h.run_steps(8);
+
+    assert!(h.query_by_label("Update to 0.5.0").is_none(), "no Update button");
+    assert!(h.query_by_label_contains("without updating").is_none(), "no split");
+    assert!(h.query_by_label_contains("Update all").is_none() && h.query_by_label("Update 1 app").is_none(), "no update count");
+    assert!(notices.borrow().is_empty(), "no update notice: {:?}", notices.borrow());
+    let launcher = h.state().as_ref().expect("the harness built the launcher");
+    assert!(!launcher.settings.notified.contains_key("photocraft"), "0.5.0 isn't recorded as announced");
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (0, 0), "no automatic install: {:?}", sent.borrow());
+
+    let menu = h.get_by_label("More actions for PhotoCraft").rect();
+    h.get_all_by_label("Open")
+        .filter(|n| (n.rect().center().y - menu.center().y).abs() < 1.0 && n.rect().right() <= menu.left())
+        .max_by(|a, b| a.rect().right().total_cmp(&b.rect().right()))
+        .expect("PhotoCraft's Open")
+        .click();
+    h.run_steps(2);
+    assert_eq!(launches_and_installs(&sent, "photocraft"), (1, 0), "Open still opens it: {:?}", sent.borrow());
 }
 
 #[test]
@@ -1952,8 +3289,15 @@ fn automatic_updates_are_disabled_by_default() {
     ev.push(Event::LauncherUpdate(release("artcraft-launcher", "0.2.0", NOW)));
     let sent = Rc::new(RefCell::new(Vec::new()));
     let sent2 = sent.clone();
-    let mut backend =
-        Some(Fake { events: ev, sent: sent2, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events: ev,
+        sent: sent2,
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if state.is_none()
@@ -1982,7 +3326,15 @@ fn the_footer_names_the_services_behind_what_is_on_screen() {
         let mut evs = events();
         evs.extend(extra);
         let sent = Rc::new(RefCell::new(Vec::new()));
-        let mut backend = Some(Fake { events: evs, sent, manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+        let mut backend = Some(Fake {
+            events: evs,
+            sent,
+            manage: true,
+            pictures: Rc::default(),
+            asked: Vec::new(),
+            downloads: Default::default(),
+            clock: Rc::new(Cell::new(NOW)),
+        });
         let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
             move |ui, state: &mut Option<LauncherUi>| {
                 if state.is_none()
@@ -2015,6 +3367,7 @@ fn web_build_offers_downloads() {
     snapshot(&mut h, "web-grid-dark");
     assert!(h.query_all_by_label("Download for macOS").count() >= 8);
     assert!(h.query_by_label("Install").is_none());
+    assert!(h.query_by_label_contains("without updating").is_none(), "nothing installed to open on the web");
 }
 
 #[test]
@@ -2033,6 +3386,7 @@ fn custom_title_bar_has_window_buttons() {
         manage: true,
         pictures: Rc::default(),
         asked: Vec::new(),
+        downloads: Default::default(),
         clock: Rc::new(Cell::new(NOW)),
     });
     let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
@@ -2057,6 +3411,105 @@ fn custom_title_bar_has_window_buttons() {
     h.step();
     let closes = h.output().viewport_output.values().any(|v| v.commands.contains(&egui::ViewportCommand::Close));
     assert!(closes, "the close button asks the window to close (the shell decides whether that hides it to the tray)");
+}
+
+/// With a dialog open, one click on the custom title bar's Close closes the window: the caption
+/// buttons sit above the dialog's backdrop, as a system title bar does, so the click isn't spent
+/// dismissing the dialog first (#853). The header's own controls beside them still take clicks.
+#[test]
+fn close_button_closes_with_a_dialog_open() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(2);
+    h.get_by_label("Done");
+    h.get_by_label("Close").click();
+    h.step();
+    let closes = h.output().viewport_output.values().any(|v| v.commands.contains(&egui::ViewportCommand::Close));
+    assert!(closes, "the first click on Close closes the window");
+    h.run_steps(2);
+    h.get_by_label("Done");
+}
+
+/// Presses and releases at `pos`, and returns what the window was asked to do.
+fn click_at(h: &mut Harness<'_, Option<LauncherUi>>, pos: egui::Pos2) -> Vec<egui::ViewportCommand> {
+    let mut asked = Vec::new();
+    for pressed in [true, false] {
+        let input = h.input_mut();
+        input.events.push(egui::Event::PointerMoved(pos));
+        input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        h.step();
+        asked.extend(h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()));
+    }
+    h.run_steps(2);
+    asked
+}
+
+/// Above a dialog the caption buttons are for the pointer alone: Tab stays in the dialog, and a
+/// click just beside them is still the backdrop's (#853).
+#[test]
+fn the_lifted_caption_buttons_leave_tab_and_the_backdrop_to_the_dialog() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(6);
+    let tab = |h: &mut Harness<'_, Option<LauncherUi>>| -> String {
+        h.key_press(egui::Key::Tab);
+        h.run_steps(2);
+        let focused = h.root().query_all(egui_kittest::kittest::by()).find(|n| n.accesskit_node().is_focused());
+        focused.map_or(String::new(), |n| n.accesskit_node().label().unwrap_or_default().to_string())
+    };
+    let caption = ["Minimize", "Maximize", "Close"];
+    let reached: Vec<String> = (0..4).map(|_| tab(&mut h)).filter(|l| caption.contains(&l.as_str())).collect();
+    assert_eq!(reached, caption, "without a dialog Tab reaches them in the order they're drawn");
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    assert_eq!(tab(&mut h), "Language", "the first Tab goes to the dialog");
+    for _ in 0..40 {
+        let focused = tab(&mut h);
+        assert!(!caption.contains(&focused.as_str()), "Tab left the dialog for {focused}");
+    }
+    let close = h.get_by_label("Close").rect();
+    let asked = click_at(&mut h, egui::pos2(close.center().x, close.bottom() + 3.0));
+    assert!(asked.is_empty(), "below Close: {asked:?}");
+    assert!(h.query_by_label("Done").is_none(), "a click below Close dismisses the dialog");
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    let minimize = h.get_by_label("Minimize").rect();
+    let asked = click_at(&mut h, egui::pos2(minimize.left() - 3.0, minimize.center().y));
+    assert!(asked.is_empty(), "left of Minimize: {asked:?}");
+    assert!(h.query_by_label("Done").is_none(), "a click left of Minimize dismisses the dialog");
+}
+
+/// The details drawer covers the header, and the window's Close stays under it.
+#[test]
+fn the_details_drawer_keeps_the_caption_buttons_under_it() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(8);
+    let close = h.get_by_label("Close").rect().center();
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    let asked = click_at(&mut h, close);
+    assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
+}
+
+/// The enlarged picture's own Close sits under the custom title bar's Close. With no dialog open
+/// the caption buttons stay in the header, under the picture, so that click closes the picture
+/// and not the window.
+#[test]
+fn the_enlarged_pictures_close_closes_the_picture_not_the_window() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    h.get_by_label("Enlarge picture").click();
+    h.run_steps(4);
+    // The drawer's Close is lower down; the picture's is at the top right, under the title bar.
+    let picture = h.query_all_by_label("Close (Esc)").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).unwrap();
+    let spot = picture.intersect(h.get_by_label("Close").rect());
+    assert!(spot.is_positive(), "the two buttons don't overlap: {picture:?}");
+    let asked = click_at(&mut h, spot.center());
+    assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
+    h.run_steps(4);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1, "the enlarged picture is still open");
 }
 
 /// Maximized, the window's top-right pixel is the screen's corner: there is no resize band there,
@@ -2098,6 +3551,150 @@ fn maximized_the_close_button_reaches_the_screens_corner() {
     // And the window's own corner is still for resizing.
     let asked = click(&mut h, egui::pos2(1180.0 - 0.5, 0.5));
     assert!(asked.iter().any(|c| matches!(c, egui::ViewportCommand::BeginResize(_))), "{asked:?}");
+}
+
+/// A quick drag on an edge only resizes: egui sees it as one spot, so nothing nearby may click (#571).
+#[test]
+fn a_press_on_the_window_edge_only_resizes() {
+    use egui::ViewportCommand as Asked;
+    struct FramelessHost;
+    impl Host for FramelessHost {
+        fn title_bar(&self) -> artcraft_launcher_ui_egui::TitleBar {
+            artcraft_launcher_ui_egui::TitleBar::Custom
+        }
+    }
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    let mut backend = Some(Fake {
+        downloads: Default::default(),
+        events: events(),
+        sent: Rc::new(RefCell::new(Vec::new())),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
+    let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 1200.0)).build_ui_state(
+        move |ui, state: &mut Option<LauncherUi>| {
+            if state.is_none()
+                && let Some(b) = backend.take()
+            {
+                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+            }
+            if let Some(l) = state.as_mut() {
+                l.logic(&ui.ctx().clone(), &mut FramelessHost);
+                // The harness keeps its app 8 px in; a real header starts at the window's top.
+                let window = ui.ctx().content_rect();
+                ui.scope_builder(egui::UiBuilder::new().max_rect(window), |ui| l.ui(ui, &mut FramelessHost));
+            }
+        },
+        None,
+    );
+    h.run_steps(6);
+    let press = |h: &mut Harness<'_, Option<LauncherUi>>, pos: egui::Pos2| -> Vec<Asked> {
+        let mut asked = Vec::new();
+        for pressed in [true, false] {
+            let input = h.input_mut();
+            input.events.push(egui::Event::PointerMoved(pos));
+            input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+            h.step();
+            asked.extend(h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()));
+        }
+        h.run_steps(2);
+        asked
+    };
+    let settings_open =
+        |h: &Harness<'_, Option<LauncherUi>>| h.query_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version").is_some();
+    for label in ["Minimize", "Maximize", "Close", "Settings"] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 2.0));
+        assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label}: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label}: {asked:?}");
+    }
+    assert!(!settings_open(&h), "the gear was pressed through the edge");
+    // The first frame at a new size already covers the new edge, or Close slips out from under it.
+    h.set_size(egui::vec2(1300.0, 1200.0));
+    h.step();
+    let x = h.get_by_label("Close").rect().center().x;
+    let asked = press(&mut h, egui::pos2(x, 2.0));
+    assert!(!asked.iter().any(|c| matches!(c, Asked::Close)), "after growing: {asked:?}");
+    // The first frame after a restore has no edge areas to hit yet, only last frame's full buttons.
+    let press_on_restore = |h: &mut Harness<'_, Option<LauncherUi>>, label: &str, y: f32| -> Vec<Asked> {
+        h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().maximized = Some(true);
+        h.run_steps(3);
+        let x = h.get_by_label(label).rect().center().x;
+        h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().maximized = Some(false);
+        press(h, egui::pos2(x, y))
+    };
+    for label in ["Minimize", "Restore", "Close"] {
+        let asked = press_on_restore(&mut h, label, 4.5);
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label} after restoring: {asked:?}");
+    }
+    // Just below the band, that frame's click is the button's.
+    let asked = press_on_restore(&mut h, "Minimize", 5.5);
+    assert!(asked.contains(&Asked::Minimized(true)), "below the band after restoring: {asked:?}");
+    // A key press still works with the pointer resting on the band, and so does a click below it.
+    let x = h.get_by_label("Minimize").rect().center().x;
+    press(&mut h, egui::pos2(x, 4.5));
+    h.get_by_label("Minimize").focus();
+    h.run_steps(2);
+    h.key_down(egui::Key::Enter);
+    h.step();
+    let asked: Vec<_> = h.output().viewport_output.values().flat_map(|v| v.commands.iter().cloned()).collect();
+    assert!(asked.contains(&Asked::Minimized(true)), "by key: {asked:?}");
+    h.key_up(egui::Key::Enter);
+    h.step();
+    for (label, want) in [("Minimize", Asked::Minimized(true)), ("Maximize", Asked::Maximized(true)), ("Close", Asked::Close)] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 5.5));
+        assert!(asked.contains(&want), "{label} below the band: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label} below the band: {asked:?}");
+    }
+    // A dialog's backdrop reaches the edges too; the press doesn't dismiss it.
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(settings_open(&h));
+    let asked = press(&mut h, egui::pos2(590.0, 1198.0));
+    assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{asked:?}");
+    assert!(settings_open(&h), "the dialog closed on a resize");
+    // Above the dialog the caption buttons have a layer of their own (#853); the band over them still only resizes.
+    for label in ["Minimize", "Maximize", "Close"] {
+        let x = h.get_by_label(label).rect().center().x;
+        let asked = press(&mut h, egui::pos2(x, 2.0));
+        assert!(asked.iter().any(|c| matches!(c, Asked::BeginResize(_))), "{label} over the dialog: {asked:?}");
+        assert!(!asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)), "{label} over the dialog: {asked:?}");
+    }
+    for label in ["Minimize", "Restore", "Close"] {
+        let asked = press_on_restore(&mut h, label, 4.5);
+        assert!(
+            !asked.iter().any(|c| matches!(c, Asked::Minimized(_) | Asked::Maximized(_) | Asked::Close)),
+            "{label} restored over the dialog: {asked:?}"
+        );
+    }
+    assert!(settings_open(&h), "the dialog closed on a resize");
+}
+
+#[test]
+/// Details reuses the action row but must not show a reorder grip — there are no sibling pins to
+/// drop onto in the drawer (pin toggle still appears).
+fn details_drawer_hides_reorder_grip_for_pinned_apps() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(4);
+    h.get_all_by_label_contains("Reorder PhotoCraft").next().expect("grid card still has a reorder grip");
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    // Exactly one Reorder control remains (the grid card behind the drawer), not a second in details.
+    assert_eq!(h.query_all_by_label_contains("Reorder PhotoCraft").count(), 1, "details must not add a reorder grip");
+    // Pin toggle still appears in both the card and the drawer.
+    assert!(h.query_all_by_label("Unpin PhotoCraft").count() >= 2);
+    // Prefer the details … control (last in the tree) over the grid card's.
+    h.get_all_by_label("More actions for PhotoCraft").last().expect("details more menu").click();
+    h.run_steps(3);
+    // Details … menu can Unpin, but Move up/down belong only on the list.
+    h.get_by_label("Unpin");
+    assert!(h.query_by_label("Move up").is_none());
+    assert!(h.query_by_label("Move down").is_none());
 }
 
 #[test]
@@ -2393,6 +3990,7 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
             manage: true,
             pictures: Rc::default(),
             asked: Vec::new(),
+            downloads: Default::default(),
             clock: Rc::new(Cell::new(NOW)),
         });
         let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(width, 900.0)).build_ui_state(
@@ -2412,7 +4010,7 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
         h.run_steps(6);
         snapshot(&mut h, &format!("footer-rate-limited-{width}"));
         // Full or short, the notice says when GitHub can be asked again.
-        let notice = h.get_by_label_contains("in 30 min").rect();
+        let notice = h.get_by_label_contains("check at").rect();
         let checked = h.get_by_label_contains("Checked ").rect();
         // Cut short in a narrow window, but enough of it left to read.
         assert!(notice.width() >= 120.0 && notice.right() <= width, "{width}: notice {notice:?}");
@@ -2431,11 +4029,26 @@ fn the_rate_limit_notice_never_runs_under_the_footer_links() {
 }
 
 #[test]
-/// At 720–1180 px refresh, search, sort and view share one unclipped toolbar row without
-/// overlaps.
+/// From 880 px refresh, search, sort and view share one unclipped toolbar row without overlaps;
+/// narrower, beside the page toggle, the sort picker moves to a second row under them.
 fn toolbar_keeps_navigation_refresh_search_and_view_on_one_unclipped_row() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
-    for width in [720.0, 800.0, 1180.0] {
+    for width in [720.0, 800.0] {
+        h.set_size(egui::vec2(width, 900.0));
+        h.run_steps(6);
+        let refresh = h.get_by_label("Check for updates").rect();
+        let search = h.query_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().rect();
+        let view = h.get_by_label("Show apps as cards").rect();
+        let sort = h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Sort").rect();
+        assert!(refresh.top() > 48.0, "{width}: refresh belongs in the toolbar, not the header: {refresh:?}");
+        assert!((refresh.center().y - search.center().y).abs() < 2.0, "{width}: refresh and search must share a row");
+        assert!(refresh.right() <= search.left() + 1.0, "{width}: refresh overlaps search: {refresh:?}, {search:?}");
+        assert!(search.right() <= view.left() + 1.0 && view.right() <= width, "{width}: search overlaps view or view is clipped");
+        assert!(sort.top() >= search.bottom(), "{width}: sort belongs on the second row: {sort:?}, {search:?}");
+        assert!(sort.left() >= 0.0 && sort.right() <= width, "{width}: sort is outside the window: {sort:?}");
+        h.check_accessibility();
+    }
+    for width in [880.0, 1180.0] {
         h.set_size(egui::vec2(width, 900.0));
         h.run_steps(6);
         let refresh = h.get_by_label("Check for updates").rect();
@@ -2489,6 +4102,7 @@ fn saved_filters_are_migrated_on_ui_construction() {
             manage: true,
             pictures: Rc::default(),
             asked: Vec::new(),
+            downloads: Default::default(),
             clock: Rc::new(Cell::new(NOW)),
         };
         let ui = LauncherUi::new(&egui::Context::default(), Box::new(backend), settings);
@@ -2556,8 +4170,15 @@ impl Host for OsMotion {
 fn short_window(reduce: Rc<Cell<bool>>) -> Harness<'static, Option<LauncherUi>> {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let events = events().into_iter().filter(|e| !matches!(e, Event::Progress { .. })).collect();
-    let mut backend =
-        Some(Fake { events, sent: Rc::default(), manage: true, pictures: Rc::default(), asked: Vec::new(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake {
+        events,
+        sent: Rc::default(),
+        manage: true,
+        pictures: Rc::default(),
+        asked: Vec::new(),
+        downloads: Default::default(),
+        clock: Rc::new(Cell::new(NOW)),
+    });
     let mut host = OsMotion(reduce);
     let mut h =
         test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 500.0)).with_step_dt(1.0 / 60.0).with_max_steps(120).build_ui_state(
@@ -2597,8 +4218,9 @@ fn turn_wheel(h: &mut Harness<'_, Option<LauncherUi>>, lines: f32) {
         source: egui::MouseWheelSource::Wheel,
     };
     let mut raw = egui::RawInput { events: vec![wheel], ..Default::default() };
-    if let Some(l) = h.state() {
-        l.raw_input(&h.ctx, &mut raw);
+    let ctx = h.ctx.clone();
+    if let Some(l) = h.state_mut() {
+        l.raw_input(&ctx, &mut raw);
     }
     for event in raw.events {
         h.event(event);
@@ -2676,6 +4298,196 @@ fn with_animations_on_hovering_a_card_animates() {
 }
 
 #[test]
+fn selected_version_action_previews_its_checked_download_plan() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(4);
+        h.state_mut()
+            .as_mut()
+            .unwrap()
+            .settings
+            .versions
+            .insert("photocraft".into(), artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into()));
+        // Keep PhotoCraft's action visible in either view.
+        h.get_by_role(egui::accesskit::Role::TextInput).click();
+        h.get_by_role(egui::accesskit::Role::TextInput).type_text("PhotoCraft");
+        h.run_steps(4);
+        let pos = h.get_by_label("Install version v0.5.0").rect().center();
+        assert!(h.ctx.content_rect().contains(pos), "the selected-version action must be visible");
+        h.hover_at(pos);
+        h.run_steps(40);
+        h.get_by_label("Disk image (.dmg) · 150 MB");
+    }
+}
+
+#[test]
+fn install_and_update_actions_preview_download_sizes() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        for label in ["Install", "Update to 0.5.0"] {
+            let (mut h, _) = harness(view, egui::Theme::Dark, true);
+            h.run_steps(4);
+            if view == ViewMode::Grid {
+                assert!(h.query_all_by_label("Download size: 150 MB").count() >= 2);
+            }
+            // Keep the action visible as the suite gains more cards.
+            h.get_by_role(egui::accesskit::Role::TextInput).click();
+            h.get_by_role(egui::accesskit::Role::TextInput).type_text(if label == "Install" { "VectorCraft" } else { "PhotoCraft" });
+            h.run_steps(4);
+            let pos = h.get_by_label(label).rect().center();
+            assert!(h.ctx.content_rect().contains(pos), "the download action must be visible before hovering");
+            h.hover_at(pos);
+            h.run_steps(40);
+            h.get_by_label("Disk image (.dmg) · 150 MB");
+            if label == "Update to 0.5.0" {
+                snapshot(&mut h, if view == ViewMode::Grid { "download-size-grid" } else { "download-size-table" });
+            }
+        }
+    }
+}
+
+#[test]
+fn unknown_download_sizes_are_not_presented_as_one_kilobyte() {
+    let mut ev = events();
+    for event in &mut ev {
+        if let Event::Latest { latest: LatestRelease::Found(r), .. } = event {
+            for asset in &mut r.assets {
+                asset.size = 0;
+            }
+        }
+    }
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    h.hover_at(h.get_by_label("Update to 0.5.0").rect().center());
+    h.run_steps(40);
+    assert!(h.query_by_label_contains("Download size:").is_none());
+    assert!(h.query_by_label_contains("Disk image (.dmg) ·").is_none());
+}
+
+#[test]
+fn download_size_preview_uses_the_managed_plan_or_manual_platform_formats() {
+    use artcraft_launcher_core::PackageKind;
+    struct Windows(Fake, Option<(PackageKind, u64)>);
+    impl Backend for Windows {
+        fn send(&mut self, c: Command) {
+            self.0.send(c);
+        }
+        fn poll(&mut self) -> Vec<Event> {
+            self.0.poll()
+        }
+        fn capabilities(&self) -> Capabilities {
+            self.0.capabilities()
+        }
+        fn platform(&self) -> Option<Platform> {
+            Some(Platform { os: Os::Windows, arch: Arch::X64 })
+        }
+        fn now(&self) -> i64 {
+            self.0.now()
+        }
+        fn download_size(&self, app: &str) -> Option<(PackageKind, u64)> {
+            (app == "photocraft").then_some(self.1).flatten()
+        }
+    }
+    for (manage, installer_size, has_plan) in
+        [(false, 100 << 20, true), (false, 0, true), (true, 100 << 20, true), (true, 0, true), (true, 100 << 20, false)]
+    {
+        let mut r = release("photocraft", "0.5.0", NOW);
+        r.assets = [("windows-x64.msi", installer_size), ("windows-x64-portable.zip", 2 << 30), ("linux-x86_64.AppImage", 3 << 20)]
+            .into_iter()
+            .map(|(suffix, size)| Asset {
+                name: format!("photocraft-0.5.0-{suffix}"),
+                size,
+                url: format!("https://github.com/storytold/photocraft/releases/download/v0.5.0/photocraft-0.5.0-{suffix}"),
+                sha256: None,
+            })
+            .collect();
+        artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+        let mut backend = Some(Windows(
+            Fake {
+                events: vec![
+                    Event::Latest { app: "photocraft".into(), latest: LatestRelease::Found(r), from: Origin::ArtCraftApi },
+                    Event::Detected { app: "photocraft".into(), installed: None },
+                    Event::CheckFinished { at: NOW, source: Source::GitHubApi, rate_limited_until: None },
+                ],
+                sent: Rc::default(),
+                manage,
+                pictures: Rc::default(),
+                asked: Vec::new(),
+                downloads: Default::default(),
+                clock: Rc::new(Cell::new(NOW)),
+            },
+            has_plan.then_some((PackageKind::Msi, installer_size)),
+        ));
+        let mut h = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none()
+                    && let Some(b) = backend.take()
+                {
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), Settings { notify: false, ..Settings::default() }));
+                }
+                if let Some(l) = state.as_mut() {
+                    l.logic(&ui.ctx().clone(), &mut NoHost);
+                    l.ui(ui, &mut NoHost);
+                }
+            },
+            None,
+        );
+        h.run_steps(4);
+        // Keep the target card in view regardless of the suite's alphabetical order.
+        h.get_by_role(egui::accesskit::Role::TextInput).click();
+        h.get_by_role(egui::accesskit::Role::TextInput).type_text("PhotoCraft");
+        h.run_steps(4);
+        if manage && has_plan && installer_size > 0 {
+            h.get_by_label("Download size: 100 MB");
+        } else if !manage && installer_size > 0 {
+            h.get_by_label("Download size: 100 MB – 2.0 GB");
+        } else {
+            assert!(
+                h.query_by_label_contains("Download size:").is_none(),
+                "an unknown managed plan or partial manual range must not imply a known size"
+            );
+        }
+        let pos = h.get_by_label(if manage { "Install" } else { "Download for Windows" }).rect().center();
+        assert!(h.ctx.content_rect().contains(pos), "the download action must be visible before hovering");
+        h.hover_at(pos);
+        h.run_steps(40);
+        if installer_size > 0 && (!manage || has_plan) {
+            h.get_by_label_contains("Installer (.msi) · 100 MB");
+        } else {
+            assert!(h.query_by_label_contains("Installer (.msi) ·").is_none());
+        }
+        if manage {
+            assert!(h.query_by_label_contains("Portable (.zip) · 2.0 GB").is_none(), "managed installs download only the planned asset");
+        } else {
+            h.get_by_label_contains("Portable (.zip) · 2.0 GB");
+        }
+        assert!(h.query_by_label_contains("AppImage · 3 MB").is_none());
+        if installer_size > 0 && has_plan {
+            snapshot(&mut h, if manage { "download-size-windows-managed" } else { "download-size-windows-manual" });
+        }
+    }
+}
+
+#[test]
+fn web_download_actions_also_preview_known_sizes() {
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _) = harness(view, egui::Theme::Dark, false);
+        h.run_steps(4);
+        let pos = h.get_all_by_label("Download for macOS").next().unwrap().rect().center();
+        h.hover_at(pos);
+        h.run_steps(40);
+        h.get_by_label("Disk image (.dmg) · 150 MB");
+    }
+}
+
+/// The shell's `raw_input_hook` of the next frame, which hands the runtime the launcher's zoom.
+fn next_frame_input(h: &mut Harness<'_, Option<LauncherUi>>) {
+    let ctx = h.ctx.clone();
+    if let Some(l) = h.state_mut().as_mut() {
+        l.raw_input(&ctx, &mut egui::RawInput::default());
+    }
+}
+
+#[test]
 /// Command-plus-wheel over the main UI raises the global zoom factor.
 fn control_wheel_zooms_the_main_ui() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
@@ -2689,6 +4501,7 @@ fn control_wheel_zooms_the_main_ui() {
         source: egui::MouseWheelSource::Unknown,
     });
     h.step();
+    next_frame_input(&mut h);
     h.run_steps(2);
     assert!(h.ctx.zoom_factor() > before);
 }
@@ -2746,7 +4559,81 @@ fn changelog_shortcuts_zoom_only_the_notes_text() {
     assert_eq!(h.ctx.zoom_factor(), global);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Equals);
     h.run_steps(3);
+    next_frame_input(&mut h);
+    h.run_steps(2);
     assert!(h.ctx.zoom_factor() > global, "main-UI keyboard zoom should still work after closing notes");
+}
+
+#[test]
+/// The notes card grows with the zoomed text, stops at the window, and comes back on reset (#594).
+fn the_notes_card_follows_the_zoom_within_the_window() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(2);
+    h.get_by_label("Release notes").click();
+    h.run_steps(4);
+    let span = |h: &Harness<'_, Option<LauncherUi>>| h.get_by_label("Close").rect().right() - h.get_by_label("Open on GitHub").rect().left();
+    let usual = span(&h);
+    for _ in 0..3 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    assert!(span(&h) > usual * 1.2, "the card kept its width: {usual} -> {}", span(&h));
+    for _ in 0..30 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    let in_window = |h: &Harness<'_, Option<LauncherUi>>| {
+        let window = h.ctx.content_rect();
+        for label in ["Close", "Open on GitHub"] {
+            assert!(window.contains_rect(h.get_by_label(label).rect()), "{label} left {window:?}");
+        }
+    };
+    in_window(&h);
+    // The launcher's smallest window.
+    let full = h.ctx.content_rect().size();
+    h.set_size(egui::vec2(720.0, 500.0));
+    h.run_steps(3);
+    in_window(&h);
+    h.set_size(full);
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    h.run_steps(3);
+    assert!((span(&h) - usual).abs() < 0.5, "reset left the card at {}, was {usual}", span(&h));
+    // Below 100% only the text shrinks.
+    for _ in 0..3 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Minus);
+        h.run_steps(3);
+    }
+    assert!((span(&h) - usual).abs() < 0.5, "zooming out left the card at {}, was {usual}", span(&h));
+}
+
+#[test]
+/// Notes too long to fit take the zoom's extra height too (#594).
+fn long_notes_get_a_taller_card_when_zoomed() {
+    let notes: String = (0..200).map(|n| format!("Line {n}\n\n")).collect();
+    let mut ev = events();
+    for e in &mut ev {
+        if let Event::Latest { latest: LatestRelease::Found(r), .. } = e {
+            r.notes.clone_from(&notes);
+        }
+    }
+    let (mut h, _) = harness_with(ev, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(4);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(2);
+    h.get_by_label("Release notes").click();
+    h.run_steps(4);
+    let bottom = |h: &Harness<'_, Option<LauncherUi>>| h.get_by_label("Close").rect().bottom();
+    let usual = bottom(&h);
+    for _ in 0..3 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.run_steps(3);
+    }
+    assert!(bottom(&h) > usual + 60.0, "the card kept its height: {usual} -> {}", bottom(&h));
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    h.run_steps(3);
+    assert!((bottom(&h) - usual).abs() < 0.5, "reset left the card at {}, was {usual}", bottom(&h));
 }
 
 #[test]
@@ -2781,7 +4668,7 @@ fn an_occupied_folder_asks_before_replacing_it() {
     sent.borrow_mut().clear();
     h.get_by_label("Replace").click();
     h.run_steps(2);
-    assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into() }]);
+    assert_eq!(*sent.borrow(), [Command::Replace { app: "photocraft".into(), path: path.into() }]);
     assert!(h.query_by_label("Replace").is_none());
 }
 
@@ -2856,7 +4743,7 @@ fn opening_an_app_counts_and_frequently_used_puts_the_most_opened_first() {
     assert_eq!(opens.len(), 2);
     opens[1].click(); // WordCraft
     h.run_steps(3);
-    assert!(sent.borrow().contains(&Command::Launch { app: "wordcraft".into() }));
+    assert!(sent.borrow().contains(&Command::Launch { app: "wordcraft".into(), args: vec![] }));
     assert_eq!(h.state().as_ref().unwrap().settings.launches.get("wordcraft"), Some(&1));
     h.run_steps(4);
     let word = h.get_by_label("WordCraft details").rect();
@@ -2901,4 +4788,353 @@ fn an_apps_page_is_a_card_in_the_middle_with_next_and_previous_arrows_and_closes
     h.drop_at(egui::pos2(10.0, 450.0));
     h.run_steps(30);
     assert!(!showing(&h, "photocraft"), "a click outside did not close it");
+}
+
+/// A version pin is distinct from a favorite: the lock names the exact tag and requires confirmation.
+#[test]
+fn version_padlock_confirms_before_unlocking_in_grid_and_table() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let tip = "Version pinned to v0.4.1. Click to unlock.";
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, sent) = harness(view, egui::Theme::Dark, true);
+        h.run_steps(4);
+        h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.4.1".into()));
+        h.run_steps(4);
+        sent.borrow_mut().clear();
+        h.get_by_label(tip).hover();
+        h.run_steps(30);
+        snapshot(&mut h, if view == ViewMode::Grid { "version-lock-grid" } else { "version-lock-table" });
+        h.query_all_by_role_and_label(egui::accesskit::Role::Button, tip).next().unwrap().click();
+        h.run_steps(4);
+        h.get_by_label("Unlock version?");
+        h.get_by_label("PhotoCraft is pinned to v0.4.1. Follow the latest release instead?");
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        assert!(!sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { force: true })));
+        snapshot(&mut h, if view == ViewMode::Grid { "version-unlock-dialog" } else { "version-unlock-table-dialog" });
+        h.get_by_label("Cancel").click();
+        h.run_steps(4);
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        h.get_by_label(tip).click();
+        h.run_steps(4);
+        h.key_press(egui::Key::Escape);
+        h.run_steps(4);
+        assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.4.1".into())));
+        h.get_by_label(tip).click();
+        h.run_steps(4);
+        h.get_by_label("Unlock").click();
+        h.run_steps(4);
+        assert!(!h.state().as_ref().unwrap().settings.versions.contains_key("photocraft"));
+        assert!(h.query_by_label(tip).is_none());
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if !options.versions.contains_key("photocraft"))));
+        assert!(sent.borrow().iter().any(|c| matches!(c, Command::CheckForUpdates { force: true })));
+        assert!(!sent.borrow().iter().any(|c| matches!(c, Command::Install { .. })));
+    }
+}
+
+#[test]
+fn a_version_padlock_does_not_unlock_a_choice_changed_after_confirmation_opened() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.4.1".into()));
+    h.run_steps(4);
+    h.get_by_label("Version pinned to v0.4.1. Click to unlock.").click();
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Pinned("v0.3.0".into()));
+    h.run_steps(4);
+    h.get_by_label("Unlock").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.versions.get("photocraft"), Some(&VersionTrack::Pinned("v0.3.0".into())));
+}
+
+#[test]
+fn favorite_and_nightly_choices_do_not_show_a_version_padlock() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.pin_app("photocraft");
+    h.run_steps(4);
+    assert!(h.query_by_label("Version pinned to v0.4.1. Click to unlock.").is_none());
+    h.state_mut().as_mut().unwrap().settings.versions.insert("photocraft".into(), VersionTrack::Nightly);
+    h.run_steps(4);
+    assert!(h.query_by_label("Version pinned to v0.4.1. Click to unlock.").is_none());
+}
+
+#[test]
+fn launcher_version_padlock_confirms_and_returns_to_settings() {
+    use artcraft_launcher_core::protocol::VersionTrack;
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    h.state_mut().as_mut().unwrap().settings.launcher_version = VersionTrack::Pinned("v0.19.0".into());
+    h.get_by_label("Settings").click();
+    h.run_steps(6);
+    h.get_by_label("Version pinned to v0.19.0. Click to unlock.").click();
+    h.run_steps(4);
+    h.get_by_label("Cancel").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Pinned("v0.19.0".into()));
+    h.get_by_label("Version pinned to v0.19.0. Click to unlock.").click();
+    h.run_steps(4);
+    h.get_by_label("Unlock").click();
+    h.run_steps(4);
+    assert_eq!(h.state().as_ref().unwrap().settings.launcher_version, VersionTrack::Stable);
+    h.get_by_label("Launcher version");
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::Configure(options) if options.launcher_version == VersionTrack::Stable)));
+}
+
+/// Settings › AI agents: the switch, and Add / Remove per MCP client, each sending one command.
+#[test]
+fn ai_agents_switch_and_client_buttons_send_their_commands() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let client = |client, name: &str, installed, added| McpClientState { client, name: name.into(), installed, added, restartable: false };
+    let mut evs = events();
+    evs.push(Event::Mcp {
+        agents: McpAgents {
+            flag_on: true,
+            gateway_found: true,
+            enabled: true,
+            apps: 3,
+            clients: vec![
+                client(McpClient::ClaudeDesktop, "Claude Desktop", true, false),
+                client(McpClient::Cursor, "Cursor", true, true),
+                client(McpClient::LmStudio, "LM Studio", false, false),
+            ],
+            gateway: Some("C:/gw/craft-ai-mcp.exe".into()),
+        },
+    });
+    let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Apps agents can reach: 3").scroll_to_me();
+    h.run_steps(6);
+    snapshot(&mut h, "settings-ai-agents");
+    // Other clients: the configuration in each format, copied with a note saying so.
+    for label in ["Copy JSON", "Copy for VS Code", "Copy for Codex (TOML)"] {
+        h.get_by_label(label).scroll_to_me();
+        h.run_steps(8);
+        h.get_by_label(label).click();
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Configuration copied.").next().is_some(), "{label}");
+    }
+    // The font sources' "Add" button comes last in the tree: it sits in the other column.
+    h.get_all_by_label("Add").next().expect("client Add button").click();
+    h.run_steps(3);
+    h.get_by_label("Remove").click();
+    h.run_steps(3);
+    h.get_by_label("Let AI agents use Craft apps").click();
+    h.run_steps(2);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::ClaudeDesktop, added: true })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::Cursor, added: false })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetAgents { enabled: false })));
+    assert!(
+        !sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::LmStudio, .. })),
+        "a client that isn't installed has no button"
+    );
+}
+
+/// Adding Claude Desktop says why it must restart and offers to do it; the button sends the
+/// restart and goes away. Clients the launcher can't restart get no such offer.
+#[test]
+fn ai_agents_offer_to_restart_a_client_right_after_adding_it() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let agents = |added| McpAgents {
+        flag_on: true,
+        gateway_found: true,
+        enabled: true,
+        apps: 3,
+        clients: vec![
+            McpClientState { client: McpClient::ClaudeDesktop, name: "Claude Desktop".into(), installed: true, added, restartable: true },
+            McpClientState { client: McpClient::ClaudeCode, name: "Claude Code".into(), installed: true, added, restartable: false },
+        ],
+        gateway: Some("C:/gw/craft-ai-mcp.exe".into()),
+    };
+    let machine = Machine { more: vec![Event::Mcp { agents: agents(false) }], ..Default::default() };
+    let (mut h, sent, queue) = versions_harness(machine, None, vec![]);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Quick install").scroll_to_me();
+    h.run_steps(4);
+    assert!(h.query_by_label("Restart Claude Desktop").is_none(), "nothing to restart before adding");
+    // The font sources' "Add" button comes last in the tree: it sits in the other column.
+    let adds: Vec<_> = h.get_all_by_label("Add").collect();
+    adds[0].click();
+    adds[1].click();
+    h.run_steps(2);
+    queue.borrow_mut().push(Event::Mcp { agents: agents(true) });
+    h.run_steps(4);
+    h.get_by_label_contains("loads its MCP servers only when it starts");
+    assert!(h.query_by_label("Restart Claude Code").is_none(), "the launcher can't restart Claude Code");
+    h.get_by_label("Restart Claude Desktop").click();
+    h.run_steps(4);
+    assert!(sent.borrow().iter().any(|c| matches!(c, Command::McpRestartClient { client: McpClient::ClaudeDesktop })));
+    assert!(h.query_by_label("Restart Claude Desktop").is_none(), "offered once");
+    assert!(h.query_all_by_label("Restarting Claude Desktop…").next().is_some(), "a note says it is happening");
+}
+
+/// Without the gateway beside the launcher, Settings says so and offers no switch.
+#[test]
+fn ai_agents_without_the_gateway_offer_no_switch() {
+    let mut evs = events();
+    evs.push(Event::Mcp { agents: artcraft_launcher_core::protocol::McpAgents { flag_on: true, ..Default::default() } });
+    let (mut h, _sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("The Craft gateway (craft-ai-mcp) is not installed beside the launcher.");
+    assert!(h.query_by_label("Let AI agents use Craft apps").is_none());
+}
+
+/// When the gateway went away while agents were on, they can still be turned off and the entries
+/// removed; only adding is gone.
+#[test]
+fn ai_agents_left_on_without_the_gateway_can_still_be_turned_off() {
+    use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
+    let client = |client, name: &str, added| McpClientState { client, name: name.into(), installed: true, added, restartable: false };
+    let mut evs = events();
+    evs.push(Event::Mcp {
+        agents: McpAgents {
+            flag_on: true,
+            gateway_found: false,
+            enabled: true,
+            apps: 2,
+            clients: vec![client(McpClient::ClaudeDesktop, "Claude Desktop", false), client(McpClient::Cursor, "Cursor", true)],
+            gateway: None,
+        },
+    });
+    let (mut h, sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_label("Apps agents can reach: 2").scroll_to_me();
+    h.run_steps(6);
+    // Only the font sources' "Add" remains.
+    assert_eq!(h.query_all_by_label("Add").count(), 1, "nothing to add without the gateway");
+    h.get_by_label("Remove").click();
+    h.run_steps(3);
+    h.get_by_label("Let AI agents use Craft apps").click();
+    h.run_steps(3);
+    let sent = sent.borrow();
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetClient { client: McpClient::Cursor, added: false })));
+    assert!(sent.iter().any(|c| matches!(c, Command::McpSetAgents { enabled: false })));
+}
+
+/// With the `AI-MCP` flag off, Settings shows nothing about agents, and nothing to switch flags:
+/// they are set in `ArtCraft/flags.toml` or `CRAFT_FLAGS` only.
+#[test]
+fn ai_agents_stay_hidden_until_their_flag_is_on() {
+    use artcraft_launcher_core::protocol::McpAgents;
+    let mut evs = events();
+    evs.push(Event::Mcp { agents: McpAgents { flag_on: false, gateway_found: true, enabled: true, apps: 3, clients: vec![], gateway: None } });
+    let (mut h, _sent) = harness_with(evs, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(h.query_by_label("Let AI agents use Craft apps").is_none(), "no agents box without the flag");
+    assert!(h.query_by_label("Experimental features").is_none(), "flags have no switches in Settings");
+    assert!(h.query_by_label("AI agents (MCP)").is_none());
+}
+
+#[test]
+/// The header holds the Settings gear, the announcements bell and the Stable/Pre-Release switch
+/// side by side at a wide width, a narrow one and one that needs the compact logo, in both
+/// themes, without overlap or clipping.
+fn header_fits_the_gear_the_bell_and_the_pre_release_switch() {
+    use artcraft_launcher_core::notices::Notice;
+    use egui_kittest::kittest::Queryable;
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        // 440 is narrow enough that the wordmark gives way to the compact ArtCraft mark.
+        for width in [1180.0_f32, 560.0, 440.0] {
+            let mut evs = events();
+            evs.push(Event::Notices {
+                announcements: vec![Notice {
+                    id: "a1".into(),
+                    title: "CADCraft 1.0 is out".into(),
+                    body: "CADCraft 1.0 is out body".into(),
+                    link: None,
+                    created_at: None,
+                    expires: None,
+                }],
+                alerts: vec![],
+            });
+            let (mut h, _) = harness_with(evs, ViewMode::Grid, theme, true, 1.0);
+            h.set_size(egui::vec2(width, 800.0));
+            h.run_steps(2);
+            h.state_mut().as_mut().unwrap().settings.nightly_enabled = true;
+            h.run_steps(6);
+            let top = |h: &Harness<'static, Option<LauncherUi>>, label: &str| {
+                h.query_all_by_label(label)
+                    .map(|node| node.rect())
+                    .min_by(|a, b| a.top().total_cmp(&b.top()))
+                    .unwrap_or_else(|| panic!("{label} missing at {width}"))
+            };
+            let controls = [
+                ("Settings", top(&h, "Settings")),
+                ("bell", top(&h, "Announcements, 1 unread")),
+                ("Stable", top(&h, "Stable")),
+                ("Developer Builds", top(&h, "Developer Builds")),
+            ];
+            for (name, rect) in &controls {
+                assert!(rect.left() >= 0.0 && rect.right() <= width + 0.5, "{name} is clipped at {width}: {rect:?}");
+                assert!(rect.width() > 1.0, "{name} has no room at {width}: {rect:?}");
+            }
+            for (i, (a, ra)) in controls.iter().enumerate() {
+                for (b, rb) in &controls[i + 1..] {
+                    assert!(!ra.shrink(0.5).intersects(rb.shrink(0.5)), "{a} overlaps {b} at {width}: {ra:?} {rb:?}");
+                }
+            }
+            let name = format!("header-{}-{}", if theme == egui::Theme::Dark { "dark" } else { "light" }, width as u32);
+            snapshot(&mut h, &name);
+        }
+    }
+}
+
+/// Wide Settings is two columns that scroll together: neither may run far past the other, or one
+/// side scrolls through empty space (Fonts once left the right column twice the left's height).
+#[test]
+fn wide_settings_columns_are_about_the_same_height() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.set_size(egui::vec2(1180.0, 4000.0));
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(8);
+    let top = h.get_by_label("Language").accesskit_node().bounding_box().unwrap().y0 - 40.0;
+    let split = h.get_by_label("Install folder").accesskit_node().bounding_box().unwrap().x0 - 20.0;
+    let (mut left, mut right) = (top, top);
+    for node in h.root().children_recursive() {
+        let node = node.accesskit_node();
+        let mut ancestor = node.parent();
+        let mut in_dialog = false;
+        while let Some(parent) = ancestor {
+            in_dialog |= parent.role() == egui::accesskit::Role::Dialog;
+            ancestor = parent.parent();
+        }
+        let footer = matches!(node.label().as_deref(), Some("Quit ArtCraft Launcher" | "Done"));
+        let Some(rect) = node.bounding_box().filter(|rect| in_dialog && !footer && rect.y0 >= top) else { continue };
+        let column = if rect.x0 < split { &mut left } else { &mut right };
+        *column = column.max(rect.y1);
+    }
+    let (left, right) = (left - top, right - top);
+    assert!(left.max(right) < 1.5 * left.min(right), "left column {left:.0}px, right {right:.0}px");
+    snapshot(&mut h, "settings-wide-columns");
+}
+
+/// Without app management (the web build) the right column would have nothing in it, so wide
+/// Settings is one column: every checkbox starts at the same left edge.
+#[test]
+fn settings_without_app_management_is_one_column() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, false);
+    h.set_size(egui::vec2(1180.0, 4000.0));
+    h.run_steps(8);
+    h.get_by_label("Settings").click();
+    h.run_steps(8);
+    let mut edges: Vec<i64> = h
+        .root()
+        .children_recursive()
+        .filter(|node| node.accesskit_node().role() == egui::accesskit::Role::CheckBox)
+        .filter_map(|node| node.accesskit_node().bounding_box().map(|rect| rect.x0.round() as i64))
+        .collect();
+    edges.dedup();
+    assert!(!edges.is_empty() && edges.iter().all(|x| *x == edges[0]), "checkboxes start at {edges:?}");
 }

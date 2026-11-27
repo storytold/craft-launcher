@@ -219,6 +219,8 @@ pub fn apply(ctx: &egui::Context, choice: ThemeChoice) {
         style.spacing.interact_size.y = CONTROL_H;
         style.spacing.menu_margin = egui::Margin::same(4);
         style.spacing.window_margin = egui::Margin::same(4);
+        // Keep egui's default delay so scanning many pin/grip squares does not flash tips.
+        style.interaction.tooltip_delay = 0.5;
         style.text_styles = [
             (TextStyle::Heading, FontId::new(24.0, display())),
             (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
@@ -296,7 +298,12 @@ type Face<'a> = (&'a str, &'static [u8], &'a [([u8; 4], f32)], FontFamily);
 /// `cjk`: the CJK language to draw, whose system font is added behind everything else, or `None`
 /// for a language that needs no CJK font.
 pub fn install_fonts(ctx: &egui::Context, cjk: Option<Lang>) {
-    ctx.set_fonts(font_definitions(cjk));
+    let definitions = font_definitions(cjk);
+    // The craft-ui runtime keeps its own record of the fonts.
+    #[cfg(not(target_arch = "wasm32"))]
+    craft_ui::fonts::load(ctx, definitions);
+    #[cfg(target_arch = "wasm32")]
+    ctx.set_fonts(definitions);
 }
 
 /// The font stack both the native and the web app use.

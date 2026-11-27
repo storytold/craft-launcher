@@ -29,18 +29,44 @@ pub enum Command {
     Install {
         app: String,
     },
-    /// `Install`, writing over what [`Event::Occupied`] reported.
+    /// Install or update every app in `apps` together: their downloads run as for [`Command::Install`],
+    /// but where the platform needs a permission prompt (polkit on Linux, elevation on Windows)
+    /// the batch shares one prompt instead of one per app. Apps already running a job are left out.
+    InstallAll {
+        apps: Vec<String>,
+    },
+    /// `Install`, writing over what [`Event::Occupied`] reported. `path` is the path the user
+    /// agreed to overwrite: if the install would now write somewhere else, nothing is replaced and
+    /// the user is asked again.
     Replace {
         app: String,
+        path: String,
+    },
+    /// `Install`, for the release `tag` the person picked by name in the version dialog. When it is
+    /// older than the installed copy, the install goes back to it the way it goes back to a pinned
+    /// version, also when `tag` is the latest release, whose track then goes on following new
+    /// releases. Nothing is installed when the release to install is no longer `tag`. `fallback` is
+    /// the release the person agreed may be put back if going back fails
+    /// ([`Event::GoBackFallback`]). A backend that can't go back refuses it.
+    InstallChosen {
+        app: String,
+        tag: String,
+        fallback: Option<String>,
     },
     Uninstall {
         app: String,
     },
+    /// Start an installed app, passing `args` (the user's launch flags) on its command line.
     Launch {
         app: String,
+        args: Vec<String>,
     },
     /// Show the installed app in the file manager.
     Reveal {
+        app: String,
+    },
+    /// Create a desktop shortcut for an installed app (Windows).
+    CreateDesktopShortcut {
         app: String,
     },
     /// Pause a running download, keeping what's downloaded so far (`Install` resumes it).
@@ -61,6 +87,26 @@ pub enum Command {
     },
     /// Change how the backend behaves.
     Configure(BackendOptions),
+    /// The app ids in the order they are on screen. Downloads run one at a time, and those
+    /// waiting go in this order.
+    DownloadOrder(Vec<String>),
+
+    /// Ask for the AI agents state (the gateway, the switch, the MCP clients).
+    McpState,
+    /// Let AI agents use the Craft apps (writes the gateway's app list), or stop them (removes the
+    /// list and the client entries the launcher added).
+    McpSetAgents {
+        enabled: bool,
+    },
+    /// Add the one gateway entry to an MCP client's configuration, or remove it.
+    McpSetClient {
+        client: McpClient,
+        added: bool,
+    },
+    /// Quit an MCP client and start it again, so it loads the entry just added.
+    McpRestartClient {
+        client: McpClient,
+    },
 }
 
 /// Parent folders for new installs. Existing installations keep their recorded location.
@@ -99,6 +145,10 @@ pub struct BackendOptions {
     pub launcher_version: VersionTrack,
     /// Offer pre-releases (`0.6.0-rc.1`) as updates.
     pub prereleases: bool,
+    /// Consent for the separate nightly context; never switches the stable install channel.
+    pub nightly_enabled: bool,
+    /// Downloads that may run at once (1 to 4; 0 for no limit).
+    pub simultaneous_downloads: u8,
 }
 
 /// The answer to "what's the latest release of this app?".
@@ -109,6 +159,17 @@ pub enum LatestRelease {
     None,
     /// Couldn't find out (offline, rate-limited, unreadable answer).
     Failed(String),
+}
+
+/// Nightly-only scheduling metadata. A previous success is not advanced by an offline,
+/// budget-limited or server-limited attempt. This contains no install capability or body cache.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NightlyStatus {
+    pub attempted_at: Option<i64>,
+    pub verified_at: Option<i64>,
+    pub retry_at: Option<i64>,
+    pub stale: bool,
+    pub message: Option<String>,
 }
 
 /// What a running job is doing.
@@ -124,6 +185,8 @@ pub enum JobPhase {
         total: u64,
     },
     Verifying,
+    /// Another app is downloading; this one's download starts when its turn comes.
+    Queued,
     /// The system's installer is busy with another app; this one goes next.
     Waiting,
     /// Waiting on the OS installer (MSI) or copying files.
@@ -141,11 +204,23 @@ pub struct PausedDownload {
 
 /// The `JobFinished` error a paused job ends with (not a failure).
 pub const PAUSED: &str = "paused";
+/// What a job paused by a connection that keeps dropping says instead of plain [`PAUSED`]: the
+/// download stopped where it was, and Resume continues it. Still a pause, not a failure
+/// ([`is_paused`]), so the UI keeps the request that started the job and sends it again.
+pub const PAUSED_BY_CONNECTION: &str = "The download paused because the connection keeps dropping. Press Resume to continue where it stopped.";
 /// The `JobFinished` error a cancelled job ends with (not a failure).
 pub const CANCELLED: &str = "cancelled";
 /// The `JobFinished` error of an install whose system prompt (password, Windows Installer) the
 /// user dismissed after the download finished (not a failure).
 pub const INSTALL_CANCELLED: &str = "install cancelled";
+
+/// Whether a `JobFinished` error means the job paused rather than failed: the download is kept
+/// and Resume sends the request that started the job again ([`Command::InstallChosen`] included,
+/// with the release and fallback the person agreed to). A pause ends a job as an error, so every
+/// pause outcome is recognised here, in one place: never by matching the message where it is shown.
+pub fn is_paused(error: &str) -> bool {
+    error == PAUSED || error == PAUSED_BY_CONNECTION
+}
 
 /// Which service an app's release information came from (the footer names them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -172,7 +247,8 @@ pub enum Source {
     Feed,
     /// The GitHub REST API.
     GitHubApi,
-    /// github.com release pages (no API quota; used when the API is rate-limited).
+    /// github.com release pages (no API quota; used whenever the API gave no answer, whether it
+    /// was out of quota or couldn't be reached).
     GitHubPages,
     /// Saved answers from an earlier check.
     Cache,
@@ -192,6 +268,8 @@ impl Source {
 /// Something the backend wants the UI to know.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    /// A signed startup catalog has replaced the bundled app list.
+    CatalogUpdated,
     Latest {
         app: String,
         latest: LatestRelease,
@@ -209,8 +287,8 @@ pub enum Event {
     LauncherRestarting,
     /// News and alerts from ArtCraft's release feed (replaces any earlier set).
     Notices {
-        announcements: Vec<crate::feed::Notice>,
-        alerts: Vec<crate::feed::Notice>,
+        announcements: Vec<crate::notices::Notice>,
+        alerts: Vec<crate::notices::Notice>,
     },
     Detected {
         app: String,
@@ -232,14 +310,44 @@ pub enum Event {
         app: String,
         ready: bool,
     },
+    /// Whether installing `app`'s latest release over the installed copy would go ahead: the copy
+    /// isn't one the launcher leaves to whatever installed it (a system binary, a repository
+    /// package), the release is on the chosen version track, and it has a package that can
+    /// replace the copy the way it was installed (an AppImage with an AppImage, an MSI with an
+    /// MSI), or the copy is a repository Flatpak that `flatpak update` refreshes. Only sent while
+    /// a copy is installed. When the release or the copy changes, it comes in the same batch as,
+    /// and before, the `Latest` or `Detected` that says so, so no update is offered, announced or
+    /// started automatically before this is known; when only the plan changes (a settings change,
+    /// a check or an install ending), it comes on its own.
+    Installable {
+        app: String,
+        installable: bool,
+    },
     /// A new install stopped before downloading because `path` already exists and the launcher
     /// didn't put it there. `Command::Replace` installs over it.
     Occupied {
         app: String,
         path: String,
     },
+    /// Going back from the installed `installed` (a version with no release of its own) to
+    /// `chosen` stopped before changing anything: if it fails, only `fallback`, a published
+    /// pre-release with the installed numbers, can be put back. `Command::InstallChosen` with
+    /// `fallback` goes ahead once the person agrees.
+    GoBackFallback {
+        app: String,
+        installed: String,
+        chosen: String,
+        fallback: String,
+    },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
+    /// Clears the app's in-progress job phase in the UI.
     JobFinished {
+        app: String,
+        result: Result<String, String>,
+    },
+    /// A short status toast that is not tied to an install/uninstall job phase
+    /// (e.g. creating a desktop shortcut). Does not clear `Progress` state.
+    Notice {
         app: String,
         result: Result<String, String>,
     },
@@ -250,6 +358,10 @@ pub enum Event {
         key: String,
         result: Result<Vec<u8>, String>,
     },
+    NightlyStatus {
+        app: String,
+        status: NightlyStatus,
+    },
     CheckStarted,
     CheckFinished {
         /// Unix seconds.
@@ -258,6 +370,52 @@ pub enum Event {
         /// GitHub refused more API calls until this time (Unix seconds).
         rate_limited_until: Option<i64>,
     },
+
+    /// The AI agents state: the gateway, the switch and the MCP clients. Sent when Settings asks,
+    /// after detection and after any change.
+    Mcp {
+        agents: McpAgents,
+    },
+    /// An AI agents operation failed (e.g. writing a client configuration). Carries a short, user-facing
+    /// message; the UI shows it as an error toast so a failed toggle is never silent.
+    McpError {
+        message: String,
+    },
+}
+
+/// An MCP client the launcher can add the gateway entry to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum McpClient {
+    ClaudeDesktop,
+    ClaudeCode,
+    Cursor,
+    LmStudio,
+}
+
+/// One MCP client on this machine: whether it looks installed, and whether our entry is in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct McpClientState {
+    pub client: McpClient,
+    pub name: String,
+    pub installed: bool,
+    pub added: bool,
+    /// The launcher can quit and start it again ([`Command::McpRestartClient`]).
+    pub restartable: bool,
+}
+
+/// AI agents and the Craft apps: the `craft-ai-mcp` gateway (found beside the launcher?), the
+/// switch, and the MCP clients.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct McpAgents {
+    /// The `AI-MCP` feature flag: without it Settings shows nothing about agents.
+    pub flag_on: bool,
+    pub gateway_found: bool,
+    pub enabled: bool,
+    /// How many installed apps agents can reach (those with a CLI).
+    pub apps: usize,
+    pub clients: Vec<McpClientState>,
+    /// The gateway clients start, while agents are on: what Copy puts in a configuration.
+    pub gateway: Option<String>,
 }
 
 /// What a backend can do on this platform.
@@ -268,20 +426,52 @@ pub struct Capabilities {
     /// What "show in file manager" is called here (`Show in Finder`).
     pub reveal_label: &'static str,
     /// The launcher can update itself in place and restart (an installed build, not a dev build or
-    /// a Flatpak from anywhere but the release bundle). Without it the UI offers the download
-    /// instead. A backend may only know this once it has found a newer launcher, so the UI reads
+    /// a Flatpak from anywhere but the release bundle), and the newer release has the file this copy
+    /// updates from. Without it the UI offers the download instead. A backend may only know this
+    /// once it has found a newer launcher, so the UI reads
     /// it again on [`Event::LauncherUpdate`].
     pub self_update: bool,
+    /// Offer "Add desktop shortcut" for installed apps (Windows desktop only).
+    pub desktop_shortcuts: bool,
 }
 
 /// The UI's view of a backend.
 pub trait Backend {
+    /// Admitted mutation/Open jobs, including the gap before their first progress event.
+    /// Must be a cheap in-memory query; metadata discovery is not an active job.
+    fn has_active_jobs(&self) -> bool {
+        false
+    }
+
+    /// Create an independent context using the same backend implementation.
+    fn nightly_context(&self) -> Option<Box<dyn Backend>> {
+        None
+    }
+
+    /// Whether this (nightly) context can discover and install new pre-release builds: the
+    /// platform's Nightly signing trust is configured. Without it the UI offers neither, while
+    /// copies already installed stay manageable. Backends with no signing trust of their own
+    /// (test doubles) can install whatever they are asked to.
+    fn nightly_available(&self) -> bool {
+        true
+    }
     fn send(&mut self, command: Command);
     /// Events since the last call, oldest first.
     fn poll(&mut self) -> Vec<Event>;
+    /// The package format the running launcher was installed as, which updating itself
+    /// downloads. `None` while unknown (the desktop finds out once a newer launcher is out) or
+    /// where it doesn't update itself.
+    fn launcher_kind(&self) -> Option<PackageKind> {
+        None
+    }
     fn capabilities(&self) -> Capabilities;
     /// The machine apps would be installed on (on the web: the visitor's, best guess).
     fn platform(&self) -> Option<Platform>;
+    /// The cached package format and published bytes the next install would download.
+    /// Unknown until the backend has planned it; this must never perform installer discovery.
+    fn download_size(&self, _app: &str) -> Option<(PackageKind, u64)> {
+        None
+    }
     /// Unix seconds now.
     fn now(&self) -> i64;
 }

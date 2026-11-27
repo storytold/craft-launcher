@@ -52,6 +52,10 @@
 	Install	インストール
 	Update to {v}	{v} に更新
 	Open	開く
+	Open {version}	{version} を開く
+	Open {installed} without updating. {latest} stays available.	更新せずに {installed} を開きます。{latest} は後からでもインストールできます。
+	{latest} is out, but ArtCraft Launcher can't install it over this copy.	{latest} が公開されていますが、ArtCraft Launcher はこのコピーに上書きしてインストールできません。
+	ArtCraft Launcher can't install version {version} over this copy.	ArtCraft Launcher はバージョン {version} をこのコピーに上書きしてインストールできません。
 	Download for {os}	{os} 版をダウンロード
 	Download	ダウンロード
 	Coming soon	近日公開
@@ -62,7 +66,7 @@
 	Downloading…	ダウンロード中…
 	Reconnecting…	再接続中…
 	Verifying…	検証中…
-	Installing, then restarting…	インストール完了後再起動します…
+	Installing, then restarting…	インストールして再起動します…
 	Installing…	インストール中…
 	Removing…	アンインストール中…
 	Pause download	ダウンロードを一時停止
@@ -74,7 +78,15 @@
 	Show in Explorer	エクスプローラーで表示
 	Show in Files	ファイルマネージャーで表示
 	Reinstall	再インストール
+	Add desktop shortcut	デスクトップにショートカットを追加
 	Uninstall…	アンインストール…
+	Launch options…	起動オプション…
+	{name} launch options	{name} の起動オプション
+	Flags added each time the app is opened	アプリを開くたびに追加されるフラグ
+	Separate flags with spaces. Quote a value that has spaces in it.	フラグはスペースで区切ってください。スペースを含む値は引用符で囲んでください。
+	A quote isn't closed.	引用符が閉じられていません。
+	{name} wasn't opened: a quote in its launch options isn't closed.	{name} を開けませんでした: 起動オプションの引用符が閉じられていません。
+	Save	保存
 	All releases	すべてのリリース
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} が利用可能です。
 	Dismiss	閉じる
@@ -90,6 +102,7 @@
 	ArtCraft Launcher {version}	ArtCraft Launcher {version}
 	Only when I ask	手動で確認したときのみ
 	Automatically download and install updates	更新を自動でダウンロードしてインストール
+	Ask for permission once when updating all apps	すべてのアプリを更新するときは権限を一度だけ求める
 	Notify me when an installed app has an update	インストール済みアプリに更新があるときに通知する
 	Include pre-releases (betas and release candidates)	プレリリース（ベータ版とリリース候補）を含める
 	Installing on Linux	Linux へのインストール
@@ -99,6 +112,7 @@
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
+	Hide ArtCraft Launcher from the Dock while in the background	バックグラウンド実行中はArtCraft LauncherをDockに表示しない
 	ArtCraft Launcher is still running	ArtCraft Launcher は実行中です
 	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	トレイに入りました。トレイのアイコンから開くか終了できます。設定でこの動作を無効にすることもできます。
 	Show the window on the current desktop	現在のデスクトップにウィンドウを表示
@@ -125,6 +139,14 @@
 	Apps on this computer	このコンピューターのアプリ
 	Installed apps with a newer version	新しいバージョンがあるインストール済みアプリ
 	Apps you can install	インストールできるアプリ
+	Pin to top	上部にピン留め
+	Unpin	ピン留めを外す
+	Pinned	ピン留め
+	Pin {name} to top	{name}を上部にピン留め
+	Unpin {name}	{name}のピン留めを外す
+	Reorder {name}	{name}の順序を変更
+	Move up	上へ
+	Move down	下へ
 	Hide App	アプリを非表示
 	Unhide App	アプリを再表示
 	Hidden Apps	非表示のアプリ
@@ -150,9 +172,14 @@
 	Update cancelled	更新をキャンセルしました
 	Uninstall cancelled	アンインストールをキャンセルしました
 	Retry install	インストールを再試行
+	Retry update	更新を再試行
 	Retry update to {version}	{version} への更新を再試行
 	The download is still here. It's checked again, then installed.	ダウンロードしたファイルはそのまま残っています。もう一度検証してからインストールします。
 	Waiting for another app…	他のアプリを待機中…
+	Waiting for another download…	他のダウンロードを待機中…
+	Simultaneous downloads	同時ダウンロード数
+	No limit	無制限
+	Downloads running together share your connection, so each one is slower.	同時に行うダウンロードは接続を共有するため、それぞれが遅くなります。
 	Waiting for other installs…	他のインストールを待機中…
 
 # Package formats offered for download (PackageKind::label)
@@ -166,6 +193,7 @@
 	Tarball (.tar.gz)	tarball (.tar.gz)
 
 # Contextual: each app's tagline, keyed by app id
+artcraft	AI image and video creation	AI画像・動画生成
 photocraft	Image editing	画像編集
 vectorcraft	Vector illustration	ベクターイラスト
 filmcraft	Video editing, color and sound	動画編集、カラー、サウンド
@@ -176,7 +204,9 @@ designcraft	Page layout and publishing	ページレイアウトと出版
 wordcraft	Writing and document design	文書作成とデザイン
 deckcraft	Presentations and slide shows	プレゼンテーションとスライドショー
 gridcraft	Spreadsheets and data	表計算とデータ
+craft-anything	Find out how any software works, then craft your own	あらゆるソフトウェアの仕組みを知り、自分だけのものを作る
 solidcraft	Parametric 3D CAD	パラメトリック3D CAD
+mailcraft	Mail, calendar and contacts	メール、カレンダー、連絡先
 cadcraft	Computer-aided design and drafting	コンピューター支援設計と製図
 soundcraft	Recording, editing and mixing audio	オーディオの録音、編集、ミックス
 figcraft	Interface design and prototyping	インターフェースデザインとプロトタイピング
@@ -195,8 +225,8 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	まだ確認していません
-	GitHub's hourly limit was reached; full details return in {min} min	GitHub の時間あたりの上限に達しました。{min} 分後に詳細が表示されます
-	GitHub limit hit; back in {min} min	GitHub の上限に達しました。{min} 分後に復旧します
+	Next GitHub check at {time}	次回の GitHub 確認: {time}
+	Next check at {time}	次回の確認: {time}
 	Installing for {platform}	{platform} にインストール
 	Downloads for {platform}	{platform} 用のダウンロード
 	No downloads for this system	このシステム用のダウンロードはありません
@@ -295,6 +325,7 @@ filter	Installed	インストール済み
 
 # Message templates (@msg): toasts from the backend. {placeholders} match any text.
 @msg	Couldn't open {name}: {e}	{name} を開けませんでした: {e}
+@msg	ArtCraft Launcher couldn't start its window on {backend}: {e}	ArtCraft Launcher のウィンドウを {backend} で起動できませんでした: {e}
 @msg	Download cancelled	ダウンロードをキャンセルしました
 @msg	{name} updated to {version}	{name} を {version} に更新しました
 @msg	{name} installed: {version}	{name} をインストールしました: {version}
@@ -359,20 +390,25 @@ filter	Installed	インストール済み
 	ArtCraft on GitHub	GitHub の ArtCraft
 	Join the ArtCraft Discord	ArtCraft Discord に参加
 @plural	ArtCraft Launcher · {n} update available|ArtCraft Launcher · {n} updates available	ArtCraft Launcher · {n} 件の更新があります
+
+	Download size: {size}	ダウンロードサイズ: {size}
 	Install folder	インストール先フォルダー
 	Default install folder	既定のインストール先フォルダー
 	System default	システムの既定
 	Browse…	参照…
 	Use default	既定を使用
 	New installs use this folder. Updates stay in their current location.	新しいインストールにはこのフォルダーを使用します。更新時は現在の場所を維持します。
-	Custom folders use AppImage on Linux.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
-	On Linux, custom folders use AppImage format.	Linuxで任意のフォルダーにインストールする場合はAppImageを使用します。
+	Custom folders use AppImage on Linux.	Linux では、任意のフォルダーにインストールする場合は AppImage を使用します。
+	On Linux, custom folders use AppImage format.	Linux で任意のフォルダーを指定した場合は、AppImage 形式を使用します。
 	The system manages install locations here.	この環境ではシステムがインストール先を管理します。
 @msg	couldn't use install folder {path}: {reason}	インストール先フォルダー {path} を使用できませんでした: {reason}
-@msg	this release has no AppImage for a custom install folder	このリリースには任意のインストール先フォルダーで使用できるAppImageがありません
+@msg	this release has no AppImage for a custom install folder	このリリースには任意のインストール先フォルダーで使用できる AppImage がありません
 @msg	custom install folders aren't supported on this system	このシステムではインストール先フォルダーの変更に対応していません
-@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcherでインストールされたものではありません
-@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finderで削除してください。
+@msg	{path} already exists and wasn't installed by ArtCraft Launcher	{path} は既に存在し、ArtCraft Launcher でインストールされたものではありません
+@msg	couldn't move {path} to Trash ({reason}). Remove it in Finder instead.	{path} をゴミ箱に移動できませんでした（{reason}）。Finder で削除してください。
+@msg	Desktop shortcut created for {name}	{name} のデスクトップショートカットを作成しました
+@msg	Couldn't create the desktop shortcut: {e}	デスクトップショートカットを作成できませんでした: {e}
+@msg	A desktop shortcut named {name} already exists	「{name}」というデスクトップショートカットは既に存在します
 	Apps are placed inside this folder.	アプリはこのフォルダー内に配置されます。
 	Replace what's there?	既存の項目を置き換えますか？
 	{path} already exists. Installing {name} will overwrite it.	{path} は既に存在します。{name} をインストールすると上書きされます。
@@ -383,7 +419,7 @@ filter	Installed	インストール済み
 	Frequently used	よく使う順
 	Next app	次のアプリ
 	Previous app	前のアプリ
-	Show {n} more changes	さらに{n}件の変更を表示
+	Show {n} more changes	さらに {n} 件の変更を表示
 	Last updated: {date}	最終更新: {date}
 column	Version	バージョン
 column	Author	作者
@@ -398,3 +434,133 @@ column	Author	作者
 	Older launcher versions require a manual reinstall.	古いランチャーに戻すには手動で再インストールする必要があります。
 	Your files may not open in older versions.	古いバージョンではファイルを開けない場合があります。
 	Enable automatic installs in Settings to follow new nightly builds.	新しいナイトリービルドを自動的に受け取るには、設定で自動インストールを有効にしてください。
+texturecraft	3D texture painting	3Dテクスチャペイント
+texturecraft	Paint materials on 3D models and export textures.	3Dモデルにマテリアルを塗り、テクスチャを書き出します。
+texturecraft	Materials	マテリアル
+texturecraft	Mesh maps	メッシュマップ
+texturecraft	Bake mesh maps and use smart materials.	メッシュマップをベイクし、スマートマテリアルを使用します。
+texturecraft	Paint textures on 3D models.	3Dモデルにテクスチャを描きます。
+	Hide community apps	コミュニティアプリを非表示
+materialcraft	Procedural material design	プロシージャルマテリアルの作成
+materialcraft	Build materials with node graphs.	ノードグラフでマテリアルを作成します。
+materialcraft	Create tileable PBR materials and export texture maps.	継ぎ目なく繰り返せるPBRマテリアルを作成し、テクスチャマップを書き出します。
+materialcraft	Node graphs	ノードグラフ
+materialcraft	Combine noises, patterns and filters.	ノイズ、パターン、フィルターを組み合わせます。
+materialcraft	Live previews	リアルタイムプレビュー
+materialcraft	Preview materials in 2D and on 3D models.	マテリアルを2Dと3Dモデル上でプレビューします。
+	Advanced	詳細設定
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak バンドルを ArtCraft OCI に移行する（実験的）
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	更新時に対応するパッケージがあれば ArtCraft 公式アプリを移行します。なければ引き続きバンドルを使用します。
+	The OCI repository is a preview with GPG verification disabled.	OCI リポジトリはプレビュー版で、GPG 検証は無効になっています。
+anicraft	2D vector animation	2Dベクターアニメーション
+anicraft	Vector animation on a timeline you know.	慣れ親しんだタイムラインでのベクターアニメーション。
+anicraft	Open-source 2D vector animation, built in pure Rust.	ピュアRustで構築されたオープンソースの2Dベクターアニメーション。
+anicraft	Familiar by design	直感的なデザイン
+anicraft	Stage, tools, timeline, layers, keyframes, Properties and Library sit where animators expect them, with onion skinning for in-betweening.	ステージ、ツール、タイムライン、レイヤー、キーフレーム、プロパティ、ライブラリが期待通りの場所に配置され、オニオンスキンも備えています。
+anicraft	Tweens that ease	滑らかなトゥイーン
+anicraft	Classic tweens with eight easing presets and custom ease curves, plus shape tweens that morph one vector contour into another.	8つのイージングプリセットとカスタム曲線を持つクラシックトゥイーン、そしてシェイプトゥイーンに対応。
+	Version pinned to {version}. Click to unlock.	バージョンは {version} に固定されています。クリックすると固定を解除します。
+	Unlock version?	バージョンの固定を解除しますか？
+	{app} is pinned to {version}. Follow the latest release instead?	{app} は {version} に固定されています。代わりに最新リリースを使用しますか？
+	Unlock	固定を解除
+
+	AI agents	AI エージェント
+	While this is on, AI apps that use MCP, such as Claude, Cursor or LM Studio, can work with every installed Craft app through one entry. While it is off, no agent can reach them, and the entries added here are removed.	これをオンにしている間、Claude、Cursor、LM Studio など MCP を使う AI アプリは、1 つの登録でインストール済みのすべての Craft アプリを使えます。オフにすると、どのエージェントもアクセスできなくなり、ここで追加した登録は削除されます。
+	Quick install	クイックインストール
+	Adds the Craft apps to that client. Restart the client afterwards.	そのクライアントに Craft アプリを追加します。追加後にクライアントを再起動してください。
+	Other clients	その他のクライアント
+	Copy the configuration and paste it into the client's MCP settings.	設定をコピーして、クライアントの MCP 設定に貼り付けてください。
+	Copy JSON	JSON をコピー
+	Copy for VS Code	VS Code 用にコピー
+	Copy for Codex (TOML)	Codex 用にコピー (TOML)
+	Configuration copied.	設定をコピーしました。
+	{client} loads its MCP servers only when it starts, so the Craft apps appear after a restart. Restarting closes {client}, including a reply it is still writing.	{client} は起動時にのみ MCP サーバーを読み込むため、Craft アプリは再起動後に表示されます。再起動すると {client} が終了し、作成中の返信も中断されます。
+	Restart {client}	{client} を再起動
+	Restarting {client}…	{client} を再起動しています…
+	The Craft gateway (craft-ai-mcp) is not installed beside the launcher.	Craft ゲートウェイ (craft-ai-mcp) がランチャーと同じ場所にインストールされていません。
+	Let AI agents use Craft apps	AI エージェントに Craft アプリの使用を許可
+	Apps agents can reach: {count}	エージェントが使えるアプリ: {count}
+	Added	追加済み
+	Remove	削除
+	Add	追加
+# The page toggle (Apps, Fonts), the Fonts page and its download switch in Settings.
+	Fonts	フォント
+	Allow font downloads	フォントのダウンロードを許可
+	Couldn't change the font download setting: {e}	フォントのダウンロード設定を変更できませんでした: {e}
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	フォントは、インストールするときにだけ、そのソースからダウンロードされます。フォントのプレビューには、下に専用の設定があります。この設定はすべての Craft アプリで共通です。
+	Sources	ソース
+	Apps	アプリ
+	Fonts for every Craft app	すべての Craft アプリで使えるフォント
+# The font preview settings in Settings' Fonts box.
+	Show font previews	フォントのプレビューを表示
+	Font preview server	フォントプレビューサーバー
+	Couldn't use this server: {e}	このサーバーは使用できません: {e}
+	Couldn't change the font previews setting: {e}	フォントのプレビュー設定を変更できませんでした: {e}
+	Set by {name} in the environment.	環境変数 {name} で設定されています。
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	インストールしていないフォントは、このサーバーからプレビューを表示します。インストール時もまずこのサーバーを試します。空欄の場合は既定のサーバーを使います。
+
+# New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
+	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
+	Open stable	Open stable
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
+	Show installed copy	Show installed copy
+	Stable	Stable
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
+	Try nightly builds	Try nightly builds
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
+
+# Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	プレリリースチャンネルは、毎晩最新のコードで自動的に更新されます。バグ、パフォーマンスや安定性の問題、未完成の機能が含まれている場合があります。重要な作業には、安定版チャンネルをご利用ください。
+
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	プレビュー版では新機能をいち早く試せますが、不具合があり、未保存の作業が失われるおそれがあります。
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	プレビュー版は独自の設定とデータを使用して安定版アプリと並行してインストールされるため、安定版の環境は変更されません。新しいバージョンで保存したファイルは安定版で開けない場合があるため、重要なファイルをプレビュー版で開く前に、必ずバックアップしてください。
+	You can turn this off at any time without deleting your installed developer builds or their data.	この設定はいつでもオフにできます。インストール済みのプレビュー版アプリやそのデータは削除されません。
+
+# Nightly build calendar date (date-only, never publication time or a local timestamp).
+	{month}/{day}/{year}	{year}/{month}/{day}
+
+# Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
+	Nightly builds	ナイトリービルド
+	Discover nightly builds (Developer Builds page)	ナイトリービルドを探す（Developer Builds ページ）
+	Separate installs, settings and data. Turning this off keeps installed copies and their data.	インストール先、設定、データは別々です。オフにしてもインストール済みのコピーとそのデータは保持されます。
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
+	Betas and release candidates can replace your stable installation.	ベータ版やリリース候補版は、安定版のインストールを置き換える場合があります。
+
+# Nightly status (English fallback; localization is maintained upstream).
+	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
+	Last verified: {ago}	Last verified: {ago}
+	Last attempt: {ago}	Last attempt: {ago}
+	Retry available in {minutes} min	Retry available in {minutes} min
+	Announcements	お知らせ
+	No announcements	お知らせはありません
+@plural	Announcements, {n} unread|Announcements, {n} unread	お知らせ、未読 {n} 件
+# Going back from a copy whose version has no release of its own (English fallback; translations are maintained in craft-i18n).
+	Go back to {version}?	Go back to {version}?
+	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.
+	Go back	Go back
+	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
+	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.

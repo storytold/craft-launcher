@@ -43,7 +43,7 @@ pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot) -> Optio
     #[cfg(target_os = "macos")]
     return macos::detect(app);
     #[cfg(windows)]
-    return windows::detect(app);
+    return windows::detect(app).map(|found| with_recorded_release(found, manifest.releases.get(app.id)));
     #[cfg(target_os = "linux")]
     return linux::detect(app, snapshot);
     #[cfg(target_os = "freebsd")]
@@ -52,7 +52,7 @@ pub fn detect(app: &CraftApp, manifest: &Manifest, snapshot: &Snapshot) -> Optio
     None
 }
 
-fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
+pub(crate) fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
     let rec = manifest.apps.get(app.id)?;
     if !rec.path.exists() {
         return None;
@@ -67,7 +67,44 @@ fn from_manifest(app: &CraftApp, manifest: &Manifest) -> Option<Installed> {
         source: InstallSource::Launcher,
         location: rec.path.display().to_string(),
         package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
     })
+}
+
+/// `found` with the full version of the release the launcher installed it from, where Windows
+/// Installer dropped that version's pre-release label (`0.24.0-rc.1` registered as `0.24.0`). Only
+/// for the exact registration that install recorded (same product code) and the same numbers:
+/// any other copy keeps the version it reports, and a pre-release is never guessed from the
+/// numbers alone. Other platforms record the full version themselves (macOS `<App>Version`,
+/// Debian and RPM `~rc.1`, the launcher's own record of what it unpacked).
+#[cfg(any(windows, test))]
+pub(crate) fn with_recorded_release(mut found: Installed, recorded: Option<&crate::manifest::InstalledRelease>) -> Installed {
+    if let Some(full) = recorded_full_version(&found, recorded) {
+        found.version = Some(full);
+    }
+    found
+}
+
+/// The full version `recorded` gives `found`, when the record describes that very copy: the same
+/// registration (product code) and the same major, minor and patch numbers as the version Windows
+/// reports. Only the pre-release label is what Windows Installer drops, never the numbers, so a
+/// record with other numbers is not read at all.
+pub(crate) fn recorded_full_version(found: &Installed, recorded: Option<&crate::manifest::InstalledRelease>) -> Option<version::Version> {
+    let recorded = recorded?;
+    let same_copy = found.source == InstallSource::Msi && found.package.as_deref().is_some_and(|code| code.eq_ignore_ascii_case(&recorded.package));
+    let full = version::parse(&recorded.version)?;
+    let seen = found.version.as_ref()?;
+    (same_copy && seen.pre.is_empty() && (seen.major, seen.minor, seen.patch) == (full.major, full.minor, full.patch)).then_some(full)
+}
+
+/// Whether the launcher's record `recorded` describes the copy `found` the same way detection
+/// reads it ([`recorded_full_version`]). The fallback decision asks this, so it reads the record
+/// only where detection does: a record whose numbers don't match the copy is no record of it, and
+/// nothing may be concluded from it.
+pub(crate) fn record_describes(found: Option<&Installed>, recorded: Option<&crate::manifest::InstalledRelease>) -> bool {
+    found.is_some_and(|found| recorded_full_version(found, recorded).is_some())
 }
 
 /// Whether a file name is an AppImage of the app with asset stems `stems`, and the version its
@@ -168,14 +205,19 @@ pub mod macos {
 
     /// Where a `.app` might be: the system and the user's Applications folders.
     pub fn candidates(app: &CraftApp) -> Vec<PathBuf> {
-        let bundle = format!("{}.app", app.name);
-        let mut out = vec![Path::new("/Applications").join(&bundle)];
-        if let Some(home) = dirs::home_dir() {
-            out.push(home.join("Applications").join(&bundle));
+        let home = dirs::home_dir();
+        let mut out = Vec::new();
+        for name in app.mac_bundle_names() {
+            let bundle = format!("{name}.app");
+            out.push(Path::new("/Applications").join(&bundle));
+            if let Some(home) = &home {
+                out.push(home.join("Applications").join(&bundle));
+            }
         }
         out
     }
 
+    /// Finds an installed `.app` bundle for `app` in the standard Applications folders.
     pub fn detect(app: &CraftApp) -> Option<Installed> {
         candidates(app).iter().find_map(|p| read_bundle(app, p))
     }
@@ -191,10 +233,32 @@ pub mod macos {
         }
         // `<App>Version` carries the full version including a pre-release suffix;
         // CFBundleShortVersionString only has the numbers.
-        let full_key = format!("{}Version", app.name);
-        let text =
-            [full_key.as_str(), "CFBundleShortVersionString", "CFBundleVersion"].iter().find_map(|k| dict.get(k).and_then(plist::Value::as_string));
-        Some(Installed { version: text.and_then(version::parse), source: InstallSource::MacApp, location: path.display().to_string(), package: None })
+        let full_keys: Vec<String> = app.mac_bundle_names().map(|n| format!("{n}Version")).collect();
+        let text = full_keys
+            .iter()
+            .map(String::as_str)
+            .chain(["CFBundleShortVersionString", "CFBundleVersion"])
+            .find_map(|k| dict.get(k).and_then(plist::Value::as_string));
+        Some(Installed {
+            version: text.and_then(version::parse),
+            source: InstallSource::MacApp,
+            location: path.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
+    }
+}
+
+/// Newest version first; an entry with no version comes after every entry with one.
+#[cfg(any(windows, test))]
+fn newest_first(a: Option<&version::Version>, b: Option<&version::Version>) -> std::cmp::Ordering {
+    match (b, a) {
+        (Some(x), Some(y)) => version::compare(x, y),
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (None, None) => std::cmp::Ordering::Equal,
     }
 }
 
@@ -295,12 +359,7 @@ pub mod windows {
                 out.push(MsiInstall { product_code: code, version, exe, scope: record_context(hive) });
             }
         }
-        out.sort_by(|a, b| match (&b.version, &a.version) {
-            (Some(x), Some(y)) => version::compare(x, y),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
+        out.sort_by(|a, b| super::newest_first(a.version.as_ref(), b.version.as_ref()));
         out
     }
 
@@ -415,7 +474,15 @@ pub mod windows {
     pub fn detect(app: &CraftApp) -> Option<Installed> {
         let m = msi_installs(app).into_iter().next()?;
         let location = m.exe.or_else(|| exe_in_any_scope(app, m.version.as_ref())).map_or_else(|| app.name.to_string(), |p| location_text(&p));
-        Some(Installed { version: m.version, source: InstallSource::Msi, location, package: Some(m.product_code) })
+        Some(Installed {
+            version: m.version,
+            source: InstallSource::Msi,
+            location,
+            package: Some(m.product_code),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
     }
 }
 
@@ -432,7 +499,7 @@ pub mod linux {
     /// pacman, Flatpak). Read once per detection pass.
     pub fn packages() -> Vec<Package> {
         let ours = |name: &str| {
-            artcraft_launcher_core::SUITE.iter().any(|a| {
+            artcraft_launcher_core::hosted_catalog::apps().iter().any(|a| {
                 [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak]
                     .iter()
                     .any(|m| crate::packages::candidate_names(a, *m).iter().any(|n| n == name))
@@ -441,7 +508,14 @@ pub mod linux {
         let t = Duration::from_secs(10);
         let mut out = Vec::new();
         let mut add = |manager, user, list: Vec<(String, String)>| {
-            out.extend(list.into_iter().filter(|(n, _)| ours(n)).map(|(name, version)| Package { manager, name, version, user }));
+            out.extend(list.into_iter().filter(|(n, _)| ours(n)).map(|(name, version)| Package {
+                manager,
+                name,
+                version,
+                user,
+                origin: None,
+                installation: None,
+            }));
         };
         if let Some(list) = capture("dpkg-query", &["-W", "-f", "${Package}|${db:Status-Status}|${Version}\n"], t) {
             add(InstallSource::Deb, false, packages::parse_dpkg(&list));
@@ -462,25 +536,30 @@ pub mod linux {
         // named ones included (`--system` is only the default one).
         let mut user_ids = Vec::new();
         for scope in [&["--user"][..], &[]] {
-            let list_args = [&["list", "--app"][..], scope, &[&arch, "--columns=application,version"]].concat();
+            let list_args = [&["list", "--app"][..], scope, &[&arch, "--columns=application,version,origin,installation"]].concat();
             if let Some(list) = crate::process::capture_flatpak(&list_args, t) {
-                let mut flatpaks = packages::parse_flatpak_list(&list);
+                let mut flatpaks = packages::parse_flatpak_list_with_origin(&list);
                 // The unscoped list repeats the user installs: the user pass already has them.
-                flatpaks.retain(|(id, _)| !user_ids.contains(id));
+                flatpaks.retain(|(id, _, _, _)| !user_ids.contains(id));
                 if !scope.is_empty() {
-                    user_ids.extend(flatpaks.iter().map(|(id, _)| id.clone()));
+                    user_ids.extend(flatpaks.iter().map(|(id, _, _, _)| id.clone()));
                 }
                 // Bundles built from a release tarball often list no version: ask Flatpak directly.
-                for (id, version) in flatpaks
-                    .iter_mut()
-                    .filter(|(id, v)| v.is_empty() && artcraft_launcher_core::SUITE.iter().any(|a| a.bundle_ids().any(|b| b == *id)))
-                {
-                    let info_args = [&["info"][..], scope, &[&arch, id]].concat();
+                for (id, version, _, installation) in flatpaks.iter_mut().filter(|(id, v, _, _)| {
+                    v.is_empty() && artcraft_launcher_core::hosted_catalog::apps().iter().any(|a| a.bundle_ids().any(|b| b == *id))
+                }) {
+                    let scope_arg = packages::flatpak_scope(if scope.is_empty() { installation.as_deref() } else { Some("user") });
+                    let info_args = ["info", &scope_arg, &arch, id];
                     if let Some(v) = crate::process::capture_flatpak(&info_args, t).as_deref().and_then(packages::parse_flatpak_info) {
                         *version = v;
                     }
                 }
-                add(InstallSource::Flatpak, !scope.is_empty(), flatpaks);
+                let is_user = !scope.is_empty();
+                out.extend(flatpaks.into_iter().filter(|(n, _, _, _)| ours(n)).map(|(name, version, origin, installation)| {
+                    let user_install = is_user || installation.as_deref() == Some("user");
+                    let resolved_installation = installation.or_else(|| if user_install { Some("user".into()) } else { Some("system".into()) });
+                    Package { manager: InstallSource::Flatpak, name, version, user: user_install, origin, installation: resolved_installation }
+                }));
             }
         }
         out
@@ -501,11 +580,7 @@ pub mod linux {
 
     /// Where a package put the app's binary: on `PATH`, else `/usr/bin/<id>`.
     fn binary_on_path(id: &str) -> String {
-        std::env::var_os("PATH")
-            .and_then(|path| std::env::split_paths(&path).map(|d| d.join(id)).find(|p| p.is_file()))
-            .unwrap_or_else(|| PathBuf::from("/usr/bin").join(id))
-            .display()
-            .to_string()
+        crate::process::which(id).unwrap_or_else(|| PathBuf::from("/usr/bin").join(id)).display().to_string()
     }
 
     /// `~/Applications`, where the launcher puts AppImages (the AppImageLauncher convention).
@@ -554,17 +629,119 @@ pub mod linux {
         appimages_in(app, &appimage_dirs())
     }
 
+    /// How the app is installed, in this order: an AppImage the launcher put down, a package
+    /// (deb, rpm, pacman or Flatpak), a package the launcher knows no name for but which owns the
+    /// app's binary ([`owned_install`]), else a binary found on disk.
     pub fn detect(app: &CraftApp, snapshot: &Snapshot) -> Option<Installed> {
         if let Some((path, version)) = appimages(app).into_iter().next() {
-            return Some(Installed { version, source: InstallSource::AppImage, location: path.display().to_string(), package: None });
+            return Some(appimage_install(app, path, version, |bin, app| {
+                let (program, args) = appimage_probe_command(bin, crate::process::in_sandbox())?;
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                let out = crate::process::capture(&program, &args, Duration::from_secs(5))?;
+                parse_cli_version(out.trim(), app)
+            }));
         }
         let order = [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak];
         if let Some(p) = packages::find(app, &snapshot.packages, &order) {
             // A Flatpak runs under the id it was found under, which may be an older one.
             let location = if p.manager == InstallSource::Flatpak { p.name.clone() } else { binary_on_path(app.id) };
-            return Some(Installed { version: packages::version_of(p), source: p.manager, location, package: Some(p.name.clone()) });
+            let externally_managed = p.manager == InstallSource::Flatpak
+                && p.origin.as_deref().is_none_or(|origin| {
+                    if packages::is_flatpark_origin(origin) {
+                        return true;
+                    }
+                    let scope = packages::flatpak_scope(p.installation.as_deref());
+                    crate::process::capture_flatpak(&["remotes", &scope, "--show-disabled", "--columns=name,url"], Duration::from_secs(10))
+                        .is_none_or(|remotes| packages::remote_manages_flatpak(origin, &remotes))
+                });
+            return Some(Installed {
+                version: packages::version_of(p),
+                source: p.manager,
+                location,
+                package: Some(p.name.clone()),
+                externally_managed,
+                origin: p.origin.clone(),
+                installation: p.installation.clone(),
+            });
+        }
+        // Before any binary is run to learn a version, the package database is asked whether a
+        // package owns it (see [`owned_install`]).
+        if let Some(installed) = owned_install(app) {
+            return Some(installed);
         }
         detect_system_install(app)
+    }
+
+    /// Bare AppImage names (for example Gear Lever's rename) carry no version (#471).
+    /// Probe only the selected unknown-version app; release filenames need no execution. No
+    /// package database owns an AppImage, so unlike [`owned_install`] (#1298) there is nothing
+    /// to ask instead: this is the same last resort as [`detect_system_install`].
+    pub(crate) fn appimage_install(
+        app: &CraftApp,
+        path: PathBuf,
+        version: Option<version::Version>,
+        probe: impl FnOnce(&Path, &CraftApp) -> Option<version::Version>,
+    ) -> Installed {
+        let version = version.or_else(|| probe(&path, app));
+        Installed {
+            version,
+            source: InstallSource::AppImage,
+            location: path.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
+    }
+
+    /// A host AppImage must be queried on the host when the launcher runs inside Flatpak,
+    /// just as launching it is. Paths remain individual arguments, never shell commands.
+    pub(crate) fn appimage_probe_command(bin: &Path, sandbox: bool) -> Option<(String, Vec<String>)> {
+        let path = bin.to_str()?.to_string();
+        Some(if sandbox { ("flatpak-spawn".into(), vec!["--host".into(), path, "--version".into()]) } else { (path, vec!["--version".into()]) })
+    }
+
+    /// A package the launcher knows no name for may still own the app's binary: a release may
+    /// name its deb `art-craft` while the app's own names are `artcraft` and its bundle id. When
+    /// that happens the binary is never run to learn a version — `--version` starts apps that
+    /// don't support the flag (#1298) — so the package database is asked which package owns the
+    /// file, and the install is reported under that manager with the package's own version.
+    fn owned_install(app: &CraftApp) -> Option<Installed> {
+        let bin = find_binary(app.id)?;
+        let owned =
+            [owned_by_dpkg(&bin), owned_by_rpm(&bin), has_pacman_db().then(|| owned_by_pacman(&bin)).flatten()].into_iter().flatten().next()?;
+        Some(Installed {
+            version: packages::version_of(&owned),
+            source: owned.manager,
+            location: bin.display().to_string(),
+            package: Some(owned.name),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
+    }
+
+    /// The dpkg package owning `bin`: `dpkg-query -S` names it, and one `-W` reads its version.
+    fn owned_by_dpkg(bin: &Path) -> Option<Package> {
+        let bin = bin.to_str()?;
+        let t = Duration::from_secs(5);
+        let name = packages::parse_dpkg_search(&capture("dpkg-query", &["-S", bin], t)?, bin)?;
+        let version = capture("dpkg-query", &["-W", "-f", "${Version}\n", &name], t).filter(|v| !v.trim().is_empty())?;
+        Some(Package { manager: InstallSource::Deb, name, version, user: false, origin: None, installation: None })
+    }
+
+    /// The rpm package owning `bin`: `rpm -qf` names it and its version in one query.
+    fn owned_by_rpm(bin: &Path) -> Option<Package> {
+        let bin = bin.to_str()?;
+        let (name, version) = packages::parse_rpm_owner(&capture("rpm", &["-qf", bin, "--qf", "%{NAME}|%{VERSION}\n"], Duration::from_secs(5))?)?;
+        Some(Package { manager: InstallSource::Rpm, name, version, user: false, origin: None, installation: None })
+    }
+
+    /// The pacman package owning `bin`: `pacman -Qo` names it and its version in one line.
+    fn owned_by_pacman(bin: &Path) -> Option<Package> {
+        let bin = bin.to_str()?;
+        let (name, version) = packages::parse_pacman_owner(&capture("pacman", &["-Qo", bin], Duration::from_secs(5))?)?;
+        Some(Package { manager: InstallSource::Pacman, name, version, user: false, origin: None, installation: None })
     }
 
     /// When the package managers don't report the app (a query timed out or was locked, an
@@ -573,15 +750,26 @@ pub mod linux {
     /// to whatever installed it, since it can't tell which package manager that was.
     fn detect_system_install(app: &CraftApp) -> Option<Installed> {
         let bin = find_binary(app.id)?;
-        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed {
+            version: binary_version(&bin, app),
+            source: InstallSource::Binary,
+            location: bin.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
     }
 
+    /// The app's binary on `PATH`, else in `/usr/bin`, `/usr/local/bin` or `~/.local/bin`.
     fn find_binary(id: &str) -> Option<PathBuf> {
-        let on_path = std::env::var_os("PATH").and_then(|path| std::env::split_paths(&path).map(|d| d.join(id)).find(|p| p.is_file()));
+        let on_path = crate::process::which(id);
         let usual = ["/usr/bin", "/usr/local/bin"].into_iter().map(PathBuf::from).chain(dirs::home_dir().map(|h| h.join(".local/bin")));
         on_path.or_else(|| usual.map(|d| d.join(id)).find(|p| p.is_file()))
     }
 
+    /// The version `bin --version` prints, or `None` when it can't be started, doesn't finish
+    /// within 5 seconds (it is then killed), exits with an error, or prints no version.
     pub(crate) fn binary_version(bin: &Path, app: &CraftApp) -> Option<version::Version> {
         let out = crate::process::capture(bin.to_str()?, &["--version"], Duration::from_secs(5))?;
         parse_cli_version(out.trim(), app)
@@ -600,7 +788,15 @@ pub mod freebsd {
         if !bin.exists() {
             return None;
         }
-        Some(Installed { version: binary_version(&bin, app), source: InstallSource::Binary, location: bin.display().to_string(), package: None })
+        Some(Installed {
+            version: binary_version(&bin, app),
+            source: InstallSource::Binary,
+            location: bin.display().to_string(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        })
     }
 
     /// `<app> --version` prints `<app> 0.5.0 (sha, date)`.
@@ -615,9 +811,43 @@ mod linux_tests {
     use super::*;
 
     #[test]
+    fn renamed_appimage_reports_its_cli_version_and_offers_the_update() {
+        use artcraft_launcher_core::status::{AppStatus, Latest, status};
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let installed = linux::appimage_install(app, PathBuf::from("/tmp/My Apps/photocraft.appimage"), None, |_, app| {
+            parse_cli_version("photocraft 0.7.0 (792616159, 2026-10-11)", app)
+        });
+        let latest = version::parse("0.9.0").unwrap();
+        assert_eq!(installed.version.as_ref().unwrap().to_string(), "0.7.0");
+        assert_eq!(status(Some(&installed), Latest::Found { version: Some(&latest), has_asset: true }), AppStatus::UpdateAvailable);
+    }
+
+    #[test]
+    fn known_appimage_versions_skip_the_probe_and_failed_probes_stay_unknown() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let known = linux::appimage_install(app, PathBuf::from("photocraft-0.7.0-linux-x86_64.AppImage"), version::parse("0.7.0"), |_, _| {
+            panic!("release filename already gives the version")
+        });
+        assert_eq!(known.version.unwrap().to_string(), "0.7.0");
+        let unknown = linux::appimage_install(app, PathBuf::from("photocraft.appimage"), None, |_, _| None);
+        assert!(unknown.version.is_none());
+        assert_eq!(unknown.source, InstallSource::AppImage);
+    }
+
+    #[test]
+    fn appimage_version_probe_uses_host_arguments_in_flatpak() {
+        let path = Path::new("/home/user/My Apps/photo;craft.appimage");
+        assert_eq!(linux::appimage_probe_command(path, false), Some((path.display().to_string(), vec!["--version".into()])));
+        assert_eq!(
+            linux::appimage_probe_command(path, true),
+            Some(("flatpak-spawn".into(), vec!["--host".into(), path.display().to_string(), "--version".into()]))
+        );
+    }
+
+    #[test]
     fn ours_filter_matches_rpm_packages() {
         let ours = |name: &str| {
-            artcraft_launcher_core::SUITE.iter().any(|a| {
+            artcraft_launcher_core::hosted_catalog::apps().iter().any(|a| {
                 [InstallSource::Deb, InstallSource::Rpm, InstallSource::Pacman, InstallSource::Flatpak]
                     .iter()
                     .any(|m| crate::packages::candidate_names(a, *m).iter().any(|n| n == name))
@@ -686,6 +916,78 @@ mod tests {
     use artcraft_launcher_core::SUITE;
 
     use super::*;
+
+    /// A release candidate the launcher installed through Windows Installer, which registered it
+    /// as `0.24.0`, reads as the candidate again; any other copy keeps what Windows reports.
+    #[test]
+    fn an_installer_copy_of_a_pre_release_reads_as_the_release_the_launcher_installed() {
+        const CODE: &str = "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}";
+        let msi = |v: &str, code: &str| Installed {
+            version: version::parse(v),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: Some(code.into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let recorded = crate::manifest::InstalledRelease { tag: "v0.24.0-rc.1".into(), version: "0.24.0-rc.1".into(), package: CODE.into() };
+        let read = |found: Installed| with_recorded_release(found, Some(&recorded)).version.map(|v| v.to_string());
+        assert_eq!(read(msi("0.24.0", CODE)).as_deref(), Some("0.24.0-rc.1"));
+        assert_eq!(read(msi("0.24.0", &CODE.to_lowercase())).as_deref(), Some("0.24.0-rc.1"), "Windows doesn't keep a product code's case");
+        // Another registration (the final 0.24.0 installed some other way), other numbers, or no record.
+        assert_eq!(read(msi("0.24.0", "{00000000-0000-0000-0000-000000000000}")).as_deref(), Some("0.24.0"));
+        assert_eq!(read(msi("0.24.1", CODE)).as_deref(), Some("0.24.1"));
+        assert_eq!(with_recorded_release(msi("0.24.0", CODE), None).version.map(|v| v.to_string()).as_deref(), Some("0.24.0"));
+        // Only a Windows Installer copy loses the label.
+        let mac = Installed { source: InstallSource::MacApp, ..msi("0.24.0", CODE) };
+        assert_eq!(read(mac).as_deref(), Some("0.24.0"));
+    }
+
+    /// The fallback decision reads a recorded release only where detection reads it: the same
+    /// registration and the same numbers. A record whose numbers don't match the copy describes
+    /// another release, so nothing may be concluded from it.
+    #[test]
+    fn a_recorded_release_describes_only_the_copy_it_matches() {
+        const CODE: &str = "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}";
+        let msi = |v: &str| Installed {
+            version: version::parse(v),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: Some(CODE.into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let recorded = crate::manifest::InstalledRelease { tag: "v0.24.0-rc.1".into(), version: "0.24.0-rc.1".into(), package: CODE.into() };
+        assert!(record_describes(Some(&msi("0.24.0")), Some(&recorded)));
+        // The numbers don't match: the copy is not the release the record names.
+        assert!(!record_describes(Some(&msi("0.23.1")), Some(&recorded)));
+        assert!(!record_describes(Some(&msi("0.24.1")), Some(&recorded)));
+        // Another registration with those numbers is a different copy.
+        let elsewhere = Installed { package: Some("{00000000-0000-0000-0000-000000000000}".into()), ..msi("0.24.0") };
+        assert!(!record_describes(Some(&elsewhere), Some(&recorded)));
+        // A copy Windows already reports as the pre-release is left as it is.
+        assert!(!record_describes(Some(&msi("0.24.0-rc.1")), Some(&recorded)));
+        assert!(!record_describes(Some(&Installed { source: InstallSource::MacApp, ..msi("0.24.0") }), Some(&recorded)));
+        assert!(!record_describes(None, Some(&recorded)));
+        assert!(!record_describes(Some(&msi("0.24.0")), None));
+    }
+
+    #[test]
+    fn msi_entries_sort_newest_first_and_unversioned_last() {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        let (old, new) = (version::parse("0.4.0"), version::parse("0.5.0"));
+        // Each arm by hand: the sort below never asks about None against Some in that order.
+        assert_eq!(newest_first(new.as_ref(), old.as_ref()), Less);
+        assert_eq!(newest_first(old.as_ref(), new.as_ref()), Greater);
+        assert_eq!(newest_first(new.as_ref(), None), Less);
+        assert_eq!(newest_first(None, new.as_ref()), Greater);
+        assert_eq!(newest_first(None, None), Equal);
+        let mut versions = vec![None, old.clone(), new.clone(), None];
+        versions.sort_by(|a, b| newest_first(a.as_ref(), b.as_ref()));
+        assert_eq!(versions, vec![new, old, None, None]);
+    }
 
     /// A file without VERSIONINFO, or one that isn't there, has no version.
     #[cfg(windows)]

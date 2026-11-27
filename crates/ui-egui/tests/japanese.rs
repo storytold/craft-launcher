@@ -32,7 +32,7 @@ impl Backend for Fake {
         std::mem::take(&mut self.events)
     }
     fn capabilities(&self) -> Capabilities {
-        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage }
+        Capabilities { manage_apps: self.manage, reveal_label: "Show in Finder", self_update: self.manage, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
         Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
@@ -95,6 +95,9 @@ fn events() -> Vec<Event> {
             source: InstallSource::MacApp,
             location: format!("/Applications/{}.app", app.name),
             package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
         });
         ev.push(Event::Detected { app: app.id.into(), installed: inst });
     }
@@ -116,26 +119,30 @@ fn harness_language(
     let sent2 = sent.clone();
     let mut backend = Some(Fake { events: events(), sent: sent2, manage, clock: Rc::new(Cell::new(NOW)) });
     let settings = Settings { view, notify: false, language: language.into(), ..Settings::default() };
-    let harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).with_theme(theme).build_ui_state(
-        move |ui, state: &mut Option<LauncherUi>| {
-            if state.is_none()
-                && let Some(b) = backend.take()
-            {
-                let mut s = settings.clone();
-                s.theme = if theme == egui::Theme::Dark {
-                    artcraft_launcher_ui_egui::theme::ThemeChoice::Dark
-                } else {
-                    artcraft_launcher_ui_egui::theme::ThemeChoice::Light
-                };
-                *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), s));
-            }
-            if let Some(l) = state.as_mut() {
-                l.logic(&ui.ctx().clone(), &mut NoHost);
-                l.ui(ui, &mut NoHost);
-            }
-        },
-        None,
-    );
+    let harness = Harness::builder()
+        .with_context_setup(artcraft_launcher_ui_egui::framework::install_headless)
+        .with_size(egui::vec2(1180.0, 900.0))
+        .with_theme(theme)
+        .build_ui_state(
+            move |ui, state: &mut Option<LauncherUi>| {
+                if state.is_none()
+                    && let Some(b) = backend.take()
+                {
+                    let mut s = settings.clone();
+                    s.theme = if theme == egui::Theme::Dark {
+                        artcraft_launcher_ui_egui::theme::ThemeChoice::Dark
+                    } else {
+                        artcraft_launcher_ui_egui::theme::ThemeChoice::Light
+                    };
+                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(b), s));
+                }
+                if let Some(l) = state.as_mut() {
+                    l.logic(&ui.ctx().clone(), &mut NoHost);
+                    l.ui(ui, &mut NoHost);
+                }
+            },
+            None,
+        );
     (harness, sent)
 }
 
@@ -188,7 +195,16 @@ fn japanese_switches_persists_and_keeps_install_actions() {
     snapshot(&mut h, "grid-ja-dark");
     h.get_by_label("すべて更新（2）").click();
     h.run_steps(2);
-    let installs: Vec<_> = sent.borrow().iter().filter_map(|c| if let Command::Install { app } = c { Some(app.clone()) } else { None }).collect();
+    // One InstallAll where updates are batched (always on Linux), else one Install per app.
+    let installs: Vec<_> = sent
+        .borrow()
+        .iter()
+        .flat_map(|c| match c {
+            Command::Install { app } => vec![app.clone()],
+            Command::InstallAll { apps } => apps.clone(),
+            _ => vec![],
+        })
+        .collect();
     assert_eq!(installs, ["photocraft", "effectcraft"]);
 
     let (mut table, _) = harness_language(ViewMode::Table, egui::Theme::Light, true, &restored.language);
