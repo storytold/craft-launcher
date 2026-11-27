@@ -2194,8 +2194,11 @@ fn check_app(app: &'static CraftApp, latest: Option<LatestRelease>, repo: &str, 
 /// Offers the launcher's own update when its answer is a newer release than the running one,
 /// keeping `repo`, the repo it was read from, for the download's link check.
 fn launcher_update(paths: &Paths, latest: Option<LatestRelease>, repo: &str, shared: &Arc<Shared>) {
-    let Some(LatestRelease::Found(r)) = latest else {
-        return;
+    let r = match latest {
+        Some(LatestRelease::Found(r)) => r,
+        // Not an answer, but not silence either: the launcher couldn't find out whether it has an update.
+        Some(LatestRelease::Failed(why)) => return log::warn!("couldn't check for a launcher update: {why}"),
+        _ => return,
     };
     let (Some(newest), Some(current)) = (r.version.as_ref(), crate::self_update::current_version()) else {
         return;
