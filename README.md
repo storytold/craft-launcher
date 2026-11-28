@@ -165,6 +165,12 @@ Download the build for your computer from the [latest release](https://github.co
 | `artcraft-launcher-<ver>-windows-x86.msi` | Installer for 32-bit Windows |
 | `artcraft-launcher-<ver>-windows-{x64,arm64,x86}-portable.zip` | No install: unzip and run `artcraft-launcher.exe`. Keeps its settings in the folder |
 
+If Windows reports insufficient space while saving a download, check the drive that holds
+the Launcher cache. The MSI build saves downloads in `%LOCALAPPDATA%\ArtCraft Launcher\downloads`.
+The portable build uses `ArtCraftLauncherData\cache\downloads` next to `artcraft-launcher.exe`.
+The download needs space there before the installer runs, even if the app will be installed
+on another drive.
+
 **macOS** (11 Big Sur or later)
 
 | File | What it is |
