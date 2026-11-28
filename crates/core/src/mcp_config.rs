@@ -24,8 +24,9 @@ impl McpConfigFormat {
 }
 
 /// A TOML basic string: JSON's string escapes (`\\`, `\"`, `\uXXXX`) are valid TOML too.
+/// TOML also requires the DEL character to be escaped.
 fn toml_string(s: &str) -> String {
-    Value::String(s.to_string()).to_string()
+    Value::String(s.to_string()).to_string().replace('\u{7f}', "\\u007F")
 }
 
 /// The configuration that starts `gateway --stdio` as [`SERVER_KEY`], in `format`.
@@ -60,6 +61,14 @@ mod tests {
         assert_eq!(v["servers"][SERVER_KEY]["type"], "stdio");
         assert_eq!(v["servers"][SERVER_KEY]["command"], GW);
         assert_eq!(v["servers"][SERVER_KEY]["args"], json!(["--stdio"]));
+    }
+
+    #[test]
+    fn codex_toml_round_trips_a_path_with_del() {
+        let path = "/opt/a\u{7f}b/craft-ai-mcp";
+        let config = mcp_config(McpConfigFormat::CodexToml, path);
+        let parsed: toml::Value = toml::from_str(&config).unwrap();
+        assert_eq!(parsed["mcp_servers"][SERVER_KEY]["command"].as_str(), Some(path));
     }
 
     #[test]
