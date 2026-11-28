@@ -1,8 +1,8 @@
 //! Release notes: GitHub's generated Markdown, shown readably without a Markdown engine.
 
-use egui::{RichText, Ui};
+use egui::{Color32, FontFamily, FontId, RichText, TextFormat, Ui, text::LayoutJob};
 
-use crate::theme::Tokens;
+use crate::theme::{self, Tokens};
 
 /// One line of notes, classified.
 #[derive(Debug, PartialEq, Eq)]
@@ -96,6 +96,215 @@ fn full_changelog<'a>(line: &Line<'a>) -> Option<&'a str> {
     text.strip_prefix("**Full Changelog**: ").map(str::trim).filter(|url| artcraft_launcher_core::release::safe_web_link(url))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Inline<'a> {
+    Plain(&'a str),
+    Bold(&'a str),
+    Code(&'a str),
+    Link { text: &'a str, url: &'a str },
+}
+
+pub(crate) fn parse_inline(orig: &str) -> Vec<Inline<'_>> {
+    let mut out = Vec::new();
+    let mut cursor = 0;
+    let mut plain_start = 0;
+
+    let mut next_bold = orig.find("**");
+    let mut next_code = orig.find('`');
+    let mut next_bracket = orig.find('[');
+
+    while cursor < orig.len() {
+        if let Some(pos) = next_bold
+            && pos < cursor
+        {
+            next_bold = orig.get(cursor..).and_then(|r| r.find("**")).map(|i| cursor + i);
+        }
+        if let Some(pos) = next_code
+            && pos < cursor
+        {
+            next_code = orig.get(cursor..).and_then(|r| r.find('`')).map(|i| cursor + i);
+        }
+        if let Some(pos) = next_bracket
+            && pos < cursor
+        {
+            next_bracket = orig.get(cursor..).and_then(|r| r.find('[')).map(|i| cursor + i);
+        }
+
+        let candidates = [next_bold.map(|i| (i, 0)), next_code.map(|i| (i, 1)), next_bracket.map(|i| (i, 2))];
+
+        let Some((special_idx, kind)) = candidates.into_iter().flatten().min_by_key(|&(idx, _)| idx) else {
+            break;
+        };
+
+        match kind {
+            0 => {
+                let Some(after_stars) = orig.get(special_idx + 2..) else { break };
+                if let Some(end) = after_stars.find("**")
+                    && let Some(bold_text) = after_stars.get(..end)
+                {
+                    let end_pos = special_idx + 2 + end + 2;
+                    if plain_start < special_idx
+                        && let Some(plain) = orig.get(plain_start..special_idx)
+                    {
+                        out.push(Inline::Plain(plain));
+                    }
+                    out.push(Inline::Bold(bold_text));
+                    plain_start = end_pos;
+                    cursor = end_pos;
+                } else {
+                    next_bold = None;
+                    cursor = special_idx + 2;
+                }
+            }
+            1 => {
+                let Some(after_tick) = orig.get(special_idx + 1..) else { break };
+                if let Some(end) = after_tick.find('`')
+                    && let Some(code_text) = after_tick.get(..end)
+                {
+                    let end_pos = special_idx + 1 + end + 1;
+                    if plain_start < special_idx
+                        && let Some(plain) = orig.get(plain_start..special_idx)
+                    {
+                        out.push(Inline::Plain(plain));
+                    }
+                    out.push(Inline::Code(code_text));
+                    plain_start = end_pos;
+                    cursor = end_pos;
+                } else {
+                    next_code = None;
+                    cursor = special_idx + 1;
+                }
+            }
+            2 => {
+                let Some(after_bracket) = orig.get(special_idx + 1..) else { break };
+                if let Some(close_bracket) = after_bracket.find(']')
+                    && let Some(link_text_candidate) = after_bracket.get(..close_bracket)
+                    && let Some(after_close) = after_bracket.get(close_bracket + 1..)
+                {
+                    let (actual_start, link_text) = if let Some(inner_open) = link_text_candidate.rfind('[')
+                        && let Some(inner_text) = link_text_candidate.get(inner_open + 1..)
+                    {
+                        (special_idx + 1 + inner_open, inner_text)
+                    } else {
+                        (special_idx, link_text_candidate)
+                    };
+
+                    if let Some(after_paren) = after_close.strip_prefix('(') {
+                        if let Some(close_paren) = after_paren.find(')')
+                            && let Some(url) = after_paren.get(..close_paren)
+                        {
+                            let end_pos = special_idx + 1 + close_bracket + 1 + 1 + close_paren + 1;
+                            if plain_start < actual_start
+                                && let Some(plain) = orig.get(plain_start..actual_start)
+                            {
+                                out.push(Inline::Plain(plain));
+                            }
+                            out.push(Inline::Link { text: link_text, url });
+                            plain_start = end_pos;
+                            cursor = end_pos;
+                        } else {
+                            // No ')' exists later on this line, so no subsequent link can close either.
+                            next_bracket = None;
+                            cursor = special_idx + 1 + close_bracket + 1 + 1;
+                        }
+                    } else {
+                        cursor = special_idx + 1 + close_bracket + 1;
+                    }
+                } else {
+                    next_bracket = None;
+                    cursor = special_idx + 1;
+                }
+            }
+            _ => break,
+        }
+    }
+
+    if plain_start < orig.len()
+        && let Some(remaining) = orig.get(plain_start..)
+    {
+        out.push(Inline::Plain(remaining));
+    }
+
+    out
+}
+
+fn append_run(job: &mut LayoutJob, text: &str, format: TextFormat, needs_space: &mut bool) {
+    let text = if job.text.is_empty() {
+        let trimmed = text.trim_start();
+        if trimmed.len() < text.len() {
+            *needs_space = true;
+        }
+        trimmed
+    } else {
+        text
+    };
+    if !text.is_empty() {
+        job.append(text, 0.0, format);
+    }
+}
+
+fn flush_run(ui: &mut Ui, job: &mut LayoutJob, needs_space: &mut bool, space_w: f32) {
+    let space_before = *needs_space;
+    let trimmed_len = job.text.trim_end().len();
+    let space_after = trimmed_len < job.text.len();
+    if trimmed_len == 0 {
+        job.text.clear();
+        job.sections.clear();
+        *needs_space = space_before || space_after;
+        return;
+    }
+    if space_after {
+        job.text.truncate(trimmed_len);
+        let limit = egui::text::ByteIndex(trimmed_len);
+        while let Some(last) = job.sections.last_mut() {
+            if last.byte_range.start >= limit {
+                job.sections.pop();
+            } else {
+                last.byte_range.end = last.byte_range.end.min(limit);
+                break;
+            }
+        }
+    }
+    if space_before {
+        ui.add_space(space_w);
+    }
+    ui.add(egui::Label::new(std::mem::take(job)).wrap());
+    *needs_space = space_after;
+}
+
+fn render_inline(ui: &mut Ui, text: &str, color: Color32, t: &Tokens, scale: f32) {
+    let space_w = (ui.spacing().item_spacing.x * scale).max(2.0);
+    ui.spacing_mut().item_spacing.x = 0.0;
+    let mut needs_space = text.starts_with(char::is_whitespace);
+
+    let valign = ui.text_valign();
+    let plain_fmt = TextFormat { font_id: FontId::new(14.0 * scale, FontFamily::Proportional), color, valign, ..Default::default() };
+    let bold_fmt = TextFormat { font_id: FontId::new(14.0 * scale, theme::semibold()), color: t.ink_strong, valign, ..Default::default() };
+    let code_fmt = TextFormat { font_id: FontId::new(12.0 * scale, FontFamily::Monospace), color: t.ink, valign, ..Default::default() };
+
+    let mut job = LayoutJob::default();
+    for token in parse_inline(text) {
+        match token {
+            Inline::Plain(plain) => append_run(&mut job, plain, plain_fmt.clone(), &mut needs_space),
+            Inline::Bold(bold) => append_run(&mut job, bold, bold_fmt.clone(), &mut needs_space),
+            Inline::Code(code) => append_run(&mut job, code, code_fmt.clone(), &mut needs_space),
+            Inline::Link { text, url } => {
+                if artcraft_launcher_core::release::safe_web_link(url) {
+                    flush_run(ui, &mut job, &mut needs_space, space_w);
+                    if needs_space || text.starts_with(char::is_whitespace) {
+                        ui.add_space(space_w);
+                    }
+                    ui.hyperlink_to(RichText::new(text).size(14.0 * scale), url);
+                    needs_space = text.ends_with(char::is_whitespace);
+                } else {
+                    append_run(&mut job, text, plain_fmt.clone(), &mut needs_space);
+                }
+            }
+        }
+    }
+    flush_run(ui, &mut job, &mut needs_space, space_w);
+}
+
 fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
     match line {
         Line::Heading(h) => {
@@ -108,15 +317,19 @@ fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 ui.label(RichText::new("•").color(t.faint));
-                ui.label(RichText::new(text).color(t.ink));
+                render_inline(ui, text, t.ink, t, scale);
                 if let Some(url) = link.filter(|u| artcraft_launcher_core::release::safe_web_link(u)) {
                     let short = url.rsplit('/').next().map_or_else(|| tl!("link").to_string(), |n| format!("#{n}"));
+                    ui.add_space(4.0 * scale);
                     ui.hyperlink_to(RichText::new(short).size(12.0 * scale), url);
                 }
             });
         }
         Line::Text(text) => {
-            ui.label(RichText::new(*text).color(t.muted));
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                render_inline(ui, text, t.muted, t, scale);
+            });
         }
         Line::Blank => {
             ui.add_space(2.0);
@@ -148,5 +361,34 @@ mod tests {
         let few: Vec<Line> = (0..7).map(|_| Line::Bullet("change", None)).collect();
         assert_eq!(fold_at(&few), None);
         assert_eq!(fold_at(&[]), None);
+    }
+
+    #[test]
+    fn parses_inline_markdown() {
+        assert_eq!(
+            parse_inline("Hello **world** and `code` with [site](https://getartcraft.com)."),
+            vec![
+                Inline::Plain("Hello "),
+                Inline::Bold("world"),
+                Inline::Plain(" and "),
+                Inline::Code("code"),
+                Inline::Plain(" with "),
+                Inline::Link { text: "site", url: "https://getartcraft.com" },
+                Inline::Plain("."),
+            ]
+        );
+        assert_eq!(parse_inline("**unclosed"), vec![Inline::Plain("**unclosed")]);
+        assert_eq!(parse_inline("`unclosed"), vec![Inline::Plain("`unclosed")]);
+        assert_eq!(parse_inline("[unclosed](https://"), vec![Inline::Plain("[unclosed](https://")]);
+        assert_eq!(parse_inline("[a](x [b](y"), vec![Inline::Plain("[a](x [b](y")]);
+        assert_eq!(parse_inline("[[[[[unclosed"), vec![Inline::Plain("[[[[[unclosed")]);
+        assert_eq!(
+            parse_inline("[unmatched [site](https://getartcraft.com)"),
+            vec![Inline::Plain("[unmatched "), Inline::Link { text: "site", url: "https://getartcraft.com" },]
+        );
+        assert_eq!(
+            parse_inline("[tag] and [site](https://getartcraft.com)"),
+            vec![Inline::Plain("[tag] and "), Inline::Link { text: "site", url: "https://getartcraft.com" },]
+        );
     }
 }
