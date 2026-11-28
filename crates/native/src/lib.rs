@@ -9,6 +9,8 @@
 
 pub mod agents;
 pub mod backend;
+#[cfg(any(windows, test))]
+mod claude_desktop;
 pub mod desktop_entry;
 pub mod detect;
 pub mod downloads;
