@@ -140,7 +140,8 @@ impl LauncherUi {
         if self.entry(&id).is_none() {
             return;
         }
-        if !open {
+        // A dialog opened from the launcher header takes over from the enlarged picture.
+        if !open || self.dialog.is_some() {
             self.detail_zoom = false;
         }
         self.details_keys(ctx, details, open);
@@ -178,20 +179,39 @@ impl LauncherUi {
                 painter.rect_filled(panel, CornerRadius::ZERO, t.bg);
                 painter.rect_stroke(panel, CornerRadius::ZERO, Stroke::new(1.0, t.line_strong), egui::StrokeKind::Inside);
 
-                ui.set_min_size(panel.size());
-                ui.set_max_size(panel.size());
-                // A bar that stays on screen says there is more below the fold; in the app's colour.
-                let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
-                // One scroll position per app, so the next app opens at its top.
-                egui::ScrollArea::vertical().id_salt(("details-scroll", id.to_string())).auto_shrink([false, false]).show(ui, |ui| {
-                    // The bar's colours are for the bar alone.
-                    *ui.visuals_mut() = page_visuals;
-                    ui.set_width(ui.available_width());
-                    ui.spacing_mut().item_spacing.y = 8.0;
-                    self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
-                    egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
-                        self.details_body(ui, &entry, details, wide, t);
-                    });
+                // Keep the scroll area inside the border, including when its contents request extra width.
+                let interior = panel.shrink(1.0);
+                let clip = ui.clip_rect().intersect(interior);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(interior), |ui| {
+                    ui.set_clip_rect(clip);
+                    // One scroll position per app, so the next app opens at its top.
+                    let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
+                    // Anchor the track to the drawer edge even when a child needs extra width.
+                    // Reserve a gutter so the track never paints over the controls.
+                    let scroll = &mut ui.spacing_mut().scroll;
+                    scroll.floating = true;
+                    scroll.floating_width = scroll.bar_width;
+                    scroll.floating_allocated_width = scroll.bar_width + scroll.bar_inner_margin;
+                    scroll.dormant_handle_opacity = 1.0;
+                    scroll.active_handle_opacity = 1.0;
+                    scroll.dormant_background_opacity = 1.0;
+                    scroll.active_background_opacity = 1.0;
+                    scroll.interact_background_opacity = 1.0;
+                    egui::ScrollArea::vertical()
+                        .id_salt(("details-scroll", id))
+                        .max_width(interior.width())
+                        .max_height(interior.height())
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            // The bar's colours are for the bar alone.
+                            *ui.visuals_mut() = page_visuals;
+                            ui.set_width(ui.available_width());
+                            ui.spacing_mut().item_spacing.y = 8.0;
+                            self.details_hero(ui, &entry, details, t, (previous.as_deref(), next.as_deref()), wide);
+                            egui::Frame::new().inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
+                                self.details_body(ui, &entry, details, wide, t);
+                            });
+                        });
                 });
             });
     }

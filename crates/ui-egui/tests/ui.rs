@@ -3519,6 +3519,32 @@ fn the_enlarged_pictures_close_closes_the_picture_not_the_window() {
     assert!(h.query_by_label("Enlarge picture").is_some(), "the drawer remains open after closing the enlarged picture");
 }
 
+#[test]
+fn settings_opens_over_the_drawer_and_receives_input_after_enlarging_a_picture() {
+    use egui::accesskit::Role;
+
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    h.get_by_label("Enlarge picture").click();
+    h.run_steps(4);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 2, "the enlarged picture is open");
+
+    let settings = h.get_by_label("Settings").rect().center();
+    click_at(&mut h, settings);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1, "the enlarged picture closes when Settings opens");
+    h.key_press(egui::Key::Tab);
+    h.run_steps(2);
+    let language = h.get_by_role_and_label(Role::ComboBox, "Language");
+    assert!(language.accesskit_node().is_focused(), "Tab focuses the Language control inside Settings");
+
+    let done = h.get_by_label("Done").rect().center();
+    click_at(&mut h, done);
+    assert!(h.query_by_label("Done").is_none(), "the mouse can activate a control inside Settings");
+    h.get_by_label("Enlarge picture");
+}
+
 /// Maximized, the window's top-right pixel is the screen's corner: there is no resize band there,
 /// so it belongs to the close button, as it does with Windows' own caption buttons (#374).
 #[test]
@@ -3757,6 +3783,60 @@ fn details_drawer_in_the_light_theme() {
     h.run_steps(10);
     snapshot(&mut h, "details-light");
     h.get_all_by_label_contains("The image editor you already know how to use").last().unwrap();
+}
+
+#[test]
+fn the_details_header_and_scrollbar_stay_inside_the_drawer_after_resize() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+
+    for width in [1180.0, 720.0, 1000.0] {
+        h.set_size(egui::vec2(width, 650.0));
+        h.run_steps(12);
+        let close = h.get_by_label("Close (Esc)").rect();
+        let frame = h
+            .output()
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) if !shape.stroke.is_empty() && shape.rect.contains_rect(close) && shape.rect.height() > 400.0 => {
+                    Some(shape.rect)
+                }
+                _ => None,
+            })
+            .expect("the drawer has a frame");
+        let photo = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
+        let accent = artcraft_launcher_ui_egui::theme::rgb(photo.color);
+        let stripe = h
+            .output()
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) if shape.fill == accent && shape.rect.height() <= 2.0 && shape.rect.top() >= frame.top() => {
+                    Some(shape.rect.intersect(clipped.clip_rect))
+                }
+                _ => None,
+            })
+            .expect("the drawer has an accent stripe");
+        assert!(frame.contains_rect(stripe), "the stripe crosses the drawer frame at width {width}: {stripe:?} vs {frame:?}");
+        let scrollbar = h
+            .query_all_by_role(egui::accesskit::Role::ScrollBar)
+            .map(|node| node.rect())
+            .filter(|rect| rect.left() > close.right())
+            .min_by(|a, b| a.top().total_cmp(&b.top()))
+            .expect("the details pane has a visible scrollbar");
+        assert!(frame.contains_rect(scrollbar), "the scrollbar crosses the drawer frame at width {width}: {scrollbar:?} vs {frame:?}");
+        assert!(
+            h.output().shapes.iter().any(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) => shape.rect.intersect(clipped.clip_rect) == scrollbar && shape.fill != egui::Color32::TRANSPARENT,
+                _ => false,
+            }),
+            "the scrollbar track is painted at width {width}"
+        );
+    }
+    h.check_accessibility();
+    snapshot(&mut h, "details-bounded-dark");
 }
 
 fn fetches(sent: &Rc<RefCell<Vec<Command>>>, app: &str) -> usize {
