@@ -411,6 +411,10 @@ filter	Installed	Встановлені
 	Show {n} more changes	Показати ще {n} змін
 	Last updated: {date}	Востаннє оновлено: {date}
 	Choose version	Вибрати версію
+	Version pinned to {version}. Click to unlock.	Закріплено версію {version}. Натисніть, щоб відкріпити її.
+	Unlock version?	Відкріпити версію?
+	{app} is pinned to {version}. Follow the latest release instead?	Для {app} закріплено версію {version}. Натомість стежити за останнім випуском?
+	Unlock	Відкріпити
 	latest {version}	остання {version}
 	{version} (latest release)	{version} (останній випуск)
 	Launcher version	Версія лаунчера
