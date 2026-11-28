@@ -45,3 +45,7 @@ A CJK language is drawn with the system's own CJK font (`crates/ui-egui/src/cjk_
 ## Icons and brand assets
 
 `ATTRIBUTION.md` has a row per bundled asset: path, title, author, source, licence. The ArtCraft name, logo and "A" mark in `docs/brand/` (the header logo and the tray icon) are trademarks, not MIT/Apache (`docs/brand/LICENSE-brand.txt`). The app icon and the tray icon are renders of the supplied "A" mark. `packaging/icons.sh` (needs `resvg`; runs on any OS) regenerates them. `assets/app-icons/` is copied from each app's repo (`assets/app-icon/hicolor/128x128/apps/ai.storyteller.<app>.png`).
+
+## Offline builds
+
+`crates/core/build.rs` fetches and verifies the signed catalog and app icons from getartcraft.com, and caches them under the Cargo target directory. For an offline or reproducible build, set `ARTCRAFT_CATALOG_DIR` to a pinned snapshot that includes the icons; see [releasing.md](releasing.md#signed-catalog-at-build-and-runtime).

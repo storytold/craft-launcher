@@ -16,7 +16,7 @@ use artcraft_launcher_core::release::{Asset, Priority, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
-use crate::http::{self, Http, Stop};
+use crate::http::{self, FeedError, Http, Stop};
 use crate::install::{self, Job};
 use crate::manifest::Manifest;
 use crate::paths::Paths;
@@ -148,6 +148,8 @@ struct Shared {
     nightly_state: Mutex<crate::nightly_lookup::State>,
     #[cfg(test)]
     nightly_detection_observer: Mutex<Option<ReviewDetectionHook>>,
+    #[cfg(test)]
+    nightly_catalog_fixture: Mutex<Option<Feed>>,
     download_sizes: Mutex<HashMap<String, DownloadSize>>,
     installed: Mutex<HashMap<String, Installed>>,
     jobs: Mutex<HashMap<String, Arc<Stop>>>,
@@ -492,6 +494,8 @@ impl NativeBackend {
             host: HostDetection::System,
             #[cfg(test)]
             nightly_detection_observer: Mutex::new(None),
+            #[cfg(test)]
+            nightly_catalog_fixture: Mutex::new(None),
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
@@ -636,10 +640,10 @@ impl NativeBackend {
         }
         let options = self.options();
         let pre = options.prereleases;
-        let feed = if pre { None } else { load_feed(&self.paths) };
+        let feed = load_feed(&self.paths);
         let now = crate::now();
         for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os))) {
-            let answer = match feed.as_ref().map(|f| f.answer(app, now)) {
+            let answer = match feed.as_ref().map(|f| if pre { f.answer_prerelease(app, now) } else { f.answer(app, now) }) {
                 Some(FeedAnswer::Fresh(Some(r))) => Some((LatestRelease::Found(r), Origin::ArtCraftApi)),
                 Some(FeedAnswer::Fresh(None)) => Some((LatestRelease::None, Origin::ArtCraftApi)),
                 _ => self.source.as_ref().and_then(|s| s.cached(&release_query(feed.as_ref(), app), pre)).map(|l| (l, Origin::GitHub)),
@@ -734,6 +738,8 @@ impl NativeBackend {
         self.check_nightly_at(manual, crate::now());
     }
 
+    // One signed catalog snapshot supplies all due Nightly candidates; the same descriptor and
+    // platform checks still apply. GitHub enumeration remains the bounded fallback.
     fn check_nightly_at(&self, manual: bool, now: i64) {
         let Some(platform) = self.platform else { return };
         let apps = self.nightly_apps();
@@ -792,20 +798,44 @@ impl NativeBackend {
         (self.spawn)(Box::new(move || {
             let lease = NightlyCheckLease(shared.clone());
             shared.emit(Event::CheckStarted);
+            let enabled = || {
+                shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
+                    && shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).generation == generation
+            };
+            // One signed catalog fetch (document + detached signature) for the entire roster.
+            let catalog = enabled().then(|| http.as_ref().and_then(|http| nightly_catalog(http, &paths, &shared, &enabled))).flatten();
             // One sweep and one request at a time. All admitted app lookups share this deadline.
             let started = Instant::now();
+            let mut discovery_fallbacks = 0;
+            let mut deferred = Vec::new();
+            let mut used_github = false;
+            let mut used_catalog = false;
+            let mut github_blocked = false;
             // `begin` decided the order: installed copies first, then the front of the queue.
             let by_key: std::collections::BTreeMap<String, CraftApp> =
                 apps.into_iter().map(|app| (crate::nightly_lookup::key(&app, platform), app)).collect();
+            // Preserve installed-first priority, then prefer catalog candidates in each group.
+            let mut chosen = chosen;
+            if let Some(feed) = &catalog {
+                let state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                chosen.sort_by_key(|key| {
+                    (
+                        !installed.contains(key),
+                        by_key
+                            .get(key)
+                            .is_none_or(|app| crate::nightly_lookup::catalog_candidate(feed, app, now, state.record(key).tag.as_deref()).is_none()),
+                    )
+                });
+            }
             // When the launcher's own budget held this sweep back, so the page can say it is waiting
             // for GitHub instead of reporting a finished check that found nothing.
             let mut held_back_until = None;
+            if http.is_none() && enabled() {
+                shared.emit(Event::Notice { app: sweep_app.into(), result: Err("Secure Nightly connections are unavailable.".into()) });
+                held_back_until = Some(crate::now().saturating_add(60));
+            }
             for (index, key) in chosen.iter().enumerate() {
                 let Some(app) = by_key.get(key).copied() else { continue };
-                let enabled = || {
-                    shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
-                        && shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).generation == generation
-                };
                 if !enabled() {
                     break;
                 }
@@ -819,51 +849,103 @@ impl NativeBackend {
                     Priority::Discovery
                 };
                 let backoff = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
-                let outcome = if let Some(retry_at) = backoff {
-                    crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
-                        over_budget: false,
-                        why: "Nightly discovery is waiting for server backoff.".into(),
-                        retry_at: Some(retry_at),
-                    })
-                } else if let Some(http) = &http {
-                    crate::nightly_lookup::lookup(
-                        &app,
-                        platform,
-                        now,
-                        &mut |url, max, timeout, now| http.nightly_get_as(url, max, timeout, now, priority),
-                        &|| started.elapsed(),
-                        &enabled,
-                    )
-                } else {
-                    crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
-                        over_budget: false,
-                        why: "Secure Nightly connections are unavailable.".into(),
-                        retry_at: None,
-                    })
+                let previous_tag = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).record(key).tag;
+                let candidate =
+                    catalog.as_ref().and_then(|feed| crate::nightly_lookup::catalog_candidate(feed, &app, crate::now(), previous_tag.as_deref()));
+                let previous = shared.nightly_verified.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+                let Some(http) = &http else {
+                    shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).defer(key);
+                    deferred.push(key.clone());
+                    continue;
+                };
+                let mut before_lookup = || {
+                    let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner);
+                    let mut state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                    let error = |why: String| crate::http::NightlyHttpError { over_budget: false, why, retry_at: None };
+                    if !options.nightly_enabled || state.generation != generation {
+                        return Err(error("Developer build discovery was turned off.".into()));
+                    }
+                    state.attempt(key, crate::now());
+                    state.save(&paths).map_err(error)
+                };
+                let policy = crate::nightly_lookup::LookupPolicy {
+                    candidate,
+                    previous: previous.as_ref(),
+                    backoff,
+                    github_blocked,
+                    before_lookup: &mut before_lookup,
+                    manual,
+                    installed: installed.contains(key),
+                    fallback_used: &mut discovery_fallbacks,
+                };
+                let Some((outcome, origin)) = crate::nightly_lookup::lookup_prefer_catalog(
+                    &app,
+                    platform,
+                    now,
+                    policy,
+                    &mut |url, max, timeout, now| http.nightly_get_as(url, max, timeout, now, priority),
+                    &|| started.elapsed(),
+                    &enabled,
+                ) else {
+                    shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).defer(key);
+                    deferred.push(key.clone());
+                    continue;
                 };
                 if let crate::nightly_lookup::Outcome::Indeterminate(error) = &outcome
                     && error.over_budget
                 {
-                    // The launcher's own budget refused this lookup and the ones behind it: no app
-                    // failed, so every remaining one goes back where it was and keeps its place in
-                    // the queue instead of waiting out a cadence for a request never made.
                     let mut state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
-                    for later in &chosen[index..] {
-                        state.defer(later);
+                    state.defer(key);
+                    deferred.push(key.clone());
+                    if started.elapsed() >= crate::nightly_lookup::MAX_TIME {
+                        for later in &chosen[index + 1..] {
+                            state.defer(later);
+                            deferred.push(later.clone());
+                        }
+                        break;
                     }
-                    if let Err(error) = state.save(&paths) {
-                        log::warn!("Could not persist deferred Nightly scheduling: {error}");
-                    }
-                    held_back_until = http.as_ref().and_then(|http| http.nightly_budget_retry_at(priority, crate::now()));
-                    break;
+                    // A GitHub-only quota refusal does not consume static catalog results.
+                    github_blocked = true;
+                    held_back_until = http.nightly_budget_retry_at(priority, crate::now());
+                    continue;
                 }
-                finish_nightly_result(&app, platform, generation, outcome, &shared, &paths);
+                used_github |= origin == Origin::GitHub;
+                used_catalog |= origin == Origin::ArtCraftApi;
+                finish_nightly_result(&app, platform, generation, outcome, origin, &shared, &paths);
+            }
+            if !deferred.is_empty() {
+                let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+                let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner);
+                let state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                if options.nightly_enabled && state.generation == generation {
+                    match state.save(&paths) {
+                        Ok(()) => {
+                            // Queueing temporarily marked these rows incomplete. Restore their
+                            // presentation too when an allowance/backoff left them unattempted.
+                            let verified = shared.nightly_verified.lock().unwrap_or_else(PoisonError::into_inner);
+                            for key in deferred {
+                                if let Some(app) = by_key.get(&key) {
+                                    let record = state.record(&key);
+                                    let fresh = state.fresh(&key, crate::now()) && (record.tag.is_none() || verified.contains_key(app.id));
+                                    shared.emit(Event::NightlyStatus { app: app.id.into(), status: record.status(fresh) });
+                                }
+                            }
+                        }
+                        Err(error) => log::warn!("Could not persist deferred Nightly scheduling: {error}"),
+                    }
+                }
             }
             drop(lease);
             let retry = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
             shared.emit(Event::CheckFinished {
                 at: crate::now(),
-                source: Source::GitHubApi,
+                source: if used_github {
+                    Source::GitHubApi
+                } else if used_catalog {
+                    Source::Feed
+                } else {
+                    Source::Cache
+                },
                 // A server's backoff, or the launcher's own budget: both mean "ask again at this time".
                 rate_limited_until: retry.or(held_back_until),
             });
@@ -1430,6 +1512,7 @@ fn finish_nightly_result(
     platform: Platform,
     generation: u64,
     mut outcome: crate::nightly_lookup::Outcome,
+    origin: Origin,
     shared: &Shared,
     paths: &Paths,
 ) {
@@ -1484,7 +1567,7 @@ fn finish_nightly_result(
     let installable = nightly_installable(app, shared, Some(platform), record.complete && state.fresh(&key, now));
     shared.emit_all([
         Event::Installable { app: app.id.into(), installable },
-        Event::Latest { app: app.id.into(), latest, from: Origin::GitHub },
+        Event::Latest { app: app.id.into(), latest, from: origin },
         Event::NightlyStatus { app: app.id.into(), status: record.status(record.complete) },
     ]);
 }
@@ -2170,6 +2253,12 @@ fn planned_download(
 /// What one check asks: which feed to poll (a local mirror trumps everything), and how much to
 /// lean on GitHub.
 fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, shared: &Arc<Shared>) -> (Option<Feed>, Fallback) {
+    // Backend harnesses use a stub release source; do not let current production releases
+    // supersede the fixture. The signed catalog paths have their own deterministic tests.
+    #[cfg(test)]
+    if matches!(&shared.host, HostDetection::Stub(_)) {
+        return (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY });
+    }
     if let Some(base) = mirror {
         // A local mirror answers for everything: GitHub is never asked.
         (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
@@ -2178,12 +2267,10 @@ fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, sh
     }
 }
 
-/// [`check_plan`] without a local mirror, given what the feed said. The feed serves stable
-/// releases only, so with pre-releases on it can't settle an answer that may be a beta or RC. It
-/// still stands in between GitHub's asks, which keep to the feed's own pace (hourly per app once
-/// everything has loaded), not every check (#713).
+/// The signed catalog describes all channels; legacy JSON only settles stable answers.
+/// Keep GitHub prerelease discovery for legacy feeds at the normal fallback pace (#713).
 fn remote_plan(pre: bool, (feed, fallback): (Option<Feed>, Fallback)) -> (Option<Feed>, Fallback) {
-    if pre { (feed, Fallback { trust_feed: false, ..fallback }) } else { (feed, fallback) }
+    if pre && !feed.as_ref().is_some_and(|f| f.channel_aware) { (feed, Fallback { trust_feed: false, ..fallback }) } else { (feed, fallback) }
 }
 
 /// Answers the apps from a shared queue over a few workers, and returns which sources answered.
@@ -2373,7 +2460,7 @@ fn latest_for(
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
     let repo = feed_repo(feed, app);
     if fallback.trust_feed {
-        match feed.map(|f| f.answer(app, now)) {
+        match feed.map(|f| if pre { f.answer_prerelease(app, now) } else { f.answer(app, now) }) {
             // The feed can lag GitHub by some minutes after a release. A check the user pressed
             // looks past it when GitHub's quota-free redirect names something newer (#91); one
             // reusing the last forced check's answers then takes GitHub's saved answer.
@@ -2400,7 +2487,7 @@ fn latest_for(
         // GitHub couldn't answer (its limit, the launcher's budget, the network), or fell back
         // to a saved release older than the feed's: the feed's stable release stands.
         let live = answer.source == Source::GitHubApi && !matches!(answer.latest, LatestRelease::Failed(_));
-        if !live && let Some(stable) = feed_if_newer(feed, app, now, Some(&answer.latest)) {
+        if !live && let Some(stable) = feed_if_newer(feed, app, pre, now, Some(&answer.latest)) {
             return (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed));
         }
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
@@ -2410,17 +2497,20 @@ fn latest_for(
         // named last time, without waiting for GitHub's next turn; so does it when nothing is
         // saved from GitHub for this track yet (pre-releases just turned on). A check reusing a
         // forced one's answers keeps whichever of the two is newer.
-        match feed_if_newer(feed, app, now, cached.as_ref()) {
+        match feed_if_newer(feed, app, pre, now, cached.as_ref()) {
             Some(stable) => (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed)),
             None => (cached, Origin::GitHub, None),
         }
     }
 }
 
-/// The feed's fresh stable release for `app`, when it is newer than `github`'s answer, or that
+/// The feed's fresh selected-channel release for `app`, when it is newer than `github`'s answer, or that
 /// answer is missing, empty or failed.
-fn feed_if_newer(feed: Option<&Feed>, app: &CraftApp, now: i64, github: Option<&LatestRelease>) -> Option<Release> {
-    let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| f.answer(app, now)) else { return None };
+fn feed_if_newer(feed: Option<&Feed>, app: &CraftApp, pre: bool, now: i64, github: Option<&LatestRelease>) -> Option<Release> {
+    let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| if pre && f.channel_aware { f.answer_prerelease(app, now) } else { f.answer(app, now) })
+    else {
+        return None;
+    };
     let newer = match github {
         Some(LatestRelease::Found(saved)) => {
             stable.version.as_ref().zip(saved.version.as_ref()).is_some_and(|(stable, saved)| version::is_newer(stable, saved))
@@ -2462,6 +2552,9 @@ fn track_answer(
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
     let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
     if *track == VersionTrack::Nightly {
+        if !force && let Some(FeedAnswer::Fresh(Some(nightly))) = feed.map(|f| f.answer_nightly(app, now)) {
+            return (Some(LatestRelease::Found(nightly)), Origin::ArtCraftApi, Some(Source::Feed));
+        }
         // Its own record, apart from the stable track's: asking about one doesn't stand in for
         // the other when the app switches tracks.
         let key = format!("{}@nightly", app.id);
@@ -2542,15 +2635,48 @@ enum FeedFetch {
     Held,
 }
 
-/// Asks ArtCraft's release feed up to `attempts` times, as often as `throttle` allows (waiting at
-/// most [`MAX_THROTTLE_WAIT`] for it), saving a good answer.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SignedFeedCache {
+    catalog: String,
+    signature: String,
+}
+
+/// Fetch and verify both parts of a signed feed using the caller's catalog transport.
+fn signed_feed(url: &str, get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>) -> Result<(Feed, SignedFeedCache), FeedError> {
+    let sig_url = format!("{url}.sig");
+    let catalog =
+        get(url, artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES)?.ok_or_else(|| FeedError::failed("hosted catalog is not published"))?;
+    let signature = get(&sig_url, artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES)?
+        .ok_or_else(|| FeedError::failed("catalog signature is not published"))?;
+    let feed = Feed::parse_signed_catalog(&catalog, &signature).map_err(FeedError::failed)?;
+    let saved = SignedFeedCache {
+        catalog: String::from_utf8(catalog).map_err(|_| FeedError::failed("catalog is not UTF-8"))?,
+        signature: String::from_utf8(signature).map_err(|_| FeedError::failed("signature is not UTF-8"))?,
+    };
+    Ok((feed, saved))
+}
+
+/// Asks ArtCraft's signed catalog (or a local-mirror JSON feed) up to `attempts` times, as often
+/// as `throttle` allows (waiting at most [`MAX_THROTTLE_WAIT`] for it), saving a good answer.
 fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrottle>, attempts: usize) -> FeedFetch {
+    fetch_feed_with_catalog(http, paths, url, throttle, attempts, |url, max| http.get_catalog_feed_bytes(url, max))
+}
+
+fn fetch_feed_with_catalog(
+    http: &Http,
+    paths: &Paths,
+    url: &str,
+    throttle: &Mutex<FeedThrottle>,
+    attempts: usize,
+    get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>,
+) -> FeedFetch {
     let mut asked = false;
+    let is_signed_catalog = url.ends_with(".toml");
     for attempt in 0..attempts.max(1) {
         let wait = throttle.lock().unwrap_or_else(PoisonError::into_inner).wait(crate::now());
         if wait > MAX_THROTTLE_WAIT {
             if !asked {
-                log::info!("holding off the ArtCraft API for {wait} s");
+                log::info!("holding off the release catalog for {wait} s");
             }
             break;
         }
@@ -2566,27 +2692,50 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
             throttle.sending(now);
         }
         asked = true;
-        let outcome = match http.get_feed(url) {
-            Ok(body) => match Feed::parse(&body) {
-                Some(feed) => {
-                    if let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), body.as_bytes()) {
-                        log::warn!("couldn't save the release feed: {e}");
+        let outcome = if is_signed_catalog {
+            let fetched = signed_feed(url, &get);
+            match fetched {
+                Ok((feed, saved)) => {
+                    if let Ok(bytes) = serde_json::to_vec(&saved)
+                        && let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), &bytes)
+                    {
+                        log::warn!("couldn't save the release catalog: {e}");
                     }
                     throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(Outcome::Answered, crate::now(), 0.0);
                     return FeedFetch::Answered(feed);
                 }
-                None => {
-                    log::warn!("the release feed answered with something unreadable (try {})", attempt + 1);
-                    Outcome::Failed { retry_after: None }
+                Err(e) if e.throttled => {
+                    log::warn!("the signed release catalog asked us to slow down (HTTP 429); holding off");
+                    Outcome::Throttled { retry_after: e.retry_after }
                 }
-            },
-            Err(e) if e.throttled => {
-                log::warn!("the ArtCraft API asked us to slow down (HTTP 429); holding off");
-                Outcome::Throttled { retry_after: e.retry_after }
+                Err(e) => {
+                    log::info!("signed release catalog unavailable (try {}): {}", attempt + 1, e.why);
+                    Outcome::Failed { retry_after: e.retry_after }
+                }
             }
-            Err(e) => {
-                log::info!("release feed unavailable (try {}): {}", attempt + 1, e.why);
-                Outcome::Failed { retry_after: e.retry_after }
+        } else {
+            match http.get_feed(url) {
+                Ok(body) => match Feed::parse(&body) {
+                    Some(feed) => {
+                        if let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), body.as_bytes()) {
+                            log::warn!("couldn't save the release feed: {e}");
+                        }
+                        throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(Outcome::Answered, crate::now(), 0.0);
+                        return FeedFetch::Answered(feed);
+                    }
+                    None => {
+                        log::warn!("the release feed answered with something unreadable (try {})", attempt + 1);
+                        Outcome::Failed { retry_after: None }
+                    }
+                },
+                Err(e) if e.throttled => {
+                    log::warn!("the release feed asked us to slow down (HTTP 429); holding off");
+                    Outcome::Throttled { retry_after: e.retry_after }
+                }
+                Err(e) => {
+                    log::info!("release feed unavailable (try {}): {}", attempt + 1, e.why);
+                    Outcome::Failed { retry_after: e.retry_after }
+                }
             }
         };
         throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(outcome, crate::now(), feed_throttle::jitter());
@@ -2595,6 +2744,58 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
         }
     }
     if asked { FeedFetch::Failed } else { FeedFetch::Held }
+}
+
+/// Nightly uses the pinned signed endpoint only. A failed/bad/stale catalog never proves absence.
+/// Cached bytes are reverified; legacy JSON is not a Nightly source.
+fn nightly_catalog(http: &Http, paths: &Paths, shared: &Shared, enabled: &impl Fn() -> bool) -> Option<Feed> {
+    // Existing backend fixtures and the opt-in local mirror must stay deterministic.
+    if !enabled() || local_mirror().is_some() {
+        return None;
+    }
+    #[cfg(test)]
+    if cfg!(test) {
+        return shared.nightly_catalog_fixture.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    }
+    nightly_catalog_with_fetch(http, paths, &shared.feed_throttle, enabled, |url, max| http.get_catalog_feed_bytes(url, max))
+}
+
+fn nightly_catalog_with_fetch(
+    http: &Http,
+    paths: &Paths,
+    throttle: &Mutex<FeedThrottle>,
+    enabled: &impl Fn() -> bool,
+    get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>,
+) -> Option<Feed> {
+    if !enabled() {
+        return None;
+    }
+    crate::nightly_profile::validate_paths(paths).ok()?;
+    crate::nightly_profile::validate_file(&paths.feed_cache()).ok()?;
+    match fetch_feed_with_catalog(http, paths, artcraft_launcher_core::feed::FEED_URL, throttle, 1, |url, max| {
+        if !enabled() {
+            return Err(FeedError::failed("Developer build discovery was turned off."));
+        }
+        get(url, max)
+    }) {
+        FeedFetch::Answered(feed) => Some(feed),
+        FeedFetch::Held => load_signed_nightly_feed(paths),
+        FeedFetch::Failed => None,
+    }
+}
+
+fn load_signed_nightly_feed(paths: &Paths) -> Option<Feed> {
+    use std::io::Read as _;
+    const MAX: usize =
+        artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES * 6 + artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES + 128;
+    let mut file = std::fs::File::open(paths.feed_cache()).ok()?;
+    let mut body = Vec::new();
+    file.by_ref().take(MAX as u64 + 1).read_to_end(&mut body).ok()?;
+    if body.len() > MAX {
+        return None;
+    }
+    let saved: SignedFeedCache = serde_json::from_slice(&body).ok()?;
+    Feed::parse_signed_catalog(saved.catalog.as_bytes(), saved.signature.as_bytes()).ok()
 }
 
 /// The feed's address. `ARTCRAFT_LAUNCHER_FEED_URL` points at a staging server or a local copy
@@ -2676,9 +2877,14 @@ fn mirror_chosen(app: &CraftApp, feed: Option<&Feed>, now: i64, track: &VersionT
     (chosen, origin, source)
 }
 
-/// The last saved feed answer, if any.
+/// The last saved feed answer, if any. Signed catalog caches are always reverified against the
+/// pinned Ed25519 key before parsing.
 fn load_feed(paths: &Paths) -> Option<Feed> {
-    std::fs::read_to_string(paths.feed_cache()).ok().and_then(|body| Feed::parse(&body))
+    let body = std::fs::read_to_string(paths.feed_cache()).ok()?;
+    if let Ok(signed) = serde_json::from_str::<SignedFeedCache>(&body) {
+        return Feed::parse_signed_catalog(signed.catalog.as_bytes(), signed.signature.as_bytes()).ok();
+    }
+    Feed::parse(&body)
 }
 
 /// The machine's real architecture: an x64 launcher on Windows on ARM should still pick ARM64
@@ -3479,6 +3685,8 @@ mod tests {
             channel: artcraft_launcher_core::nightly::InstallChannel::Stable,
             host: HostDetection::Stub(Arc::new(|_| None)),
             nightly_detection_observer: Mutex::new(None),
+            #[cfg(test)]
+            nightly_catalog_fixture: Mutex::new(None),
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
@@ -3530,6 +3738,78 @@ mod tests {
             }
         });
         (url, hits)
+    }
+
+    #[test]
+    fn signed_feed_round_trips_through_offline_cache_and_rejects_tampering() {
+        use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_SIG, BUILD_CATALOG_TOML, CATALOG_URL, SIGNATURE_URL};
+        let (feed, mut saved) = signed_feed(CATALOG_URL, |url, _| match url {
+            CATALOG_URL => Ok(Some(BUILD_CATALOG_TOML.to_vec())),
+            SIGNATURE_URL => Ok(Some(BUILD_CATALOG_SIG.to_vec())),
+            _ => panic!("unexpected URL {url}"),
+        })
+        .unwrap();
+        assert!(!feed.apps.is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        crate::paths::write_atomic(&paths.feed_cache(), &serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert_eq!(load_feed(&paths), Some(feed));
+        saved.catalog.push('\n');
+        crate::paths::write_atomic(&paths.feed_cache(), &serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert!(load_feed(&paths).is_none());
+        assert!(signed_feed(CATALOG_URL, |_, _| Ok(None)).is_err());
+        assert!(signed_feed(CATALOG_URL, |url, _| Ok((url == CATALOG_URL).then(|| BUILD_CATALOG_TOML.to_vec()))).is_err());
+    }
+
+    #[test]
+    fn nightly_track_prefers_a_fresh_catalog_answer_without_requesting_github() {
+        let github = CountingGitHub::default();
+        let shared = shared();
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let tag = "v0.24.0-nightly.20261009.1.1";
+        let mut feed = feed();
+        feed.apps.get_mut(photo.id).unwrap().nightly = Some(artcraft_launcher_core::feed::FeedRelease {
+            tag: tag.into(),
+            prerelease: true,
+            assets: vec![(
+                "SHA256SUMS.txt".into(),
+                1,
+                format!("https://github.com/{}/releases/download/{tag}/SHA256SUMS.txt", photo.repo),
+                Some("a".repeat(64)),
+            )],
+            ..Default::default()
+        });
+        let (latest, origin, used) = track_answer(photo, &VersionTrack::Nightly, Some(&feed), &github, &shared, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(r)) if r.tag == tag));
+        assert_eq!(origin, Origin::ArtCraftApi);
+        assert_eq!(used, Some(Source::Feed));
+        assert_eq!(github.0.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn signed_catalog_429_stops_retries_and_preserves_backoff_after_restart() {
+        use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_TOML, CATALOG_URL};
+        for throttle_signature in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = Paths::under(dir.path());
+            let http = Http::new().unwrap();
+            let throttle = Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now()));
+            let hits = AtomicUsize::new(0);
+            let get = |url: &str, _| {
+                hits.fetch_add(1, Ordering::SeqCst);
+                if throttle_signature && url == CATALOG_URL {
+                    return Ok(Some(BUILD_CATALOG_TOML.to_vec()));
+                }
+                Err(FeedError { why: "HTTP 429".into(), throttled: true, retry_after: Some(3600) })
+            };
+            assert!(matches!(fetch_feed_with_catalog(&http, &paths, CATALOG_URL, &throttle, FEED_ATTEMPTS, get), FeedFetch::Failed));
+            let expected = if throttle_signature { 2 } else { 1 };
+            assert_eq!(hits.load(Ordering::SeqCst), expected);
+            let restarted = Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now()));
+            assert!(restarted.lock().unwrap().wait(crate::now()) >= 3599);
+            assert!(matches!(fetch_feed_with_catalog(&http, &paths, CATALOG_URL, &restarted, FEED_ATTEMPTS, get), FeedFetch::Held));
+            assert_eq!(hits.load(Ordering::SeqCst), expected);
+        }
     }
 
     #[test]
@@ -3754,6 +4034,34 @@ mod tests {
         assert_eq!(github.0.load(Ordering::SeqCst), 1, "a check every 12 minutes asks once in the hour");
         latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
         assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+    }
+
+    #[test]
+    fn signed_channel_aware_plan_uses_rc_and_keeps_it_on_github_failure() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let catalog = Feed::parse_catalog_toml(
+            r#"generated_at = "2026-10-09T13:00:00Z"
+[[apps]]
+id = "photocraft"
+repo = "storytold/photocraft"
+[apps.releases.stable]
+tag = "v0.23.1"
+[apps.releases.prerelease]
+tag = "v0.24.0-rc.1"
+prerelease = true
+"#,
+        )
+        .unwrap();
+        let (feed, plan) = remote_plan(true, (Some(catalog), LOADED));
+        assert!(plan.trust_feed);
+        let github = CountingGitHub::default();
+        let (latest, _, used) = latest_for(photo, feed.as_ref(), plan, &github, &shared(), true, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(r)) if r.tag == "v0.24.0-rc.1"));
+        assert_eq!(used, Some(Source::Feed));
+        assert_eq!(github.0.load(Ordering::SeqCst), 0);
+        let unavailable = Some(LatestRelease::Failed("offline".into()));
+        assert_eq!(feed_if_newer(feed.as_ref(), photo, true, NOW, unavailable.as_ref()).unwrap().tag, "v0.24.0-rc.1");
+        assert_eq!(feed_if_newer(feed.as_ref(), photo, false, NOW, unavailable.as_ref()).unwrap().tag, "v0.23.1");
     }
 
     /// Asking GitHub with pre-releases off doesn't stand in for asking with them on: turning them
