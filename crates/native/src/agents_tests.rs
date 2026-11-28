@@ -342,14 +342,11 @@ fn a_refresh_that_cannot_write_the_app_list_fails() {
     let dir = tempfile::tempdir().unwrap();
     write_apps(dir.path(), &[]).unwrap();
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
-    if std::fs::write(dir.path().join("probe"), b"").is_ok() {
-        // Running as root: permissions don't stop the write.
-        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
-        return;
-    }
+    // Running as root, permissions don't stop the write.
+    let writable = std::fs::write(dir.path().join("probe"), b"").is_ok();
     let result = refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(result.is_err(), "{result:?}");
+    assert!(writable || result.is_err(), "{result:?}");
 }
 
 /// A refresh that can't read the app list says so, so the caller tries again later instead of
@@ -362,13 +359,11 @@ fn a_refresh_that_cannot_read_the_app_list_fails() {
     write_apps(dir.path(), &[]).unwrap();
     let list = dir.path().join(craft_ai_agents::APPS_FILE);
     std::fs::set_permissions(&list, std::fs::Permissions::from_mode(0o000)).unwrap();
-    if std::fs::File::open(&list).is_ok() {
-        // Running as root: permissions don't stop the read.
-        return;
-    }
+    // Running as root, permissions don't stop the read.
+    let readable = std::fs::File::open(&list).is_ok();
     let result = refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
     std::fs::set_permissions(&list, std::fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(result.is_err(), "{result:?}");
+    assert!(readable || result.is_err(), "{result:?}");
 }
 
 /// A broken app list counts as off: a refresh leaves it alone and succeeds, so it is not retried

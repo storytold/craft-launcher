@@ -310,10 +310,10 @@ fn copy_gateway(src: &Path, dir: &Path) -> Result<(PathBuf, bool), String> {
 
 fn write_gateway(dest: &Path, bytes: &[u8]) -> Result<(), String> {
     #[cfg(test)]
-    if tests::GATEWAY_BUSY.get() {
-        return Err("the test kept the gateway copy busy".into());
-    }
-    crate::paths::write_atomic(dest, bytes)
+    let busy = tests::GATEWAY_BUSY.get();
+    #[cfg(not(test))]
+    let busy = false;
+    if busy { Err("the test kept the gateway copy busy".into()) } else { crate::paths::write_atomic(dest, bytes) }
 }
 
 /// Make the gateway copy executable for everyone who may run it (`0755`) when it isn't already.
