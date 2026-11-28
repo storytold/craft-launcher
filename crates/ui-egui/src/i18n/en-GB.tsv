@@ -1,0 +1,3 @@
+# British English: only regional date formats differ from the built-in English strings.
+	{month} {day}, {year}	{day} {month} {year}
+	{month}/{day}/{year}	{day}/{month}/{year}
