@@ -549,3 +549,35 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+# Developer Builds card and operation feedback
+	Available · {date}	Available · {date}
+	Available: {version}	Available: {version}
+	Build details	Build details
+	Build info is outdated.	Build info is outdated.
+	Check for updates.	Check for updates.
+	Couldn’t check {app} for updates: {reason}	Couldn’t check {app} for updates: {reason}
+	Couldn’t finish installing the {app} developer build: {reason}	Couldn’t finish installing the {app} developer build: {reason}
+	Couldn’t finish uninstalling the {app} developer build: {reason}	Couldn’t finish uninstalling the {app} developer build: {reason}
+	Couldn’t show the {app} developer build: {reason}	Couldn’t show the {app} developer build: {reason}
+	Couldn’t verify the latest build.	Couldn’t verify the latest build.
+	Installed · {date}	Installed · {date}
+	Installed: {version}	Installed: {version}
+	Last seen	Last seen
+	Last seen · {date}	Last seen · {date}
+	Last seen: {version}	Last seen: {version}
+	No verified build information.	No verified build information.
+	Not checked yet.	Not checked yet.
+	This build can’t be installed.	This build can’t be installed.
+	Update available · {date}	Update available · {date}
+	Wait for the next check.	Wait for the next check.
+	{app} developer build: {reason}	{app} developer build: {reason}
+	Check for updates to install.	Check for updates to install.
+	Show in folder	Show in folder
+	Check details	Check details
+	Couldn’t check for developer builds.	Couldn’t check for developer builds.
+	Developer builds need attention.	Developer builds need attention.
+	No developer builds available · checked {ago}	No developer builds available · checked {ago}
+	Some apps couldn’t be checked.	Some apps couldn’t be checked.
+	Some apps still need to be checked.	Some apps still need to be checked.
+	Try checking again.	Try checking again.

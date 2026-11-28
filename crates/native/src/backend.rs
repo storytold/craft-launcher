@@ -2987,7 +2987,7 @@ impl Backend for NativeBackend {
                         crate::process::reveal(&record.path)
                     });
                     if let Err(error) = result {
-                        self.shared.emit(Event::Notice { app: app.clone(), result: Err(error) });
+                        self.shared.emit(Event::NightlyRevealFailed { app: app.clone(), error });
                     }
                     return;
                 }

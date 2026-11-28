@@ -351,6 +351,11 @@ pub enum Event {
         app: String,
         result: Result<String, String>,
     },
+    /// Showing the installed Nightly copy failed. This side action does not own a job phase.
+    NightlyRevealFailed {
+        app: String,
+        error: String,
+    },
     /// One picture of an app's details page, or why it couldn't be had (offline, not published,
     /// not a JPEG). `key` is the [`crate::details::Shot::key`].
     Screenshot {
