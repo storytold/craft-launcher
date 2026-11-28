@@ -1171,13 +1171,15 @@ impl LauncherUi {
     /// the active sort (and the grid's installed / not-installed split) applies only to the rest.
     pub(crate) fn visible_ids(&self) -> Vec<&'static str> {
         let needle = self.search.trim().to_lowercase();
+        // Community apps still need their Unhide action in the Hidden view.
+        let hide_community_apps = self.settings.hide_community_apps && self.settings.filter != Filter::Hidden;
         let mut list: Vec<(usize, &AppEntry)> = self
             .entries
             .iter()
             .enumerate()
             .filter(|(_, e)| {
                 self.in_filter(e, self.settings.filter)
-                    && !(self.settings.hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
+                    && !(hide_community_apps && e.app.kind == artcraft_launcher_core::catalog::AppKind::Community)
                     && self.platform.is_none_or(|p| e.app.runs_on(p.os))
                     && (needle.is_empty() || e.app.name.to_lowercase().contains(&needle) || e.app.tagline.to_lowercase().contains(&needle))
             })
@@ -1432,6 +1434,19 @@ mod tests {
             Command::DownloadOrder(order) => Some(order.clone()),
             _ => None,
         })
+    }
+
+    #[test]
+    fn hidden_community_apps_stay_visible_in_the_hidden_view() {
+        let (mut launcher, _sent, _ctx) = launcher();
+        assert!(launcher.visible_ids().contains(&"solidcraft"));
+
+        launcher.settings.hide_community_apps = true;
+        assert!(!launcher.visible_ids().contains(&"solidcraft"));
+
+        launcher.settings.hidden.insert("solidcraft".to_string());
+        launcher.settings.filter = Filter::Hidden;
+        assert_eq!(launcher.visible_ids(), ["solidcraft"]);
     }
 
     #[test]
