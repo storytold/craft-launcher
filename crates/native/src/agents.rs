@@ -332,6 +332,12 @@ fn lock() -> MutexGuard<'static, ()> {
 /// keeps the previous ones.
 pub fn state(services: &[InstalledApp]) -> McpAgents {
     let flag_on = flag_on();
+
+    // With the flag off Settings shows nothing about agents, so no client configuration, app
+    // list or gateway copy is read.
+    if !flag_on {
+        return McpAgents::default();
+    }
     let dir = mcp_dir();
     let on = {
         let _guard = lock();
@@ -370,6 +376,10 @@ pub fn state(services: &[InstalledApp]) -> McpAgents {
 
 /// Whether the `AI-MCP` feature flag is on (`ArtCraft/flags.toml`, `CRAFT_FLAGS`).
 pub fn flag_on() -> bool {
+    #[cfg(test)]
+    if let Some(on) = tests::FLAG.get() {
+        return on;
+    }
     craft_flags::load().enabled(&craft_flags::AI_MCP)
 }
 
