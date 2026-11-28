@@ -147,7 +147,7 @@ impl WebBackend {
             for shot in details.shots {
                 let result = match (&offline, details.screenshot_url(shot.key)) {
                     (Some(why), _) => Err(why.clone()),
-                    (None, Some(url)) => picture_or_fallback(details, shot.key, &url).await.map_err(|failure| match failure {
+                    (None, Some(url)) => picture(&url).await.map_err(|failure| match failure {
                         PictureError::Network(why) => {
                             offline = Some(why.clone());
                             why
@@ -204,21 +204,6 @@ impl WebBackend {
             *checking.borrow_mut() = false;
             ctx.request_repaint();
         });
-    }
-}
-
-/// The picture at `url` (getartcraft.com), or else the same picture from the GitHub fallback. A
-/// picture-specific answer from the fallback is kept, so it doesn't read as a network failure.
-async fn picture_or_fallback(details: &AppDetails, key: &str, url: &str) -> Result<Vec<u8>, PictureError> {
-    let primary = match picture(url).await {
-        Ok(bytes) => return Ok(bytes),
-        Err(primary) => primary,
-    };
-    let Some(fallback) = details.screenshot_fallback_url(key) else { return Err(primary) };
-    match picture(&fallback).await {
-        Ok(bytes) => Ok(bytes),
-        Err(fallback @ PictureError::Picture(_)) => Err(fallback),
-        Err(PictureError::Network(_)) => Err(primary),
     }
 }
 

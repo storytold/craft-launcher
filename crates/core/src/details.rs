@@ -46,12 +46,10 @@ const fn feature(title: &'static str, text: &'static str) -> Feature {
 
 /// Where the pictures live: one 1200 px wide, 8:5 JPEG per [`Shot`], at `<app>/<key>.jpg`.
 ///
-/// Primary host is `getartcraft.com`; GitHub (`SCREENSHOTS_FALLBACK_BASE`) is the fallback.
 /// Pinned to a tag (`SCREENSHOTS_REV`) so that what a launcher fetches never changes under it, and
-/// so that a saved copy never goes stale.
-pub const SCREENSHOTS_BASE: &str = "https://getartcraft.com/launcher-screenshots";
-/// GitHub fallback host for screenshots when `getartcraft.com` is unavailable.
-pub const SCREENSHOTS_FALLBACK_BASE: &str = "https://raw.githubusercontent.com/storytold/craft-launcher-assets";
+/// so that a saved copy never goes stale. To change a picture, publish a new tag and bump the
+/// revision: older launchers keep working from the tag they know.
+pub const SCREENSHOTS_BASE: &str = "https://raw.githubusercontent.com/storytold/craft-launcher-assets";
 
 /// The tag of the pictures repository the launcher reads. Also part of the saved copies' path.
 pub const SCREENSHOTS_REV: &str = "v1";
@@ -140,15 +138,10 @@ pub fn screenshot_within_budget(bytes: &[u8]) -> bool {
 include!(concat!(env!("OUT_DIR"), "/details.rs"));
 
 impl AppDetails {
-    /// Where the picture `key` of this app is published on `getartcraft.com`, or `None` if the
-    /// page has no such picture.
+    /// Where the picture `key` of this app is published, or `None` if the page has no such picture.
+    /// The only way to turn a request into an address: callers never build one from their own text.
     pub fn screenshot_url(&self, key: &str) -> Option<String> {
         self.shots.iter().find(|s| s.key == key).map(|s| format!("{SCREENSHOTS_BASE}/{SCREENSHOTS_REV}/{}/{}.jpg", self.id, s.key))
-    }
-
-    /// Fallback GitHub URL for picture `key` when `getartcraft.com` is unavailable.
-    pub fn screenshot_fallback_url(&self, key: &str) -> Option<String> {
-        self.shots.iter().find(|s| s.key == key).map(|s| format!("{SCREENSHOTS_FALLBACK_BASE}/{SCREENSHOTS_REV}/{}/{}.jpg", self.id, s.key))
     }
 
     pub fn by_id(id: &str) -> Option<&'static AppDetails> {
@@ -186,9 +179,8 @@ mod tests {
     #[test]
     fn picture_addresses_come_only_from_the_pages_own_pictures() {
         let page = AppDetails::by_id("photocraft").unwrap();
-        assert_eq!(page.screenshot_url("demo").as_deref(), Some("https://getartcraft.com/launcher-screenshots/v1/photocraft/demo.jpg"));
         assert_eq!(
-            page.screenshot_fallback_url("demo").as_deref(),
+            page.screenshot_url("demo").as_deref(),
             Some("https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/photocraft/demo.jpg")
         );
         for key in ["", "nope", "../vectorcraft/neon", "demo/../masks", "demo.jpg", "/etc/passwd", "demo?x=1", "demo#"] {

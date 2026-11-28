@@ -81,6 +81,7 @@
 	Installing on Windows	Instalacija na Windowsu
 	Install new apps as	Instaliraj nove aplikacije kao
 	System package (recommended)	Sistemski paket (preporučeno)
+	Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator.	Brza instalacija raspakuje aplikaciju u vaš lični folder Programs, dodaje stavku u Start meni i prikazuje je na listi Aplikacije i funkcije, bez traženja administratorskih prava.
 	Updates always use the format an app was installed with.	Ažuriranja uvijek koriste format s kojim je aplikacija instalirana.
 	Running in the background	Radi u pozadini
 	Keep running in the tray when the window is closed	Nastavi raditi u sistemskoj traci kad se prozor zatvori
@@ -145,6 +146,7 @@
 	The download is still here. It's checked again, then installed.	Preuzimanje je još ovdje. Ponovo se provjerava, a zatim instalira.
 	Waiting for another app…	Čeka se druga aplikacija…
 	Waiting for other installs…	Čekaju se druge instalacije…
+	Fast install (recommended)	Brza instalacija (preporučeno)
 	Installer (.msi)	Instalacijski program (.msi)
 	Portable (.zip)	Prenosivo (.zip)
 	Disk image (.dmg)	Slika diska (.dmg)

@@ -75,6 +75,30 @@ fn main() -> ExitCode {
             Err(_) => ExitCode::FAILURE,
         };
     }
+    // The Apps & features entry of a fast-installed app runs this (its Uninstall button): the
+    // app is removed without a window, like the helpers above. A failure is said in a dialog,
+    // not only the log file: Settings closes silently either way, with nothing to act on.
+    #[cfg(windows)]
+    if let Some(at) = args.iter().position(|a| a == "--uninstall")
+        && let Some(id) = args.get(at + 1)
+    {
+        let name = artcraft_launcher_core::CraftApp::by_id(id).map_or_else(|| id.clone(), |app| app.name.to_string());
+        let lang = startup_language(saved_settings(settings_file::path(APP_ID).as_deref()));
+        return match artcraft_launcher_native::fast_install::uninstall_app(id) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                let message = format!("{name} couldn't be removed: {error}");
+                log::error!("{}", i18n::message(lang, &message));
+                rfd::MessageDialog::new()
+                    .set_title("ArtCraft Launcher")
+                    .set_description(i18n::message(lang, &message))
+                    .set_level(rfd::MessageLevel::Error)
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .show();
+                ExitCode::FAILURE
+            }
+        };
+    }
     let mut hidden = args.iter().any(|a| a == login::HIDDEN_FLAG);
     let settings_path = settings_file::path(APP_ID);
     #[cfg(target_os = "macos")]

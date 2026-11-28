@@ -107,6 +107,7 @@
 	Installing on Windows	Telepítés Windowson
 	Install new apps as	Új alkalmazások csomagformátuma
 	System package (recommended)	Rendszercsomag (ajánlott)
+	Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator.	A gyors telepítés kicsomagolja az alkalmazást a saját Programok mappájába, felvesz egy Start menü bejegyzést, és feltünteti az Alkalmazások és szolgáltatások listájában — rendszergazdai engedély kérése nélkül.
 	Updates always use the format an app was installed with.	A frissítések mindig az eredeti telepítés csomagformátumát használják.
 	Running in the background	Futtatás a háttérben
 	Keep running in the tray when the window is closed	Az ablak bezárásakor kerüljön a tálcára
@@ -181,6 +182,7 @@
 	Waiting for other installs…	Várakozás a többi telepítésre…
 
 # Package formats offered for download (PackageKind::label)
+	Fast install (recommended)	Gyors telepítés (ajánlott)
 	Installer (.msi)	Telepítő (.msi)
 	Portable (.zip)	Hordozható (.zip)
 	Disk image (.dmg)	Lemezkép (.dmg)

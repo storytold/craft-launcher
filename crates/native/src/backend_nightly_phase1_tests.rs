@@ -16,12 +16,8 @@ fn app() -> &'static CraftApp {
 fn complete(shared: &Shared, paths: &Paths, platform: Platform, run: u64) {
     let key = nightly_lookup::key(app(), platform);
     let now = crate::now();
-    {
-        let mut state = shared.nightly_state.lock().unwrap();
-        state.begin(std::slice::from_ref(&key), &Default::default(), now, true, true);
-        state.attempt(&key, now);
-    }
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(run))), Origin::GitHub, shared, paths);
+    shared.nightly_state.lock().unwrap().begin(&[key], &Default::default(), now, true, true);
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(run))), shared, paths);
     shared.nightly_state.lock().unwrap().finish();
 }
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))] // A Nightly install plan is staged only there.
@@ -39,7 +35,6 @@ fn selection_ui_and_install_gate_agree_and_failed_refresh_retains_stale_success(
         platform,
         0,
         Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "offline".into(), retry_at: Some(crate::now() + 120) }),
-        Origin::GitHub,
         &shared,
         &paths,
     );
@@ -58,10 +53,10 @@ fn later_off_and_off_then_on_drop_older_generation_without_promoting_or_advancin
     let before = shared.nightly_state.lock().unwrap().record(&key).verified_at;
     shared.options.lock().unwrap().nightly_enabled = false;
     shared.nightly_state.lock().unwrap().invalidate();
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(30))), Origin::GitHub, &shared, &paths);
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(30))), &shared, &paths);
     shared.options.lock().unwrap().nightly_enabled = true;
     shared.nightly_state.lock().unwrap().invalidate();
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(30))), Origin::GitHub, &shared, &paths);
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(30))), &shared, &paths);
     assert_eq!(shared.latest.lock().unwrap().get("photocraft"), Some(&previous));
     assert_eq!(shared.nightly_state.lock().unwrap().record(&key).verified_at, before);
     assert!(nightly_install_plan(app(), &shared, &paths, Some(platform)).is_err());
@@ -72,7 +67,7 @@ fn an_older_complete_response_does_not_implicitly_regress_the_verified_selection
     complete(&shared, &paths, platform, 20);
     let key = nightly_lookup::key(app(), platform);
     let before = shared.nightly_state.lock().unwrap().record(&key).verified_at;
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(10))), Origin::GitHub, &shared, &paths);
+    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(10))), &shared, &paths);
     assert!(shared.latest.lock().unwrap().get("photocraft").unwrap().tag.contains(".20.1."));
     let record = shared.nightly_state.lock().unwrap().record(&key);
     assert_eq!(record.verified_at, before);
@@ -109,15 +104,16 @@ fn actual_backend_fresh_off_schedules_nothing_and_later_off_cancels_queued_sweep
     task();
     assert!(queued.lock().unwrap().is_empty());
     assert!(shared.nightly_verified.lock().unwrap().is_empty());
-    // The signed catalog sweep schedules the whole due roster, but withdrawing consent
-    // before the worker starts still prevents every lookup and verified promotion.
+    // An automatic sweep looks at its three-app discovery allowance now, not at the whole roster,
+    // so check the apps it chose rather than assuming a particular one is among them.
     let state = shared.nightly_state.lock().unwrap();
     let attempted: Vec<_> = artcraft_launcher_core::hosted_catalog::apps()
         .iter()
         .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
         .filter(|app| state.record(&nightly_lookup::key(app, platform)).attempted_at.is_some())
         .collect();
-    assert!(attempted.is_empty(), "unstarted apps do not consume their next check turn");
+    assert_eq!(attempted.len(), 3, "the sweep marks the apps it chose as attempted");
+    assert!(attempted.iter().all(|app| state.record(&nightly_lookup::key(app, platform)).verified_at.is_none()));
     assert!(!shared.checking.load(Ordering::SeqCst));
 }
 
@@ -171,7 +167,6 @@ fn failed_result_save_retains_maximum_known_retry_and_flushes_it_before_admissio
         platform,
         0,
         Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(deadline) }),
-        Origin::GitHub,
         &shared,
         &paths,
     );
@@ -234,7 +229,6 @@ fn unreadable_existing_metadata_blocks_restart_without_replacement_until_valid_r
         platform,
         0,
         Outcome::Indeterminate(crate::http::NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(deadline) }),
-        Origin::GitHub,
         &original,
         &paths,
     );
@@ -276,133 +270,4 @@ fn unreadable_existing_metadata_blocks_restart_without_replacement_until_valid_r
     assert_eq!(std::fs::read(paths.nightly_checks()).unwrap(), bytes);
     backend.check_nightly_at(true, deadline);
     assert_eq!(spawned.load(Ordering::SeqCst), 1, "admission resumes only after valid recovery and the absolute deadline");
-}
-
-#[test]
-fn catalog_verified_nightly_publishes_the_same_install_gate_with_feed_origin() {
-    let (_temp, shared, paths, platform) = fixture();
-    finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(20))), Origin::ArtCraftApi, &shared, &paths);
-    let events = shared.events.lock().unwrap();
-    assert!(
-        events
-            .iter()
-            .any(|event| matches!(event, Event::Latest {app, latest: LatestRelease::Found(_), from: Origin::ArtCraftApi} if app == "photocraft"))
-    );
-    assert!(events.iter().any(|event| matches!(event, Event::Installable { app, installable: true } if app == "photocraft")));
-}
-
-#[test]
-fn nightly_catalog_fetches_one_signed_snapshot_and_reverifies_held_cache() {
-    use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_SIG, BUILD_CATALOG_TOML, CATALOG_URL, SIGNATURE_URL};
-    let (_temp, _shared, paths, _) = fixture();
-    let http = Http::new().unwrap();
-    let throttle = Mutex::new(FeedThrottle::new());
-    let hits = std::cell::Cell::new(0);
-    let get = |url: &str, _| {
-        hits.set(hits.get() + 1);
-        match url {
-            CATALOG_URL => Ok(Some(BUILD_CATALOG_TOML.to_vec())),
-            SIGNATURE_URL => Ok(Some(BUILD_CATALOG_SIG.to_vec())),
-            _ => panic!("unexpected URL"),
-        }
-    };
-    let feed = nightly_catalog_with_fetch(&http, &paths, &throttle, &|| true, get).unwrap();
-    assert!(feed.channel_aware);
-    assert_eq!(hits.get(), 2, "document and detached signature exactly once");
-    assert_eq!(nightly_catalog_with_fetch(&http, &paths, &throttle, &|| true, get), Some(feed));
-    assert_eq!(hits.get(), 2, "held request reuses the pinned-key-verified cache");
-    crate::paths::write_atomic(&paths.feed_cache(), b"not a signed catalog").unwrap();
-    assert!(nightly_catalog_with_fetch(&http, &paths, &throttle, &|| true, get).is_none());
-    assert_eq!(hits.get(), 2);
-    assert!(nightly_catalog_with_fetch(&http, &paths, &throttle, &|| false, get).is_none());
-}
-
-#[test]
-fn nightly_catalog_fetch_stops_before_signature_if_consent_is_withdrawn() {
-    use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_TOML, CATALOG_URL};
-    let (_temp, _shared, paths, _) = fixture();
-    let http = Http::new().unwrap();
-    let throttle = Mutex::new(FeedThrottle::new());
-    let enabled = std::cell::Cell::new(true);
-    assert!(
-        nightly_catalog_with_fetch(&http, &paths, &throttle, &|| enabled.get(), |url, _| {
-            assert_eq!(url, CATALOG_URL);
-            enabled.set(false);
-            Ok(Some(BUILD_CATALOG_TOML.to_vec()))
-        })
-        .is_none()
-    );
-    assert!(!paths.feed_cache().exists());
-}
-
-#[test]
-fn real_sweep_keeps_installed_priority_and_uses_catalog_after_github_budget_refusal() {
-    let (_temp, shared, paths, platform) = fixture();
-    let now = crate::now();
-    let (mut feed, _, body) = nightly_lookup::tests::catalog_fixture("v1.0.0-nightly.20261120.20.1.gabcdefabcdef", true);
-    feed.last_fetched = Some(now);
-    let entry = feed.apps.get_mut(app().id).unwrap();
-    entry.fetched_at = Some(now);
-    entry.nightly.as_mut().unwrap().reconciled_at = Some(now);
-    let release = nightly_lookup::catalog_candidate(&feed, app(), now, None).unwrap();
-    let verified = crate::nightly::verified_descriptor(app(), release, &body, platform).unwrap().unwrap();
-    shared.nightly_verified.lock().unwrap().insert(app().id.into(), verified);
-    *shared.nightly_catalog_fixture.lock().unwrap() = Some(feed);
-    let cad = CraftApp::by_id("cadcraft").unwrap();
-    shared.manifest.lock().unwrap().apps.insert(
-        cad.id.into(),
-        crate::manifest::Record {
-            version: "1.0.0".into(),
-            kind: PackageKind::TarGz,
-            path: paths.apps().join("cadcraft/cadcraft"),
-            installed_at: now,
-            files: vec![],
-            needs_root: false,
-        },
-    );
-    let budget = crate::github_budget::GitHubBudget::in_memory(crate::github_budget::DEVELOPER_BUILDS);
-    while budget.take(Priority::User, now).is_ok() {}
-    let http = Http::new().unwrap().without_token().with_budget(budget);
-    let backend = NativeBackend {
-        shared: shared.clone(),
-        paths: paths.clone(),
-        http: Some(http),
-        source: None,
-        platform: Some(platform),
-        pins: None,
-        spawn: Arc::new(|task| task()),
-    };
-    backend.check(false);
-    let state = shared.nightly_state.lock().unwrap();
-    assert_eq!(state.record(&nightly_lookup::key(cad, platform)).attempted_at, None, "installed fallback refused before a request stays due");
-    assert!(state.record(&nightly_lookup::key(app(), platform)).complete, "cached verified candidate still completes after quota refusal");
-    assert!(state.record(&nightly_lookup::key(app(), platform)).attempted_at.is_some());
-    let events = shared.events.lock().unwrap();
-    assert!(events.iter().any(|e| matches!(e,Event::Latest {app,from:Origin::ArtCraftApi,latest:LatestRelease::Found(_)} if app=="photocraft")));
-    assert!(events.iter().any(|e| matches!(e, Event::CheckFinished { source: Source::Feed, .. })));
-}
-
-#[test]
-fn unavailable_https_keeps_unstarted_apps_due() {
-    let (_temp, shared, paths, platform) = fixture();
-    let backend = NativeBackend {
-        shared: shared.clone(),
-        paths,
-        http: None,
-        source: None,
-        platform: Some(platform),
-        pins: None,
-        spawn: Arc::new(|task| task()),
-    };
-    backend.check(false);
-    let state = shared.nightly_state.lock().unwrap();
-    assert!(backend.nightly_apps().iter().all(|app| state.record(&nightly_lookup::key(app, platform)).attempted_at.is_none()));
-    assert!(
-        shared
-            .events
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|event| matches!(event,Event::Notice {result:Err(why),..} if why.contains("Secure Nightly connections")))
-    );
 }

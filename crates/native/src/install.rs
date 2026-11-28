@@ -123,6 +123,9 @@ pub fn keeps_old_copy(kind: PackageKind, existing: Option<&Installed>, previous:
     match kind {
         PackageKind::Dmg => source == Some(InstallSource::MacApp),
         PackageKind::AppImage => source == Some(InstallSource::Launcher) && previous.is_some_and(|r| r.kind == PackageKind::AppImage),
+        // The fast install's transaction backs the previous files up and puts them back if any
+        // step fails, so going back to an older version needs no second package downloaded.
+        PackageKind::FastInstall => source == Some(InstallSource::Launcher) && previous.is_some_and(|r| r.kind == PackageKind::FastInstall),
         PackageKind::Flatpak => existing.is_some_and(|inst| inst.source == InstallSource::Flatpak && !inst.externally_managed),
         _ => false,
     }
@@ -416,6 +419,7 @@ fn install_at_with_profile(
                         app,
                         file: &file,
                         version: &version,
+                        kind: PackageKind::PortableZip,
                         previous,
                         paths: job.paths,
                         directory: destination.as_deref(),
@@ -426,6 +430,33 @@ fn install_at_with_profile(
                 ),
                 None => crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut accept),
             }
+            .map(Some)
+        }
+        #[cfg(windows)]
+        PackageKind::FastInstall => {
+            // The same file transaction as a portable copy, plus the Start menu entry, Apps &
+            // features record and App Paths registration the fast installer writes as part of it.
+            let mut accept = |record: &Record| {
+                if release.version.is_some() && crate::detect::windows::executable_version(&record.path).as_ref() != release.version.as_ref() {
+                    return Err("The installed executable does not match the selected version. The installation was rolled back.".into());
+                }
+                match commit.as_deref_mut() {
+                    Some(commit) => commit(record),
+                    None => Ok(()),
+                }
+            };
+            crate::fast_install::install(
+                crate::fast_install::Package {
+                    app,
+                    file: &file,
+                    version: &version,
+                    previous,
+                    paths: job.paths,
+                    directory: destination.as_deref(),
+                    replace: job.replace,
+                },
+                &mut accept,
+            )
             .map(Some)
         }
         #[cfg(target_os = "linux")]
@@ -531,6 +562,10 @@ pub fn occupied(
     let target = match kind {
         PackageKind::Msi => folder,
         PackageKind::PortableZip => Some(folder.unwrap_or_else(|| paths.apps()).join(app.id)),
+        #[cfg(windows)]
+        PackageKind::FastInstall => {
+            Some(folder.or_else(crate::fast_install::programs_folder).ok_or("couldn't find the per-user Programs folder")?.join(app.id))
+        }
         PackageKind::Dmg => {
             folder.and_then(|f| app.mac_bundle_names().map(|n| f.join(format!("{n}.app"))).find(|t| std::fs::symlink_metadata(t).is_ok()))
         }
@@ -569,7 +604,7 @@ fn destination(
     previous: Option<&Record>,
     locations: &InstallLocations,
 ) -> Result<Option<PathBuf>, String> {
-    if kind == PackageKind::PortableZip && previous.is_some_and(|record| record.kind == PackageKind::PortableZip) {
+    if matches!(kind, PackageKind::PortableZip | PackageKind::FastInstall) && previous.is_some_and(|record| record.kind == kind) {
         return Ok(None);
     }
     if let Some(inst) = existing {
@@ -580,8 +615,20 @@ fn destination(
             _ => None,
         });
     }
-    let Some(folder) = locations.folder(app.id) else { return Ok(None) };
-    if !matches!(kind, PackageKind::Dmg | PackageKind::AppImage | PackageKind::Msi | PackageKind::PortableZip) || process::in_sandbox() {
+    let folder = match locations.folder(app.id) {
+        Some(folder) => folder,
+        None => {
+            // A fast install has a per-user home of its own even without a chosen folder.
+            #[cfg(windows)]
+            if kind == PackageKind::FastInstall {
+                return crate::fast_install::programs_folder().map(Some).ok_or_else(|| "couldn't find the per-user Programs folder".to_string());
+            }
+            return Ok(None);
+        }
+    };
+    if !matches!(kind, PackageKind::Dmg | PackageKind::AppImage | PackageKind::Msi | PackageKind::PortableZip | PackageKind::FastInstall)
+        || process::in_sandbox()
+    {
         return Err("custom install folders aren't supported on this system".into());
     }
     let parent = selected_folder(folder, kind != PackageKind::Msi)?;
@@ -609,6 +656,7 @@ pub fn default_folder(kind: PackageKind, arch: Option<Arch>, paths: &Paths) -> O
                 None => None,
             },
             PackageKind::PortableZip => Some(paths.apps()),
+            PackageKind::FastInstall => crate::fast_install::programs_folder(),
             _ => None,
         }
     }
@@ -820,8 +868,12 @@ pub fn is_release_arch_package(app: &CraftApp, installed: &Installed) -> bool {
 pub fn available_kinds() -> Vec<PackageKind> {
     #[cfg(target_os = "macos")]
     return vec![PackageKind::Dmg];
+    // The launcher's own fast install first: it needs no Windows Installer run and no elevation,
+    // where the MSI asks an administrator for a first install and the portable ZIP leaves the app
+    // out of the Start menu and Apps & features. A saved preference still wins (see
+    // [`choose_kinds_with`]).
     #[cfg(windows)]
-    return vec![PackageKind::Msi, PackageKind::PortableZip];
+    return vec![PackageKind::FastInstall, PackageKind::Msi, PackageKind::PortableZip];
     #[cfg(target_os = "linux")]
     return linux::available_kinds();
     #[cfg(target_os = "freebsd")]
@@ -998,6 +1050,10 @@ pub fn uninstall(
         #[cfg(windows)]
         InstallSource::Launcher if record.is_some_and(|r| r.kind == PackageKind::PortableZip) => {
             crate::portable::remove(app, record.ok_or("the launcher has no record of these files")?)
+        }
+        #[cfg(windows)]
+        InstallSource::Launcher if record.is_some_and(|r| r.kind == PackageKind::FastInstall) => {
+            crate::fast_install::remove(app, record.ok_or("the launcher has no record of these files")?)
         }
         #[cfg(windows)]
         InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
@@ -3868,6 +3924,75 @@ mod tests {
         #[cfg(target_os = "linux")]
         assert_eq!(choose_kinds(app, Some(&inst(InstallSource::AppImage)), None, &[]), [PackageKind::AppImage]);
         let _ = inst;
+    }
+
+    /// A fast install is the Windows default, a saved preference still wins, and a fast-installed
+    /// copy updates as a fast install whatever the preference is — exactly as a portable one does.
+    #[test]
+    fn fast_installs_are_the_windows_default_and_stay_fast_installs() {
+        let app = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
+        let inst = |source| Installed {
+            version: None,
+            source,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let windows = [PackageKind::FastInstall, PackageKind::Msi, PackageKind::PortableZip];
+        assert_eq!(choose_kinds_with(app, None, None, &[], &windows, false), windows);
+        assert_eq!(
+            choose_kinds_with(app, None, None, &[PackageKind::Msi], &windows, false),
+            [PackageKind::Msi, PackageKind::FastInstall, PackageKind::PortableZip]
+        );
+        // A preference this platform cannot install is skipped, as everywhere else.
+        assert_eq!(choose_kinds_with(app, None, None, &[PackageKind::Deb], &windows, false), windows);
+        let record = |kind| Record { version: "0.5.0".into(), kind, path: PathBuf::new(), installed_at: 0, files: vec![], needs_root: false };
+        let installed = inst(InstallSource::Launcher);
+        assert_eq!(
+            choose_kinds_with(app, Some(&installed), Some(&record(PackageKind::FastInstall)), &[PackageKind::Msi], &windows, false),
+            [PackageKind::FastInstall]
+        );
+        assert_eq!(
+            choose_kinds_with(app, Some(&installed), Some(&record(PackageKind::PortableZip)), &[PackageKind::FastInstall], &windows, false),
+            [PackageKind::PortableZip]
+        );
+        // A record of a kind this system no longer offers falls back to the preference, not a refusal.
+        assert_eq!(
+            choose_kinds_with(app, Some(&installed), Some(&record(PackageKind::AppImage)), &[PackageKind::Msi], &windows, false),
+            [PackageKind::Msi, PackageKind::FastInstall, PackageKind::PortableZip]
+        );
+    }
+
+    /// A fast-installed copy can go back to an older version by name: the transaction puts the
+    /// previous files back if it fails, so no second package is needed (as with an AppImage).
+    #[test]
+    fn a_fast_installed_copy_can_go_back_without_a_second_package() {
+        let inst = |source| Installed {
+            version: None,
+            source,
+            location: String::new(),
+            package: None,
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        };
+        let record = Record {
+            version: "0.5.0".into(),
+            kind: PackageKind::FastInstall,
+            path: PathBuf::from(r"C:\Users\a\AppData\Local\Programs\ArtCraft\photocraft\photocraft.exe"),
+            installed_at: 0,
+            files: vec![],
+            needs_root: false,
+        };
+        let installed = inst(InstallSource::Launcher);
+        assert!(keeps_old_copy(PackageKind::FastInstall, Some(&installed), Some(&record)));
+        assert!(downgrade_is_safe(Some(Downgrade::KeepOldCopy), PackageKind::FastInstall, Some(&installed), Some(&record)));
+        // A copy this launcher didn't install, or a record of another kind, goes back only the
+        // ways those kinds allow.
+        assert!(!keeps_old_copy(PackageKind::FastInstall, Some(&inst(InstallSource::Msi)), Some(&record)));
+        assert!(!keeps_old_copy(PackageKind::FastInstall, Some(&installed), None));
     }
 
     #[test]

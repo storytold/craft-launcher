@@ -95,6 +95,7 @@
 	Installing on Windows	Instalação no Windows
 	Install new apps as	Instalar novos aplicativos como
 	System package (recommended)	Pacote do sistema (recomendado)
+	Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator.	A instalação rápida extrai o aplicativo para a sua própria pasta Programas, adiciona uma entrada no menu Iniciar e o lista em Aplicativos e recursos, sem pedir um administrador.
 	Updates always use the format an app was installed with.	As atualizações sempre usam o formato com o qual o aplicativo foi instalado.
 	Running in the background	Execução em segundo plano
 	Keep running in the tray when the window is closed	Continuar na bandeja do sistema ao fechar a janela
@@ -169,6 +170,7 @@
 	Waiting for other installs…	Aguardando outras instalações…
 
 # Package formats offered for download (PackageKind::label)
+	Fast install (recommended)	Instalação rápida (recomendada)
 	Installer (.msi)	Instalador (.msi)
 	Portable (.zip)	Portátil (.zip)
 	Disk image (.dmg)	Imagem de disco (.dmg)
