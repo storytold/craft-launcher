@@ -1514,7 +1514,14 @@ impl LauncherUi {
             ui.close();
         }
         ui.separator();
-        if ui.button(RichText::new(tl!("Uninstall…")).color(Tokens::get(ui.ctx()).bad)).clicked() {
+        let uninstall = ui
+            .scope(|ui| {
+                // Keep the idle warning color, but use the menu's contrasting text on hover.
+                ui.visuals_mut().widgets.inactive.fg_stroke.color = Tokens::get(ui.ctx()).bad;
+                ui.button(tl!("Uninstall…"))
+            })
+            .inner;
+        if uninstall.clicked() {
             self.dialog = Some(Dialog::ConfirmUninstall(id.to_string()));
             ui.close();
         }
