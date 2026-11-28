@@ -23,12 +23,31 @@ pub(super) fn text(path: &Path) -> Result<&str, String> {
     Ok(text)
 }
 
-/// The `msiexec` arguments for one package, the same ones `msi_command` and the folder and scope
-/// arguments give the single-app route, as one command line.
-pub(super) fn line(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>) -> Result<String, String> {
+#[derive(Clone, Copy)]
+pub(super) enum Ui {
+    Progress,
+    Background,
+}
+
+impl Ui {
+    pub(super) fn argument(self) -> &'static str {
+        match self {
+            Self::Progress => "/passive",
+            Self::Background => "/qn",
+        }
+    }
+}
+
+/// The `msiexec` arguments for one package, including its UI mode and the destination and scope
+/// already resolved by the Launcher.
+pub(super) fn line(msi: &Path, destination: Option<&Path>, scope: Option<MsiScope>, ui: Ui) -> Result<String, String> {
     let msi = super::msi_path(msi)?;
     let log = super::msi_log(&msi);
-    let mut line = format!("/i \"{}\" /passive /norestart /l*v \"{}\"", text(&msi)?, text(&log)?);
+    let mode = ui.argument();
+    let mut line = format!("/i \"{}\" {mode} /norestart /l*v \"{}\"", text(&msi)?, text(&log)?);
+    if matches!(ui, Ui::Background) {
+        line.push_str(" MSIRESTARTMANAGERCONTROL=DisableShutdown MSIDISABLERMRESTART=1");
+    }
     if let Some(folder) = destination {
         line.push(' ');
         line.push_str(&super::msi_folder_argument(folder)?);

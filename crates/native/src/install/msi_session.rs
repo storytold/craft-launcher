@@ -1,12 +1,11 @@
 //! One permission prompt for a batch of per-machine Windows Installer packages.
 //!
-//! [`super::windows::run_batched`] gathers the members of an "update all" into one call of the
-//! installer queue; the one whose call it is writes what the session is to do into a manifest
-//! beside the checked packages and starts the launcher's own exe elevated (`ShellExecuteEx`,
-//! verb `runas`). No PowerShell, nothing encoded, nothing hidden: the one prompt names ArtCraft
-//! Launcher and its signed publisher, and each package still shows its own installer progress
-//! window. A hidden, elevated, encoded PowerShell route did this before and was withdrawn after
-//! behavioural antivirus flagged it (see `docs/incident-2026-10-windows-antivirus.md`).
+//! "Update all" members meet in the installer queue. The caller at the front of the queue
+//! writes what the session is to do into a manifest beside the checked packages and starts
+//! the launcher's own exe elevated (`ShellExecuteEx`,
+//! verb `runas`). The prompt names ArtCraft Launcher and its signed publisher. The launcher
+//! shows the install status and each MSI runs without its own UI. An elevated PowerShell route
+//! was withdrawn after behavioural antivirus flagged it (see `docs/incident-2026-10-windows-antivirus.md`).
 //!
 //! The elevated copy re-checks every package against the manifest's checksum — with the file held
 //! open, so the checked bytes are the installed ones (CWE-367) — and installs it only when its
@@ -42,9 +41,8 @@ use serde::Serialize;
 
 use super::MsiScope;
 
-/// What a member hears when the batch's one session could not run at all: install it by itself
-/// (see [`super::windows::run_batched`], which recognises this and does exactly that). Never
-/// shown to anyone.
+/// Signals that a package should use the direct Windows Installer route because the verified
+/// elevated session could not run it. This marker is internal to the installer queue.
 pub(super) const NO_SESSION: &str = "no batch session";
 
 /// How long the waiting side looks for the elevated copy's first act, writing its process id.
@@ -86,6 +84,15 @@ struct Manifest {
     /// this one's report.
     token: String,
     msis: Vec<Entry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    removal: Option<Removal>,
+}
+
+/// A registered product. Paths and installer arguments are resolved on the elevated side.
+#[derive(Serialize, Deserialize)]
+struct Removal {
+    app: String,
+    product_code: String,
 }
 
 /// The command every per-machine batch member waits under: the installer queue's merging key
@@ -139,7 +146,7 @@ pub(super) fn call(_command: &[OsString], targets: &[OsString]) -> Vec<Result<()
     let Some(dir) = first.msi.parent() else {
         return without_session(outcomes, &joined);
     };
-    let (manifest, token) = match prepare(&joined, dir, &mut held) {
+    let (manifest, token) = match prepare(joined.iter().map(|(_, entry)| entry.clone()).collect(), None, dir, &mut held) {
         Ok(prepared) => prepared,
         Err(e) => {
             log::warn!("the shared install session could not be prepared ({e}); installing one by one");
@@ -252,7 +259,7 @@ fn signed_by_this_launcher(file: &Path) -> Result<(), String> {
 /// long as the session runs. The name is only taken once its results and process-id files are
 /// free too: a leftover of another session must never be mistaken for this one's.
 #[cfg(windows)]
-fn prepare(joined: &[(usize, Entry)], dir: &Path, held: &mut Vec<super::msi_batch::Held>) -> Result<(PathBuf, String), String> {
+fn prepare(msis: Vec<Entry>, removal: Option<Removal>, dir: &Path, held: &mut Vec<super::msi_batch::Held>) -> Result<(PathBuf, String), String> {
     use std::io::Write as _;
     use std::os::windows::fs::OpenOptionsExt;
 
@@ -265,8 +272,7 @@ fn prepare(joined: &[(usize, Entry)], dir: &Path, held: &mut Vec<super::msi_batc
         .find(|manifest| [manifest, &sibling(manifest, "results"), &sibling(manifest, "pid")].iter().all(|p| !p.exists()))
         .ok_or("no free name for the batch manifest")?;
     let token = session_token();
-    let text = serde_json::to_string(&Manifest { token: token.clone(), msis: joined.iter().map(|(_, entry)| entry.clone()).collect() })
-        .map_err(|e| format!("couldn't describe the batch ({e})"))?;
+    let text = serde_json::to_string(&Manifest { token: token.clone(), msis, removal }).map_err(|e| format!("couldn't describe the batch ({e})"))?;
     let mut file = std::fs::File::options()
         .write(true)
         .create_new(true)
@@ -330,6 +336,48 @@ fn ask_once(dir: &Path, manifest: &Path, apps: usize) -> Prompt {
         Err(e) if e == co::ERROR::CANCELLED => Prompt::Declined,
         Err(e) => Prompt::Failed(e.to_string()),
     }
+}
+
+/// Uses the same native UAC session as a machine-wide batch. The helper checks the product
+/// again in the machine registry, and the caller waits on its existing result protocol.
+#[cfg(windows)]
+pub(super) fn remove(app: &super::CraftApp, product_code: &str, dir: &Path) -> Result<(), String> {
+    use artcraft_launcher_core::protocol::CANCELLED;
+
+    if !registered_machine_product(app, product_code) {
+        return Err(format!("couldn't confirm the all-users Windows Installer registration for {}", app.name));
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("couldn't create the installer session folder ({e})"))?;
+    let dir = dunce::canonicalize(dir).map_err(|e| format!("couldn't resolve the installer session folder ({e})"))?;
+    let removal = Removal { app: app.id.to_string(), product_code: product_code.to_string() };
+    let mut held = Vec::new();
+    let (manifest, token) = prepare(Vec::new(), Some(removal), &dir, &mut held)?;
+    let results = sibling(&manifest, "results");
+    let pid = sibling(&manifest, "pid");
+    let outcome = match ask_once(&dir, &manifest, 1) {
+        Prompt::Declined => Err(CANCELLED.into()),
+        Prompt::Failed(error) => Err(format!("couldn't start removal with administrator permission ({error})")),
+        Prompt::Given => match wait_until_done(&pid, &results, &token) {
+            SessionEnd::Done(codes) => {
+                let code = codes.iter().find(|(id, _)| id == app.id).map(|(_, code)| *code);
+                super::explain(code)
+            }
+            SessionEnd::OverWithoutReport => Err("the removal session ended without reporting a result".into()),
+            SessionEnd::Unknown => return Err("couldn't verify that Windows Installer finished removing the app".into()),
+        },
+    };
+    drop(held);
+    for file in [&manifest, &pid, &results] {
+        let _ = std::fs::remove_file(file);
+    }
+    outcome
+}
+
+#[cfg(windows)]
+fn registered_machine_product(app: &super::CraftApp, code: &str) -> bool {
+    crate::msi_context::valid_product_code(code)
+        && crate::detect::windows::record_scope(app, code) == Some(MsiScope::PerMachine)
+        && crate::msi_context::probe(code) == Ok(MsiScope::PerMachine)
 }
 
 /// How the elevated session ended, as far as the waiting side can tell.
@@ -489,6 +537,9 @@ fn write_results(path: &Path, token: &str, codes: &[(String, i32)]) -> Result<()
 pub fn run_elevated(manifest: &Path) -> Result<(), String> {
     let text = std::fs::read_to_string(manifest).map_err(|e| format!("couldn't read the batch manifest ({e})"))?;
     let session: Manifest = serde_json::from_str(&text).map_err(|e| format!("couldn't understand the batch manifest ({e})"))?;
+    if session.removal.is_some() && !session.msis.is_empty() {
+        return Err("an installer session cannot mix installs and removals".into());
+    }
     let dir = manifest.parent().ok_or("the batch manifest has no folder")?;
     // The session only ever touches packages beside its own manifest, in the launcher's
     // downloads folder.
@@ -503,9 +554,32 @@ pub fn run_elevated(manifest: &Path) -> Result<(), String> {
     for entry in &session.msis {
         codes.push((entry.app.clone(), install_one(entry)));
     }
+    if let Some(removal) = session.removal {
+        let code = remove_one(&removal);
+        codes.push((removal.app, code));
+    }
     write_results(&sibling(manifest, "results"), &session.token, &codes)?;
     let _ = std::fs::remove_file(&pid_file);
     Ok(())
+}
+
+#[cfg(windows)]
+fn remove_one(entry: &Removal) -> i32 {
+    let Some(app) = super::CraftApp::by_id(&entry.app) else {
+        return 1605;
+    };
+    if !registered_machine_product(app, &entry.product_code) {
+        return 1605;
+    }
+    let Ok(system) = winsafe::GetSystemDirectory() else {
+        return -1;
+    };
+    crate::process::command(PathBuf::from(system).join("msiexec.exe"))
+        .args(["/x", &entry.product_code, "/qn", "/norestart", "MSIRESTARTMANAGERCONTROL=DisableShutdown", "MSIDISABLERMRESTART=1"])
+        .status()
+        .ok()
+        .and_then(|status| status.code())
+        .unwrap_or(-1)
 }
 
 /// One package of the session, held while its installer runs.
@@ -530,7 +604,7 @@ fn checked_install(entry: &Entry, signed: &dyn Fn(&Path) -> Result<(), String>, 
         // open until the end of this closure is the whole job.
         let _held = super::msi_batch::hold(&msi, &entry.sha256)?;
         signed(&msi)?;
-        let line = super::msi_batch::line(&msi, entry.destination.as_deref(), entry.scope)?;
+        let line = super::msi_batch::line(&msi, entry.destination.as_deref(), entry.scope, super::msi_batch::Ui::Background)?;
         log::info!("{}: installing under the shared prompt", entry.app);
         run(&line)
     })();
@@ -543,8 +617,8 @@ fn checked_install(entry: &Entry, signed: &dyn Fn(&Path) -> Result<(), String>, 
     }
 }
 
-/// Windows Installer on one package of the session: a progress window and no restart, the same
-/// arguments a single install runs. `Err` only when it couldn't be started at all.
+/// Runs Windows Installer on one package without its own window. `Err` only when it couldn't
+/// be started at all.
 #[cfg(windows)]
 fn run_installer(line: &str) -> Result<i32, String> {
     use std::os::windows::process::CommandExt;
@@ -740,9 +814,26 @@ mod tests {
         }
 
         #[test]
-        fn a_verified_package_reaches_the_installer_by_its_resolved_path() {
+        fn the_elevated_side_refuses_a_product_outside_the_apps_machine_registrations() {
             let dir = tempfile::tempdir().unwrap();
-            let entry = package(dir.path());
+            let manifest = dir.path().join("remove.json");
+            let code = "{00000000-0000-0000-0000-000000000000}";
+            let request =
+                Manifest { token: "test".into(), msis: Vec::new(), removal: Some(Removal { app: "lightcraft".into(), product_code: code.into() }) };
+            write_new(&manifest, &serde_json::to_string(&request).unwrap()).unwrap();
+            run_elevated(&manifest).unwrap();
+            let results = std::fs::read_to_string(sibling(&manifest, "results")).unwrap();
+            assert_eq!(parse_results(&results, "test"), vec![("lightcraft".into(), 1605)]);
+            assert!(!sibling(&manifest, "pid").exists());
+        }
+
+        #[test]
+        fn a_verified_package_reaches_the_installer_by_its_resolved_path_without_a_window() {
+            let dir = tempfile::tempdir().unwrap();
+            let mut entry = package(dir.path());
+            let destination = dir.path().join("App Folder");
+            entry.destination = Some(destination.clone());
+            entry.scope = Some(MsiScope::PerMachine);
             let seen = std::cell::RefCell::new(String::new());
             let code = checked_install(&entry, &|_| Ok(()), &|line| {
                 seen.replace(line.to_string());
@@ -750,7 +841,10 @@ mod tests {
             });
             assert_eq!(code, 0);
             let resolved = dunce::canonicalize(&entry.msi).unwrap();
-            assert!(seen.borrow().contains(&format!("\"{}\"", resolved.display())), "{}", seen.borrow());
+            let line = seen.into_inner();
+            assert!(line.contains(&format!("\"{}\" /qn /norestart", resolved.display())), "{line}");
+            assert!(line.contains(&format!("INSTALLFOLDER=\"{}\" ALLUSERS=1", destination.display())), "{line}");
+            assert!(!line.contains("/passive"), "{line}");
         }
 
         /// The launcher's side keeps a package from another publisher out of the session.

@@ -1000,7 +1000,7 @@ pub fn uninstall(
             crate::portable::remove(app, record.ok_or("the launcher has no record of these files")?)
         }
         #[cfg(windows)]
-        InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
+        InstallSource::Msi => windows::uninstall_msi(app, &paths.downloads(), stop, phase),
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
@@ -2385,6 +2385,8 @@ mod msi_downgrade;
 #[cfg(any(target_os = "freebsd", all(unix, test)))]
 mod root_record;
 
+#[cfg(windows)]
+mod msi_automation;
 /// Helpers for Windows Installer PowerShell scripts running under elevation.
 #[cfg(any(windows, test))]
 mod msi_batch;
@@ -2427,19 +2429,16 @@ pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
     use super::{
-        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_batch, msi_command, msi_downgrade, msi_folder_argument,
-        msi_log, msi_scope_arguments, msi_session, process, turn,
+        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, explain, msi_automation, msi_batch, msi_command, msi_downgrade,
+        msi_folder_argument, msi_log, msi_scope_arguments, msi_session, process, turn,
     };
 
     pub(super) fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
     }
 
-    /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
-    /// `scope`, from the copy being replaced's registration, keeps the update in the same
-    /// Windows Installer context (see [`MsiScope`]). A per-machine package with a `batch` joins
-    /// it instead: the whole batch shares one permission prompt ([`run_batched`]). Only
-    /// [`install_at`](super::install_at) calls it, so it stays as private as its [`Package`].
+    /// Windows Installer owns the transaction and any elevation prompt. The launcher reports
+    /// progress. An all-users batch can share one prompt for packages from our publisher.
     pub(super) fn run_msi(
         app: &CraftApp,
         package: Package<'_>,
@@ -2450,52 +2449,24 @@ pub mod windows {
         phase: &mut dyn FnMut(JobPhase),
     ) -> Result<(), String> {
         if let Some(gather) = batch {
-            if scope == Some(MsiScope::PerMachine) {
-                return run_batched(Batched { app, package, destination, scope }, gather, stop, phase);
-            }
-            // A per-user install asks Windows for nothing: its place in the batch goes back at
-            // once, so the per-machine members don't wait for it.
-            gather.leave();
-        }
-        in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope))
-    }
-
-    /// One app's install, as the batch session runs it.
-    struct Batched<'a> {
-        app: &'a CraftApp,
-        package: Package<'a>,
-        destination: Option<&'a Path>,
-        scope: Option<MsiScope>,
-    }
-
-    /// One permission prompt for a batch of per-machine packages: the members meet in one call
-    /// of the installer queue, the one whose call it is starts the elevated session
-    /// ([`msi_session`]), and every member hears its own installer's exit code. A declined
-    /// prompt cancels the whole batch; a session that cannot start sends the members back to
-    /// installing one by one, the way a single app always installs.
-    fn run_batched(job: Batched<'_>, gather: crate::queue::Gather, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        let Batched { app, package, destination, scope } = job;
-        let target = match msi_session::entry(app, &package, destination, scope) {
-            Ok(target) => target,
-            Err(e) => {
-                log::warn!("{}: {e}; installing it by itself", app.name);
+            let target = (scope == Some(MsiScope::PerMachine)).then(|| msi_session::entry(app, &package, destination, scope)).and_then(Result::ok);
+            if let Some(target) = target {
+                let outcome = INSTALLER.batched_when(
+                    Some(gather),
+                    msi_session::command(),
+                    target,
+                    &cancelled(stop),
+                    &mut turn(phase, JobPhase::Installing),
+                    &msi_session::call,
+                );
+                if !matches!(outcome.as_ref(), Err(error) if error == msi_session::NO_SESSION) {
+                    return outcome;
+                }
+            } else {
                 gather.leave();
-                return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope));
             }
-        };
-        let outcome = INSTALLER.batched_when(
-            Some(gather),
-            msi_session::command(),
-            target,
-            &cancelled(stop),
-            &mut turn(phase, JobPhase::Installing),
-            &msi_session::call,
-        );
-        if outcome.as_ref().err().is_some_and(|e| e == msi_session::NO_SESSION) {
-            log::warn!("{}: the batch session could not start; installing it by itself", app.name);
-            return in_turn(stop, phase, JobPhase::Installing, || run_direct(package.file, destination, scope));
         }
-        outcome
+        in_turn(stop, phase, JobPhase::Installing, || msi_automation::install(package.file, package.sha256, destination, scope))
     }
 
     /// Runs one MSI by itself: `msiexec` asks for permission itself, and the prompt names the package's
@@ -2516,8 +2487,8 @@ pub mod windows {
         })
     }
 
-    /// Runs the launcher's own new MSI for a self-update, with the same progress window and no
-    /// restart as [`run_msi`], and waits for it.
+    /// Runs the launcher's own MSI for a self-update and waits for it. The current Launcher
+    /// window closes for this operation, so Windows Installer provides the progress window.
     pub fn reinstall(msi: &Path) -> Result<(), String> {
         let status = msi_command(&msiexec(), msi)?.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
         explain(status.code())
@@ -2583,7 +2554,7 @@ pub mod windows {
                 app: app.name,
                 chosen: chosen.version,
                 previous: previous.version,
-                remove: &mut || remove_listed(app, &installs),
+                remove: &mut || remove_listed(app, &installs, None),
                 install_chosen: &mut || run_direct(chosen.file, destination, scope),
                 reinstall_previous: &mut || run_direct(previous.file, destination, scope),
             })
@@ -2634,8 +2605,8 @@ pub mod windows {
         let script = msi_downgrade::script(
             msi_batch::text(&msiexec())?,
             &removals,
-            &msi_batch::line(chosen.file, destination, scope)?,
-            &msi_batch::line(previous.file, destination, scope)?,
+            &msi_batch::line(chosen.file, destination, scope, msi_batch::Ui::Progress)?,
+            &msi_batch::line(previous.file, destination, scope, msi_batch::Ui::Progress)?,
         );
         let root =
             std::env::var_os("SystemRoot").map(PathBuf::from).filter(|root| root.is_absolute()).ok_or("SystemRoot is not set to an absolute path")?;
@@ -2655,36 +2626,55 @@ pub mod windows {
         Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some(ended))
     }
 
-    pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app).map_err(|removal| removal.error))
-    }
-
-    /// Removes every Windows Installer registration of `app` in turn, within the caller's queue
-    /// turn: an uninstall, where no put-back follows that a later listing could misjudge.
-    fn remove_registrations(app: &CraftApp) -> Result<(), msi_downgrade::Removal> {
-        let installs = crate::detect::windows::msi_installs(app);
-        remove_listed(app, &installs)
+    pub fn uninstall_msi(app: &CraftApp, session_dir: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Removing, || {
+            let installs = crate::detect::windows::msi_installs(app);
+            remove_listed(app, &installs, Some(session_dir)).map_err(|removal| removal.error)
+        })
     }
 
     /// Removes exactly the registrations in `installs`, in turn, within the caller's queue turn. A
     /// downgrade passes the one listing it works from, so what the step removes is exactly what was
     /// listed — never a registration that appeared afterwards. A failure says whether an earlier
     /// registration was already removed, so a downgrade knows the app is partly gone.
-    fn remove_listed(app: &CraftApp, installs: &[crate::detect::windows::MsiInstall]) -> Result<(), msi_downgrade::Removal> {
+    fn remove_listed(
+        app: &CraftApp,
+        installs: &[crate::detect::windows::MsiInstall],
+        background_session_dir: Option<&Path>,
+    ) -> Result<(), msi_downgrade::Removal> {
         if installs.is_empty() {
             return Err(msi_downgrade::Removal { error: format!("{} isn't registered with the Windows Installer", app.name), partly: false });
         }
         for (removed, m) in installs.iter().enumerate() {
-            let status = process::command(msiexec())
-                .args(["/x", &m.product_code, "/passive", "/norestart"])
-                .status()
-                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))
-                .and_then(|status| explain(status.code()));
+            let status = remove_product(app, &m.product_code, background_session_dir);
             if let Err(error) = status {
                 return Err(msi_downgrade::Removal { error, partly: removed > 0 });
             }
         }
         Ok(())
+    }
+
+    fn remove_product(app: &CraftApp, code: &str, background_session_dir: Option<&Path>) -> Result<(), String> {
+        let ui = if let Some(dir) = background_session_dir {
+            // The Windows Installer registration is authoritative, even when the uninstall-list hive disagrees.
+            let scope = crate::msi_context::update_scope(true, Some(code), crate::msi_context::probe, |code| {
+                crate::detect::windows::record_scope(app, code)
+            })?;
+            if scope == Some(MsiScope::PerMachine) {
+                log::info!("{}: requesting permission for background MSI removal", app.name);
+                return msi_session::remove(app, code, dir);
+            }
+            msi_batch::Ui::Background
+        } else {
+            msi_batch::Ui::Progress
+        };
+        log::info!("{}: removing MSI {code} with {}", app.name, ui.argument());
+        let mut command = process::command(msiexec());
+        command.args(["/x", code, ui.argument(), "/norestart"]);
+        if matches!(ui, msi_batch::Ui::Background) {
+            command.args(["MSIRESTARTMANAGERCONTROL=DisableShutdown", "MSIDISABLERMRESTART=1"]);
+        }
+        explain(command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?.code())
     }
 }
 
