@@ -55,6 +55,12 @@ pub enum PackageKind {
     Msi,
     /// Windows zip with the exe at the top level.
     PortableZip,
+    /// The launcher's own Windows install: the portable ZIP's files, unpacked by the launcher into
+    /// the per-user Programs folder with a Start menu entry, an Apps & features record and an App
+    /// Paths registration — no Windows Installer run, no elevation prompt. Its payload is the
+    /// release's portable ZIP (see [`pick_asset`]), so it is only ever installed, never
+    /// offered as a manual download.
+    FastInstall,
     /// macOS disk image with the `.app` bundle.
     Dmg,
     AppImage,
@@ -72,6 +78,7 @@ impl PackageKind {
         match self {
             Self::Msi => "Installer (.msi)",
             Self::PortableZip => "Portable (.zip)",
+            Self::FastInstall => "Fast install (recommended)",
             Self::Dmg => "Disk image (.dmg)",
             Self::AppImage => "AppImage",
             Self::Deb => "Debian package (.deb)",
@@ -86,6 +93,10 @@ impl PackageKind {
         match self {
             Self::Msi => ".msi",
             Self::PortableZip => "-portable.zip",
+            // The fast install's payload is the portable ZIP, so no asset carries this suffix and
+            // `parse_asset_name` never reports the kind (see its `KINDS` list); `pick_asset` maps
+            // the kind onto the portable ZIP's asset instead.
+            Self::FastInstall => "-portable.zip",
             Self::Dmg => ".dmg",
             Self::AppImage => ".AppImage",
             Self::Deb => ".deb",
@@ -261,12 +272,18 @@ pub fn parse_asset_name(name: &str, stems: &[&str]) -> Option<AssetName> {
 }
 
 /// The best asset of `release` for `platform`, trying `kinds` in order and, within a kind, the
-/// platform's tokens in order (native before emulated).
+/// platform's tokens in order (native before emulated). A fast install takes the portable ZIP's
+/// asset as its payload and answers as itself, so the caller runs the fast installer.
 pub fn pick_asset<'a>(release: &'a Release, stems: &[&str], platform: Platform, kinds: &[PackageKind]) -> Option<(&'a Asset, PackageKind)> {
     let parsed: Vec<(&Asset, AssetName)> = release.assets.iter().filter_map(|a| parse_asset_name(&a.name, stems).map(|n| (a, n))).collect();
     for kind in kinds {
+        // The fast install's payload is the portable ZIP: the same asset, another installer.
+        let payload = match kind {
+            PackageKind::FastInstall => PackageKind::PortableZip,
+            payload => *payload,
+        };
         for token in platform.tokens() {
-            if let Some((asset, _)) = parsed.iter().find(|(_, n)| n.kind == *kind && n.token == *token) {
+            if let Some((asset, _)) = parsed.iter().find(|(_, n)| n.kind == payload && n.token == *token) {
                 return Some((asset, *kind));
             }
         }
@@ -482,6 +499,38 @@ mod tests {
             pick_asset(&r_riscv_deb, &["photocraft"], p_riscv, p_riscv.download_kinds()).map(|(a, _)| a.name.clone()).as_deref(),
             Some("photocraft-0.5.0-linux-riscv64.deb")
         );
+    }
+
+    /// A fast install takes the portable ZIP as its payload and answers as itself, whatever other
+    /// formats the release also ships; it is never one of the formats a manual download offers.
+    #[test]
+    fn a_fast_install_takes_the_portable_zips_payload() {
+        let r = release(PHOTO);
+        let windows = Platform { os: Os::Windows, arch: Arch::X64 };
+        let (asset, kind) = pick_asset(&r, &["photocraft"], windows, &[PackageKind::FastInstall]).unwrap();
+        assert_eq!(asset.name, "photocraft-0.5.0-windows-x64-portable.zip");
+        assert_eq!(kind, PackageKind::FastInstall);
+        // The kind is not its own download: preference order still decides between the ZIP as a
+        // fast install and the ZIP as a portable copy.
+        assert_eq!(
+            pick_asset(&r, &["photocraft"], windows, &[PackageKind::FastInstall, PackageKind::Msi]).map(|(_, kind)| kind),
+            Some(PackageKind::FastInstall)
+        );
+        assert_eq!(
+            pick_asset(&r, &["photocraft"], windows, &[PackageKind::Msi, PackageKind::FastInstall]).map(|(_, kind)| kind),
+            Some(PackageKind::Msi)
+        );
+        // A release without a portable ZIP has nothing a fast install can take.
+        let msi_only = release(&["photocraft-0.5.0-windows-x64.msi"]);
+        assert_eq!(pick_asset(&msi_only, &["photocraft"], windows, &[PackageKind::FastInstall]), None);
+        // No asset name parses as a fast install, and no platform offers it as a manual download.
+        for name in PHOTO {
+            assert_ne!(parse_asset_name(name, &["photocraft"]).map(|n| n.kind), Some(PackageKind::FastInstall), "{name}");
+        }
+        for platform in [windows, Platform { os: Os::Windows, arch: Arch::X86 }, Platform { os: Os::Linux, arch: Arch::X64 }] {
+            assert!(!platform.default_kinds().contains(&PackageKind::FastInstall));
+            assert!(!platform.download_kinds().contains(&PackageKind::FastInstall));
+        }
     }
 
     #[test]

@@ -19,7 +19,7 @@ use crate::model::AppEntry;
 /// depend on its package managers, so none are certain.
 fn platform_kinds(os: Os) -> &'static [PackageKind] {
     match os {
-        Os::Windows => &[PackageKind::Msi, PackageKind::PortableZip],
+        Os::Windows => &[PackageKind::FastInstall, PackageKind::Msi, PackageKind::PortableZip],
         Os::MacOs => &[PackageKind::Dmg],
         Os::FreeBsd => &[PackageKind::TarGz],
         Os::Linux => &[],
@@ -48,8 +48,9 @@ fn fresh_kinds(app: &CraftApp, os: Os, preferred: &[PackageKind]) -> Vec<Package
 }
 
 /// The format the copy that's there was installed as, where the UI can tell: on Windows an MSI is
-/// found in the registry and anything the launcher records is its portable ZIP (MSI installs
-/// leave no record); on macOS every copy is the DMG's app; an AppImage found on Linux is one.
+/// found in the registry and anything the launcher records is its portable ZIP (a fast install and
+/// a plain portable copy share the ZIP as their payload, so either way the update downloads the
+/// same file); on macOS every copy is the DMG's app; an AppImage found on Linux is one.
 /// What the launcher put on Linux (an AppImage or a tarball) it alone knows.
 fn installed_kind(os: Os, source: InstallSource) -> Option<PackageKind> {
     match (os, source) {
@@ -128,10 +129,15 @@ mod tests {
     #[test]
     fn a_fresh_install_tries_the_preferred_format_then_the_rest() {
         let app = &artcraft_launcher_core::SUITE[0];
-        assert_eq!(fresh_kinds(app, Os::Windows, &[]), [PackageKind::Msi, PackageKind::PortableZip]);
-        assert_eq!(fresh_kinds(app, Os::Windows, &[PackageKind::PortableZip]), [PackageKind::PortableZip, PackageKind::Msi]);
+        // The fast install is the Windows default; a saved preference goes first.
+        assert_eq!(fresh_kinds(app, Os::Windows, &[]), [PackageKind::FastInstall, PackageKind::Msi, PackageKind::PortableZip]);
+        assert_eq!(
+            fresh_kinds(app, Os::Windows, &[PackageKind::PortableZip]),
+            [PackageKind::PortableZip, PackageKind::FastInstall, PackageKind::Msi]
+        );
+        assert_eq!(fresh_kinds(app, Os::Windows, &[PackageKind::Msi]), [PackageKind::Msi, PackageKind::FastInstall, PackageKind::PortableZip]);
         // A preference this platform cannot install is skipped, as the backend does.
-        assert_eq!(fresh_kinds(app, Os::Windows, &[PackageKind::Deb]), [PackageKind::Msi, PackageKind::PortableZip]);
+        assert_eq!(fresh_kinds(app, Os::Windows, &[PackageKind::Deb]), [PackageKind::FastInstall, PackageKind::Msi, PackageKind::PortableZip]);
         assert!(fresh_kinds(app, Os::Linux, &[PackageKind::AppImage]).is_empty());
     }
 
@@ -144,12 +150,13 @@ mod tests {
         use PackageKind::{Dmg, Msi, PortableZip};
         let app = &artcraft_launcher_core::SUITE[0];
         let kinds = |os, source: Option<InstallSource>, preferred: &[PackageKind]| install_kinds(app, os, source.map(installed).as_ref(), preferred);
-        // The launcher's own copy on Windows is its portable ZIP, even with MSI preferred.
+        // The launcher's own copy on Windows is its portable ZIP, even with the fast install preferred.
         assert_eq!(kinds(Os::Windows, Some(InstallSource::Launcher), &[Msi]), [PortableZip]);
-        // An MSI install updates as an MSI, even with the portable ZIP preferred.
+        // An MSI install updates as an MSI, even with the fast install preferred.
         assert_eq!(kinds(Os::Windows, Some(InstallSource::Msi), &[PortableZip]), [Msi]);
-        // Nothing installed: the preference, then the rest.
-        assert_eq!(kinds(Os::Windows, None, &[PortableZip]), [PortableZip, Msi]);
+        // Nothing installed: the preference, then the rest, with the fast install first by default.
+        assert_eq!(kinds(Os::Windows, None, &[PortableZip]), [PortableZip, PackageKind::FastInstall, Msi]);
+        assert_eq!(kinds(Os::Windows, None, &[]), [PackageKind::FastInstall, Msi, PortableZip]);
         assert_eq!(kinds(Os::MacOs, Some(InstallSource::MacApp), &[]), [Dmg]);
         // FreeBSD installs only the tarball.
         assert_eq!(kinds(Os::FreeBsd, None, &[]), [PackageKind::TarGz]);

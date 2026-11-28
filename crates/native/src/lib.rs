@@ -12,6 +12,8 @@ pub mod backend;
 pub mod desktop_entry;
 pub mod detect;
 pub mod downloads;
+#[cfg(windows)]
+pub mod fast_install;
 pub mod feed_throttle;
 mod github_budget;
 pub mod hosted_catalog;

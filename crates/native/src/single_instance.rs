@@ -41,10 +41,19 @@
 //! this protocol removed (0.7.0 itself already puts the token on the wire when it starts). A
 //! future compatibility shim would need an out-of-band, authenticated way to stop the old process;
 //! it must not accept an unauthenticated lifecycle request.
+//!
+//! The handshake also carries one authenticated request the other way: a headless removal (an
+//! app's Apps & features entry, which runs the launcher with `--uninstall`) hands itself to the
+//! launcher that is running, so the one manifest of installed apps is written by the process that
+//! owns it, never beside it ([`forward_uninstall`]). A process with no launcher running holds the
+//! instance itself for the duration ([`Held`]), so a launcher starting meanwhile defers instead
+//! of racing it.
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
+use std::sync::{Arc, OnceLock};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use artcraft_launcher_core::version::{self, Version};
@@ -60,12 +69,44 @@ const HELLO: &str = "artcraft-launcher:hello ";
 const CHALLENGE: &str = "artcraft-launcher:challenge ";
 /// `auth <proof>`: newcomer's response proving possession of token.
 const AUTH: &str = "artcraft-launcher:auth ";
+/// `uninstall <app_id> <proof>`: a headless removal handing itself to the running launcher, in
+/// the place of `auth` and after the same challenge. The launcher writes the one manifest that
+/// says what is installed, so a removal must go through it rather than beside it; the proof is
+/// made with the account's token, so another local program cannot have an app removed (CWE-862).
+const UNINSTALL: &str = "artcraft-launcher:uninstall ";
+/// `uninstalled ok` or `uninstalled <reason>`: the holder's answer to [`UNINSTALL`], one line.
+const UNINSTALLED: &str = "artcraft-launcher:uninstalled ";
 /// `running <version>`: the first instance's answer.
 const RUNNING: &str = "artcraft-launcher:running ";
 /// How long a newer start waits for the old one to quit and free the port.
 const TAKE_OVER_WITHIN: Duration = Duration::from_secs(10);
 /// How large a greeting or challenge-response line may be.
 const MAX_GREETING: usize = 256;
+/// How large an answer to a handed-over removal may be.
+const MAX_ANSWER: usize = 1024;
+/// How long a handed-over removal may take before the asking process gives up on the answer:
+/// removing an app's files can take a while, and the answer is what the removal made of it.
+const UNINSTALL_WITHIN: Duration = Duration::from_secs(300);
+/// How long the holder waits for a removal to be registered before answering that none is. The
+/// launcher registers one as soon as its backend exists; a request arriving before that is
+/// served a moment later, and a holder with no backend at all says so without holding the asker
+/// forever.
+const HANDLER_WITHIN: Duration = Duration::from_secs(15);
+
+/// The removal this process performs when another process hands one over (see
+/// [`forward_uninstall`]). Whoever owns the manifest writes in this process registers it: the
+/// launcher's backend, which holds the manifest behind its own lock, or the headless removal
+/// itself, which is then the instance's owner.
+pub type Uninstall = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+static UNINSTALL_HANDLER: OnceLock<Uninstall> = OnceLock::new();
+
+/// Registers what an authenticated removal handed to this process runs. The first registration
+/// stands: a launcher's backend registers while it is built, before any headless removal of the
+/// same process could, and a headless removal registers before it hands anything over.
+pub fn set_uninstall_handler(handler: Uninstall) {
+    let _ = UNINSTALL_HANDLER.set(handler);
+}
 
 /// A per-user secret that proves a hello comes from this OS account.
 ///
@@ -301,12 +342,169 @@ fn listen(listener: TcpListener, ours: Option<Version>, token: Option<String>, w
     rx
 }
 
+/// The account's instance held by a process that is not a full launcher: a headless removal
+/// holds it while it works, so a launcher starting meanwhile defers to this process rather than
+/// racing its manifest save, and authenticated removals other processes hand over are served
+/// ([`UNINSTALL_HANDLER`]). Dropping the value gives the instance up.
+pub struct Held {
+    stop: std::sync::mpsc::Sender<()>,
+    _serve: JoinHandle<()>,
+}
+
+impl Held {
+    /// Holds the instance when it is free; `None` when something else holds the port.
+    pub fn take() -> Option<Held> {
+        let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port()));
+        let listener = TcpListener::bind(addr).ok()?;
+        let (stop, stopped) = channel();
+        let _serve = std::thread::spawn(move || serve_until(listener, ours(), token(), stopped));
+        Some(Held { stop, _serve })
+    }
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        // The serving thread sees this within a moment and closes the port; a removal it has
+        // already handed to its thread finishes after, and its answer reaches whoever asked.
+        let _ = self.stop.send(());
+    }
+}
+
+/// Answers the handshake on `listener` until `stopped` is sent (or the sender is dropped), so a
+/// headless holder gives the instance up when its work is done. Show and Replace mean nothing to
+/// a holder without a window (a newer launcher starting waits its turn and defers), and removals
+/// are answered on their own threads.
+fn serve_until(listener: TcpListener, ours: Option<Version>, token: Option<String>, stopped: Receiver<()>) {
+    let _ = listener.set_nonblocking(true);
+    loop {
+        match stopped.try_recv() {
+            Ok(()) | Err(TryRecvError::Disconnected) => break,
+            Err(TryRecvError::Empty) => {}
+        }
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                let _ = stream.set_nonblocking(false);
+                // Show and Replace mean nothing here: the holder is a headless removal, not a
+                // launcher with a window, and any answer a removal needed went out on the stream.
+                let _ = handle_incoming(&mut stream, ours.as_ref(), token.as_deref());
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(50)),
+            Err(_) => break,
+        }
+    }
+}
+
+/// What an attempt to hand a removal to the launcher already holding the account's instance
+/// made of it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Forwarded {
+    /// Nothing answered the port: as far as this account goes, the instance is free, and the
+    /// caller may take it ([`Held`]) and do the removal itself.
+    Free,
+    /// A proven holder took the removal and reports what it made of it: its answer is the
+    /// caller's.
+    Answered(Result<(), String>),
+    /// Something holds the port but would not take an authenticated removal: whatever it is, it
+    /// may be a launcher this process could not prove, and its manifest must be left to it.
+    Held,
+}
+
+/// Hands the removal of `id` to the launcher already holding the account's instance, if one is
+/// running and proves itself. The handshake is the single-instance one: the holder challenges
+/// with its proof of the account's token, so no impostor is told what is being removed, and the
+/// request is sent only with a proof of the same token, so another local program cannot have an
+/// app removed (CWE-287, CWE-522).
+pub fn forward_uninstall(id: &str) -> Forwarded {
+    let (Some(ours), Some(token), Some(client_nonce)) = (ours(), token().filter(|t| !t.is_empty()), fresh_secret()) else {
+        return Forwarded::Held;
+    };
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port()));
+    forward_uninstall_to(addr, id, &ours, &token, &client_nonce)
+}
+
+/// [`forward_uninstall`]'s handshake against one address, so tests run it against a listener of
+/// their own.
+fn forward_uninstall_to(addr: SocketAddr, id: &str, ours: &Version, token: &str, client_nonce: &str) -> Forwarded {
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(1)) else { return Forwarded::Free };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+    if stream.write_all(format!("{HELLO}{ours} {client_nonce}\n").as_bytes()).is_err() {
+        return Forwarded::Free;
+    }
+    let reply = read_message(&mut stream);
+    // Only a holder that proves it knows the account's token is told what is being removed.
+    let Some(challenge_rest) = std::str::from_utf8(&reply).ok().and_then(|r| r.trim().strip_prefix(CHALLENGE)) else {
+        return Forwarded::Held;
+    };
+    if !server_proved(challenge_rest, token, client_nonce) {
+        return Forwarded::Held;
+    }
+    let server_nonce = challenge_rest.split_whitespace().next().unwrap_or("");
+    let proof = compute_proof("uninstall", token, client_nonce, server_nonce);
+    if stream.write_all(format!("{UNINSTALL}{id} {proof}\n").as_bytes()).is_err() {
+        return Forwarded::Answered(Err("the launcher closed the connection before the removal could be handed over".into()));
+    }
+    let answer = read_message_until(&mut stream, Instant::now() + UNINSTALL_WITHIN, MAX_ANSWER);
+    let answer = String::from_utf8_lossy(&answer).trim().to_string();
+    match answer.strip_prefix(UNINSTALLED) {
+        Some("ok") => Forwarded::Answered(Ok(())),
+        Some(error) if !error.is_empty() => Forwarded::Answered(Err(error.to_string())),
+        _ if answer.starts_with(RUNNING.trim_end()) => {
+            // A launcher from before removals were handed over answered the greeting as usual:
+            // it cannot take this request, and the caller must not write beside it.
+            Forwarded::Answered(Err("the launcher that is running is from an older version and can't take the removal; quit it and try again".into()))
+        }
+        _ => Forwarded::Answered(Err("the launcher took the removal but answered nothing to act on; try again".into())),
+    }
+}
+
+/// Runs the registered removal for a handed-over request and answers the asking process. When
+/// nothing is registered yet (the launcher is still starting), it waits a moment first.
+fn answer_uninstall(stream: TcpStream, id: &str) {
+    answer_uninstall_with(stream, id, wait_for_uninstall_handler().as_ref());
+}
+
+/// [`answer_uninstall`]'s answer for one handler, so tests run it with one of their own.
+fn answer_uninstall_with(mut stream: TcpStream, id: &str, handler: Option<&Uninstall>) {
+    let reply = match handler {
+        None => format!("{UNINSTALLED}nothing here is registered to remove apps; the launcher may still be starting\n"),
+        Some(handler) => match handler(id) {
+            Ok(()) => format!("{UNINSTALLED}ok\n"),
+            Err(error) => {
+                log::warn!("the removal handed over by another process didn't finish: {error}");
+                // One line: a reason that breaks the line would end the answer mid-way.
+                format!("{UNINSTALLED}{}\n", error.replace(['\n', '\r'], " "))
+            }
+        },
+    };
+    let _ = stream.write_all(reply.chars().take(MAX_ANSWER).collect::<String>().as_bytes());
+    let _ = stream.shutdown(std::net::Shutdown::Both);
+}
+
+/// The registered removal, waiting a moment for it when the holder is still starting up.
+fn wait_for_uninstall_handler() -> Option<Uninstall> {
+    let deadline = Instant::now() + HANDLER_WITHIN;
+    loop {
+        if let Some(handler) = UNINSTALL_HANDLER.get() {
+            return Some(handler.clone());
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 /// Reads a line or message up to `\n` or EOF, at most [`MAX_GREETING`] bytes and one second in total.
 fn read_message(stream: &mut TcpStream) -> Vec<u8> {
-    let deadline = Instant::now() + Duration::from_secs(1);
+    read_message_until(stream, Instant::now() + Duration::from_secs(1), MAX_GREETING)
+}
+
+/// Reads a message up to `\n` or EOF, at most `max` bytes and `deadline` in total.
+fn read_message_until(stream: &mut TcpStream, deadline: Instant, max: usize) -> Vec<u8> {
     let mut message = Vec::new();
     let mut byte = [0u8; 1];
-    while message.len() < MAX_GREETING {
+    while message.len() < max {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() || stream.set_read_timeout(Some(remaining)).is_err() {
             break;
@@ -374,6 +572,23 @@ fn handle_incoming(stream: &mut TcpStream, ours: Option<&Version>, token: Option
     let auth_text = std::str::from_utf8(&auth_msg).unwrap_or("");
     let client_proof = auth_text.strip_prefix(AUTH).map(str::trim).unwrap_or("");
     let expected_client_proof = compute_proof("client", ours_token, client_nonce, &server_nonce);
+
+    if let Some(rest) = auth_text.strip_prefix(UNINSTALL) {
+        // A headless removal handing itself over. Only a proof of the account's token counts:
+        // anything else is dropped without an answer, like an unproven replace (CWE-287).
+        let (id, proof) = rest.trim().split_once(' ')?;
+        if !constant_time_eq(proof, &compute_proof("uninstall", ours_token, client_nonce, &server_nonce)) {
+            return None;
+        }
+        // The removal runs on its own thread: it can take a while, and the listener must keep
+        // answering the starts that arrive meanwhile. Nothing reaches the launcher's window: a
+        // removal asked from Apps & features must not bring the launcher forward.
+        if let Ok(mine) = stream.try_clone() {
+            let id = id.to_string();
+            std::thread::spawn(move || answer_uninstall(mine, &id));
+        }
+        return None;
+    }
 
     let _ = stream.write_all(reply_running.as_bytes());
 
@@ -803,5 +1018,196 @@ mod tests {
         assert_eq!(port_for(false), PORT);
         assert_eq!(port_for(true), WSL_PORT);
         assert_ne!(port_for(true), port_for(false));
+    }
+
+    // The removal a headless uninstaller hands over (an app's Apps & features entry runs
+    // `<launcher> --uninstall`): only a proven holder is told anything, only a proven request is
+    // served, and the holder's answer is the asking process's own result.
+
+    /// The one removal handler the test binary registers: what it answers is steered by the id,
+    /// so tests of the serving side need no registration of their own (the first one stands, and
+    /// a launcher's backend may have registered before it).
+    fn ensure_test_handler() {
+        set_uninstall_handler(Arc::new(|id| match id.strip_prefix("succeeds:") {
+            Some(_) => Ok(()),
+            _ => Err(format!("{id} isn't installed by the launcher's fast install")),
+        }));
+    }
+
+    /// Serves one connection with the real server side, then drops its stream: a request the
+    /// server does not answer reads EOF on the client, and an answer the removal thread writes
+    /// reaches the client through the stream the server cloned for it.
+    fn serve_one(listener: TcpListener) -> std::thread::JoinHandle<()> {
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = handle_incoming(&mut stream, Some(&v("0.20.4")), Some(TOK));
+        })
+    }
+
+    /// A proven holder takes the handed-over removal and answers with what the removal made of
+    /// it: its `ok` and its failure reason both reach the asking process as its own result.
+    #[test]
+    fn a_handed_removal_gets_the_holders_answer() {
+        for (answer, expected) in
+            [("ok", Forwarded::Answered(Ok(()))), ("the folder was left alone", Forwarded::Answered(Err("the folder was left alone".into())))]
+        {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut s, _) = listener.accept().unwrap();
+                let hello = String::from_utf8(read_message(&mut s)).unwrap();
+                let client_nonce = hello.strip_prefix(HELLO).unwrap().split_whitespace().nth(1).unwrap().to_string();
+                let server_nonce = fresh_secret().unwrap();
+                let proof = compute_proof("server", TOK, &client_nonce, &server_nonce);
+                s.write_all(format!("{CHALLENGE}{server_nonce} {proof}\n").as_bytes()).unwrap();
+                let request = String::from_utf8(read_message(&mut s)).unwrap();
+                let (id, client_proof) = request.strip_prefix(UNINSTALL).unwrap().trim().split_once(' ').unwrap();
+                assert_eq!(id, "photocraft");
+                assert_eq!(client_proof, compute_proof("uninstall", TOK, &client_nonce, &server_nonce), "the request must prove the account's token");
+                s.write_all(format!("{UNINSTALLED}{answer}\n").as_bytes()).unwrap();
+            });
+            let client_nonce = fresh_secret().unwrap();
+            assert_eq!(forward_uninstall_to(addr, "photocraft", &v("0.20.4"), TOK, &client_nonce), expected);
+            server.join().unwrap();
+        }
+    }
+
+    /// A holder that does not prove it holds the account's token is told nothing, and an answer
+    /// that does not prove itself is not trusted: the manifest must be left to whatever it is.
+    #[test]
+    fn a_removal_is_only_handed_to_a_proven_holder() {
+        // No challenge at all: a launcher from before the handshake, or something answering like one.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let _ = read_message(&mut s);
+            let _ = s.write_all(b"artcraft-launcher:running 0.20.4\n");
+        });
+        let client_nonce = fresh_secret().unwrap();
+        assert_eq!(forward_uninstall_to(addr, "photocraft", &v("0.20.4"), TOK, &client_nonce), Forwarded::Held);
+        server.join().unwrap();
+
+        // A challenge that fails its own proof: an impostor on the port.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let hello = String::from_utf8(read_message(&mut s)).unwrap();
+            let client_nonce = hello.strip_prefix(HELLO).unwrap().split_whitespace().nth(1).unwrap().to_string();
+            let server_nonce = fresh_secret().unwrap();
+            let proof = compute_proof("server", "not-the-token", &client_nonce, &server_nonce);
+            s.write_all(format!("{CHALLENGE}{server_nonce} {proof}\n").as_bytes()).unwrap();
+        });
+        let client_nonce = fresh_secret().unwrap();
+        assert_eq!(forward_uninstall_to(addr, "photocraft", &v("0.20.4"), TOK, &client_nonce), Forwarded::Held);
+        server.join().unwrap();
+    }
+
+    /// Nothing answers the port: the instance is the caller's to take, and the removal is its own.
+    #[test]
+    fn a_removal_with_no_holder_is_the_callers_own() {
+        // An ephemeral port nothing listens on refuses the connection rather than timing out.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        let client_nonce = fresh_secret().unwrap();
+        assert_eq!(forward_uninstall_to(addr, "photocraft", &v("0.20.4"), TOK, &client_nonce), Forwarded::Free);
+    }
+
+    /// A proven handed-over request runs the registered removal and answers with its result, and
+    /// no window request reaches the holder; an unproven one gets no answer at all.
+    #[test]
+    fn the_holder_serves_a_proven_removal_and_drops_an_unproven_one() {
+        ensure_test_handler();
+
+        // Unproven: nothing comes back, and the removal is never started.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = serve_one(listener);
+        let mut s = TcpStream::connect(addr).unwrap();
+        let client_nonce = fresh_secret().unwrap();
+        s.write_all(format!("{HELLO}0.20.4 {client_nonce}\n").as_bytes()).unwrap();
+        let challenge = String::from_utf8(read_message(&mut s)).unwrap();
+        assert!(challenge.starts_with(CHALLENGE), "{challenge}");
+        s.write_all(format!("{UNINSTALL}photocraft not-the-proof\n").as_bytes()).unwrap();
+        server.join().unwrap();
+        let mut eof = Vec::new();
+        assert_eq!(s.read_to_end(&mut eof).unwrap(), 0, "an unproven removal gets no answer");
+
+        // Proven: the removal runs on its own thread and its answer comes back on the stream.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = serve_one(listener);
+        let mut s = TcpStream::connect(addr).unwrap();
+        let client_nonce = fresh_secret().unwrap();
+        s.write_all(format!("{HELLO}0.20.4 {client_nonce}\n").as_bytes()).unwrap();
+        let challenge = String::from_utf8(read_message(&mut s)).unwrap();
+        let server_nonce = challenge.strip_prefix(CHALLENGE).unwrap().split_whitespace().next().unwrap().to_string();
+        let proof = compute_proof("uninstall", TOK, &client_nonce, &server_nonce);
+        s.write_all(format!("{UNINSTALL}succeeds:photocraft {proof}\n").as_bytes()).unwrap();
+        let answer = String::from_utf8(read_message_until(&mut s, Instant::now() + Duration::from_secs(5), MAX_ANSWER)).unwrap();
+        assert!(answer.starts_with(UNINSTALLED), "{answer}");
+        server.join().unwrap();
+    }
+
+    /// A held instance serves handed-over removals while it holds the port and gives the port up
+    /// when its work is done, so the next holder can take the instance.
+    #[test]
+    fn a_held_instance_serves_removals_and_then_gives_the_port_up() {
+        ensure_test_handler();
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (stop, stopped) = channel();
+        let serve = std::thread::spawn(move || serve_until(listener, Some(v("0.20.4")), Some(TOK.to_string()), stopped));
+        let client_nonce = fresh_secret().unwrap();
+        let handed = forward_uninstall_to(addr, "succeeds:photocraft", &v("0.20.4"), TOK, &client_nonce);
+        assert!(matches!(handed, Forwarded::Answered(_)), "{handed:?}");
+        drop(stop);
+        serve.join().unwrap();
+        // The port is free again: something else can hold the instance now.
+        TcpListener::bind(addr).unwrap();
+    }
+
+    /// The answer to a handed-over removal is one line: a reason with a line break in it cannot
+    /// cut the answer short, and nothing beyond the answer's size is sent.
+    #[test]
+    fn the_answer_to_a_handed_removal_is_one_bounded_line() {
+        fn answers_ok(_id: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn answers_in_broken_lines(_id: &str) -> Result<(), String> {
+            Err("the first line\nthe second\r\nthe third".into())
+        }
+        let answer = |handler: Uninstall, id: &str| {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let addr = listener.local_addr().unwrap();
+            let id = id.to_string();
+            let server = std::thread::spawn(move || {
+                let (mine, _) = listener.accept().unwrap();
+                answer_uninstall_with(mine, &id, Some(&handler));
+            });
+            let mut s = TcpStream::connect(addr).unwrap();
+            server.join().unwrap();
+            String::from_utf8(read_message_until(&mut s, Instant::now() + Duration::from_secs(2), MAX_ANSWER)).unwrap()
+        };
+        assert_eq!(answer(Arc::new(answers_ok), "photocraft"), format!("{UNINSTALLED}ok"));
+        assert_eq!(answer(Arc::new(answers_in_broken_lines), "photocraft"), format!("{UNINSTALLED}the first line the second  the third"));
+    }
+
+    /// With nothing registered to remove apps, a handed-over request is answered saying so, not
+    /// left hanging: the asking process reports it and the manifest is untouched.
+    #[test]
+    fn a_removal_with_no_registered_handler_is_answered_with_a_reason() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mine, _) = listener.accept().unwrap();
+            answer_uninstall_with(mine, "photocraft", None);
+        });
+        let mut s = TcpStream::connect(addr).unwrap();
+        server.join().unwrap();
+        let answer = String::from_utf8(read_message_until(&mut s, Instant::now() + Duration::from_secs(2), MAX_ANSWER)).unwrap();
+        assert_eq!(answer, format!("{UNINSTALLED}nothing here is registered to remove apps; the launcher may still be starting"));
     }
 }

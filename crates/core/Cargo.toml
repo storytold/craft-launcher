@@ -24,9 +24,5 @@ sha2 = "0.10"
 toml = { version = "=1.1.8", default-features = false, features = ["parse", "serde", "std"] }
 
 [build-dependencies]
-base64 = "0.22"
-ed25519-dalek = { version = "2.2", default-features = false, features = ["std", "fast", "pem"] }
 serde = { workspace = true }
-sha2 = "0.10"
 toml = { version = "=1.1.8", default-features = false, features = ["parse", "serde", "std"] }
-ureq = { version = "3.5", default-features = false, features = ["rustls-no-provider", "_ring", "gzip", "platform-verifier"] }

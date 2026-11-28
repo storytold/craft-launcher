@@ -44,17 +44,3 @@ Packaging facts the code relies on:
 - `build.rs` reads `ARTCRAFT_LAUNCHER_BUILD_SHA` / `ARTCRAFT_LAUNCHER_BUILD_DATE` and, on Windows,
   embeds `assets/app-icon/artcraft-launcher.ico`, failing the build when
   `ARTCRAFT_LAUNCHER_REQUIRE_WINRES=1` and it can't.
-
-## Signed catalog at build and runtime
-
-For an offline or reproducible build, set `ARTCRAFT_CATALOG_DIR` to a pinned snapshot containing
-`launcher-catalog.toml`, its detached `.sig`, and the `launcher-app-icons/<id>-<sha256>.png`
-files. The build verifies the signature and icon digests. The default network build uses a
-verified cache under the Cargo target directory (or `ARTCRAFT_CATALOG_CACHE_DIR`).
-Windows packaging consumes the verified icons emitted by that exact build, without a second
-network fetch. With `-SkipBuild`, pass `-CatalogOutputDir` if multiple core build outputs exist.
-
-The signed release catalog supplies stable release and Nightly discovery information. Automated
-Nightly installation/update checks intentionally still use the GitHub Nightly verifier, which
-validates the platform-specific descriptor and checksums and retains the existing scheduling
-and rollback protections. A signed discovery entry alone is not permission to install a Nightly.

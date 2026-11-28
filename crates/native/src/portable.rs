@@ -167,7 +167,9 @@ fn extract(file: &Path, destination: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf
 
 fn recorded_files<'a>(app: &CraftApp, record: &'a Record) -> Result<(&'a Path, Vec<PathBuf>), String> {
     let root = record.path.parent().ok_or("The portable installation has no parent folder.")?;
-    if record.kind != PackageKind::PortableZip || root.file_name().is_none_or(|n| n != app.id) {
+    // A fast install owns its files exactly the way a portable one does; any other record does
+    // not describe a folder this transaction may touch.
+    if !matches!(record.kind, PackageKind::PortableZip | PackageKind::FastInstall) || root.file_name().is_none_or(|n| n != app.id) {
         return Err("The launcher has no valid ownership record for this portable folder.".into());
     }
     let resolved = resolve_missing(root)?;
@@ -205,13 +207,16 @@ pub fn install(
     replace: bool,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
-    install_checked(Package { app, file, version, previous, paths, directory, replace }, &|_, _| Ok(()), commit)
+    install_checked(Package { app, file, version, kind: PackageKind::PortableZip, previous, paths, directory, replace }, &|_, _| Ok(()), commit)
 }
 
 pub(crate) struct Package<'a> {
     pub app: &'a CraftApp,
     pub file: &'a Path,
     pub version: &'a str,
+    /// The kind the record is written under: `PortableZip` for a plain portable copy,
+    /// `FastInstall` for the launcher's own fast install (same file transaction, another kind).
+    pub kind: PackageKind,
     pub previous: Option<&'a Record>,
     pub paths: &'a Paths,
     pub directory: Option<&'a Path>,
@@ -261,7 +266,7 @@ fn install_with_authentication(
     authenticate: Option<&Authenticate>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
-    let Package { app, file, version, previous, paths, directory, replace } = package;
+    let Package { app, file, version, kind, previous, paths, directory, replace } = package;
     let (destination, mut old_files) = match previous {
         Some(record) => {
             let (root, files) = recorded_files(app, record)?;
@@ -322,7 +327,7 @@ fn install_with_authentication(
     let backup = staging.0.join("backup");
     let record = Record {
         version: version.to_string(),
-        kind: PackageKind::PortableZip,
+        kind,
         path: destination.join(executable),
         installed_at: crate::now(),
         files: files.iter().map(|relative| destination.join(relative)).collect(),
@@ -634,6 +639,7 @@ pub(crate) mod tests {
                 app,
                 file: &file,
                 version: "1.0.0-nightly.20261121.2.1.gabcdefabcdef",
+                kind: PackageKind::PortableZip,
                 previous: None,
                 paths: &paths,
                 directory: None,
@@ -656,6 +662,7 @@ pub(crate) mod tests {
                 app,
                 file: &new,
                 version: "1.0.0-nightly.20261121.3.1.gabcdefabcdef",
+                kind: PackageKind::PortableZip,
                 previous: Some(&old),
                 paths: &paths,
                 directory: None,
@@ -700,6 +707,7 @@ pub(crate) mod tests {
             app,
             file: &zip,
             version: "1.0.0-nightly.20261120.1.1.gabcdefabcdef",
+            kind: PackageKind::PortableZip,
             previous: None,
             paths: &paths,
             directory: None,

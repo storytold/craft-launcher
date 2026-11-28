@@ -83,6 +83,7 @@
 	Installing on Windows	在 Windows 上安裝
 	Install new apps as	安裝新應用程式的方式
 	System package (recommended)	系統套件（建議）
+	Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator.	快速安裝會將應用程式解壓縮到您自己的 Programs 資料夾，新增開始功能表項目並列入「應用程式與功能」，全程不需系統管理員權限。
 	Updates always use the format an app was installed with.	更新一律沿用應用程式安裝時的格式。
 	Running in the background	在背景執行
 	Keep running in the tray when the window is closed	關閉視窗後仍在系統匣中執行
@@ -316,6 +317,7 @@ figcraft	Interface design and prototyping	介面設計與原型製作
 	No limit	不限制
 	Downloads running together share your connection, so each one is slower.	同時進行的下載會共用網路連線，因此每個下載都會變慢。
 	Waiting for other installs…	正在等待其他安裝…
+	Fast install (recommended)	快速安裝（建議）
 	Installer (.msi)	安裝程式（.msi）
 	Portable (.zip)	免安裝版（.zip）
 	Disk image (.dmg)	磁碟影像（.dmg）
