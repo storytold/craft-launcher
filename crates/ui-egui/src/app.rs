@@ -1050,11 +1050,14 @@ impl LauncherUi {
         }
 
         // The bars' separator lines are the hairlines under the header and over the footer.
+        let bar = host.title_bar();
+        // macOS: the header is the window's title bar, so it keeps the size it has unzoomed, as the traffic lights do.
+        let unzoomed = if bar == TitleBar::MacOs { ctx.zoom_factor() } else { 1.0 };
         egui::Panel::top("header")
             .frame(egui::Frame::new().fill(tokens.bg))
-            .exact_size(crate::views::HEADER_H)
+            .exact_size(crate::views::HEADER_H / unzoomed)
             .resizable(false)
-            .show(ui, |ui| self.header(ui, host.title_bar()));
+            .show(ui, |ui| if unzoomed == 1.0 { self.header(ui, bar) } else { self.header_unzoomed(ui, bar, unzoomed) });
         egui::Panel::bottom("footer")
             .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin::symmetric(20, 0)))
             .exact_size(crate::views::FOOTER_H)

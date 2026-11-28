@@ -226,6 +226,34 @@ impl LauncherUi {
         });
     }
 
+    /// [`Self::header`] at its unzoomed size whatever the interface `zoom`: drawn in a layer of its own at `zoom` times
+    /// the panel's size, which the layer's transform (and the same transform on its accessibility node) scales back
+    /// into the panel.
+    pub(crate) fn header_unzoomed(&mut self, ui: &mut Ui, bar: TitleBar, zoom: f32) {
+        let panel = ui.max_rect();
+        let local = Rect::from_min_size(panel.min, panel.size() * zoom);
+        let to_panel = egui::emath::TSTransform::new(panel.min.to_vec2() - local.min.to_vec2() / zoom, 1.0 / zoom);
+        let shown = egui::Area::new(ui.scope_id().with("unzoomed")).order(egui::Order::Background).fixed_pos(local.min).constrain(false).show(
+            ui.ctx(),
+            |ui| {
+                ui.set_clip_rect(local);
+                let t = to_panel;
+                ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
+                    node.set_transform(egui::accesskit::Affine::new([
+                        t.scaling.into(),
+                        0.0,
+                        0.0,
+                        t.scaling.into(),
+                        t.translation.x.into(),
+                        t.translation.y.into(),
+                    ]));
+                });
+                ui.scope_builder(egui::UiBuilder::new().max_rect(local), |ui| self.header(ui, bar));
+            },
+        );
+        ui.ctx().set_transform_layer(shown.response.layer_id, to_panel);
+    }
+
     pub(crate) fn toolbar(&mut self, ui: &mut Ui) {
         if self.settings.filter == Filter::Hidden && self.settings.hidden.is_empty() {
             self.settings.filter = Filter::All;

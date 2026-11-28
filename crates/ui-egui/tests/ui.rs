@@ -4507,6 +4507,32 @@ fn control_wheel_zooms_the_main_ui() {
 }
 
 #[test]
+/// On macOS the header is the window's title bar: zooming the launcher leaves it the size it is on screen, while the
+/// page under it grows.
+fn the_macos_title_bar_keeps_its_size_when_the_launcher_zooms() {
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::MacOs);
+    h.run_steps(4);
+    // Sizes on screen: egui points times the zoom.
+    let on_screen = |h: &Harness<'_, Option<LauncherUi>>, label: &str| h.get_by_label(label).rect().height() * h.ctx.zoom_factor();
+    let bar = on_screen(&h, "Settings");
+    let card = on_screen(&h, "More actions for PhotoCraft");
+    for _ in 0..5 {
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
+        h.step();
+        next_frame_input(&mut h);
+    }
+    h.run_steps(3);
+    assert!(h.ctx.zoom_factor() > 1.2, "the launcher zoomed in");
+    assert!((on_screen(&h, "Settings") - bar).abs() < 0.5, "the title bar keeps its size on screen");
+    assert!(on_screen(&h, "More actions for PhotoCraft") > card + 1.0, "the page zooms");
+    snapshot(&mut h, "macos-title-bar-zoomed-in");
+    // The bar's controls still answer where they are drawn.
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Launcher version");
+}
+
+#[test]
 /// With release notes open, keyboard and wheel zoom change only the notes text (reset works)
 /// while the global zoom stays put and the release heading appears once.
 fn changelog_shortcuts_zoom_only_the_notes_text() {
