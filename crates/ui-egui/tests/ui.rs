@@ -391,6 +391,45 @@ fn install_commands(sent: &RefCell<Vec<Command>>) -> Vec<Command> {
 }
 
 #[test]
+fn managing_settings_expose_the_shared_download_limit_without_a_linux_batch_choice() {
+    let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    if cfg!(target_os = "linux") {
+        assert!(
+            h.query_by_label("Ask for permission once when updating all apps").is_none(),
+            "Linux always batches; it must not gain a misleading switch"
+        );
+        assert!(h.state().as_ref().unwrap().settings.updates_batched());
+    }
+    h.get_by_label("Downloads running together share your connection, so each one is slower.");
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Simultaneous downloads").click();
+    h.run_steps(3);
+    h.get_by_label("3").click();
+    h.run_steps(5);
+    assert_eq!(h.state().as_ref().unwrap().settings.simultaneous_downloads, 3);
+    assert!(
+        sent.borrow().iter().any(|command| matches!(command, Command::Configure(options) if options.simultaneous_downloads == 3)),
+        "the chosen limit must reach the existing backend options"
+    );
+    if cfg!(target_os = "linux") {
+        assert!(h.state().as_ref().unwrap().settings.updates_batched(), "changing download concurrency must not change Linux elevation batching");
+    }
+}
+
+#[test]
+fn a_web_only_backend_does_not_offer_download_limit_controls() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, false);
+    h.run_steps(6);
+    h.get_by_label("Settings").click();
+    h.run_steps(4);
+    assert!(h.query_by_role_and_label(egui::accesskit::Role::ComboBox, "Simultaneous downloads").is_none());
+    assert!(h.query_by_label("Downloads running together share your connection, so each one is slower.").is_none());
+    assert!(h.query_by_label("Ask for permission once when updating all apps").is_none());
+}
+
+#[test]
 fn app_and_launcher_offer_version_choices_without_starting_an_install() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(6);
