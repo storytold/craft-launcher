@@ -230,10 +230,19 @@ struct JobGuard {
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
-        let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
-        self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
-        process.remove(&self.shared.job_key(&self.app_id));
+        self.shared.release_job(&self.app_id);
+    }
+}
+
+/// The per-app reservation an install holds, taken for a moment by a cleanup that must not overlap one.
+struct CleanupReservation<'a> {
+    shared: &'a Shared,
+    app_id: &'a str,
+}
+
+impl Drop for CleanupReservation<'_> {
+    fn drop(&mut self) {
+        self.shared.release_job(self.app_id);
     }
 }
 
@@ -243,6 +252,20 @@ const SYSTEM_KINDS_FOR: Duration = Duration::from_secs(60);
 impl Shared {
     fn job_key(&self, app: &str) -> String {
         if self.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly { format!("nightly:{app}") } else { app.to_owned() }
+    }
+    /// Gives up the reservation [`Shared::reserve_job`] made for `app`.
+    fn release_job(&self, app: &str) {
+        let _reporting = self.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut process = self.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        self.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(app);
+        process.remove(&self.job_key(app));
+    }
+    /// The same per-app reservation an install takes, or `None` while a job for the app runs or the launcher restarts.
+    fn reserve_for_cleanup<'a>(&'a self, app: &'a str) -> Option<CleanupReservation<'a>> {
+        match self.reserve_job(app, Arc::new(Stop::default())) {
+            Admission::Reserved => Some(CleanupReservation { shared: self, app_id: app }),
+            Admission::AlreadyActive | Admission::Restarting => None,
+        }
     }
     fn reserve_job(&self, app: &str, stop: Arc<Stop>) -> Admission {
         let _reporting = self.reporting.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1971,7 +1994,12 @@ fn install_cli_tool(
                 let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
                 // Final only once the record is saved; a failure puts the previous tool and record back.
                 match install::cli_tool::record(&mut m, app.id, placed, existing, paths, |m| m.save(&paths.manifest())) {
-                    Ok(()) => " and its command-line tool".to_string(),
+                    Ok(()) => {
+                        if m.cli_pending.remove(app.id).is_some() {
+                            let _ = m.save(&paths.manifest());
+                        }
+                        " and its command-line tool".to_string()
+                    }
                     Err(e) => {
                         log::warn!("{}: command-line tool: {e}", app.name);
                         format!(" (its command-line tool wasn't installed: {e})")
@@ -2002,23 +2030,33 @@ fn remove_cli_tool(paths: &Paths, manifest: &mut crate::manifest::Manifest, id: 
     Ok(manifest.cli.remove(id).is_some())
 }
 
-/// A command-line tool left behind by a removal that failed (its record is still in the manifest) is taken away
-/// once its app is gone: every check that finds the app not installed tries again, so the user has nothing to do.
-/// Never while a job for the app is running (an update that swaps the app out for a moment must not lose its tool).
-fn retry_leftover_cli_tool(shared: &Shared, app: &CraftApp) {
-    if shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id) {
+/// Retries the removal of a command-line tool that a failed uninstall marked pending (`Manifest::cli_pending`), once
+/// the app is gone. Only that tool: a check that finds an app not installed says nothing about a tool that is not marked,
+/// and a result that was worked out before an install finished can reach this function after it. So it takes the same
+/// per-app reservation an install holds and, under it, confirms that the app is not installed and that the marked record is
+/// still the app's: a tool installed since, with a record of its own, is never touched (and the stale mark is dropped).
+fn retry_pending_cli_removal(shared: &Shared, app: &CraftApp) {
+    if !shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).cli_pending.contains_key(app.id) {
+        return;
+    }
+    // A job for the app is running (or the launcher is restarting): the next check looks again.
+    let Some(_reserved) = shared.reserve_for_cleanup(app.id) else { return };
+    if shared.installed.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id) {
         return;
     }
     let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-    if !m.cli.contains_key(app.id) {
+    let Some(pending) = m.cli_pending.get(app.id).cloned() else { return };
+    if m.cli.get(app.id) != Some(&pending) {
+        m.cli_pending.remove(app.id);
+        let _ = m.save(&shared.paths.manifest());
         return;
     }
     match remove_cli_tool(&shared.paths, &mut m, app.id) {
-        Ok(true) => {
+        Ok(_) => {
+            m.cli_pending.remove(app.id);
             let _ = m.save(&shared.paths.manifest());
             log::info!("{}: the command-line tool left behind was removed", app.id);
         }
-        Ok(false) => {}
         Err(e) => log::warn!("{}: the command-line tool left behind still can't be removed ({e}); it is tried again at the next check", app.id),
     }
 }
@@ -2034,7 +2072,16 @@ fn finish_uninstall(paths: &Paths, m: &mut crate::manifest::Manifest, app: &Craf
     let removed_app = installed && m.apps.remove(app.id).is_some();
     let released = installed && m.releases.remove(app.id).is_some();
     let tool = remove_cli_tool(paths, m, app.id);
-    if removed_app || released || matches!(tool, Ok(true)) {
+    // A tool that could not be removed is marked as the one to retry: the record the failure was about.
+    let marked = match (&tool, m.cli.get(app.id).cloned()) {
+        (Err(_), Some(record)) => {
+            m.cli_pending.insert(app.id.to_string(), record);
+            true
+        }
+        _ => false,
+    };
+    let cleared = tool.is_ok() && m.cli_pending.remove(app.id).is_some();
+    if removed_app || released || marked || cleared || matches!(tool, Ok(true)) {
         let _ = m.save(&paths.manifest());
     }
     match (installed, tool) {
@@ -2325,7 +2372,7 @@ fn publish_latest(app: &CraftApp, latest: LatestRelease, from: Origin, shared: &
 fn publish_detected(app: &CraftApp, found: Option<Installed>, shared: &Shared, platform: Option<Platform>) {
     let system = (shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable && found.is_some()).then(|| shared.system_kinds());
     if found.is_none() {
-        retry_leftover_cli_tool(shared, app);
+        retry_pending_cli_removal(shared, app);
     }
     let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
     shared.store_detected(app.id, found.as_ref());
@@ -5768,33 +5815,47 @@ prerelease = true
             backend.shared.manifest.lock().unwrap().cli.contains_key("pdfcraft")
         }
 
-        #[test]
-        fn a_tool_left_behind_is_removed_when_a_check_finds_its_app_gone() {
-            let dir = tempfile::tempdir().unwrap();
-            let (paths, m, real) = blocked(dir.path());
+        /// A manifest with the blocked tool recorded and, when `pending`, marked as a failed removal would mark it.
+        fn pending_backend(dir: &std::path::Path, pending: bool) -> (NativeBackend, Paths, std::path::PathBuf, CliRecord) {
+            let (paths, mut m, real) = blocked(dir);
             let record = m.cli.get("pdfcraft").unwrap().clone();
-            let backend = backend_with(m, dir.path());
-            // Still blocked: the record stays for the next check.
-            publish_detected(app(), None, &backend.shared, Some(platform()));
-            assert!(has_record(&backend), "a removal that fails keeps its record");
-            // What blocked it is put right; the next check takes the tool away, with nobody asking.
+            if pending {
+                let text = finish_uninstall(&paths, &mut m, app(), true).unwrap();
+                assert!(text.contains("couldn't be removed"), "{text}");
+                assert_eq!(m.cli_pending.get("pdfcraft"), Some(&record), "the failed removal marks the specific record");
+            }
+            (backend_with(m, dir), paths, real, record)
+        }
+
+        fn unblock(paths: &Paths, real: &std::path::Path) {
             std::fs::remove_file(paths.cli()).unwrap();
-            std::fs::rename(&real, paths.cli()).unwrap();
+            std::fs::rename(real, paths.cli()).unwrap();
+        }
+
+        fn is_pending(backend: &NativeBackend) -> bool {
+            backend.shared.manifest.lock().unwrap().cli_pending.contains_key("pdfcraft")
+        }
+
+        #[test]
+        fn a_failed_uninstall_marks_the_tool_and_a_later_check_retries_it() {
+            let dir = tempfile::tempdir().unwrap();
+            let (backend, paths, real, record) = pending_backend(dir.path(), true);
             publish_detected(app(), None, &backend.shared, Some(platform()));
-            assert!(!has_record(&backend), "the record is gone");
-            assert!(Manifest::load(&paths.manifest()).cli.is_empty(), "the manifest on disk forgets it too");
+            assert!(has_record(&backend) && is_pending(&backend), "still blocked: recorded and marked for the next check");
+            unblock(&paths, &real);
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(!has_record(&backend) && !is_pending(&backend), "removed, record and mark gone");
+            let saved = Manifest::load(&paths.manifest());
+            assert!(saved.cli.is_empty() && saved.cli_pending.is_empty(), "the manifest on disk forgets both");
             assert!(std::fs::symlink_metadata(&record.link).is_err(), "the link is gone");
             assert!(std::fs::symlink_metadata(&record.folder).is_err(), "the folder is gone");
         }
 
         #[test]
-        fn a_tool_is_kept_while_its_app_is_installed_or_a_job_for_it_runs() {
+        fn a_marked_tool_is_kept_while_its_app_is_installed_or_a_job_for_it_holds_the_reservation() {
             let dir = tempfile::tempdir().unwrap();
-            let (paths, m, real) = blocked(dir.path());
-            // Nothing blocks the removal now, so only the guards keep the tool.
-            std::fs::remove_file(paths.cli()).unwrap();
-            std::fs::rename(&real, paths.cli()).unwrap();
-            let backend = backend_with(m, dir.path());
+            let (backend, paths, real, _) = pending_backend(dir.path(), true);
+            unblock(&paths, &real);
             publish_detected(
                 app(),
                 Some(copy_of("0.20.0", InstallSource::Launcher, "/Applications/PdfCraft.app")),
@@ -5802,12 +5863,65 @@ prerelease = true
                 Some(platform()),
             );
             assert!(has_record(&backend), "an installed app keeps its tool");
-            backend.shared.jobs.lock().unwrap().insert("pdfcraft".to_string(), Arc::new(Stop::default()));
+            backend.shared.installed.lock().unwrap().clear();
+            assert!(matches!(backend.shared.reserve_job("pdfcraft", Arc::new(Stop::default())), Admission::Reserved));
             publish_detected(app(), None, &backend.shared, Some(platform()));
-            assert!(has_record(&backend), "an app with a job running (an update swapping it out for a moment) keeps its tool");
-            backend.shared.jobs.lock().unwrap().remove("pdfcraft");
+            assert!(has_record(&backend), "an app whose reservation is held (an install in progress) keeps its tool");
+            backend.shared.release_job("pdfcraft");
             publish_detected(app(), None, &backend.shared, Some(platform()));
-            assert!(!has_record(&backend), "with the app gone and no job running, the tool is removed");
+            assert!(!has_record(&backend), "with the app gone and nothing reserved, the marked tool is removed");
+        }
+
+        #[test]
+        fn a_tool_that_is_not_marked_is_not_removed_by_a_not_installed_check() {
+            let dir = tempfile::tempdir().unwrap();
+            let (backend, paths, real, record) = pending_backend(dir.path(), false);
+            unblock(&paths, &real);
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(has_record(&backend), "the record stays");
+            assert!(std::fs::symlink_metadata(&record.link).is_ok() && std::fs::symlink_metadata(&record.folder).is_ok(), "and so does the tool");
+        }
+
+        #[test]
+        fn a_check_worked_out_before_an_install_cannot_remove_the_tool_that_install_made() {
+            for installed_is_published in [true, false] {
+                let dir = tempfile::tempdir().unwrap();
+                let (backend, paths, real, old) = pending_backend(dir.path(), true);
+                unblock(&paths, &real);
+                // The install finishes first: a new tool and record, the old tool replaced as an update replaces it.
+                std::fs::remove_dir_all(&old.folder).unwrap();
+                std::fs::remove_file(&old.link).unwrap();
+                let folder = paths.cli().join("pdfcraft-cli-0.21.0-macos-universal");
+                std::fs::create_dir_all(&folder).unwrap();
+                std::fs::write(folder.join("pdfcraft-cli"), "new tool").unwrap();
+                std::os::unix::fs::symlink(folder.join("pdfcraft-cli"), &old.link).unwrap();
+                let new = CliRecord { version: "0.21.0".into(), folder: folder.clone(), link: old.link.clone(), installed_at: 2 };
+                backend.shared.manifest.lock().unwrap().cli.insert("pdfcraft".into(), new.clone());
+                if installed_is_published {
+                    backend
+                        .shared
+                        .installed
+                        .lock()
+                        .unwrap()
+                        .insert("pdfcraft".into(), copy_of("0.21.0", InstallSource::Launcher, "/Applications/PdfCraft.app"));
+                }
+                // Then the older "not installed" result reaches publish_detected.
+                publish_detected(app(), None, &backend.shared, Some(platform()));
+                assert_eq!(
+                    backend.shared.manifest.lock().unwrap().cli.get("pdfcraft"),
+                    Some(&new),
+                    "the new record is intact ({installed_is_published})"
+                );
+                assert_eq!(
+                    std::fs::read_to_string(folder.join("pdfcraft-cli")).unwrap(),
+                    "new tool",
+                    "and so is the new tool ({installed_is_published})"
+                );
+                assert!(std::fs::symlink_metadata(&old.link).is_ok(), "and its link ({installed_is_published})");
+                if !installed_is_published {
+                    assert!(!is_pending(&backend), "the stale mark about the old tool is dropped");
+                }
+            }
         }
     }
 }

@@ -54,6 +54,10 @@ pub struct Manifest {
     /// Command-line tools, by app id.
     #[serde(default)]
     pub cli: BTreeMap<String, CliRecord>,
+    /// Command-line tools whose removal failed after their app was uninstalled, by app id: the exact record the
+    /// failure was about. Only a tool named here is ever retried on its own, and only while this is still the app's record.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cli_pending: BTreeMap<String, CliRecord>,
     /// For copies the system's installer keeps the record of (`apps` has none for them).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub releases: BTreeMap<String, InstalledRelease>,
