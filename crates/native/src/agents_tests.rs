@@ -323,3 +323,33 @@ fn a_refresh_that_cannot_write_the_app_list_fails() {
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
     assert!(result.is_err(), "{result:?}");
 }
+
+/// A refresh that can't read the app list says so, so the caller tries again later instead of
+/// treating agents as off until the installed apps change.
+#[cfg(unix)]
+#[test]
+fn a_refresh_that_cannot_read_the_app_list_fails() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    write_apps(dir.path(), &[]).unwrap();
+    let list = dir.path().join(craft_ai_agents::APPS_FILE);
+    std::fs::set_permissions(&list, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::File::open(&list).is_ok() {
+        // Running as root: permissions don't stop the read.
+        return;
+    }
+    let result = refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    std::fs::set_permissions(&list, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(result.is_err(), "{result:?}");
+}
+
+/// A broken app list counts as off: a refresh leaves it alone and succeeds, so it is not retried
+/// on every pass.
+#[test]
+fn a_refresh_with_a_broken_app_list_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let list = dir.path().join(craft_ai_agents::APPS_FILE);
+    std::fs::write(&list, b"not json").unwrap();
+    refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]).unwrap();
+    assert_eq!(std::fs::read(&list).unwrap(), b"not json");
+}

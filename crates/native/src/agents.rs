@@ -343,12 +343,29 @@ pub fn refresh(services: &[InstalledApp]) -> Result<(), String> {
 fn refresh_in(dir: Option<&Path>, services: &[InstalledApp]) -> Result<(), String> {
     let Some(dir) = dir else { return Ok(()) };
     let _guard = lock();
-    if !enabled(dir) {
+    if !enabled_for_refresh(dir)? {
         return Ok(());
     }
     let written = write_apps(dir, services);
     let gateway = locate_gateway().map_or(Ok(()), |src| install_gateway(&src, dir).map(|_| ()));
     written.and(gateway)
+}
+
+/// Whether agents are on in `dir`, for [`refresh_in`]. A missing list is off, and a list that is
+/// broken, too large or not a regular file counts as off, as it does for [`enabled`]. A list that
+/// can't be opened because of an I/O error is an error, so the caller tries the refresh again.
+fn enabled_for_refresh(dir: &Path) -> Result<bool, String> {
+    if enabled(dir) {
+        return Ok(true);
+    }
+    let path = dir.join(craft_ai_agents::APPS_FILE);
+    let unreadable = |e: std::io::Error| format!("couldn't read {} ({e})", path.display());
+    match std::fs::metadata(&path) {
+        Ok(meta) if meta.is_file() => std::fs::File::open(&path).map(|_| false).map_err(unreadable),
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(unreadable(e)),
+    }
 }
 
 /// What Settings shows. It writes nothing: [`refresh`] brings the app list and the gateway copy up
