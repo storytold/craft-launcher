@@ -66,3 +66,7 @@ rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal",
 [build-dependencies]
 # Icon + VERSIONINFO for artcraft-launcher.exe; build.rs only uses it when targeting Windows.
 winresource = "0.1"
+
+[dev-dependencies]
+# gpu_health's device-loss test blocks on wgpu's adapter request. Already in Cargo.lock through wgpu.
+pollster = "1"
