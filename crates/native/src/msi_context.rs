@@ -53,13 +53,77 @@ pub(crate) fn single_scope(scopes: impl IntoIterator<Item = MsiScope>) -> Option
     scopes.all(|scope| scope == first).then_some(first)
 }
 
-/// The context to install in. An update keeps `updated`, the context of the copy it replaces. A fresh
-/// install (no copy at all) is machine-wide, so every app lands in `C:\Program Files\ArtCraft\<App>`
-/// (or the folder the person chose) and not in one account's profile; a dual-scope package would
-/// otherwise take its own default, which is per-user. Windows asks for permission once, for that
-/// install. Anything else (a copy that is not an MSI) takes the package's own default.
-pub(crate) fn install_scope(updated: Option<MsiScope>, fresh: bool) -> Option<MsiScope> {
-    updated.or_else(|| fresh.then_some(MsiScope::PerMachine))
+/// Where the app's own installer finds an earlier copy before it installs: a value it reads in this
+/// account's registry (`user`) and in the machine's (`machine`), named for the message. The app
+/// packages stop with error 1603 when the context they install in is not the one such a copy was
+/// recorded in.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Traces {
+    pub user: Option<String>,
+    pub machine: Option<String>,
+}
+
+/// The context to install in. An update keeps `updated`, the context of the copy it replaces. Without
+/// one, a copy the app's installer will find (`traces`) decides: a copy recorded only for everyone is
+/// updated for everyone, and a fresh install over a copy recorded only for this account stays with
+/// this account. A fresh install with no such copy is machine-wide, so every app lands in
+/// `C:\Program Files\ArtCraft\<App>` (or the folder the person chose) and not in one account's
+/// profile; a dual-scope package would otherwise take its own default, which is per-user. Windows asks
+/// for permission once, for that install. Anything else (a copy that is not an MSI) takes the
+/// package's own default, which is per-user.
+///
+/// A copy recorded in the other context stops the install here, naming where it is recorded, before
+/// the installer would stop with error 1603.
+pub(crate) fn install_scope(updated: Option<MsiScope>, fresh: bool, traces: &Traces, app: &str) -> Result<Option<MsiScope>, String> {
+    if let (Some(user), Some(machine)) = (&traces.user, &traces.machine) {
+        return Err(format!(
+            "{app} has a copy recorded for your account ({user}) and one recorded for everyone ({machine}), so its installer would stop with error 1603. Uninstall the copy you don't use, then try again."
+        ));
+    }
+    let scope = match (updated, &traces.user, &traces.machine) {
+        (Some(scope), ..) => Some(scope),
+        (None, None, Some(_)) => Some(MsiScope::PerMachine),
+        (None, Some(_), None) => fresh.then_some(MsiScope::PerUser),
+        (None, ..) => fresh.then_some(MsiScope::PerMachine),
+    };
+    let other = match scope {
+        Some(MsiScope::PerMachine) => traces.user.as_deref().map(|at| (at, "everyone", "your account")),
+        Some(MsiScope::PerUser) | None => traces.machine.as_deref().map(|at| (at, "your account", "everyone")),
+    };
+    match other {
+        Some((at, installing, recorded)) => Err(format!(
+            "{app} would be installed for {installing}, but {at} records a copy for {recorded}, so its installer would stop with error 1603. Uninstall that copy, then try again."
+        )),
+        None => Ok(scope),
+    }
+}
+
+/// Checks that no other registration of the app is in the other context. `others` are the product
+/// codes of the app's other uninstall records; each is looked up as `probe` looks up the copy being
+/// updated, and by its record (`record_scope`) when that lookup cannot run. When the lookup cannot
+/// run and the records give no single context, the update stops. A record that Windows Installer
+/// does not know is ignored.
+pub(crate) fn others_agree<'a>(
+    scope: MsiScope,
+    others: impl IntoIterator<Item = &'a str>,
+    probe: impl Fn(&str) -> Result<MsiScope, ProbeError>,
+    record_scope: impl Fn(&str) -> Option<MsiScope>,
+) -> Result<(), String> {
+    for code in others {
+        let other = match probe(code) {
+            Ok(other) => Some(other),
+            Err(ProbeError::Conflicting) => return Err(CONFLICTING_CONTEXT.into()),
+            Err(ProbeError::Unknown) => None,
+            Err(ProbeError::Unavailable(reason)) => {
+                log::warn!("Windows Installer context lookup for {code} could not run: {reason}");
+                Some(record_scope(code).ok_or(UNKNOWN_CONTEXT)?)
+            }
+        };
+        if other.is_some_and(|other| other != scope) {
+            return Err(CONFLICTING_CONTEXT.into());
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn valid_product_code(code: &str) -> bool {
@@ -299,20 +363,94 @@ mod tests {
         assert_eq!(single_scope([MsiScope::PerUser, MsiScope::PerMachine, MsiScope::PerMachine]), None);
     }
 
+    const USER: &str = r"HKCU\Software\PhotoCraft (InstallDir)";
+    const MACHINE: &str = r"HKLM\Software\PhotoCraft (InstallDir)";
+
+    fn traces(user: bool, machine: bool) -> Traces {
+        Traces { user: user.then(|| USER.to_owned()), machine: machine.then(|| MACHINE.to_owned()) }
+    }
+
     #[test]
     fn a_fresh_install_is_machine_wide() {
-        assert_eq!(install_scope(None, true), Some(MsiScope::PerMachine));
+        assert_eq!(install_scope(None, true, &Traces::default(), "PhotoCraft"), Ok(Some(MsiScope::PerMachine)));
     }
 
     #[test]
     fn an_update_keeps_the_context_of_the_copy_it_replaces() {
         for scope in [MsiScope::PerUser, MsiScope::PerMachine] {
-            assert_eq!(install_scope(Some(scope), false), Some(scope));
+            assert_eq!(install_scope(Some(scope), false, &Traces::default(), "PhotoCraft"), Ok(Some(scope)));
         }
     }
 
     #[test]
     fn a_copy_that_is_not_an_msi_takes_the_package_default() {
-        assert_eq!(install_scope(None, false), None);
+        assert_eq!(install_scope(None, false, &Traces::default(), "PhotoCraft"), Ok(None));
+        assert_eq!(install_scope(None, false, &traces(true, false), "PhotoCraft"), Ok(None));
+    }
+
+    /// The app's installer refuses a per-user run while the machine records a copy, so a copy it
+    /// will find only there is updated for everyone.
+    #[test]
+    fn a_copy_recorded_only_for_everyone_is_updated_for_everyone() {
+        for fresh in [false, true] {
+            assert_eq!(install_scope(None, fresh, &traces(false, true), "PhotoCraft"), Ok(Some(MsiScope::PerMachine)), "fresh: {fresh}");
+        }
+    }
+
+    #[test]
+    fn a_fresh_install_over_a_copy_recorded_for_this_account_stays_with_it() {
+        assert_eq!(install_scope(None, true, &traces(true, false), "PhotoCraft"), Ok(Some(MsiScope::PerUser)));
+    }
+
+    #[test]
+    fn copies_recorded_in_both_contexts_stop_before_the_installer_and_name_both() {
+        for (updated, fresh) in [(None, true), (None, false), (Some(MsiScope::PerUser), false), (Some(MsiScope::PerMachine), false)] {
+            let error = install_scope(updated, fresh, &traces(true, true), "PhotoCraft").unwrap_err();
+            assert!(error.contains(USER) && error.contains(MACHINE) && error.contains("PhotoCraft"), "{updated:?} {fresh}: {error}");
+        }
+    }
+
+    #[test]
+    fn a_copy_recorded_in_the_other_context_stops_an_update_and_names_it() {
+        let error = install_scope(Some(MsiScope::PerMachine), false, &traces(true, false), "PhotoCraft").unwrap_err();
+        assert!(error.contains(USER) && !error.contains(MACHINE), "{error}");
+        let error = install_scope(Some(MsiScope::PerUser), false, &traces(false, true), "PhotoCraft").unwrap_err();
+        assert!(error.contains(MACHINE) && !error.contains(USER), "{error}");
+    }
+
+    #[test]
+    fn the_copys_own_record_does_not_stop_its_update() {
+        assert_eq!(install_scope(Some(MsiScope::PerMachine), false, &traces(false, true), "PhotoCraft"), Ok(Some(MsiScope::PerMachine)));
+        assert_eq!(install_scope(Some(MsiScope::PerUser), false, &traces(true, false), "PhotoCraft"), Ok(Some(MsiScope::PerUser)));
+    }
+
+    #[test]
+    fn another_registration_in_the_other_context_is_conflicting() {
+        const OTHER: &str = "{87654321-4321-4321-4321-CBA987654321}";
+        let probe = |code: &str| if code == OTHER { Ok(MsiScope::PerUser) } else { Err(ProbeError::Unknown) };
+        assert_eq!(others_agree(MsiScope::PerMachine, [OTHER], probe, |_| None), Err(CONFLICTING_CONTEXT.to_string()));
+        assert_eq!(others_agree(MsiScope::PerUser, [OTHER], probe, |_| None), Ok(()));
+        // The lookup could not run: the other copy's own record decides.
+        let unavailable = |_: &str| Err(ProbeError::Unavailable("blocked".into()));
+        assert_eq!(others_agree(MsiScope::PerUser, [OTHER], unavailable, |_| Some(MsiScope::PerMachine)), Err(CONFLICTING_CONTEXT.to_string()));
+        assert_eq!(others_agree(MsiScope::PerUser, [OTHER], unavailable, |_| Some(MsiScope::PerUser)), Ok(()));
+    }
+
+    /// Another registration's lookup could not run, and its records give no single context (they are in
+    /// both hives or gone): its context is unknown, so the update stops.
+    #[test]
+    fn a_blocked_lookup_of_another_registration_without_one_record_context_stops_the_update() {
+        const OTHER: &str = "{87654321-4321-4321-4321-CBA987654321}";
+        let unavailable = |_: &str| Err(ProbeError::Unavailable("blocked".into()));
+        for scope in [MsiScope::PerUser, MsiScope::PerMachine] {
+            assert_eq!(others_agree(scope, [OTHER], unavailable, |_| None), Err(UNKNOWN_CONTEXT.to_string()), "{scope:?}");
+        }
+    }
+
+    #[test]
+    fn records_windows_installer_does_not_know_do_not_stop_an_update() {
+        assert_eq!(others_agree(MsiScope::PerMachine, [CODE], |_| Err(ProbeError::Unknown), |_| panic!("must not consult the record")), Ok(()));
+        assert_eq!(others_agree(MsiScope::PerMachine, [], |_| panic!("nothing to look up"), |_| None), Ok(()));
+        assert_eq!(others_agree(MsiScope::PerMachine, [CODE], |_| Err(ProbeError::Conflicting), |_| None), Err(CONFLICTING_CONTEXT.to_string()));
     }
 }

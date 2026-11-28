@@ -378,6 +378,9 @@ impl LauncherUi {
     }
 
     pub(crate) fn folder_field(ui: &mut egui::Ui, folder: &mut String, default: Option<&str>, host: &mut dyn Host) {
+        // The default folder can change while the field is shown (a copy of the app is installed or
+        // removed elsewhere), so the field is redrawn every few seconds to ask the host again.
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs(2));
         let label = ui.label(tl!("Install folder"));
         ui.add(
             egui::TextEdit::singleline(folder)

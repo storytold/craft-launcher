@@ -169,6 +169,29 @@ fn install_dir_keys(app: &CraftApp) -> Vec<String> {
     keys
 }
 
+/// Where `app`'s own installer finds an earlier copy in one hive (`hive`, `HKCU` or `HKLM`), as its
+/// `install-policy.wxi` looks: `InstallDir` or `InstallFolder` under `Software\<App>` or `Path` under
+/// its `App Paths` key, whatever they hold, then the `App Paths` program when that file exists.
+/// `read(key, name)` gives a value's text (`""` is the key's default value). Returns the first place
+/// found, as the message names it. Only the suite's own packages search these; a community app's,
+/// and the launcher's own, find nothing here.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn installer_trace(app: &CraftApp, hive: &str, read: impl Fn(&str, &str) -> Option<String>, exists: impl Fn(&Path) -> bool) -> Option<String> {
+    if app.msi_publisher.is_some() || app.id == artcraft_launcher_core::catalog::LAUNCHER_ID {
+        return None;
+    }
+    let folder = format!(r"Software\{}", app.name);
+    let app_paths = format!(r"Software\Microsoft\Windows\CurrentVersion\App Paths\{}.exe", app.id);
+    let recorded = [(&folder, "InstallDir"), (&folder, "InstallFolder"), (&app_paths, "Path")]
+        .into_iter()
+        .find(|(key, name)| read(key, name).is_some_and(|value| !value.is_empty()))
+        .map(|(key, name)| format!(r"{hive}\{key} ({name})"));
+    recorded.or_else(|| {
+        let program = read(&app_paths, "")?;
+        exists(Path::new(program.trim_matches('"'))).then(|| format!(r"{hive}\{app_paths}"))
+    })
+}
+
 /// Version from `<app> --version` output. Binaries print the machine id (`photocraft 0.7.0`),
 /// the display name (`SoundCraft 0.5.0`), or a former id (`printcraft 0.2.1` for PdfCraft).
 #[cfg_attr(not(any(target_os = "linux", target_os = "freebsd")), allow(dead_code))]
@@ -269,7 +292,7 @@ pub mod windows {
     use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
     use winreg::{HKEY, RegKey};
 
-    use super::{CraftApp, InstallSource, Installed, exe_candidates, install_dir_keys, is_installer_entry, suite_folders, version};
+    use super::{CraftApp, InstallSource, Installed, exe_candidates, install_dir_keys, installer_trace, is_installer_entry, suite_folders, version};
 
     const UNINSTALL: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
@@ -321,6 +344,24 @@ pub mod windows {
             is_installer_entry(app, &name, &publisher).then(|| record_context(hive))
         });
         crate::msi_context::single_scope(scopes)
+    }
+
+    /// The product codes of `app`'s uninstall records other than `product_code`.
+    pub fn other_registrations(app: &CraftApp, product_code: &str) -> Vec<String> {
+        msi_installs(app).into_iter().map(|m| m.product_code).filter(|code| code != product_code).collect()
+    }
+
+    /// Where `app`'s own installer will find an earlier copy, in this account's registry and in the
+    /// machine's. The machine's is read in the registry view the package reads: the 32-bit one for a
+    /// 32-bit package (`wow32`), else the 64-bit one.
+    pub(crate) fn installer_traces(app: &CraftApp, wow32: bool) -> crate::msi_context::Traces {
+        let in_hive = |hive: HKEY, flags: u32, name: &str| {
+            let read =
+                |key: &str, value: &str| RegKey::predef(hive).open_subkey_with_flags(key, KEY_READ | flags).ok()?.get_value::<String, _>(value).ok();
+            installer_trace(app, name, read, std::path::Path::exists)
+        };
+        let view = if wow32 { KEY_WOW64_32KEY } else { KEY_WOW64_64KEY };
+        crate::msi_context::Traces { user: in_hive(HKEY_CURRENT_USER, 0, "HKCU"), machine: in_hive(HKEY_LOCAL_MACHINE, view, "HKLM") }
     }
 
     /// How an exe path is stored in `Installed::location`. One function builds it for `detect` and for
@@ -1324,5 +1365,49 @@ mod tests {
         );
         let photo = CraftApp::by_id("photocraft").unwrap();
         assert_eq!(install_dir_keys(photo), [r"SOFTWARE\PhotoCraft".to_string()]);
+    }
+
+    /// One hive's values, as `installer_trace` reads them (registry names ignore case).
+    fn hive(values: &[(&str, &str, &str)]) -> impl Fn(&str, &str) -> Option<String> + use<> {
+        let values: Vec<(String, String, String)> = values.iter().map(|(k, n, v)| ((*k).to_owned(), (*n).to_owned(), (*v).to_owned())).collect();
+        move |key, name| values.iter().find(|(k, n, _)| k.eq_ignore_ascii_case(key) && n.eq_ignore_ascii_case(name)).map(|(.., v)| v.clone())
+    }
+
+    const APP_PATHS: &str = r"Software\Microsoft\Windows\CurrentVersion\App Paths\photocraft.exe";
+
+    #[test]
+    fn every_value_the_installer_searches_is_a_trace_whatever_it_holds() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        for (key, name) in [(r"Software\PhotoCraft", "InstallDir"), (r"Software\PhotoCraft", "InstallFolder"), (APP_PATHS, "Path")] {
+            // The installer reads these raw: a folder that is gone still counts.
+            let found = installer_trace(photo, "HKLM", hive(&[(key, name, r"D:\gone\PhotoCraft\")]), |_| false);
+            assert_eq!(found, Some(format!(r"HKLM\{key} ({name})")));
+        }
+    }
+
+    #[test]
+    fn the_app_paths_program_is_a_trace_only_while_it_exists() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let program = r"C:\Program Files\ArtCraft\PhotoCraft\photocraft.exe";
+        let read = || hive(&[(APP_PATHS, "", &format!("\"{program}\""))]);
+        assert_eq!(installer_trace(photo, "HKCU", read(), |path| path == Path::new(program)), Some(format!(r"HKCU\{APP_PATHS}")));
+        assert_eq!(installer_trace(photo, "HKCU", read(), |_| false), None);
+    }
+
+    #[test]
+    fn empty_and_unrelated_values_are_not_traces() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let values = [
+            (r"Software\PhotoCraft", "InstallDir", ""),
+            (r"Software\PhotoCraft", "DesktopShortcut", "1"),
+            (r"Software\WordCraft", "InstallDir", r"C:\x"),
+        ];
+        assert_eq!(installer_trace(photo, "HKLM", hive(&values), |_| true), None);
+    }
+
+    #[test]
+    fn the_launchers_own_package_is_not_searched_for_app_traces() {
+        let values = [(r"Software\ArtCraft Launcher", "InstallDir", r"C:\x")];
+        assert_eq!(installer_trace(&artcraft_launcher_core::catalog::LAUNCHER, "HKLM", hive(&values), |_| true), None);
     }
 }
