@@ -162,8 +162,10 @@ Download the build for your computer from the [latest release](https://github.co
 |---|---|
 | `artcraft-launcher-<ver>-windows-x64.msi` | Installer for most PCs (Intel and AMD, 64-bit). Installs for the current user, no admin rights needed |
 | `artcraft-launcher-<ver>-windows-arm64.msi` | Installer for Windows on Arm (Snapdragon and other Arm PCs) |
-| `artcraft-launcher-<ver>-windows-x86.msi` | Installer for 32-bit Windows |
-| `artcraft-launcher-<ver>-windows-{x64,arm64,x86}-portable.zip` | No install: unzip and run `artcraft-launcher.exe`. Keeps its settings in the folder |
+| `artcraft-launcher-<ver>-windows-{x64,arm64}-portable.zip` | No install: unzip and run `artcraft-launcher.exe`. Keeps its settings in the folder |
+
+For 32-bit Windows, [Launcher v0.15.0](https://github.com/storytold/craft-launcher/releases/tag/v0.15.0)
+was the last release with an x86 installer and portable ZIP.
 
 **macOS** (11 Big Sur or later)
 
@@ -179,17 +181,20 @@ Download the build for your computer from the [latest release](https://github.co
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.deb` | Debian, Ubuntu, Mint, Pop!_OS: `sudo apt install ./artcraft-launcher-…deb` |
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.rpm` | Fedora, openSUSE, RHEL: `sudo dnf install ./artcraft-launcher-…rpm` |
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.flatpak` | Flatpak bundle: `flatpak install --user artcraft-launcher-…flatpak`. Inside the sandbox the launcher installs apps as Flatpaks on the host through `flatpak-spawn --host`; where the host has no Flatpak it falls back to each app's release tarball, unpacked and run inside the sandbox with the app's settings kept in it. Either way it can only reach the host as far as that permission allows; the AppImage, .deb and .rpm builds are the recommended way to run the launcher on Linux |
+| `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.pkg.tar.zst` | Arch Linux package. Install it with `sudo pacman -U` |
 | `artcraft-launcher-<ver>-linux-{x86_64,aarch64}.tar.gz` | Plain tree (`bin/`, `share/`) for everyone else and for scripts |
 
 RISC-V (riscv64): `artcraft-launcher-<ver>-linux-riscv64.{deb,rpm,tar.gz}`, built against Ubuntu 24.04 (needs glibc 2.39+).
 
 The tray icon uses the StatusNotifierItem standard: KDE, Xfce, Cinnamon and most other desktops show it; on GNOME install the AppIndicator extension.
 
-**FreeBSD** (14, x86_64)
+**FreeBSD** (x86_64 and aarch64)
 
 | File | What it is |
 |---|---|
-| `artcraft-launcher-<ver>-freebsd-x86_64.tar.gz` | A tree laid out like `/usr/local` |
+| `artcraft-launcher-<ver>-freebsd-{x86_64,aarch64}.tar.gz` | A tree laid out like `/usr/local` |
+
+Choose the tarball for your architecture. The commands below use the x86_64 build.
 
 ```sh
 pkg install libxkbcommon wayland libX11 libXcursor libXrandr libXi libxcb mesa-libs vulkan-loader fontconfig freetype2
