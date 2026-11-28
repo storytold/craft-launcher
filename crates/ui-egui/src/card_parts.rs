@@ -3,11 +3,22 @@
 //!
 //! Invariants: nothing is drawn that has no content; dates come from `views::date_text`.
 
+use artcraft_launcher_core::catalog::AppKind;
 use artcraft_launcher_core::status::AppStatus;
+use artcraft_launcher_core::{CraftApp, Os, PackageKind};
 use egui::{Color32, FontId, Ui};
 
-use crate::i18n::fmt;
+use crate::i18n::{current, fmt, tr_ctx};
 use crate::model::AppEntry;
+
+/// Whether a community app can be opened but cannot be installed by the launcher on macOS.
+pub(crate) fn macos_launch_only(app: &CraftApp) -> bool {
+    app.kind == AppKind::Community && app.runs_on(Os::MacOs) && !app.installs(PackageKind::Dmg)
+}
+
+pub(crate) fn macos_launch_only_label() -> &'static str {
+    tr_ctx(current(), "platforms", "macOS: launch-only")
+}
 
 /// The version in a card's top strip, as pieces `(text, highlight)`: only a highlighted piece takes
 /// the app's colour. "v0.4.0" for an app; "0.5.0 → 0.6.0" when an update is waiting, with only the

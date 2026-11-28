@@ -1650,6 +1650,22 @@ mod tests {
             )
     }
 
+    #[test]
+    fn commitcraft_is_searchable_and_draws_a_catalog_card() {
+        use egui_kittest::kittest::Queryable;
+
+        let mut harness = cjk_picker_harness();
+        harness.state_mut().as_mut().expect("launcher UI").search = "commitcraft".into();
+        harness.run_steps(2);
+        harness.get_by_label("CommitCraft details");
+        harness.get_by_label("CommitCraft icon");
+        harness.get_by_label("Visual Git for creatives — see your art's history");
+        harness.get_by_label("macOS: launch-only");
+        harness.get_by_label("CommitCraft details").click_accesskit();
+        harness.run_steps(4);
+        harness.get_by_label("macOS: launch-only — the launcher opens an installed copy.");
+    }
+
     /// Opens Settings and its language combo through visible labels, leaving the picker open for a
     /// selection.
     fn open_language_picker(h: &mut Harness<'static, Option<LauncherUi>>) {

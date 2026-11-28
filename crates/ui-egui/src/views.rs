@@ -698,6 +698,9 @@ impl LauncherUi {
                     .on_hover_text(Self::sizes_text(&sizes));
             }
         }
+        if crate::card_parts::macos_launch_only(app) {
+            ui.label(RichText::new(crate::card_parts::macos_launch_only_label()).size(12.5).color(t.muted));
+        }
         if let Some(details) = AppDetails::by_id(id) {
             crate::card_parts::blurb(ui, details.headline, t.muted, 4);
         }

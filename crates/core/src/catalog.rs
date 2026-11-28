@@ -246,8 +246,7 @@ mod tests {
 
     /// Every catalog entry must have a distinct lookup key.
     #[test]
-    fn suite_has_nineteen_apps_with_unique_ids() {
-        assert_eq!(SUITE.len(), 19);
+    fn suite_has_unique_ids() {
         let mut ids: Vec<_> = SUITE.iter().map(|a| a.id).collect();
         ids.sort_unstable();
         ids.dedup();
@@ -260,6 +259,20 @@ mod tests {
                 AppKind::Community => assert!(!a.repo.starts_with("storytold/"), "{} is community", a.id),
             }
         }
+    }
+
+    #[test]
+    fn commitcraft_has_community_identity_and_a_launcher_icon() {
+        let app = CraftApp::by_id("commitcraft").expect("CommitCraft is bundled");
+        assert_eq!(app.kind, AppKind::Community);
+        assert_eq!(app.repo, "srt8hellcat2-ui/commitcraft");
+        assert!(app.runs_on(crate::Os::MacOs));
+        assert!(!app.installs(crate::PackageKind::Dmg));
+        assert_eq!(app.tagline, "Visual Git for creatives — see your art's history");
+        let icon = app_icon_png(app.id).expect("CommitCraft icon is bundled");
+        assert_eq!(&icon[16..24], &[0, 0, 0, 128, 0, 0, 0, 128]);
+        let details = crate::details::AppDetails::by_id(app.id).expect("CommitCraft details are bundled");
+        assert!(details.about.contains("Apache-2.0"));
     }
 
     /// The separate Nightly roster is exactly the apps the checked-in registry

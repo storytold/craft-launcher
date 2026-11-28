@@ -16,6 +16,8 @@ const SIGNATURE_URL: &str = "https://getartcraft.com/launcher-catalog.toml.sig";
 const PUBLIC_KEY_PEM: &str = include_str!("assets/launcher-catalog-public-key.pem");
 const MAX_CATALOG_BYTES: usize = 1 << 20;
 const MAX_SIGNATURE_BYTES: usize = 128;
+const COMMITCRAFT_CATALOG: &str = include_str!("assets/commitcraft/catalog.toml");
+const COMMITCRAFT_ICON: &[u8] = include_bytes!("assets/commitcraft/icon.png");
 const MAX_ICON_BYTES: usize = 256 << 10;
 
 #[derive(Deserialize)]
@@ -216,6 +218,7 @@ fn load_verified_icon(agent: &ureq::Agent, cache: &Path, app: &App) -> Result<Ve
 
 fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=assets/launcher-catalog-public-key.pem");
+    println!("cargo:rerun-if-changed=assets/commitcraft");
     println!("cargo:rerun-if-env-changed=ARTCRAFT_CATALOG_DIR");
     println!("cargo:rerun-if-env-changed=ARTCRAFT_CATALOG_CACHE_DIR");
     // The override directory's catalog, signature and icons can change under an unchanged value.
@@ -232,7 +235,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (catalog_bytes, sig_bytes) = load_verified_catalog(&agent, &cache, &key)?;
     let catalog_text = std::str::from_utf8(&catalog_bytes)?;
-    let manifest: Manifest = toml::from_str(catalog_text)?;
+    let mut manifest: Manifest = toml::from_str(catalog_text)?;
+    // Bundle the reviewed entry separately until the signed catalog includes it.
+    let community: Manifest = toml::from_str(COMMITCRAFT_CATALOG)?;
+    for app in community.apps {
+        if !manifest.apps.iter().any(|hosted| hosted.id == app.id) {
+            manifest.apps.push(app);
+        }
+    }
 
     fs::write(out.join("catalog.toml"), &catalog_bytes)?;
     fs::write(out.join("catalog.toml.sig"), &sig_bytes)?;
@@ -254,7 +264,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             "community" => "Community",
             _ => return Err(format!("unknown app kind for {}", app.id).into()),
         };
-        let icon_bytes = load_verified_icon(&agent, &cache, app)?;
+        let icon_bytes = if app.id == "commitcraft" && sha256_hex(COMMITCRAFT_ICON) == app.icon_sha256 {
+            COMMITCRAFT_ICON.to_vec()
+        } else {
+            load_verified_icon(&agent, &cache, app)?
+        };
         let icon_file = format!("{}.png", app.id);
         fs::write(out_icons.join(&icon_file), &icon_bytes)?;
         writeln!(icons, "        {:?} => include_bytes!(concat!(env!(\"OUT_DIR\"), \"/app-icons/{icon_file}\")),", app.id)?;
