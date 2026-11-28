@@ -2,9 +2,10 @@
 //! settings, so an app's own update check knows when the launcher keeps it on another version.
 //!
 //! Invariants:
-//! - The launcher's settings are the source of truth for the apps it lists: an app absent from
-//!   them follows stable releases, so a readable entry for it in the file is removed.
-//! - An entry this launcher cannot read (written by a newer one) is kept as it is.
+//! - The launcher's settings are the source of truth for apps in its catalog, including former
+//!   IDs. A catalog app with no saved choice follows stable, so its readable pin is removed.
+//! - A pin for an app outside the catalog is kept unless settings explicitly name it. Unreadable
+//!   entries also survive when settings leave them alone.
 //! - The file is written only when something changed.
 
 use std::collections::BTreeMap;
@@ -21,9 +22,16 @@ fn shared(track: &VersionTrack) -> SharedTrack {
     }
 }
 
-/// `pins` changed so it says what `versions` says, keeping entries this launcher cannot read.
+/// Apply `versions` while retaining pins outside this catalog and unreadable entries that
+/// `versions` does not name.
 pub fn merged(mut pins: Pins, versions: &BTreeMap<String, VersionTrack>) -> Pins {
-    let stale: Vec<String> = pins.tracks().map(|(id, _)| id.to_string()).filter(|id| !versions.contains_key(id)).collect();
+    let apps = artcraft_launcher_core::hosted_catalog::apps();
+    let stale: Vec<String> = pins
+        .tracks()
+        .map(|(id, _)| id)
+        .filter(|id| !versions.contains_key(*id) && apps.iter().any(|app| app.stems().any(|stem| stem == *id)))
+        .map(str::to_owned)
+        .collect();
     for id in stale {
         pins.set(&id, &SharedTrack::Stable);
     }
@@ -98,6 +106,19 @@ mod tests {
         sync(&path, &versions(&[("pdfcraft", VersionTrack::Nightly)])).unwrap();
         assert_eq!(sync(&path, &BTreeMap::new()), Ok(true));
         assert_eq!(Pins::load(&path).choice("pdfcraft"), Choice::Stable);
+    }
+
+    #[test]
+    fn stale_choices_are_removed_only_for_apps_in_the_catalog() {
+        let mut pins = Pins::default();
+        pins.set("pdfcraft", &SharedTrack::Nightly);
+        pins.set("printcraft", &SharedTrack::Nightly);
+        pins.set("futurecraft-test-app", &SharedTrack::Nightly);
+
+        let after = merged(pins, &BTreeMap::new());
+        assert_eq!(after.choice("pdfcraft"), Choice::Stable);
+        assert_eq!(after.choice("printcraft"), Choice::Stable);
+        assert_eq!(after.choice("futurecraft-test-app"), Choice::Managed(SharedTrack::Nightly));
     }
 
     #[test]
