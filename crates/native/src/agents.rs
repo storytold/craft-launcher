@@ -280,6 +280,12 @@ pub fn gateway_copy(dir: &Path) -> PathBuf {
 /// copy of the same size that is not older than `src` is kept. A copy a client is running can't
 /// be replaced on Windows; then the existing copy is used and refreshed later.
 pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
+    copy_gateway(src, dir).map(|(dest, _)| dest)
+}
+
+/// [`install_gateway`], also returning whether the copy now has `src`'s bytes: `false` when a
+/// client kept the old copy busy.
+fn copy_gateway(src: &Path, dir: &Path) -> Result<(PathBuf, bool), String> {
     let dest = gateway_copy(dir);
     let current = match (std::fs::metadata(src), std::fs::metadata(&dest)) {
         // Same size: compare the bytes (a shipped build can keep an older timestamp).
@@ -287,10 +293,11 @@ pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
         (Err(e), _) => return Err(format!("couldn't read the Craft gateway at {} ({e})", src.display())),
         _ => false,
     };
+    let mut replaced = current;
     if !current {
         let bytes = std::fs::read(src).map_err(|e| format!("couldn't read the Craft gateway at {} ({e})", src.display()))?;
-        match crate::paths::write_atomic(&dest, &bytes) {
-            Ok(()) => {}
+        match write_gateway(&dest, &bytes) {
+            Ok(()) => replaced = true,
             // A client still running the old copy keeps it busy on Windows: keep using it.
             Err(_) if dest.is_file() => {}
             Err(e) => return Err(e),
@@ -298,7 +305,15 @@ pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
     }
     // Also for a copy with the right bytes: one that lost its execute bit couldn't be started.
     make_executable(&dest)?;
-    Ok(dest)
+    Ok((dest, replaced))
+}
+
+fn write_gateway(dest: &Path, bytes: &[u8]) -> Result<(), String> {
+    #[cfg(test)]
+    let busy = tests::GATEWAY_BUSY.get();
+    #[cfg(not(test))]
+    let busy = false;
+    if busy { Err("the test kept the gateway copy busy".into()) } else { crate::paths::write_atomic(dest, bytes) }
 }
 
 /// Make the gateway copy executable for everyone who may run it (`0755`) when it isn't already.
@@ -327,23 +342,70 @@ fn lock() -> MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// What Settings shows. While agents are on, the app list and the gateway copy are refreshed
-/// first, so an app installed (or a gateway updated) since then is used too; a failed refresh
-/// keeps the previous ones.
+/// While agents are on, write the app list for `services` and refresh the gateway copy, so an app
+/// installed, updated or removed (or a gateway shipped with a launcher update) since then is used
+/// too. A failed refresh keeps the previous ones and returns the first error. Nothing is read or
+/// written while agents are off.
+pub fn refresh(services: &[InstalledApp]) -> Result<(), String> {
+    #[cfg(test)]
+    if tests::REFRESH_FAILS.get() {
+        return Err("the test failed the refresh".into());
+    }
+    if flag_on() { refresh_in(mcp_dir().as_deref(), services) } else { Ok(()) }
+}
+
+/// [`refresh`] with the app list's folder `dir`, for the flag on.
+fn refresh_in(dir: Option<&Path>, services: &[InstalledApp]) -> Result<(), String> {
+    let Some(dir) = dir else { return Ok(()) };
+    let _guard = lock();
+    if !enabled_for_refresh(dir)? {
+        return Ok(());
+    }
+    let written = write_apps(dir, services);
+    let gateway = locate_gateway().map_or(Ok(()), |src| refresh_gateway(&src, dir));
+    written.and(gateway)
+}
+
+/// Bring the gateway copy in `dir` up to date with `src` for [`refresh_in`]. A copy a client kept
+/// busy is an error, so the caller tries the refresh again once the client lets it go.
+fn refresh_gateway(src: &Path, dir: &Path) -> Result<(), String> {
+    match copy_gateway(src, dir)? {
+        (_, true) => Ok(()),
+        (dest, false) => Err(format!("couldn't replace {}, which is in use; it is replaced on a later refresh", dest.display())),
+    }
+}
+
+/// Whether agents are on in `dir`, for [`refresh_in`]. A missing list is off, and a list that is
+/// broken, too large or not a regular file counts as off, as it does for [`enabled`]. A list that
+/// can't be opened because of an I/O error is an error, so the caller tries the refresh again.
+fn enabled_for_refresh(dir: &Path) -> Result<bool, String> {
+    if enabled(dir) {
+        return Ok(true);
+    }
+    let path = dir.join(craft_ai_agents::APPS_FILE);
+    let unreadable = |e: std::io::Error| format!("couldn't read {} ({e})", path.display());
+    match std::fs::metadata(&path) {
+        Ok(meta) if meta.is_file() => std::fs::File::open(&path).map(|_| false).map_err(unreadable),
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(unreadable(e)),
+    }
+}
+
+/// What Settings shows. It writes nothing: [`refresh`] brings the app list and the gateway copy up
+/// to date.
 pub fn state(services: &[InstalledApp]) -> McpAgents {
-    let flag_on = flag_on();
-    let dir = mcp_dir();
-    let on = {
-        let _guard = lock();
-        let on = flag_on && dir.as_deref().is_some_and(enabled);
-        if on && let Some(d) = &dir {
-            let _ = write_apps(d, services);
-            if let Some(src) = locate_gateway() {
-                let _ = install_gateway(&src, d);
-            }
-        }
-        on
-    };
+    // With the flag off Settings shows nothing about agents, so no client configuration, app
+    // list or gateway copy is read.
+    if !flag_on() {
+        return McpAgents::default();
+    }
+    state_in(mcp_dir().as_deref(), services)
+}
+
+/// [`state`] with the app list's folder `dir`, for the flag on.
+fn state_in(dir: Option<&Path>, services: &[InstalledApp]) -> McpAgents {
+    let on = dir.is_some_and(enabled);
     let clients = CLIENTS
         .iter()
         .map(|c| {
@@ -352,14 +414,14 @@ pub fn state(services: &[InstalledApp]) -> McpAgents {
                 client: *c,
                 name: client_name(*c).to_string(),
                 installed: paths.as_ref().is_some_and(|(config, folder)| folder.is_dir() || config.is_file()),
-                added: paths.as_ref().is_some_and(|(config, _)| dir.as_deref().is_some_and(|d| registered(config, &gateway_copy(d)))),
+                added: paths.as_ref().is_some_and(|(config, _)| dir.is_some_and(|d| registered(config, &gateway_copy(d)))),
                 restartable: restartable(*c),
             }
         })
         .collect();
-    let gateway = dir.as_deref().filter(|_| on).map(gateway_copy).filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned());
+    let gateway = dir.filter(|_| on).map(gateway_copy).filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned());
     McpAgents {
-        flag_on,
+        flag_on: true,
         gateway_found: locate_gateway().is_some(),
         enabled: on,
         gateway,
@@ -370,6 +432,10 @@ pub fn state(services: &[InstalledApp]) -> McpAgents {
 
 /// Whether the `AI-MCP` feature flag is on (`ArtCraft/flags.toml`, `CRAFT_FLAGS`).
 pub fn flag_on() -> bool {
+    #[cfg(test)]
+    if let Some(on) = tests::FLAG.get() {
+        return on;
+    }
     craft_flags::load().enabled(&craft_flags::AI_MCP)
 }
 
@@ -443,4 +509,4 @@ pub fn restart_client(client: McpClient) -> Result<(), String> {
 
 #[cfg(test)]
 #[path = "agents_tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -262,3 +262,109 @@ fn a_gateway_of_the_same_size_but_other_bytes_replaces_the_copy() {
     install_gateway(&src, dir.path()).unwrap();
     assert_eq!(std::fs::read(&copy).unwrap(), b"bbbb");
 }
+
+thread_local! {
+    /// Stands in for the `AI-MCP` flag in [`flag_on`] on this test's thread.
+    pub(crate) static FLAG: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+    /// Makes [`refresh`] fail on this test's thread.
+    pub(crate) static REFRESH_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Makes replacing the gateway copy fail on this test's thread, as a client running it does
+    /// on Windows.
+    pub(crate) static GATEWAY_BUSY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A gateway copy a client keeps busy is still used when turning agents on, but a refresh fails,
+/// so the caller tries again and replaces it once the client lets it go.
+#[test]
+fn a_refresh_that_cannot_replace_a_busy_gateway_copy_fails() {
+    let src_dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let src = src_dir.path().join("craft-ai-mcp");
+    std::fs::write(&src, b"v1").unwrap();
+    let copy = install_gateway(&src, dir.path()).unwrap();
+    std::fs::write(&src, b"version 2").unwrap();
+    GATEWAY_BUSY.set(true);
+    assert_eq!(install_gateway(&src, dir.path()).unwrap(), copy);
+    let result = refresh_gateway(&src, dir.path());
+    GATEWAY_BUSY.set(false);
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(std::fs::read(&copy).unwrap(), b"v1");
+    refresh_gateway(&src, dir.path()).unwrap();
+    assert_eq!(std::fs::read(&copy).unwrap(), b"version 2");
+}
+
+#[test]
+fn with_the_flag_off_no_client_configuration_is_read() {
+    FLAG.set(Some(false));
+    let agents = state(&[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    FLAG.set(None);
+    assert!(!agents.flag_on && !agents.enabled);
+    // Each client's row comes from reading its configuration, so no row means no read.
+    assert!(agents.clients.is_empty(), "{:?}", agents.clients);
+    assert!(agents.gateway.is_none());
+}
+
+#[test]
+fn the_state_writes_nothing_and_a_refresh_writes_the_app_list() {
+    let dir = tempfile::tempdir().unwrap();
+    write_apps(dir.path(), &[]).unwrap();
+    let list = dir.path().join(APPS_FILE);
+    let before = std::fs::read(&list).unwrap();
+    let apps = [service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))];
+
+    let agents = state_in(Some(dir.path()), &apps);
+    assert!(agents.enabled);
+    assert_eq!(std::fs::read(&list).unwrap(), before, "the state rewrote the app list");
+
+    FLAG.set(Some(false));
+    refresh(&apps).unwrap();
+    FLAG.set(None);
+    assert_eq!(std::fs::read(&list).unwrap(), before, "a refresh with the flag off wrote the app list");
+
+    refresh_in(Some(dir.path()), &apps).unwrap();
+    let (written, _) = craft_ai_agents::load(dir.path()).unwrap().unwrap();
+    assert_eq!(written, app_entries(&apps));
+}
+
+#[test]
+fn a_refresh_while_agents_are_off_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]).unwrap();
+    assert!(!enabled(dir.path()));
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
+/// A refresh that can't write the app list says so, so the caller tries again later.
+/// A folder in place of the temporary file stops the write for every user, root included.
+#[test]
+fn a_refresh_that_cannot_write_the_app_list_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    write_apps(dir.path(), &[]).unwrap();
+    std::fs::create_dir(dir.path().join(format!("{}.{}.tmp", craft_ai_agents::APPS_FILE, std::process::id()))).unwrap();
+    let result = refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    assert!(result.is_err(), "{result:?}");
+}
+
+/// A refresh that can't read the app list says so, so the caller tries again later instead of
+/// treating agents as off until the installed apps change. A file in place of the folder makes
+/// reading the list fail with an I/O error other than "not found" for every user, root included.
+#[cfg(unix)]
+#[test]
+fn a_refresh_that_cannot_read_the_app_list_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let not_a_folder = dir.path().join("agents");
+    std::fs::write(&not_a_folder, b"").unwrap();
+    let result = refresh_in(Some(&not_a_folder), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    assert!(result.is_err(), "{result:?}");
+}
+
+/// A broken app list counts as off: a refresh leaves it alone and succeeds, so it is not retried
+/// on every pass.
+#[test]
+fn a_refresh_with_a_broken_app_list_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let list = dir.path().join(craft_ai_agents::APPS_FILE);
+    std::fs::write(&list, b"not json").unwrap();
+    refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]).unwrap();
+    assert_eq!(std::fs::read(&list).unwrap(), b"not json");
+}
