@@ -150,6 +150,8 @@ struct Shared {
     nightly_detection_observer: Mutex<Option<ReviewDetectionHook>>,
     download_sizes: Mutex<HashMap<String, DownloadSize>>,
     installed: Mutex<HashMap<String, Installed>>,
+    /// The installed apps the AI agents' app list was last refreshed for ([`sync_mcp_apps`]).
+    mcp_apps: Mutex<Option<Vec<crate::agents::InstalledApp>>>,
     jobs: Mutex<HashMap<String, Arc<Stop>>>,
     /// Process lifetime is shared; per-channel installed state and job views are not.
     lifecycle: Arc<ProcessLifecycle>,
@@ -506,6 +508,7 @@ impl NativeBackend {
             }),
             download_sizes: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
+            mcp_apps: Mutex::new(None),
             jobs: Mutex::new(HashMap::new()),
             lifecycle,
             manifest: Mutex::new(Manifest::load(&paths.manifest())),
@@ -698,11 +701,7 @@ impl NativeBackend {
             for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
                 report_partial(app, &shared, &paths, platform);
             }
-            // Local MCP state: which installed apps can be exposed + the unified bridge.
-            {
-                let _mcp = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
-                shared.emit(mcp_state(&shared));
-            }
+            sync_mcp_apps(&shared);
             drop(busy);
         });
     }
@@ -1153,6 +1152,7 @@ impl NativeBackend {
                 // The manifest may change the package plan even when detection finds the same copy.
                 shared.invalidate_download_size(app.id);
                 publish_detected(app, found, &shared, platform);
+                sync_mcp_apps(&shared);
                 report_partial(app, &shared, &paths, platform);
                 drop(job);
                 shared.emit(Event::JobFinished { app: app.id.to_string(), result });
@@ -3065,12 +3065,7 @@ impl Backend for NativeBackend {
     }
 }
 
-/// The AI agents state, from a fresh detection of the installed apps.
-fn mcp_state(shared: &Shared) -> Event {
-    mcp_state_for(&detected_apps(shared))
-}
-
-/// [`mcp_state`] for apps already detected.
+/// The AI agents state for apps already detected.
 fn mcp_state_for(detected: &[crate::agents::InstalledApp]) -> Event {
     Event::Mcp { agents: crate::agents::state(detected) }
 }
@@ -3079,12 +3074,42 @@ fn mcp_state_for(detected: &[crate::agents::InstalledApp]) -> Event {
 /// command can't arrive after that command's own (newer) state.
 static MCP_WORK: Mutex<()> = Mutex::new(());
 
+/// After a detection pass or an install, update or removal: when the installed apps differ from
+/// the ones the AI agents' app list was last refreshed for, refresh it and the gateway copy
+/// ([`crate::agents::refresh`]) and send the new state. The first call in a process only
+/// refreshes; Settings asks for the state when it opens. With the same apps nothing is read or
+/// written. The Nightly backend's installed apps are its own, so it leaves the list to the stable
+/// backend.
+fn sync_mcp_apps(shared: &Shared) {
+    if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
+        return;
+    }
+    let _guard = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
+    let apps = {
+        let installed = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
+        crate::agents::installed_apps(|app| installed.get(app.id).cloned())
+    };
+    let previous = shared.mcp_apps.lock().unwrap_or_else(PoisonError::into_inner).replace(apps.clone());
+    if previous.as_ref() == Some(&apps) {
+        return;
+    }
+    crate::agents::refresh(&apps);
+    if previous.is_some() {
+        shared.emit(mcp_state_for(&apps));
+    }
+}
+
 /// One AI agents command, on a worker thread: detection can run package-manager queries for
 /// seconds (flatpak on Linux). Commands run one at a time; the new state is sent when done.
+/// Opening Settings ([`Command::McpState`]) refreshes the app list and the gateway copy first.
 fn run_mcp(shared: &Shared, cmd: Command) {
     let _guard = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
     let apps = detected_apps(shared);
     let result = match cmd {
+        Command::McpState => {
+            crate::agents::refresh(&apps);
+            Ok(())
+        }
         Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &apps),
         Command::McpSetClient { client, added } => crate::agents::set_client(client, added),
         Command::McpRestartClient { client } => crate::agents::restart_client(client),
@@ -3563,6 +3588,7 @@ mod tests {
             nightly_state: Mutex::new(crate::nightly_lookup::State::default()),
             download_sizes: Mutex::new(HashMap::new()),
             installed: Mutex::new(HashMap::new()),
+            mcp_apps: Mutex::new(None),
             jobs: Mutex::new(HashMap::new()),
             lifecycle: Arc::new(ProcessLifecycle::default()),
             manifest: Mutex::new(Manifest::default()),
@@ -4549,6 +4575,48 @@ prerelease = true
     /// so an answer doesn't depend on the computer the test runs on.
     fn system_installs(backend: &NativeBackend, available: Vec<PackageKind>) {
         *backend.shared.system.lock().unwrap() = Some((Instant::now(), install::SystemKinds { available, can_pacman: false }));
+    }
+
+    /// The AI agents' app list is refreshed, and its state sent, only when the installed apps
+    /// change: not on every detection pass.
+    #[test]
+    fn the_agents_state_is_sent_only_when_the_installed_apps_change() {
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let sent = |backend: &mut NativeBackend| {
+            sync_mcp_apps(&backend.shared);
+            backend.poll().iter().filter(|e| matches!(e, Event::Mcp { .. })).count()
+        };
+        crate::agents::tests::FLAG.set(Some(false));
+        let first = sent(&mut backend);
+        let unchanged = sent(&mut backend);
+        backend.shared.store_detected(APP, Some(&copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app")));
+        let installed = sent(&mut backend);
+        let installed_again = sent(&mut backend);
+        backend.shared.store_detected(APP, Some(&copy_of("0.5.0", InstallSource::Launcher, "/Applications/PhotoCraft.app")));
+        let updated_in_place = sent(&mut backend);
+        backend.shared.store_detected(APP, None);
+        let removed = sent(&mut backend);
+        crate::agents::tests::FLAG.set(None);
+        assert_eq!((first, unchanged), (0, 0), "the first pass only refreshes; an unchanged one does nothing");
+        assert_eq!((installed, installed_again), (1, 0));
+        assert_eq!(updated_in_place, 0, "the same app at the same place gives the same app list");
+        assert_eq!(removed, 1);
+    }
+
+    /// The Nightly backend's installed apps never replace the stable backend's app list.
+    #[test]
+    fn nightly_installs_leave_the_agents_app_list_alone() {
+        let mut nightly = shared();
+        nightly.channel = artcraft_launcher_core::nightly::InstallChannel::Nightly;
+        nightly.store_detected(APP, Some(&copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app")));
+        crate::agents::tests::FLAG.set(Some(false));
+        sync_mcp_apps(&nightly);
+        sync_mcp_apps(&nightly);
+        crate::agents::tests::FLAG.set(None);
+        assert!(nightly.mcp_apps.lock().unwrap().is_none(), "the Nightly backend refreshed the app list");
+        assert!(!nightly.events.lock().unwrap().iter().any(|e| matches!(e, Event::Mcp { .. })));
     }
 
     /// Each answer tells the UI whether an install would go ahead before it says the release is

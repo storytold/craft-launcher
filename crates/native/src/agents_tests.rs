@@ -265,7 +265,7 @@ fn a_gateway_of_the_same_size_but_other_bytes_replaces_the_copy() {
 
 thread_local! {
     /// Stands in for the `AI-MCP` flag in [`flag_on`] on this test's thread.
-    pub(super) static FLAG: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+    pub(crate) static FLAG: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
 }
 
 #[test]
@@ -277,4 +277,34 @@ fn with_the_flag_off_no_client_configuration_is_read() {
     // Each client's row comes from reading its configuration, so no row means no read.
     assert!(agents.clients.is_empty(), "{:?}", agents.clients);
     assert!(agents.gateway.is_none());
+}
+
+#[test]
+fn the_state_writes_nothing_and_a_refresh_writes_the_app_list() {
+    let dir = tempfile::tempdir().unwrap();
+    write_apps(dir.path(), &[]).unwrap();
+    let list = dir.path().join(APPS_FILE);
+    let before = std::fs::read(&list).unwrap();
+    let apps = [service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))];
+
+    let agents = state_in(Some(dir.path()), &apps);
+    assert!(agents.enabled);
+    assert_eq!(std::fs::read(&list).unwrap(), before, "the state rewrote the app list");
+
+    FLAG.set(Some(false));
+    refresh(&apps);
+    FLAG.set(None);
+    assert_eq!(std::fs::read(&list).unwrap(), before, "a refresh with the flag off wrote the app list");
+
+    refresh_in(Some(dir.path()), &apps);
+    let (written, _) = craft_ai_agents::load(dir.path()).unwrap().unwrap();
+    assert_eq!(written, app_entries(&apps));
+}
+
+#[test]
+fn a_refresh_while_agents_are_off_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    assert!(!enabled(dir.path()));
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 }

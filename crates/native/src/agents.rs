@@ -327,29 +327,41 @@ fn lock() -> MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// What Settings shows. While agents are on, the app list and the gateway copy are refreshed
-/// first, so an app installed (or a gateway updated) since then is used too; a failed refresh
-/// keeps the previous ones.
-pub fn state(services: &[InstalledApp]) -> McpAgents {
-    let flag_on = flag_on();
+/// While agents are on, write the app list for `services` and refresh the gateway copy, so an app
+/// installed, updated or removed (or a gateway shipped with a launcher update) since then is used
+/// too. A failed refresh keeps the previous ones. Nothing is read or written while agents are off.
+pub fn refresh(services: &[InstalledApp]) {
+    if flag_on() {
+        refresh_in(mcp_dir().as_deref(), services);
+    }
+}
 
+/// [`refresh`] with the app list's folder `dir`, for the flag on.
+fn refresh_in(dir: Option<&Path>, services: &[InstalledApp]) {
+    let Some(dir) = dir else { return };
+    let _guard = lock();
+    if enabled(dir) {
+        let _ = write_apps(dir, services);
+        if let Some(src) = locate_gateway() {
+            let _ = install_gateway(&src, dir);
+        }
+    }
+}
+
+/// What Settings shows. It writes nothing: [`refresh`] brings the app list and the gateway copy up
+/// to date.
+pub fn state(services: &[InstalledApp]) -> McpAgents {
     // With the flag off Settings shows nothing about agents, so no client configuration, app
     // list or gateway copy is read.
-    if !flag_on {
+    if !flag_on() {
         return McpAgents::default();
     }
-    let dir = mcp_dir();
-    let on = {
-        let _guard = lock();
-        let on = flag_on && dir.as_deref().is_some_and(enabled);
-        if on && let Some(d) = &dir {
-            let _ = write_apps(d, services);
-            if let Some(src) = locate_gateway() {
-                let _ = install_gateway(&src, d);
-            }
-        }
-        on
-    };
+    state_in(mcp_dir().as_deref(), services)
+}
+
+/// [`state`] with the app list's folder `dir`, for the flag on.
+fn state_in(dir: Option<&Path>, services: &[InstalledApp]) -> McpAgents {
+    let on = dir.is_some_and(enabled);
     let clients = CLIENTS
         .iter()
         .map(|c| {
@@ -358,14 +370,14 @@ pub fn state(services: &[InstalledApp]) -> McpAgents {
                 client: *c,
                 name: client_name(*c).to_string(),
                 installed: paths.as_ref().is_some_and(|(config, folder)| folder.is_dir() || config.is_file()),
-                added: paths.as_ref().is_some_and(|(config, _)| dir.as_deref().is_some_and(|d| registered(config, &gateway_copy(d)))),
+                added: paths.as_ref().is_some_and(|(config, _)| dir.is_some_and(|d| registered(config, &gateway_copy(d)))),
                 restartable: restartable(*c),
             }
         })
         .collect();
-    let gateway = dir.as_deref().filter(|_| on).map(gateway_copy).filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned());
+    let gateway = dir.filter(|_| on).map(gateway_copy).filter(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned());
     McpAgents {
-        flag_on,
+        flag_on: true,
         gateway_found: locate_gateway().is_some(),
         enabled: on,
         gateway,
@@ -453,4 +465,4 @@ pub fn restart_client(client: McpClient) -> Result<(), String> {
 
 #[cfg(test)]
 #[path = "agents_tests.rs"]
-mod tests;
+pub(crate) mod tests;
