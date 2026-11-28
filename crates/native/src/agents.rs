@@ -280,6 +280,12 @@ pub fn gateway_copy(dir: &Path) -> PathBuf {
 /// copy of the same size that is not older than `src` is kept. A copy a client is running can't
 /// be replaced on Windows; then the existing copy is used and refreshed later.
 pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
+    copy_gateway(src, dir).map(|(dest, _)| dest)
+}
+
+/// [`install_gateway`], also returning whether the copy now has `src`'s bytes: `false` when a
+/// client kept the old copy busy.
+fn copy_gateway(src: &Path, dir: &Path) -> Result<(PathBuf, bool), String> {
     let dest = gateway_copy(dir);
     let current = match (std::fs::metadata(src), std::fs::metadata(&dest)) {
         // Same size: compare the bytes (a shipped build can keep an older timestamp).
@@ -287,10 +293,11 @@ pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
         (Err(e), _) => return Err(format!("couldn't read the Craft gateway at {} ({e})", src.display())),
         _ => false,
     };
+    let mut replaced = current;
     if !current {
         let bytes = std::fs::read(src).map_err(|e| format!("couldn't read the Craft gateway at {} ({e})", src.display()))?;
-        match crate::paths::write_atomic(&dest, &bytes) {
-            Ok(()) => {}
+        match write_gateway(&dest, &bytes) {
+            Ok(()) => replaced = true,
             // A client still running the old copy keeps it busy on Windows: keep using it.
             Err(_) if dest.is_file() => {}
             Err(e) => return Err(e),
@@ -298,7 +305,15 @@ pub fn install_gateway(src: &Path, dir: &Path) -> Result<PathBuf, String> {
     }
     // Also for a copy with the right bytes: one that lost its execute bit couldn't be started.
     make_executable(&dest)?;
-    Ok(dest)
+    Ok((dest, replaced))
+}
+
+fn write_gateway(dest: &Path, bytes: &[u8]) -> Result<(), String> {
+    #[cfg(test)]
+    if tests::GATEWAY_BUSY.get() {
+        return Err("the test kept the gateway copy busy".into());
+    }
+    crate::paths::write_atomic(dest, bytes)
 }
 
 /// Make the gateway copy executable for everyone who may run it (`0755`) when it isn't already.
@@ -347,8 +362,17 @@ fn refresh_in(dir: Option<&Path>, services: &[InstalledApp]) -> Result<(), Strin
         return Ok(());
     }
     let written = write_apps(dir, services);
-    let gateway = locate_gateway().map_or(Ok(()), |src| install_gateway(&src, dir).map(|_| ()));
+    let gateway = locate_gateway().map_or(Ok(()), |src| refresh_gateway(&src, dir));
     written.and(gateway)
+}
+
+/// Bring the gateway copy in `dir` up to date with `src` for [`refresh_in`]. A copy a client kept
+/// busy is an error, so the caller tries the refresh again once the client lets it go.
+fn refresh_gateway(src: &Path, dir: &Path) -> Result<(), String> {
+    match copy_gateway(src, dir)? {
+        (_, true) => Ok(()),
+        (dest, false) => Err(format!("couldn't replace {}, which is in use; it is replaced on a later refresh", dest.display())),
+    }
 }
 
 /// Whether agents are on in `dir`, for [`refresh_in`]. A missing list is off, and a list that is

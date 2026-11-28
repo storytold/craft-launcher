@@ -268,6 +268,29 @@ thread_local! {
     pub(crate) static FLAG: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
     /// Makes [`refresh`] fail on this test's thread.
     pub(crate) static REFRESH_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Makes replacing the gateway copy fail on this test's thread, as a client running it does
+    /// on Windows.
+    pub(crate) static GATEWAY_BUSY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A gateway copy a client keeps busy is still used when turning agents on, but a refresh fails,
+/// so the caller tries again and replaces it once the client lets it go.
+#[test]
+fn a_refresh_that_cannot_replace_a_busy_gateway_copy_fails() {
+    let src_dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let src = src_dir.path().join("craft-ai-mcp");
+    std::fs::write(&src, b"v1").unwrap();
+    let copy = install_gateway(&src, dir.path()).unwrap();
+    std::fs::write(&src, b"version 2").unwrap();
+    GATEWAY_BUSY.set(true);
+    assert_eq!(install_gateway(&src, dir.path()).unwrap(), copy);
+    let result = refresh_gateway(&src, dir.path());
+    GATEWAY_BUSY.set(false);
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(std::fs::read(&copy).unwrap(), b"v1");
+    refresh_gateway(&src, dir.path()).unwrap();
+    assert_eq!(std::fs::read(&copy).unwrap(), b"version 2");
 }
 
 #[test]
