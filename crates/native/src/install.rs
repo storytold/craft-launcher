@@ -1000,7 +1000,7 @@ pub fn uninstall(
             crate::portable::remove(app, record.ok_or("the launcher has no record of these files")?)
         }
         #[cfg(windows)]
-        InstallSource::Msi => windows::uninstall_msi(app, stop, phase),
+        InstallSource::Msi => windows::uninstall_msi(app, &paths.downloads(), stop, phase),
         #[cfg(target_os = "macos")]
         InstallSource::MacApp | InstallSource::Launcher => macos::move_to_trash(&path),
         #[cfg(target_os = "linux")]
@@ -2554,7 +2554,7 @@ pub mod windows {
                 app: app.name,
                 chosen: chosen.version,
                 previous: previous.version,
-                remove: &mut || remove_listed(app, &installs, msi_batch::Ui::Progress),
+                remove: &mut || remove_listed(app, &installs, None),
                 install_chosen: &mut || run_direct(chosen.file, destination, scope),
                 reinstall_previous: &mut || run_direct(previous.file, destination, scope),
             })
@@ -2626,15 +2626,11 @@ pub mod windows {
         Ok((ended != msi_downgrade::Ended::LaunchFailed).then_some(ended))
     }
 
-    pub fn uninstall_msi(app: &CraftApp, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
-        in_turn(stop, phase, JobPhase::Removing, || remove_registrations(app).map_err(|removal| removal.error))
-    }
-
-    /// Removes every Windows Installer registration of `app` in turn, within the caller's queue
-    /// turn: an uninstall, where no put-back follows that a later listing could misjudge.
-    fn remove_registrations(app: &CraftApp) -> Result<(), msi_downgrade::Removal> {
-        let installs = crate::detect::windows::msi_installs(app);
-        remove_listed(app, &installs, msi_batch::Ui::Background)
+    pub fn uninstall_msi(app: &CraftApp, session_dir: &Path, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+        in_turn(stop, phase, JobPhase::Removing, || {
+            let installs = crate::detect::windows::msi_installs(app);
+            remove_listed(app, &installs, Some(session_dir)).map_err(|removal| removal.error)
+        })
     }
 
     /// Removes exactly the registrations in `installs`, in turn, within the caller's queue turn. A
@@ -2644,30 +2640,41 @@ pub mod windows {
     fn remove_listed(
         app: &CraftApp,
         installs: &[crate::detect::windows::MsiInstall],
-        per_user_ui: msi_batch::Ui,
+        background_session_dir: Option<&Path>,
     ) -> Result<(), msi_downgrade::Removal> {
         if installs.is_empty() {
             return Err(msi_downgrade::Removal { error: format!("{} isn't registered with the Windows Installer", app.name), partly: false });
         }
         for (removed, m) in installs.iter().enumerate() {
-            // The uninstall-list hive can disagree with the Windows Installer product registration.
-            let scope = crate::msi_context::update_scope(true, Some(&m.product_code), crate::msi_context::probe, |code| {
-                crate::detect::windows::record_scope(app, code)
-            })
-            .ok()
-            .flatten();
-            let ui = if scope == Some(MsiScope::PerUser) { per_user_ui } else { msi_batch::Ui::Progress };
-            log::info!("{}: removing MSI {} in {scope:?} with {}", app.name, m.product_code, ui.argument());
-            let status = process::command(msiexec())
-                .args(["/x", &m.product_code, ui.argument(), "/norestart"])
-                .status()
-                .map_err(|e| format!("couldn't start the Windows Installer ({e})"))
-                .and_then(|status| explain(status.code()));
+            let status = remove_product(app, &m.product_code, background_session_dir);
             if let Err(error) = status {
                 return Err(msi_downgrade::Removal { error, partly: removed > 0 });
             }
         }
         Ok(())
+    }
+
+    fn remove_product(app: &CraftApp, code: &str, background_session_dir: Option<&Path>) -> Result<(), String> {
+        let ui = if let Some(dir) = background_session_dir {
+            // The Windows Installer registration is authoritative, even when the uninstall-list hive disagrees.
+            let scope = crate::msi_context::update_scope(true, Some(code), crate::msi_context::probe, |code| {
+                crate::detect::windows::record_scope(app, code)
+            })?;
+            if scope == Some(MsiScope::PerMachine) {
+                log::info!("{}: requesting permission for background MSI removal", app.name);
+                return msi_session::remove(app, code, dir);
+            }
+            msi_batch::Ui::Background
+        } else {
+            msi_batch::Ui::Progress
+        };
+        log::info!("{}: removing MSI {code} with {}", app.name, ui.argument());
+        let mut command = process::command(msiexec());
+        command.args(["/x", code, ui.argument(), "/norestart"]);
+        if matches!(ui, msi_batch::Ui::Background) {
+            command.args(["MSIRESTARTMANAGERCONTROL=DisableShutdown", "MSIDISABLERMRESTART=1"]);
+        }
+        explain(command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?.code())
     }
 }
 
