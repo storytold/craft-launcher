@@ -521,3 +521,9 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+# Local builds from the developer's own checkouts (English fallback; translations are maintained in craft-i18n).
+	Local builds	Local builds
+	Checkouts folder	Checkouts folder
+	Off	Off
+	Turn off	Turn off
+	An app with a checkout here (a folder named like the app) opens its own build from target/release instead of the installed copy. Local builds aren't verified, and the launcher never updates or removes them.	An app with a checkout here (a folder named like the app) opens its own build from target/release instead of the installed copy. Local builds aren't verified, and the launcher never updates or removes them.

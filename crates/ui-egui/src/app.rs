@@ -62,6 +62,11 @@ pub trait Host {
     fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
         None
     }
+    /// This build opens apps from the user's own source checkouts (the shell's `local-checkouts`
+    /// feature, never in release builds), so Settings offers the folder.
+    fn local_checkouts(&self) -> bool {
+        false
+    }
     /// The folder a new install of this format goes inside when the person hasn't chosen one, so
     /// the install-folder field can show that folder instead of only saying "System default".
     /// `arch` is the package's architecture when the release names one. `None` when this host
@@ -577,6 +582,7 @@ impl LauncherUi {
             launcher_version: self.settings.launcher_version.clone(),
             simultaneous_downloads: self.settings.simultaneous_downloads,
             install_locations: self.settings.install_locations.clone(),
+            checkouts: self.settings.local_checkouts.clone(),
         };
         if self.sent_options.as_ref() != Some(&options) {
             self.backend.send(Command::Configure(options.clone()));

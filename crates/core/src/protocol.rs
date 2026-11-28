@@ -149,6 +149,9 @@ pub struct BackendOptions {
     pub nightly_enabled: bool,
     /// Downloads that may run at once (1 to 4; 0 for no limit).
     pub simultaneous_downloads: u8,
+    /// The folder holding the user's app checkouts (`<folder>/<app id>`), whose own builds are
+    /// opened instead of an installed copy. Only builds with the `local-checkouts` feature read it.
+    pub checkouts: Option<String>,
 }
 
 /// The answer to "what's the latest release of this app?".

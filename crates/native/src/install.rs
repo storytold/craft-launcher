@@ -786,6 +786,8 @@ pub(crate) fn choose_kinds_with(
             InstallSource::Flatpak => Some(PackageKind::Flatpak),
             InstallSource::AppImage => Some(PackageKind::AppImage),
             InstallSource::Binary => Some(PackageKind::TarGz),
+            // The developer's own build: nothing downloaded replaces it.
+            InstallSource::Checkout => return Vec::new(),
         };
         if let Some(k) = kind.filter(|k| available.contains(k) || (*k == PackageKind::ArchPkg && can_pacman)) {
             return vec![k];
@@ -929,6 +931,11 @@ fn managed_elsewhere_with(app: &CraftApp, installed: &Installed, uninstall: bool
             Some(format!("{} was installed from a Flatpak repository. Update it with flatpak update {scope} {pkg}", app.name))
         }
         InstallSource::Binary => Some(format!("{} was installed outside the launcher. Update or remove it the way it was installed.", app.name)),
+        InstallSource::Checkout => Some(format!(
+            "{} is your local build in {}. The launcher doesn't verify, update or remove it: rebuild it there.",
+            app.name,
+            installed.origin.as_deref().unwrap_or(&installed.location)
+        )),
         _ => None,
     }
 }
@@ -1066,6 +1073,20 @@ pub fn launch(app: &CraftApp, installed: &Installed, paths: &Paths, args: &[Stri
         // `open` starts the app through Launch Services, which gives it the user's real home, so
         // it finds the file at its default path; not every macOS `open` takes an environment.
         InstallSource::MacApp => process::open_app(path, args),
+        // The developer's own build, run from its checkout so relative paths it reads resolve
+        // there, as with `cargo run`.
+        InstallSource::Checkout => match crate::checkout::not_built(app, installed) {
+            Some(why) => return Err(why),
+            None => {
+                let mut cmd = process::command(path);
+                cmd.args(args);
+                cmd.envs(env.iter().copied());
+                if let Some(dir) = installed.origin.as_deref() {
+                    cmd.current_dir(dir);
+                }
+                process::spawn_detached(cmd)
+            }
+        },
         // A tarball the launcher unpacked into its own folder: run it here, against its own
         // home, rather than on the host through `flatpak-spawn` (which is what `launch_binary`
         // would do inside the sandbox). Its settings then land beside it instead of in the

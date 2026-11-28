@@ -26,6 +26,10 @@ pub enum InstallSource {
     AppImage,
     /// A binary found on `PATH` or in a system prefix.
     Binary,
+    /// A program built in the user's own source checkout (developer builds with the
+    /// `local-checkouts` feature). Nothing about it was downloaded or verified, and the launcher
+    /// never updates or removes it.
+    Checkout,
 }
 
 impl InstallSource {
@@ -40,6 +44,7 @@ impl InstallSource {
             Self::Flatpak => "Flatpak",
             Self::AppImage => "AppImage",
             Self::Binary => "System binary",
+            Self::Checkout => "Local build",
         }
     }
 

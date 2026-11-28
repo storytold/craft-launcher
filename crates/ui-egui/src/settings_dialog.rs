@@ -135,6 +135,7 @@ impl LauncherUi {
                 };
                 let (this, host) = &mut *state;
                 this.settings_install(ui, &mut **host);
+                this.settings_checkouts(ui, &mut **host);
                 #[cfg(not(target_arch = "wasm32"))]
                 this.settings_fonts(ui);
                 this.settings_background(ui, &mut **host);
@@ -291,6 +292,36 @@ impl LauncherUi {
         if self.platform.is_some_and(|p| p.os == Os::Linux) {
             self.linux_kinds(ui);
         }
+    }
+
+    /// The folder of the developer's own checkouts, in builds that open them.
+    fn settings_checkouts(&mut self, ui: &mut Ui, host: &mut dyn Host) {
+        if !self.caps.manage_apps || !host.local_checkouts() {
+            return;
+        }
+        sheet::panel(ui, tl!("Local builds"), |ui| {
+            let mut folder = self.settings.local_checkouts.clone().unwrap_or_default();
+            let label = ui.label(tl!("Checkouts folder"));
+            ui.add(egui::TextEdit::singleline(&mut folder).id_salt("checkouts_folder").hint_text(tl!("Off")).desired_width(f32::INFINITY))
+                .labelled_by(label.id);
+            ui.horizontal(|ui| {
+                if widgets::button(ui, tl!("Browse…"), Kind::Secondary, 100.0).clicked()
+                    && let Some(selected) = host.pick_folder((!folder.is_empty()).then_some(folder.as_str()))
+                {
+                    folder = selected;
+                }
+                if widgets::button(ui, tl!("Turn off"), Kind::Secondary, 120.0).clicked() {
+                    folder.clear();
+                }
+            });
+            self.settings.local_checkouts = (!folder.trim().is_empty()).then_some(folder);
+            note(
+                ui,
+                tl!(
+                    "An app with a checkout here (a folder named like the app) opens its own build from target/release instead of the installed copy. Local builds aren't verified, and the launcher never updates or removes them."
+                ),
+            );
+        });
     }
 
     /// The Windows install-format chooser: an MSI or a portable ZIP.

@@ -9,6 +9,7 @@
 
 pub mod agents;
 pub mod backend;
+pub mod checkout;
 pub mod desktop_entry;
 pub mod detect;
 pub mod downloads;

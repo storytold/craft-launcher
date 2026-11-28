@@ -160,6 +160,8 @@ struct Shared {
     checking: AtomicBool,
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
+    /// A detection was asked for while one ran: it runs again when done, with the settings of then.
+    redetect: AtomicBool,
     last_check: Mutex<Option<i64>>,
     /// When a forced check last asked GitHub (Unix seconds), for [`FORCED_REUSE`].
     last_forced: Mutex<Option<i64>>,
@@ -516,6 +518,7 @@ impl NativeBackend {
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
+            redetect: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),
             self_updating: OnceLock::new(),
@@ -681,6 +684,8 @@ impl NativeBackend {
             return;
         }
         if self.shared.detecting.swap(true, Ordering::SeqCst) {
+            // New settings (a checkouts folder) can arrive while the first scan runs.
+            self.shared.redetect.store(true, Ordering::SeqCst);
             return;
         }
         let shared = self.shared.clone();
@@ -688,26 +693,36 @@ impl NativeBackend {
         let paths = self.paths.clone();
         let platform = self.platform;
         std::thread::spawn(move || {
-            let busy = busy;
-            // Leftovers from interrupted installs or older versions of the launcher. A paused
-            // download stays a month; a finished one kept after a failed install, a week.
-            http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
-            let snapshot = shared.host.snapshot();
-            let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
-                let found = shared.host.detect(app, &manifest, &snapshot);
-                publish_detected(app, found, &shared, platform);
+            let mut busy = Some(busy);
+            while let Some(guard) = busy.take() {
+                shared.redetect.store(false, Ordering::SeqCst);
+                // Leftovers from interrupted installs or older versions of the launcher. A paused
+                // download stays a month; a finished one kept after a failed install, a week.
+                http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
+                let snapshot = shared.host.snapshot();
+                let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                let checkouts = local_checkouts(&shared);
+                for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
+                    // A developer's own build goes before any installed copy: they chose the folder.
+                    let local = checkouts.as_deref().and_then(|root| crate::checkout::detect(app, root));
+                    let found = local.or_else(|| shared.host.detect(app, &manifest, &snapshot));
+                    publish_detected(app, found, &shared, platform);
+                }
+                // Downloads paused (or cut off by quitting) in an earlier run.
+                for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
+                    report_partial(app, &shared, &paths, platform);
+                }
+                // Local MCP state: which installed apps can be exposed + the unified bridge.
+                {
+                    let _mcp = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
+                    shared.emit(mcp_state(&shared));
+                }
+                drop(guard);
+                // Asked for again while this ran: run again, unless another scan has started since.
+                if shared.redetect.load(Ordering::SeqCst) && !shared.detecting.swap(true, Ordering::SeqCst) {
+                    busy = Some(BusyGuard { shared: shared.clone(), flag: BusyFlag::Detecting });
+                }
             }
-            // Downloads paused (or cut off by quitting) in an earlier run.
-            for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
-                report_partial(app, &shared, &paths, platform);
-            }
-            // Local MCP state: which installed apps can be exposed + the unified bridge.
-            {
-                let _mcp = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
-                shared.emit(mcp_state(&shared));
-            }
-            drop(busy);
         });
     }
 
@@ -2815,6 +2830,17 @@ fn feed_url_override_allowed(url: &str, local_mirror: bool) -> bool {
 
 use crate::http::is_loopback;
 
+/// The folder of the developer's own checkouts whose builds open instead of installed copies
+/// ([`crate::checkout`]): only in builds with the `local-checkouts` feature and the stable
+/// channel, so neither a release build nor the nightly context runs an unverified program.
+fn local_checkouts(shared: &Shared) -> Option<std::path::PathBuf> {
+    if !crate::checkout::ENABLED || shared.channel != artcraft_launcher_core::nightly::InstallChannel::Stable {
+        return None;
+    }
+    let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner);
+    options.checkouts.as_deref().filter(|folder| !folder.trim().is_empty()).map(std::path::PathBuf::from)
+}
+
 /// `ARTCRAFT_LAUNCHER_DOWNLOAD_BASE`: a mirror on this machine (`cargo xtask local serve`) that
 /// serves `release_info.json` and the builds it lists. While it's set, releases come only from
 /// there (never GitHub or ArtCraft's API), and its download links are trusted. Loopback only, so
@@ -3115,7 +3141,9 @@ impl Backend for NativeBackend {
                         .map(|a| (a.id.into(), VersionTrack::Nightly))
                         .collect();
                     options.install_locations = Default::default(); // No stable/custom destination may leak into this context.
+                    options.checkouts = None;
                 }
+                let changed_checkouts = self.options().checkouts != options.checkouts;
                 let changed_pre = {
                     let mut o = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
                     let changed = o.prereleases != options.prereleases
@@ -3149,6 +3177,9 @@ impl Backend for NativeBackend {
                 self.replan();
                 if changed_pre {
                     self.check(self.shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable);
+                }
+                if changed_checkouts && crate::checkout::ENABLED {
+                    self.detect_all();
                 }
             }
             cmd @ (Command::McpState | Command::McpSetAgents { .. } | Command::McpSetClient { .. } | Command::McpRestartClient { .. }) => {
@@ -3703,6 +3734,7 @@ mod tests {
             options: Mutex::new(BackendOptions::default()),
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
+            redetect: AtomicBool::new(false),
             last_check: Mutex::new(None),
             last_forced: Mutex::new(None),
             reusing_forced: AtomicBool::new(false),

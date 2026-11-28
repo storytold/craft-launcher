@@ -146,6 +146,9 @@ pub struct Settings {
     pub launch_flags: BTreeMap<String, String>,
     /// The Fonts page's sample text and size.
     pub fonts: FontSettings,
+    /// The folder of the user's own app checkouts whose builds open instead of installed copies
+    /// (developer builds only, [`Host::local_checkouts`](crate::app::Host::local_checkouts)).
+    pub local_checkouts: Option<String>,
 }
 
 /// What the Fonts page keeps between runs.
@@ -334,6 +337,7 @@ impl Default for Settings {
             pinned: Vec::new(),
             launch_flags: BTreeMap::new(),
             fonts: FontSettings::default(),
+            local_checkouts: None,
         }
     }
 }

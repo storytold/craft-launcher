@@ -15,6 +15,8 @@ workspace = true
 [features]
 # Development only: install from `cargo xtask local serve` (see the README).
 local-mirror = ["artcraft-launcher-native/local-mirror"]
+# Development only: open apps built in your own source checkouts (see the README).
+local-checkouts = ["artcraft-launcher-native/local-checkouts"]
 
 [dependencies]
 artcraft-launcher-core = { workspace = true }
