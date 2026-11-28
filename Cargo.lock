@@ -7898,6 +7898,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 name = "xtask"
 version = "0.20.4"
 dependencies = [
+ "image",
  "jiff",
  "semver",
  "tempfile",
