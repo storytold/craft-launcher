@@ -9,6 +9,7 @@ publish = false
 workspace = true
 
 [dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
 jiff = { workspace = true }
 semver = { workspace = true }
 

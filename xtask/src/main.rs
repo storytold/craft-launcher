@@ -1,6 +1,6 @@
 //! Workspace tooling: `cargo xtask <command>`.
 //!
-//! Pure Rust (std only). External tools (`cargo`) are invoked through `std::process::Command`.
+//! Pure Rust. External tools (`cargo`) are invoked through `std::process::Command`.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod icns;

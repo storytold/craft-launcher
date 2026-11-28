@@ -14,7 +14,8 @@ versions.
 
 - `artcraft-launcher.svg`: a copy of `docs/brand/artcraft-mark.svg`; also the hicolor scalable icon.
 - `artcraft-launcher-1024.png`: 1024 px render, with extra transparent margin for Apple's icon grid.
-- `artcraft-launcher.icns`: macOS bundle icon (`CFBundleIconFile`).
+- `artcraft-launcher.icns`: macOS bundle icon (`CFBundleIconFile`), with legacy RGB and masks
+  for 16 and 32 px non-Retina slots. The artwork and the other slots' PNGs are unchanged.
 - `artcraft-launcher.ico`: Windows icon, 16–256 px, embedded in the `.exe` by
   `apps/artcraft-launcher/build.rs` and used by the MSI.
 - `hicolor/<size>/apps/ai.storyteller.artcraft-launcher.png` (16–512) and
@@ -25,5 +26,5 @@ versions.
 ## Regenerate
 
 Run `packaging/icons.sh` on any OS. It needs `resvg`; the `.ico` and `.icns` are packed by
-`cargo xtask ico`. Never edit these files by hand: change the source only if the ArtCraft Team
+`cargo xtask ico` and `cargo xtask icns`. Never edit these files by hand: change the source only if the ArtCraft Team
 supplies a new mark in `docs/brand/`.
