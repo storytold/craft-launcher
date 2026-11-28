@@ -19,6 +19,7 @@ const NOW: i64 = 1_791_500_000;
 struct Fake {
     events: Vec<Event>,
     clock: Rc<Cell<i64>>,
+    platform: Platform,
 }
 
 impl Backend for Fake {
@@ -30,7 +31,7 @@ impl Backend for Fake {
         Capabilities { manage_apps: true, reveal_label: "Show in Finder", self_update: true, desktop_shortcuts: false }
     }
     fn platform(&self) -> Option<Platform> {
-        Some(Platform { os: Os::MacOs, arch: Arch::Arm64 })
+        Some(self.platform)
     }
     fn now(&self) -> i64 {
         self.clock.get()
@@ -88,9 +89,9 @@ fn events() -> Vec<Event> {
 
 /// The launcher UI in Ukrainian, in the given view, over the fake backend from [`events`]. The UI
 /// language is process-wide, so this binary holds a single test.
-fn harness(view: ViewMode) -> Harness<'static, Option<LauncherUi>> {
+fn harness(view: ViewMode, platform: Platform) -> Harness<'static, Option<LauncherUi>> {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
-    let mut backend = Some(Fake { events: events(), clock: Rc::new(Cell::new(NOW)) });
+    let mut backend = Some(Fake { events: events(), clock: Rc::new(Cell::new(NOW)), platform });
     let settings =
         Settings { view, notify: false, language: "uk".into(), theme: artcraft_launcher_ui_egui::theme::ThemeChoice::Dark, ..Settings::default() };
     Harness::builder()
@@ -123,7 +124,8 @@ fn snapshot(h: &mut Harness<'_, Option<LauncherUi>>, name: &str) {
 // One test: the UI language is process-wide.
 #[test]
 fn ukrainian_ui_translates_labels_dates_and_messages() {
-    let mut h = harness(ViewMode::Grid);
+    let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+    let mut h = harness(ViewMode::Grid, platform);
     h.run_steps(8);
     snapshot(&mut h, "grid-uk-dark");
     // Product names stay in English.
@@ -135,9 +137,51 @@ fn ukrainian_ui_translates_labels_dates_and_messages() {
     h.get_by_label_contains("Перевірено 3 хвилини тому · джерела: ArtCraft API");
     h.get_by_label("Застосунок LightCraft оновлено до 0.5.0");
 
-    let mut table = harness(ViewMode::Table);
+    for width in [860.0, 1180.0] {
+        settings_header_reaches_dialog_edge(width);
+    }
+
+    let mut table = harness(ViewMode::Table, platform);
     table.run_steps(8);
     snapshot(&mut table, "table-uk-dark");
     table.get_by_label("Версія");
     assert!(table.query_all_by_label_contains("серп. 2026").count() >= 1);
+}
+
+fn settings_header_reaches_dialog_edge(width: f32) {
+    // A short window scrolls the Settings body. Its localized folder actions must not
+    // widen that body beyond the painted header and leave a gap along the right edge.
+    let mut settings = harness(ViewMode::Grid, Platform { os: Os::Linux, arch: Arch::X64 });
+    settings.set_size(egui::vec2(width, 600.0));
+    settings.run_steps(8);
+    settings.get_by_label("Налаштування").click();
+    settings.run_steps(12);
+    settings.get_by_role(egui::accesskit::Role::Dialog);
+    let tokens = artcraft_launcher_ui_egui::theme::Tokens::DARK;
+    let dialog = settings
+        .output()
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(|shape| match shape {
+                egui::epaint::Shape::Rect(r) if r.fill == tokens.bg && r.stroke.color == tokens.line_strong => Some(r.rect),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .expect("the settings dialog frame is painted");
+    let stripe = settings
+        .output()
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Rect(r) if r.fill == tokens.accent && (r.rect.top() - dialog.top()).abs() <= 2.0 => Some(r.rect),
+            _ => None,
+        })
+        .max_by(|a, b| a.width().total_cmp(&b.width()))
+        .expect("the settings header accent is painted");
+    assert!((dialog.right() - stripe.right()).abs() <= 2.0, "the header stripe {stripe:?} must reach the dialog's right edge {dialog:?}");
+    settings.get_by_role_and_label(egui::accesskit::Role::Button, "Скористатися значенням за замовчуванням");
+    settings.get_by_role_and_label(egui::accesskit::Role::Button, "Готово");
+    snapshot(&mut settings, &format!("settings-uk-dark-{width:.0}"));
 }

@@ -9,6 +9,9 @@ use crate::app::{Dialog, Host, LauncherUi};
 use crate::theme::{self, Tokens};
 use crate::widgets::{self, Kind};
 
+const BROWSE_FOLDER_MIN_WIDTH: f32 = 100.0;
+const RESET_FOLDER_MIN_WIDTH: f32 = 120.0;
+
 impl LauncherUi {
     /// Draws the current modal and writes any edits made in it back to `self.dialog`. With no
     /// dialog it shows the next unacknowledged feed alert. Each dialog kind gets its own modal id
@@ -377,6 +380,11 @@ impl LauncherUi {
         close
     }
 
+    /// The minimum width needed for the folder actions once they can wrap to separate rows.
+    pub(crate) fn folder_actions_min_width(ui: &egui::Ui) -> f32 {
+        widgets::button_width(ui, tl!("Browse…"), BROWSE_FOLDER_MIN_WIDTH).max(widgets::button_width(ui, tl!("Use default"), RESET_FOLDER_MIN_WIDTH))
+    }
+
     pub(crate) fn folder_field(ui: &mut egui::Ui, folder: &mut String, default: Option<&str>, host: &mut dyn Host) {
         let label = ui.label(tl!("Install folder"));
         ui.add(
@@ -387,13 +395,15 @@ impl LauncherUi {
         )
         .labelled_by(label.id);
         ui.label(tl!("Apps are placed inside this folder."));
-        ui.horizontal(|ui| {
-            if widgets::button(ui, tl!("Browse…"), Kind::Secondary, 100.0).clicked()
+        // Translated actions can exceed the settings column. Wrap the buttons rather
+        // than widening the scroll area beyond the dialog header.
+        ui.horizontal_wrapped(|ui| {
+            if widgets::button(ui, tl!("Browse…"), Kind::Secondary, BROWSE_FOLDER_MIN_WIDTH).clicked()
                 && let Some(selected) = host.pick_folder(if folder.is_empty() { default } else { Some(folder.as_str()) })
             {
                 *folder = selected;
             }
-            if widgets::button(ui, tl!("Use default"), Kind::Secondary, 120.0).clicked() {
+            if widgets::button(ui, tl!("Use default"), Kind::Secondary, RESET_FOLDER_MIN_WIDTH).clicked() {
                 folder.clear();
             }
         });

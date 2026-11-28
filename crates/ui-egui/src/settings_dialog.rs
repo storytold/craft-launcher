@@ -106,7 +106,12 @@ impl LauncherUi {
     fn settings_contents(&mut self, ui: &mut Ui, host: &mut dyn Host, wide: bool) {
         // The right column holds install, fonts and background settings, which need app
         // management: without it (the web build) it would be empty, so one column is drawn.
-        let wide = wide && self.caps.manage_apps;
+        // Switch to one column if a translated folder action cannot fit by itself. Use
+        // the scroll area's actual width, which already excludes the scrollbar gutter.
+        let column_width = ((ui.available_width() - theme::COLUMN_GAP) / 2.0).floor();
+        let panel_padding = f32::from(theme::BOX_MARGIN.left + theme::BOX_MARGIN.right) + 2.0 * Tokens::get(ui.ctx()).hairline().width;
+        let wide =
+            wide && self.caps.manage_apps && (!self.custom_install_folders() || column_width - panel_padding >= Self::folder_actions_min_width(ui));
         // The columns are drawn from two closures that both need `self` and `host`: the pieces
         // are drawn one after the other, through a cell, never at the same time (were they ever,
         // the second would be skipped rather than panic).
@@ -344,6 +349,7 @@ impl LauncherUi {
                 egui::ComboBox::from_id_salt("kind")
                     .selected_text(shown)
                     .width(210.0)
+                    .wrap()
                     .show_ui(ui, |ui| {
                         if !is_flatpak && !is_appimage {
                             ui.selectable_value(&mut choice, None, tl!("System package (recommended)"));
