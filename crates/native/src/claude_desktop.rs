@@ -60,7 +60,7 @@ fn family_name(full_name: &str) -> Option<String> {
 /// that follows `shell:AppsFolder\`), one named Claude. With both installs present, the one that was
 /// running wins: a Store entry's id is `<package family name>!<app id>`, and a classic one has no `!`.
 pub(crate) fn start_entry<'a>(entries: &'a [(String, String)], running: Option<&Install>) -> Option<&'a str> {
-    let mut named = entries.iter().filter(|(name, id)| name == START_MENU_NAME && !id.is_empty()).map(|(_, id)| id.as_str());
+    let mut named = entries.iter().filter(|(name, id)| name.eq_ignore_ascii_case(START_MENU_NAME) && !id.is_empty()).map(|(_, id)| id.as_str());
     let first = named.clone().next()?;
     let matches = |id: &&str| match running {
         Some(Install::Store { family }) => id.split_once('!').is_some_and(|(f, _)| f.eq_ignore_ascii_case(family)),
@@ -160,7 +160,7 @@ fn start_menu_entries() -> Result<Vec<(String, String)>, String> {
     for item in items.iter() {
         let item = item.map_err(failed)?;
         let Ok(name) = item.GetDisplayName(co::SIGDN::NORMALDISPLAY) else { continue };
-        if name != START_MENU_NAME {
+        if !name.eq_ignore_ascii_case(START_MENU_NAME) {
             continue;
         }
         if let Ok(id) = item.GetDisplayName(co::SIGDN::PARENTRELATIVEPARSING) {
@@ -218,5 +218,14 @@ mod tests {
         assert_eq!(start_entry(&both, None), Some(classic));
         assert_eq!(start_entry(&[entry("Claude", packaged)], Some(&Install::Classic)), Some(packaged));
         assert_eq!(start_entry(&[entry("Claude Code", "x"), entry("Claude", "")], None), None);
+    }
+
+    #[test]
+    fn the_start_menu_name_matches_in_any_letter_case() {
+        let entry = |name: &str, id: &str| (name.to_string(), id.to_string());
+        let packaged = "Claude_pzs8sxrjxfjjc!Claude";
+        assert_eq!(start_entry(&[entry("claude", packaged)], Some(&store())), Some(packaged));
+        assert_eq!(start_entry(&[entry("CLAUDE", packaged)], None), Some(packaged));
+        assert_eq!(start_entry(&[entry("claude code", "x")], None), None);
     }
 }
