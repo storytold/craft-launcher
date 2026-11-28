@@ -265,6 +265,7 @@ pub(crate) fn lookup_prefer_catalog<'a>(
     }
     let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
     let mut started = false;
+    let mut catalog_failure = None;
     if let Some(release) = policy.candidate {
         if let Err(error) = (policy.before_lookup)() {
             return Some((Outcome::Indeterminate(error), Origin::ArtCraftApi));
@@ -274,11 +275,17 @@ pub(crate) fn lookup_prefer_catalog<'a>(
             Ok(Some(verified)) => return Some((Outcome::Verified(Box::new(verified)), Origin::ArtCraftApi)),
             Ok(None) => {}
             Err(error) if error.over_budget || error.retry_at.is_some() => return Some((Outcome::Indeterminate(error), Origin::ArtCraftApi)),
-            Err(error) => log::info!("{}: catalog Nightly could not be verified; falling back: {}", app.id, error.why),
+            Err(error) => {
+                log::info!("{}: catalog Nightly could not be verified; falling back: {}", app.id, error.why);
+                if budget.requests > 0 {
+                    catalog_failure = Some(error);
+                }
+            }
         }
     }
     if policy.github_blocked || !reserve_fallback(policy.manual, policy.installed, policy.fallback_used) {
-        return None;
+        // A failed descriptor request is a real attempt, even if enumeration is withheld.
+        return catalog_failure.map(|error| (Outcome::Indeterminate(error), Origin::ArtCraftApi));
     }
     if !started && let Err(error) = (policy.before_lookup)() {
         return Some((Outcome::Indeterminate(error), Origin::GitHub));

@@ -1153,6 +1153,44 @@ fn catalog_first_lookup_respects_backoff_and_falls_back_if_descriptor_is_unavail
 }
 
 #[test]
+fn catalog_descriptor_failure_counts_as_attempt_when_fallback_is_unavailable() {
+    let (feed, descriptor_url, _) = catalog_fixture(&tag(20), true);
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    for github_blocked in [false, true] {
+        let mut used = if github_blocked { 0 } else { DISCOVERY_PER_SWEEP };
+        let mut attempts = 0;
+        let mut requests = 0;
+        let answer = lookup_prefer_catalog(
+            app(),
+            platform(),
+            NOW + 1,
+            LookupPolicy {
+                candidate: Some(release.clone()),
+                previous: None,
+                backoff: None,
+                github_blocked,
+                before_lookup: &mut || {
+                    attempts += 1;
+                    Ok(())
+                },
+                manual: false,
+                installed: false,
+                fallback_used: &mut used,
+            },
+            &mut |url, _, _, _| {
+                assert_eq!(url, descriptor_url);
+                requests += 1;
+                Ok(None)
+            },
+            &|| Duration::ZERO,
+            &|| true,
+        );
+        assert!(matches!(answer, Some((Outcome::Indeterminate(error), Origin::ArtCraftApi)) if error.why.contains("not found")));
+        assert_eq!((attempts, requests), (1, 1));
+    }
+}
+
+#[test]
 fn generated_catalog_time_does_not_refresh_old_reconciliation() {
     let (mut feed, _, _) = catalog_fixture(&tag(20), true);
     let now = NOW + 3 * 3600;
