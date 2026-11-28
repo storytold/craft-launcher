@@ -8223,18 +8223,3 @@ dependencies = [
  "syn 3.0.6",
  "winnow 1.0.4",
 ]
-
-[[patch.unused]]
-name = "egui_demo_lib"
-version = "0.37.0"
-source = "git+https://github.com/storytold/egui.git?rev=b9770908e0f304896f9658d239a7b29cf8af1564#b9770908e0f304896f9658d239a7b29cf8af1564"
-
-[[patch.unused]]
-name = "egui_inspection"
-version = "0.37.0"
-source = "git+https://github.com/storytold/egui.git?rev=b9770908e0f304896f9658d239a7b29cf8af1564#b9770908e0f304896f9658d239a7b29cf8af1564"
-
-[[patch.unused]]
-name = "egui_system_font_provider"
-version = "0.37.0"
-source = "git+https://github.com/storytold/egui.git?rev=b9770908e0f304896f9658d239a7b29cf8af1564#b9770908e0f304896f9658d239a7b29cf8af1564"

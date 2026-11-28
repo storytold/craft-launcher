@@ -694,6 +694,8 @@ impl NativeBackend {
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
             let snapshot = shared.host.snapshot();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            #[cfg(target_os = "linux")]
+            crate::install::linux::refresh_menu_entries(&manifest);
             for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
                 let found = shared.host.detect(app, &manifest, &snapshot);
                 publish_detected(app, found, &shared, platform);
