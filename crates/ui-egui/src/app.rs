@@ -59,6 +59,13 @@ pub trait Host {
     fn reduce_motion(&self) -> bool {
         false
     }
+    /// The window is drawn on the processor, not a graphics card: Windows' WARP ("Microsoft Basic
+    /// Render Driver", as on a Windows 365 Cloud PC, a virtual machine or a remote desktop without
+    /// a GPU), Mesa's llvmpipe or lavapipe. Every frame then costs the whole window in software, so
+    /// the launcher animates nothing and its own timed redraws wait at least a quarter of a second.
+    fn software_rendering(&self) -> bool {
+        false
+    }
     fn pick_folder(&mut self, _initial: Option<&str>) -> Option<String> {
         None
     }
@@ -227,8 +234,9 @@ pub struct LauncherUi {
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
     started: bool,
     applied_theme: Option<theme::ThemeChoice>,
-    /// The OS asks for fewer animations: what the host last said, and the context's time to ask
-    /// it again at.
+    /// The OS asks for fewer animations, or the window is drawn in software
+    /// ([`Host::software_rendering`]): what the host last said, and the context's time to ask it
+    /// again at.
     pub(crate) reduce_motion: bool,
     motion_recheck: f64,
     /// What the context's styles were last set for.
@@ -1036,7 +1044,8 @@ impl LauncherUi {
         }
         let now = ctx.input(|i| i.time);
         if now >= self.motion_recheck {
-            self.reduce_motion = host.reduce_motion();
+            self.reduce_motion = host.reduce_motion() || host.software_rendering();
+            motion::set_software(&ctx, host.software_rendering());
             self.motion_recheck = now + motion::RECHECK_EVERY;
         }
         if self.applied_motion != Some(self.reduce_motion) {
@@ -1046,7 +1055,7 @@ impl LauncherUi {
         self.discord_url = host.discord_url();
         let tokens = Tokens::get(&ctx);
         if self.entries.iter().any(|e| e.job.is_some()) || self.checking {
-            ctx.request_repaint_after(Duration::from_millis(50));
+            ctx.request_repaint_after(motion::tick(&ctx, Duration::from_millis(50)));
         }
 
         // The bars' separator lines are the hairlines under the header and over the footer.
@@ -1403,6 +1412,42 @@ mod tests {
         let mut output = ctx.run_ui(input, |ui| launcher.ui(ui, &mut NoHost));
         // This logic-only harness has no renderer to receive texture uploads.
         output.textures_delta.clear();
+    }
+
+    /// A host whose window is drawn on the processor.
+    struct SoftwareHost;
+    impl Host for SoftwareHost {
+        fn software_rendering(&self) -> bool {
+            true
+        }
+    }
+
+    /// The wait before the next redraw after one pass with `host`, while an update check runs.
+    fn repaint_delay_while_checking(host: &mut dyn Host) -> (std::time::Duration, f32) {
+        let (mut launcher, _, ctx) = launcher();
+        launcher.checking = true;
+        let mut delay = std::time::Duration::MAX;
+        // The first passes install the fonts and decode the icons; the last one is a steady frame.
+        for time in [0.0, 0.1, 0.2, 0.3] {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1180.0, 900.0))),
+                time: Some(time),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| launcher.ui(ui, host));
+            output.textures_delta.clear();
+            delay = output.viewport_output.get(&egui::ViewportId::ROOT).map_or(delay, |v| v.repaint_delay);
+        }
+        (delay, ctx.global_style().animation_time)
+    }
+
+    #[test]
+    fn software_drawing_redraws_less_often_and_without_animations() {
+        let (gpu_delay, gpu_animation) = repaint_delay_while_checking(&mut NoHost);
+        let (software_delay, software_animation) = repaint_delay_while_checking(&mut SoftwareHost);
+        assert!(software_delay > gpu_delay, "software {software_delay:?}, GPU {gpu_delay:?}");
+        assert!(gpu_animation > 0.0);
+        assert_eq!(software_animation, 0.0);
     }
 
     /// Counts the `Install` commands in `sent`, ignoring every other command.

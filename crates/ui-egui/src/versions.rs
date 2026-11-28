@@ -297,7 +297,9 @@ impl LauncherUi {
                 }
                 match &list {
                     None => {
-                        ui.spinner();
+                        let size = ui.spacing().interact_size.y;
+                        let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+                        crate::widgets::spinner(ui, rect, ui.visuals().strong_text_color());
                         ui.label(tl!("Checking…"));
                     }
                     Some(Err(why)) => {
