@@ -164,14 +164,30 @@ const TAGLINE_SIZE: f32 = 12.0;
 /// The card's top strip: number tab and links.
 const STRIP_H: f32 = 40.0;
 const CARD_PAD: f32 = 20.0;
-/// Room macOS's traffic lights take at the left of the header.
+/// Room macOS's traffic lights take at the left of the header until they are measured.
 const TRAFFIC_LIGHTS_W: f32 = 72.0;
 
 impl LauncherUi {
+    /// The header's height: on macOS twice the measured lights' distance from the top, so they sit on its middle
+    /// line (a Finder window's 52 pt with the unified toolbar), never less than `HEADER_H`.
+    pub(crate) fn header_h(&self, bar: TitleBar) -> f32 {
+        match self.lights {
+            Some(lights) if bar == TitleBar::MacOs => (2.0 * lights.centre_from_top).max(HEADER_H),
+            _ => HEADER_H,
+        }
+    }
+
+    /// The room the traffic lights take at the left of a macOS header: measured, or `TRAFFIC_LIGHTS_W` until then.
+    fn lights_room(&self) -> f32 {
+        self.lights.map_or(TRAFFIC_LIGHTS_W, |lights| lights.leading)
+    }
+
     /// The header bar; with a custom or macOS title bar it is also the window's title bar.
     pub(crate) fn header(&mut self, ui: &mut Ui, bar: TitleBar) {
         let t = Tokens::get(ui.ctx());
-        let h = HEADER_H;
+        let h = self.header_h(bar);
+        // In full screen the lights are gone.
+        let lights = if ui.ctx().input(|i| i.viewport().fullscreen == Some(true)) { 0.0 } else { self.lights_room() };
         let channel_width = self.channel_navigation_width(ui);
         let logo = vec2(14.0 * crate::icons::ARTCRAFT_LOGO_ASPECT, 14.0);
         // The Settings gear and the announcements bell are each one h-wide cell.
@@ -180,7 +196,7 @@ impl LauncherUi {
             + channel_width.unwrap_or(0.0)
             + theme::PAD
             + if bar == TitleBar::Custom { widgets::window_buttons_width() } else { 0.0 }
-            + if bar == TitleBar::MacOs { TRAFFIC_LIGHTS_W } else { 0.0 };
+            + if bar == TitleBar::MacOs { lights } else { 0.0 };
         let compact_brand = channel_width.is_some() && logo.x + 40.0 + reserved > ui.available_width();
         if bar != TitleBar::Native {
             widgets::title_bar_drag(ui);
@@ -188,7 +204,7 @@ impl LauncherUi {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             if bar == TitleBar::MacOs {
-                ui.add_space(TRAFFIC_LIGHTS_W);
+                ui.add_space(lights);
             }
             // The ArtCraft wordmark exactly as supplied, in its own cell.
             let (cell, _) = ui.allocate_exact_size(vec2(if compact_brand { h } else { logo.x + 40.0 }, h), Sense::hover());

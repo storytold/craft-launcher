@@ -314,7 +314,7 @@ pub fn install_fonts(ctx: &egui::Context, cjk: Option<Lang>) {
 /// [`crate::widgets::Glyph`]s rather than font glyphs. The one optional extra is a system CJK face,
 /// added only when the desktop selected a CJK language; neither a CJK face nor a system-font
 /// provider is bundled.
-fn font_definitions(cjk: Option<Lang>) -> FontDefinitions {
+pub(crate) fn font_definitions(cjk: Option<Lang>) -> FontDefinitions {
     const INTER: &[u8] = include_bytes!("../../../assets/fonts/Inter-Variable.ttf");
     const ARCHIVO: &[u8] = include_bytes!("../../../assets/fonts/Archivo-Variable.ttf");
     const GEIST_MONO: &[u8] = include_bytes!("../../../assets/fonts/GeistMono-Variable.ttf");
