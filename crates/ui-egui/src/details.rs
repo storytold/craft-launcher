@@ -30,6 +30,19 @@ const SLIDE_SECS: f32 = 0.22;
 /// The width of the main button and its menu in the page's top, when the page is wide.
 const ACTION_W: f32 = 300.0;
 
+fn platform_icons(ui: &mut Ui, platforms: &str, t: &Tokens) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = vec2(5.0, 3.0);
+        for name in platforms.split(',').map(str::trim).filter(|name| !name.is_empty()) {
+            if let Some(icon) = crate::icons::platform(name) {
+                ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(18.0, 18.0)).tint(t.ink_strong).alt_text(name)).on_hover_text(name);
+            } else {
+                ui.label(RichText::new(name).size(14.0).color(t.ink_strong));
+            }
+        }
+    });
+}
+
 /// A details picture, as the backend has sent it.
 pub(crate) enum Picture {
     /// Asked for, not here yet.
@@ -123,8 +136,8 @@ impl LauncherUi {
         self.details_keys(ctx, details, open);
 
         let t = Tokens::get(ctx);
-        // The whole window is the backdrop; the card sits in the middle and rises a little as it fades in.
-        let area = ctx.content_rect();
+        // Keep both the page and its hit-blocking backdrop below the launcher header.
+        let area = crate::sheet::content_rect(ctx);
         let width = (area.width() - 64.0).clamp(480.0, 1280.0).min((area.width() - 16.0).max(1.0));
         let height = (area.height() - 40.0).clamp(320.0, 1000.0).min((area.height() - 8.0).max(1.0));
         let panel = Rect::from_center_size(area.center() + vec2(0.0, (1.0 - k) * 24.0), vec2(width, height));
@@ -149,6 +162,7 @@ impl LauncherUi {
             .accessible_name(format!("{}: {}", tl!("App details"), entry.app.name))
             .show(ctx, |ui| {
                 ui.set_opacity(k.clamp(0.0, 1.0));
+                ui.set_clip_rect(ui.clip_rect().intersect(crate::sheet::content_rect(ctx)));
                 let painter = ui.painter();
                 painter.add(theme::shadow(t).as_shape(panel, CornerRadius::ZERO));
                 painter.rect_filled(panel, CornerRadius::ZERO, t.bg);
@@ -298,7 +312,7 @@ impl LauncherUi {
 
     /// The page behind the drawer, dimmed (egui can't blur what is under a layer); a click on it closes the drawer.
     fn details_scrim(&mut self, ctx: &egui::Context, area: Rect, k: f32, t: &Tokens) {
-        egui::Area::new(Id::unique("details-scrim")).order(Order::Middle).fixed_pos(area.min).show(ctx, |ui| {
+        egui::Area::new(Id::unique("details-scrim")).order(Order::Middle).fixed_pos(area.min).constrain(false).show(ctx, |ui| {
             let (rect, resp) = ui.allocate_exact_size(area.size(), Sense::click());
             ui.painter().rect_filled(rect, CornerRadius::ZERO, theme::scrim(t, k));
             if resp.on_hover_cursor(egui::CursorIcon::Default).clicked() {
@@ -403,32 +417,39 @@ impl LauncherUi {
             let stems: Vec<&str> = entry.app.stems().collect();
             pick_asset(r, &stems, p, p.default_kinds()).map(|(a, _)| widgets::human_bytes(a.size))
         });
-        let facts: Vec<(&str, String)> = [
-            (tl!("Version"), Some(r.version.as_ref().map_or_else(|| r.tag.clone(), |v| v.to_string()))),
-            (tl!("Released"), r.published_at.map(date_text)),
-            (tl!("Download"), size),
-            (tl!("Platforms"), Some(details.platforms.to_string())),
+        let version = r.version.as_ref().map_or_else(|| r.tag.clone(), |v| v.to_string());
+        let released = r.published_at.map(date_text);
+        let facts = [
+            (tl!("Version"), Some(version.as_str()), false),
+            (tl!("Released"), released.as_deref(), false),
+            (tl!("Download"), size.as_deref(), false),
+            (tl!("Platforms"), Some(details.platforms), true),
         ]
         .into_iter()
-        .filter_map(|(label, value)| value.map(|v| (label, v)))
-        .collect();
+        .filter_map(|(label, value, platforms)| value.filter(|value| !value.trim().is_empty()).map(|value| (label, value, platforms)))
+        .collect::<Vec<_>>();
         for pair in facts.chunks(per_row) {
             ui.columns(per_row, |cols| {
-                for (col, (label, value)) in cols.iter_mut().zip(pair) {
+                for (col, (label, value, platforms)) in cols.iter_mut().zip(pair) {
                     egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(col, |ui| {
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing.y = 2.0;
                         widgets::hud(ui, label, t.faint);
-                        ui.add(egui::Label::new(RichText::new(value).size(14.0).color(t.ink_strong)).wrap());
+                        if *platforms {
+                            platform_icons(ui, value, t);
+                        } else {
+                            ui.add(egui::Label::new(RichText::new(*value).size(14.0).color(t.ink_strong)).wrap());
+                        }
                     });
                 }
             });
         }
-        ui.add_space(8.0);
-        crate::notes::show(ui, &r.notes);
+        ui.add_space(4.0);
+        widgets::eyebrow(ui, "03", tl!("What's Changed"));
+        crate::notes::show_in_details(ui, &r.notes);
     }
 
-    /// The current screenshot, large, over the whole window; ‹ › flip through them, a click or Esc closes it.
+    /// The current screenshot, large, below the header; ‹ › flip through them, a click or Esc closes it.
     fn lightbox(&mut self, ctx: &egui::Context, details: &AppDetails, t: &Tokens) {
         let count = details.shots.len();
         let at = self.detail_shot.min(count.saturating_sub(1));
@@ -438,13 +459,15 @@ impl LauncherUi {
         };
         let src = self.picture_source(details.id, shot.key);
         let failed = self.failure(details.id, shot.key);
-        let full = ctx.content_rect();
+        let full = crate::sheet::content_rect(ctx);
         egui::Area::new(Id::unique("details-lightbox"))
             .order(Order::Tooltip)
             .fixed_pos(full.min)
+            .constrain(false)
             .role(egui::Role::Dialog)
             .accessible_name(format!("{}: {}", tl!("Enlarge picture"), CraftApp::by_id(details.id).map_or("", |app| app.name)))
             .show(ctx, |ui| {
+                ui.set_clip_rect(ui.clip_rect().intersect(full));
                 let (rect, backdrop) = ui.allocate_exact_size(full.size(), Sense::click());
                 ui.painter().rect_filled(rect, CornerRadius::ZERO, theme::backdrop());
                 // As large as the window allows, but no larger than 1400 points: the files are 1200 px wide.

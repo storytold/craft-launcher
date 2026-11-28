@@ -3479,21 +3479,26 @@ fn the_lifted_caption_buttons_leave_tab_and_the_backdrop_to_the_dialog() {
     assert!(h.query_by_label("Done").is_none(), "a click left of Minimize dismisses the dialog");
 }
 
-/// The details drawer covers the header, and the window's Close stays under it.
+/// The details drawer stays below the caption buttons, including while the page is open.
 #[test]
-fn the_details_drawer_keeps_the_caption_buttons_under_it() {
+fn the_details_drawer_keeps_the_caption_buttons_accessible() {
     let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
     h.run_steps(8);
-    let close = h.get_by_label("Close").rect().center();
     h.get_by_label("PhotoCraft details").click();
     h.run_steps(10);
-    let asked = click_at(&mut h, close);
-    assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
+    for (label, command) in [
+        ("Minimize", egui::ViewportCommand::Minimized(true)),
+        ("Maximize", egui::ViewportCommand::Maximized(true)),
+        ("Close", egui::ViewportCommand::Close),
+    ] {
+        let spot = h.get_by_label(label).rect().center();
+        let asked = click_at(&mut h, spot);
+        assert!(asked.contains(&command), "{label} did not reach the launcher window: {asked:?}");
+        h.get_by_label("Enlarge picture");
+    }
 }
 
-/// The enlarged picture's own Close sits under the custom title bar's Close. With no dialog open
-/// the caption buttons stay in the header, under the picture, so that click closes the picture
-/// and not the window.
+/// The picture has its own close button below the window's Close.
 #[test]
 fn the_enlarged_pictures_close_closes_the_picture_not_the_window() {
     let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
@@ -3502,14 +3507,16 @@ fn the_enlarged_pictures_close_closes_the_picture_not_the_window() {
     h.run_steps(10);
     h.get_by_label("Enlarge picture").click();
     h.run_steps(4);
-    // The drawer's Close is lower down; the picture's is at the top right, under the title bar.
     let picture = h.query_all_by_label("Close (Esc)").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).unwrap();
-    let spot = picture.intersect(h.get_by_label("Close").rect());
-    assert!(spot.is_positive(), "the two buttons don't overlap: {picture:?}");
-    let asked = click_at(&mut h, spot.center());
+    let window = h.get_by_label("Close").rect();
+    assert!(picture.top() >= window.bottom(), "the picture's close overlaps the caption: {picture:?}");
+    let asked = click_at(&mut h, window.center());
+    assert!(asked.contains(&egui::ViewportCommand::Close), "the title bar did not receive Close: {asked:?}");
+    let asked = click_at(&mut h, picture.center());
     assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
     h.run_steps(4);
     assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1, "the enlarged picture is still open");
+    assert!(h.query_by_label("Enlarge picture").is_some(), "the drawer remains open after closing the enlarged picture");
 }
 
 /// Maximized, the window's top-right pixel is the screen's corner: there is no resize band there,
@@ -3726,6 +3733,8 @@ fn clicking_a_card_opens_its_details_drawer() {
     h.get_by_label("Website ↗");
     h.get_by_label("GitHub ↗");
     h.get_by_label("Releases ↗");
+    assert_eq!(h.query_all_by_label("What's Changed").count(), 1, "the release heading is shown once");
+    h.get_by_role_and_label(egui::accesskit::Role::Image, "Windows");
     // The picture arrows wrap around, and the thumbnails jump.
     h.get_by_label("Previous picture (←)").click();
     h.run_steps(3);

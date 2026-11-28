@@ -628,7 +628,7 @@ impl LauncherUi {
         if let Some(id) = self.nightly.uninstall.clone() {
             let mut remove = false;
             let mut cancel = false;
-            let response = egui::Modal::new(egui::Id::unique("nightly-uninstall-v1")).frame(frame).show(ctx, |ui| {
+            let response = crate::sheet::modal(egui::Id::unique("nightly-uninstall-v1")).frame(frame).show(ctx, |ui| {
                 ui.set_width(440.0_f32.min(ctx.content_rect().width() - 80.0).max(100.0));
                 ui.label(crate::widgets::heading(tl!("Uninstall developer build?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
                 ui.add_space(8.0);
@@ -655,7 +655,7 @@ impl LauncherUi {
         }
         let mut enable = false;
         let mut cancel = false;
-        let response = egui::Modal::new(egui::Id::unique("nightly-consent-v1")).frame(frame).show(ctx, |ui| {
+        let response = crate::sheet::modal(egui::Id::unique("nightly-consent-v1")).frame(frame).show(ctx, |ui| {
             ui.set_width(440.0_f32.min(ctx.content_rect().width() - 80.0).max(100.0));
             ui.label(crate::widgets::heading(tl!("Enable developer builds?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
             ui.add_space(8.0);

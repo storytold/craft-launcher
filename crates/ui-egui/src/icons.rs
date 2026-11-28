@@ -87,6 +87,17 @@ pub fn bell() -> ImageSource<'static> {
     egui::include_image!("../../../assets/ui-icons/bell.svg")
 }
 
+pub(crate) fn platform(name: &str) -> Option<ImageSource<'static>> {
+    Some(match name {
+        "macOS" => egui::include_image!("../../../assets/ui-icons/apple.svg"),
+        "Windows" => egui::include_image!("../../../assets/ui-icons/windows.svg"),
+        "Linux" => egui::include_image!("../../../assets/ui-icons/linux.svg"),
+        "FreeBSD" => egui::include_image!("../../../assets/ui-icons/freebsd.svg"),
+        name if name.eq_ignore_ascii_case("web") => social("Website")?,
+        _ => return None,
+    })
+}
+
 /// The ArtCraft "A" mark in blue, as supplied: the launcher's app icon and getartcraft.com's favicon.
 pub fn artcraft_mark() -> ImageSource<'static> {
     egui::include_image!("../../../docs/brand/artcraft-mark.svg")
