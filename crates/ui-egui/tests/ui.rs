@@ -1280,8 +1280,10 @@ fn the_install_folder_fields_default_to_the_hosts_answer() {
 /// What Browse was last opened at: `None` until it is clicked.
 type BrowsedFrom = Rc<RefCell<Option<Option<String>>>>;
 
+/// With `name_app` set, the folder also names the app it was asked about (`Msi X64 photocraft`).
 struct PackageHost {
     initial: BrowsedFrom,
+    name_app: bool,
 }
 impl Host for PackageHost {
     fn pick_folder(&mut self, initial: Option<&str>) -> Option<String> {
@@ -1290,11 +1292,12 @@ impl Host for PackageHost {
     }
     fn default_install_folder(
         &mut self,
-        _app: &artcraft_launcher_core::CraftApp,
+        app: &artcraft_launcher_core::CraftApp,
         kind: artcraft_launcher_core::PackageKind,
         arch: Option<Arch>,
     ) -> Option<String> {
-        Some(format!("{kind:?} {:?}", arch?))
+        let folder = format!("{kind:?} {:?}", arch?);
+        Some(if self.name_app { format!("{folder} {}", app.id) } else { folder })
     }
 }
 
@@ -1303,6 +1306,15 @@ impl Host for PackageHost {
 fn windows_package_harness(
     apps: &[(&str, &[&str])],
     preferred: Vec<artcraft_launcher_core::PackageKind>,
+) -> (Harness<'static, Option<LauncherUi>>, BrowsedFrom) {
+    windows_package_harness_with(apps, preferred, false)
+}
+
+/// [`windows_package_harness`], with the host's folders naming the app when `name_app` is set.
+fn windows_package_harness_with(
+    apps: &[(&str, &[&str])],
+    preferred: Vec<artcraft_launcher_core::PackageKind>,
+    name_app: bool,
 ) -> (Harness<'static, Option<LauncherUi>>, BrowsedFrom) {
     artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
     let mut events = Vec::new();
@@ -1323,7 +1335,7 @@ fn windows_package_harness(
     };
     let mut backend: Option<Box<dyn Backend>> = Some(Box::new(PlatformFake { inner: fake, platform: Platform { os: Os::Windows, arch: Arch::X64 } }));
     let initial = Rc::new(RefCell::new(None));
-    let mut host = PackageHost { initial: initial.clone() };
+    let mut host = PackageHost { initial: initial.clone(), name_app };
     let harness = test_harness_builder(egui::Theme::Dark).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
         move |ui, state: &mut Option<LauncherUi>| {
             if let Some(backend) = backend.take() {
@@ -1377,6 +1389,43 @@ fn settings_shows_a_default_folder_only_when_every_app_shares_it() {
     assert_eq!(shared, Some(Some("Msi X64".into())));
     let mixed = open_settings_browse(&[("photocraft", &x64), ("vectorcraft", &["vectorcraft-0.6.0-windows-x86.msi"])]);
     assert_eq!(mixed, Some(None));
+}
+
+/// Each app's install dialog asks the host about that app, and Settings asks about the app it
+/// reads from: one app shows its own folder, and two apps whose folders differ show none.
+#[test]
+fn install_folder_defaults_ask_the_host_about_the_right_app() {
+    let apps: &[(&str, &[&str])] = &[("photocraft", &["photocraft-0.6.0-windows-x64.msi"]), ("vectorcraft", &["vectorcraft-0.6.0-windows-x64.msi"])];
+    let (mut h, initial) = windows_package_harness_with(apps, vec![], true);
+    h.run_steps(8);
+    let mut seen = Vec::new();
+    for index in 0..2 {
+        h.query_all_by_label("Install").nth(index).unwrap().scroll_to_me();
+        h.run_steps(3);
+        h.query_all_by_label("Install").nth(index).unwrap().click();
+        h.run_steps(3);
+        h.get_by_label("Browse…").click();
+        h.run_steps(3);
+        seen.push(initial.take().flatten());
+        h.get_by_label("Cancel").click();
+        h.run_steps(3);
+    }
+    seen.sort();
+    assert_eq!(seen, [Some("Msi X64 photocraft".to_string()), Some("Msi X64 vectorcraft".to_string())]);
+
+    let open_settings_browse = |apps: &[(&str, &[&str])]| {
+        let (mut h, initial) = windows_package_harness_with(apps, vec![], true);
+        h.run_steps(8);
+        h.get_by_label("Settings").click();
+        h.run_steps(4);
+        h.get_by_label("Browse…").scroll_to_me();
+        h.run_steps(4);
+        h.get_by_label("Browse…").click();
+        h.run_steps(3);
+        initial.take()
+    };
+    assert_eq!(open_settings_browse(&apps[1..]), Some(Some("Msi X64 vectorcraft".into())));
+    assert_eq!(open_settings_browse(apps), Some(None));
 }
 
 #[cfg(windows)]
