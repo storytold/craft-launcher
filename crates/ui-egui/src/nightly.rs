@@ -958,6 +958,8 @@ mod build_date_tests {
     fn build_day_uses_the_ui_languages_date_order() {
         assert_eq!(nightly_build_label(VERSION, crate::i18n::Lang::EN), "Nightly 11/20/2026");
         assert_eq!(nightly_build_label(VERSION, crate::i18n::Lang::DE), "Nightly 20.11.2026");
+        let british = crate::i18n::lang_from_tag("en-GB").unwrap();
+        assert_eq!(nightly_build_label(VERSION, british), "Nightly 20/11/2026");
     }
     #[test]
     fn build_day_comes_from_the_tag_not_publication_or_a_stale_parsed_version() {

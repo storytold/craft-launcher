@@ -25,7 +25,7 @@ impl Script {
 /// One supported UI language.
 pub struct LangInfo {
     /// Canonical BCP 47 code (`en`, `ru`, `zh-CN`, `zh-TW`, `de`, `fr`, `pt-BR`, `es`, `cs`, `pl`,
-    /// `hu`, `ja`, `ka`, `uk`, `bs`). Also the `interfaceLanguage` value.
+    /// `hu`, `ja`, `ka`, `uk`, `bs`, `en-GB`). Also the `interfaceLanguage` value.
     pub code: &'static str,
     /// The language's name in itself, shown in the Preferences dropdown.
     pub name: &'static str,
@@ -111,7 +111,7 @@ pub(super) fn plural_bosnian(n: u64) -> usize {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 15] = [
+pub static LANGUAGES: [LangInfo; 16] = [
     LangInfo {
         code: "en",
         name: "English",
@@ -275,6 +275,17 @@ pub static LANGUAGES: [LangInfo; 15] = [
         plural: plural_bosnian,
         plural_forms: 3,
         complete_menus: true,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "en-GB",
+        name: "English (United Kingdom)",
+        english_name: "English (United Kingdom)",
+        script: None,
+        source: include_str!("en-GB.tsv"),
+        plural: plural_one_other,
+        plural_forms: 2,
+        complete_menus: false,
         catalog: OnceLock::new(),
     },
 ];

@@ -61,7 +61,12 @@ fn placeholders(template: &str) -> BTreeSet<String> {
 fn catalogs_have_rows_and_no_empty_translations() {
     for lang in catalogs() {
         let rows = rows(lang);
-        assert!(rows.iter().filter(|r| r.1.is_empty()).count() > 50, "{}: plain rows were skipped", lang.code);
+        let plain = rows.iter().filter(|r| r.1.is_empty()).count();
+        assert!(plain > 0, "{}: no plain rows were parsed", lang.code);
+        // A regional English catalog intentionally lists only the strings that differ from English.
+        if lang.complete_menus {
+            assert!(plain > 50, "{}: plain rows were skipped", lang.code);
+        }
         for (line, _, source, translation) in rows {
             assert!(!source.is_empty() && !translation.is_empty(), "{} line {line}: empty field", lang.code);
         }
@@ -308,6 +313,22 @@ fn locale_tags_resolve() {
     assert_eq!(lang_from_tag("xx-XX"), None);
     assert_eq!(lang_from_tag(""), None);
     assert_eq!(super::detect::first_supported(["xx-XX", "ru-RU", "en-US"]), Some(Lang::RU));
+}
+
+#[test]
+fn a_british_locale_formats_absolute_dates_day_first() {
+    let at = artcraft_launcher_core::time::parse_rfc3339("2026-11-19T12:00:00Z").unwrap();
+    let (year, _, day) = crate::local_time::civil(at);
+    let previous = super::current();
+    let render = |locale: &str| {
+        super::set_current(lang_from_tag(locale).unwrap());
+        crate::views::date_text(at)
+    };
+    let british = render("en_GB.UTF-8");
+    let american = render("en-US");
+    super::set_current(previous);
+    assert_eq!(british, format!("{day} Nov {year}"));
+    assert_eq!(american, format!("Nov {day}, {year}"));
 }
 
 #[test]
