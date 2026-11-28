@@ -57,6 +57,6 @@ dunce = "1"
 mslnk = "0.1.8"
 # Safe wrappers for waiting for another process, reading a file's VERSIONINFO, this account's
 # SID and the one elevation prompt a batch of installs shares (ShellExecuteEx).
-winsafe = { version = "0.0.29", features = ["kernel", "version", "advapi", "shell"] }
+winsafe = { version = "0.0.29", features = ["kernel", "version", "advapi", "shell", "oleaut"] }
 # Authenticode checks through WinTrust: the update helper installs only files from the launcher's publisher.
 verifysign = "1"
