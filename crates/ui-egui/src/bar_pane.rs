@@ -32,7 +32,7 @@ impl BarPane {
         zoom: f32,
         rect: egui::Rect,
         (choice, cjk): (ThemeChoice, Option<Lang>),
-        bar: impl FnOnce(&mut egui::Ui, egui::Rect),
+        mut bar: impl FnMut(&mut egui::Ui, egui::Rect),
     ) {
         self.pane.set_label(label);
         let ctx = self.pane.context();
