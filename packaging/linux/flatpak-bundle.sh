@@ -75,6 +75,30 @@ fi
 if [[ "$TEST" = 1 ]]; then
   flatpak install --user -y --noninteractive --reinstall "$OUT"
   flatpak info --user "$APP_ID"
+  # The bundle's metadata must not declare a plain X11 socket: flatpak's build-finish turned
+  # --socket=fallback-x11 into "x11;…;fallback-x11" for years (#1129), and how fallback-x11
+  # reaches the metadata has changed more than once between versions since. At runtime flatpak
+  # keeps X11 a fallback either way; the metadata is what `flatpak info`, Flatseal and
+  # permission audits read. Rather than trust any one version, the finished bundle is checked:
+  # the manifest's promise — X11 only when there is no Wayland compositor — must survive the
+  # build.
+  sockets=";$(flatpak info --user --show-metadata "$APP_ID" | sed -n 's/^sockets=//p')"
+  has_fallback=0
+  unsafe_x11=0
+  IFS=';' read -r -a socket_entries <<< "$sockets"
+  for socket in "${socket_entries[@]}"; do
+    case "$socket" in
+      # The two spellings of "X11 only when there is no Wayland compositor".
+      fallback-x11 | 'if:x11:!has-wayland') has_fallback=1 ;;
+      # Any other X11 entry — plain, or conditional on something that can hold in a Wayland
+      # session — is a declaration the manifest does not make.
+      x11 | if:x11:*) unsafe_x11=1 ;;
+    esac
+  done
+  if [[ "$unsafe_x11" == 1 || "$has_fallback" == 0 ]]; then
+    echo "::error::the bundle's sockets ($sockets) declare a plain X11 socket the manifests do not, or lost the fallback; this flatpak's build-finish serializes fallback-x11 unexpectedly (#1129)" >&2
+    exit 1
+  fi
   flatpak run --command=sh "$APP_ID" -c 'test -x /app/bin/artcraft-launcher && ls /app/share/applications /app/share/metainfo /app/share/icons/hicolor/scalable/apps'
 fi
 echo "==> done"
