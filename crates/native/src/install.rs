@@ -1953,6 +1953,8 @@ pub mod macos {
     const HDIUTIL: &str = "/usr/bin/hdiutil";
     const DITTO: &str = "/usr/bin/ditto";
     const CODESIGN: &str = "/usr/bin/codesign";
+    pub(super) const LSREGISTER: &str = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+    const LSREGISTER_TIMEOUT: Duration = Duration::from_secs(30);
 
     /// Mounts `dmg`, copies and verifies the `.app` bundle inside, and places it in Applications.
     pub fn install_dmg(
@@ -2039,21 +2041,72 @@ pub mod macos {
         {
             return Err(format!("{} already exists and wasn't installed by ArtCraft Launcher", dest.display()));
         }
-        let staging = super::staging_dir(&dir)?;
-        let staged = staging.path().join(&bundle);
-        let (Some(src_s), Some(staged_s)) = (src.to_str(), staged.to_str()) else { return Err("unusual characters in a path".into()) };
-        // ditto keeps the code signature and symlinks intact. The disk image's volume adds Finder
-        // metadata (com.apple.FinderInfo) to the files; leave it and the extended attributes
-        // behind, or `codesign --verify --strict` rejects the bundle as carrying "detritus". A
-        // bundle's signature lives in its files, not in extended attributes.
-        process::run(DITTO, &["--norsrc", "--noextattr", "--noacl", src_s, staged_s], Duration::from_secs(600))
-            .map_err(|reason| format!("couldn't copy the app: {reason}"))?;
-        if !std::fs::symlink_metadata(&staged).is_ok_and(|m| m.is_dir()) {
-            return Err("the copied app is not an app directory".into());
+        // Test builds install throwaway bundles under tempdir; skip mutating the host's
+        // LaunchServices database during `install_dmg` tests (`macos_checks` exercises
+        // `stage_and_swap` and `sync_launch_services_with` directly).
+        if cfg!(test) {
+            stage_and_swap(app, &src, &dest, expect, |_, _, _| Ok(String::new()))
+        } else {
+            stage_and_swap(app, &src, &dest, expect, process::run)
         }
-        let found = crate::detect::macos::read_bundle(app, &staged).ok_or("the copied app is incomplete")?;
-        check_and_swap(app, &staged, &dest, &found, expect, process::run_with_output)?;
-        Ok(dest)
+    }
+
+    /// Copies `src` into a staging folder beside `dest`, verifies it, swaps it into `dest`,
+    /// removes the staging folder, and updates LaunchServices through `run_lsregister`.
+    pub(super) fn stage_and_swap(
+        app: &CraftApp,
+        src: &Path,
+        dest: &Path,
+        expect: &Expect<'_>,
+        run_lsregister: impl FnMut(&str, &[&str], Duration) -> Result<String, String>,
+    ) -> Result<PathBuf, String> {
+        let dir = dest.parent().ok_or("the installed app has no parent folder")?;
+        let bundle = src.file_name().ok_or("the source app has no bundle name")?;
+        let staging = super::staging_dir(dir)?;
+        let staged = staging.path().join(bundle);
+        let result = (|| {
+            let (Some(src_s), Some(staged_s)) = (src.to_str(), staged.to_str()) else {
+                return Err("unusual characters in a path".into());
+            };
+            // ditto keeps the code signature and symlinks intact. The disk image's volume adds Finder
+            // metadata (com.apple.FinderInfo) to the files; leave it and the extended attributes
+            // behind, or `codesign --verify --strict` rejects the bundle as carrying "detritus". A
+            // bundle's signature lives in its files, not in extended attributes.
+            process::run(DITTO, &["--norsrc", "--noextattr", "--noacl", src_s, staged_s], Duration::from_secs(600))
+                .map_err(|reason| format!("couldn't copy the app: {reason}"))?;
+            if !std::fs::symlink_metadata(&staged).is_ok_and(|m| m.is_dir()) {
+                return Err("the copied app is not an app directory".into());
+            }
+            let found = crate::detect::macos::read_bundle(app, &staged).ok_or("the copied app is incomplete")?;
+            check_and_swap(app, &staged, dest, &found, expect, process::run_with_output)?;
+            Ok(dest.to_path_buf())
+        })();
+        // Drop the staging directory before calling lsregister so LaunchServices cannot re-index
+        // the temporary path while `-u` removes it (whether the swap succeeded or failed).
+        drop(staging);
+        sync_launch_services_with(&staged, result.as_deref().ok(), run_lsregister);
+        result
+    }
+
+    /// Unregisters the temporary staging bundle path from LaunchServices and, when the swap
+    /// succeeded, force-registers the final installed path. Failures are logged and ignored so a
+    /// LaunchServices error never fails an otherwise complete install.
+    pub(super) fn sync_launch_services_with(
+        staged: &Path,
+        installed: Option<&Path>,
+        mut run: impl FnMut(&str, &[&str], Duration) -> Result<String, String>,
+    ) {
+        if let Some(staged_s) = staged.to_str()
+            && let Err(reason) = run(LSREGISTER, &["-u", staged_s], LSREGISTER_TIMEOUT)
+        {
+            log::warn!("couldn't unregister staged bundle {} from LaunchServices: {reason}", staged.display());
+        }
+        if let Some(dest) = installed
+            && let Some(dest_s) = dest.to_str()
+            && let Err(reason) = run(LSREGISTER, &["-f", dest_s], LSREGISTER_TIMEOUT)
+        {
+            log::warn!("couldn't register {} with LaunchServices: {reason}", dest.display());
+        }
     }
 
     /// Unsigned fixtures are allowed only in test builds, never in production installs.
@@ -4234,7 +4287,7 @@ mod tests {
     mod macos_checks {
         use artcraft_launcher_core::{SUITE, version};
 
-        use super::macos::{Expect, install_dmg, signed_by};
+        use super::macos::{Expect, LSREGISTER, install_dmg, signed_by, stage_and_swap, sync_launch_services_with};
         use super::*;
         use artcraft_launcher_core::catalog::ARTCRAFT_TEAM_ID as TEAM_ID;
 
@@ -4432,6 +4485,104 @@ mod tests {
                 std::fs::read_dir(&apps).unwrap().map(|e| e.unwrap().file_name()).collect::<Vec<_>>(),
                 [std::ffi::OsString::from("PhotoCraft.app")]
             );
+        }
+
+        /// `stage_and_swap` unregisters the deleted staging path from LaunchServices on both
+        /// success and failure, force-registers the final destination only on success, and never
+        /// turns a LaunchServices failure into an install error.
+        #[test]
+        fn stage_and_swap_unregisters_staging_and_registers_destination() {
+            let dir = tempfile::tempdir().unwrap();
+            let src_dir = dir.path().join("src");
+            let apps = dir.path().join("Applications");
+            std::fs::create_dir_all(&apps).unwrap();
+            let src = bundle(&src_dir, "0.6.0");
+            let dest = apps.join("PhotoCraft.app");
+
+            // Success path: staging is gone before `-u`, then `-f` registers `dest`.
+            let mut calls = Vec::new();
+            let placed = stage_and_swap(photocraft(), &src, &dest, &Expect { team: None, version: None }, |prog, args, _| {
+                let target = Path::new(args[1]);
+                calls.push((prog.to_string(), args[0].to_string(), args[1].to_string(), target.exists()));
+                Ok(String::new())
+            })
+            .unwrap();
+            assert_eq!(placed, dest);
+            assert_eq!(calls.len(), 2);
+            assert_eq!(calls[0].0, LSREGISTER);
+            assert_eq!(calls[0].1, "-u");
+            assert!(calls[0].2.contains(".artcraft-launcher-"), "staged path: {}", calls[0].2);
+            assert!(!calls[0].3, "staging bundle must be removed before lsregister -u runs");
+            assert_eq!(calls[1], (LSREGISTER.to_string(), "-f".to_string(), dest.display().to_string(), true));
+
+            // Failure path (version mismatch): staging is still unregistered, destination is not registered.
+            let wrong = version::parse("9.9.9").unwrap();
+            let mut fail_calls = Vec::new();
+            let err = stage_and_swap(photocraft(), &src, &dest, &Expect { team: None, version: Some(&wrong) }, |prog, args, _| {
+                let target = Path::new(args[1]);
+                fail_calls.push((prog.to_string(), args[0].to_string(), args[1].to_string(), target.exists()));
+                Ok(String::new())
+            });
+            assert!(err.is_err());
+            assert_eq!(fail_calls.len(), 1);
+            assert_eq!(fail_calls[0].0, LSREGISTER);
+            assert_eq!(fail_calls[0].1, "-u");
+            assert!(fail_calls[0].2.contains(".artcraft-launcher-"), "staged path: {}", fail_calls[0].2);
+            assert!(!fail_calls[0].3, "staging bundle must be removed before lsregister -u runs on failure");
+
+            // A failing lsregister call must not fail an otherwise completed install.
+            let ok = stage_and_swap(photocraft(), &src, &dest, &Expect { team: None, version: None }, |_, _, _| Err("lsregister unavailable".into()));
+            assert_eq!(ok.unwrap(), dest);
+        }
+
+        /// End-to-end check against macOS `lsregister`: unregistering a moved staging path removes
+        /// its stale entry and `-f` registers the final bundle path.
+        #[test]
+        fn lsregister_clears_staged_entry_and_registers_installed_bundle() {
+            struct Cleanup(Vec<PathBuf>);
+            impl Drop for Cleanup {
+                fn drop(&mut self) {
+                    for path in &self.0 {
+                        if let Some(s) = path.to_str() {
+                            let _ = process::run(LSREGISTER, &["-u", s], std::time::Duration::from_secs(30));
+                        }
+                    }
+                }
+            }
+
+            let dir = tempfile::tempdir().unwrap();
+            let tag = format!(".artcraft-launcher-lsreg-{}", std::process::id());
+            let staging = dir.path().join(&tag);
+            let staged = staging.join("LaunchServicesTest.app");
+            let contents = staged.join("Contents");
+            std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+            let bundle_id = format!("ai.storyteller.craft-launcher-lsreg-test.{}", std::process::id());
+            std::fs::write(
+                contents.join("Info.plist"),
+                format!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict>\
+                     <key>CFBundleIdentifier</key><string>{bundle_id}</string>\
+                     <key>CFBundleExecutable</key><string>LaunchServicesTest</string>\
+                     <key>CFBundleShortVersionString</key><string>0.0.1</string></dict></plist>"
+                ),
+            )
+            .unwrap();
+            std::fs::write(contents.join("MacOS/LaunchServicesTest"), "0.0.1").unwrap();
+            let dest = dir.path().join("LaunchServicesTest.app");
+            let _cleanup = Cleanup(vec![staged.clone(), dest.clone()]);
+
+            // Simulate LaunchServices indexing the bundle while it sat in the staging directory.
+            process::run(LSREGISTER, &["-f", staged.to_str().unwrap()], std::time::Duration::from_secs(30)).unwrap();
+            std::fs::rename(&staged, &dest).unwrap();
+            std::fs::remove_dir(&staging).unwrap();
+
+            sync_launch_services_with(&staged, Some(&dest), process::run);
+
+            let out = std::process::Command::new(LSREGISTER).arg("-dump").output().unwrap();
+            assert!(out.status.success(), "lsregister -dump failed: {}", String::from_utf8_lossy(&out.stderr));
+            let dump = String::from_utf8_lossy(&out.stdout);
+            assert!(!dump.contains(&tag), "stale staging entry remained in LaunchServices database");
+            assert!(dump.contains(dest.to_str().unwrap()), "installed bundle was not registered in LaunchServices database");
         }
 
         /// A real release passes. Run with `CRAFT_APP=/path/to/PhotoCraft.app cargo test -p
