@@ -335,35 +335,27 @@ fn a_refresh_while_agents_are_off_writes_nothing() {
 }
 
 /// A refresh that can't write the app list says so, so the caller tries again later.
-#[cfg(unix)]
+/// A folder in place of the temporary file stops the write for every user, root included.
 #[test]
 fn a_refresh_that_cannot_write_the_app_list_fails() {
-    use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     write_apps(dir.path(), &[]).unwrap();
-    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
-    // Running as root, permissions don't stop the write.
-    let writable = std::fs::write(dir.path().join("probe"), b"").is_ok();
+    std::fs::create_dir(dir.path().join(format!("{}.{}.tmp", craft_ai_agents::APPS_FILE, std::process::id()))).unwrap();
     let result = refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
-    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(writable || result.is_err(), "{result:?}");
+    assert!(result.is_err(), "{result:?}");
 }
 
 /// A refresh that can't read the app list says so, so the caller tries again later instead of
-/// treating agents as off until the installed apps change.
+/// treating agents as off until the installed apps change. A file in place of the folder makes
+/// reading the list fail with an I/O error other than "not found" for every user, root included.
 #[cfg(unix)]
 #[test]
 fn a_refresh_that_cannot_read_the_app_list_fails() {
-    use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
-    write_apps(dir.path(), &[]).unwrap();
-    let list = dir.path().join(craft_ai_agents::APPS_FILE);
-    std::fs::set_permissions(&list, std::fs::Permissions::from_mode(0o000)).unwrap();
-    // Running as root, permissions don't stop the read.
-    let readable = std::fs::File::open(&list).is_ok();
-    let result = refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
-    std::fs::set_permissions(&list, std::fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(readable || result.is_err(), "{result:?}");
+    let not_a_folder = dir.path().join("agents");
+    std::fs::write(&not_a_folder, b"").unwrap();
+    let result = refresh_in(Some(&not_a_folder), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    assert!(result.is_err(), "{result:?}");
 }
 
 /// A broken app list counts as off: a refresh leaves it alone and succeeds, so it is not retried
