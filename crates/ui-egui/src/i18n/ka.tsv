@@ -432,7 +432,7 @@ column	Author	ავტორი
 	Download selected version	არჩეული ვერსიის ჩამოტვირთვა
 	Older launcher versions require a manual reinstall.	Launcher-ის ძველ ვერსიებს ხელით ხელახალი ინსტალაცია სჭირდება.
 	Your files may not open in older versions.	თქვენი ფაილები შეიძლება ძველ ვერსიებში არ გაიხსნას.
-	Enable automatic installs in Settings to follow new nightly builds.	ახალი ღამის ვერსიების მისაღებად პარამეტრებში ჩართეთ ავტომატური ინსტალაცია.
+	Enable automatic installs in Settings to follow new nightly builds.	ახალი ღამის აწყობების მისაღებად პარამეტრებში ჩართეთ ავტომატური ინსტალაცია.
 texturecraft	3D texture painting	3D ტექსტურების ხატვა
 texturecraft	Paint materials on 3D models and export textures.	3D მოდელებზე მასალებით ხატვა და ტექსტურების ექსპორტი.
 texturecraft	Materials	მასალები
@@ -448,6 +448,9 @@ materialcraft	Combine noises, patterns and filters.	ხმაურების,
 materialcraft	Live previews	ცოცხალი წინასწარი ნახვა
 materialcraft	Preview materials in 2D and on 3D models.	მასალების წინასწარი ნახვა 2D-ში და 3D მოდელებზე.
 	Download size: {size}	ჩამოტვირთვის ზომა: {size}
+	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak პაკეტების გადატანა ArtCraft OCI-ზე (ექსპერიმენტული)
+	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	განახლებისას ArtCraft-ის საკუთარი აპლიკაციები OCI-ზე გადადის, თუ შესაბამისი პაკეტი ხელმისაწვდომია. სხვა შემთხვევაში კვლავ Flatpak პაკეტები გამოიყენება.
+	The OCI repository is a preview with GPG verification disabled.	OCI რეპოზიტორია წინასწარი ვერსიაა და მასში GPG-ით შემოწმება გამორთულია.
 anicraft	2D vector animation	2D ვექტორული ანიმაცია
 anicraft	Vector animation on a timeline you know.	ვექტორული ანიმაცია ნაცნობ ქრონოლოგიაზე.
 anicraft	Open-source 2D vector animation, built in pure Rust.	ღია კოდის 2D ვექტორული ანიმაცია, შექმნილი სუფთა Rust-ში.
@@ -483,75 +486,73 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts	შრიფტები
 	Allow font downloads	შრიფტების ჩამოტვირთვის დაშვება
 	Couldn't change the font download setting: {e}	შრიფტების ჩამოტვირთვის პარამეტრის შეცვლა ვერ მოხერხდა: {e}
-	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	შრიფტები მათი წყაროებიდან მხოლოდ მაშინ ჩამოიტვირთება, როცა შრიფტს აინსტალირებთ. შრიფტების გადახედვას ქვემოთ საკუთარი პარამეტრი აქვს. ამ პარამეტრს ყველა Craft აპლიკაცია იზიარებს.
+	Fonts download from their sources only when you install one. Font previews have their own setting below. Every Craft app shares this setting.	შრიფტები თავიანთი წყაროებიდან მხოლოდ მაშინ ჩამოიტვირთება, როცა შრიფტს აინსტალირებთ. შრიფტების ნიმუშებს ქვემოთ საკუთარი პარამეტრი აქვს. ამ პარამეტრს ყველა Craft აპლიკაცია იზიარებს.
 	Sources	წყაროები
 	Apps	აპლიკაციები
 	Fonts for every Craft app	შრიფტები ყველა Craft აპლიკაციისთვის
 # The font preview settings in Settings' Fonts box.
-	Show font previews	შრიფტების გადახედვის ჩვენება
+	Show font previews	შრიფტების ნიმუშების ჩვენება
 	Advanced	დამატებითი
-	Font preview server	შრიფტების გადახედვის სერვერი
+	Font preview server	შრიფტების ნიმუშების სერვერი
 	Couldn't use this server: {e}	ამ სერვერის გამოყენება ვერ მოხერხდა: {e}
-	Couldn't change the font previews setting: {e}	შრიფტების გადახედვის პარამეტრის შეცვლა ვერ მოხერხდა: {e}
-	Set by {name} in the environment.	დაყენებულია გარემოში {name}-ით.
-	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	დაუინსტალირებელი შრიფტების გადახედვა ამ სერვერიდან ჩანს და ინსტალაციაც ჯერ მას ცდის. ცარიელი ნიშნავს ნაგულისხმევ სერვერს.
+	Couldn't change the font previews setting: {e}	შრიფტების ნიმუშების პარამეტრის შეცვლა ვერ მოხერხდა: {e}
+	Set by {name} in the environment.	დაყენებულია გარემოს ცვლადით {name}.
+	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	დაუინსტალირებელი შრიფტების ნიმუშები ამ სერვერიდან ჩანს და ინსტალაციაც პირველ რიგში მას მიმართავს. თუ ველი ცარიელია, გამოიყენება ნაგულისხმევი სერვერი.
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
-	Enable developer builds	Enable developer builds
-	Enable developer builds?	Enable developer builds?
-	Install developer build	Install developer build
-	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
-	No developer build is available yet.	No developer build is available yet.
-	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
-	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
-	Open stable	Open stable
-	Developer Builds	Developer Builds
-	Developer Build	Developer Build
-	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
-	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
-	Show installed copy	Show installed copy
-	Stable	Stable
-	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
-	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
-	Try nightly builds	Try nightly builds
-	Turn off developer builds	Turn off developer builds
-	Uninstall developer build	Uninstall developer build
-	Uninstall developer build?	Uninstall developer build?
-	Uninstall developer build…	Uninstall developer build…
+	Enable developer builds	დეველოპერული აწყობების ჩართვა
+	Enable developer builds?	დეველოპერული აწყობების ჩართვა?
+	Install developer build	დეველოპერული აწყობის ინსტალაცია
+	New builds as the apps evolve. Stable copies stay separate.	ახალი ვერსიები აპლიკაციების განვითარების კვალდაკვალ. სტაბილური ასლები ცალკე რჩება.
+	No developer build is available yet.	დეველოპერული აწყობა ჯერ ხელმისაწვდომი არ არის.
+	Only this developer build will be removed. Stable copies and user data are kept.	წაიშლება მხოლოდ ეს დეველოპერული აწყობა. სტაბილური ასლები და მომხმარებლის მონაცემები შენარჩუნდება.
+	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	მხოლოდ გადამოწმებული, იზოლირებული ვერსიების ინსტალაციაა შესაძლებელი. გამორთვა დაინსტალირებულ ასლებსა და მათ მონაცემებს არასოდეს შლის.
+	Open stable	სტაბილური ვერსიის გახსნა
+	Developer Builds	დეველოპერული აწყობები
+	Developer Build	დეველოპერული აწყობა
+	Developer builds are off. Installed copies and their data are kept.	დეველოპერული აწყობები გამორთულია. დაინსტალირებული ასლები და მათი მონაცემები შენარჩუნებულია.
+	Developer build installation is unavailable on this platform.	ამ პლატფორმაზე დეველოპერული აწყობების ინსტალაცია მიუწვდომელია.
+	Show installed copy	დაინსტალირებული ასლის ჩვენება
+	Stable	სტაბილური
+	These are developer builds. They will have issues and may lose work.	ეს დეველოპერული აწყობებია. მათში იქნება ხარვეზები და შესაძლოა ნამუშევარი დაიკარგოს.
+	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	ისინი ცალკე ინსტალირდება, ცალკე პარამეტრებით. შეინახეთ სარეზერვო ასლები: უფრო ახალ ვერსიაში შენახული ფაილები შესაძლოა სტაბილურ ვერსიებში არ გაიხსნას.
+	Try nightly builds	ღამის აწყობების გამოცდა
+	Turn off developer builds	დეველოპერული აწყობების გამორთვა
+	Uninstall developer build	დეველოპერული აწყობის დეინსტალაცია
+	Uninstall developer build?	დეველოპერული აწყობის დეინსტალაცია?
+	Uninstall developer build…	დეველოპერული აწყობის დეინსტალაცია…
 
 # Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
-	Developer builds are off.	Developer builds are off.
-	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
-	Installed developer build	Installed developer build
-	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
+	Developer builds are off.	დეველოპერული აწყობები გამორთულია.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	დაინსტალირებული ასლები და მათი მონაცემები შენარჩუნებულია. ახალი აწყობების მოსაძიებლად პარამეტრებში ჩართეთ დეველოპერული აწყობები.
+	Installed developer build	დაინსტალირებული დეველოპერული აწყობა
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	ღამის აწყობებს ცალკე ინსტალაცია და პარამეტრები აქვს. სტაბილური განახლებები უცვლელი რჩება.
 
-# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
-# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
-	Could not check for developer builds.	Could not check for developer builds.
-	No developer builds are available yet.	No developer builds are available yet.
-	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	წინასწარი ვერსიების არხი ყოველ ღამე ავტომატურად განახლდება უახლესი კოდით. მასში შეიძლება იყოს შეცდომები, წარმადობისა და სტაბილურობის პრობლემები და დაუსრულებელი ფუნქციები. მნიშვნელოვანი სამუშაოსთვის გამოიყენეთ სტაბილური არხი.
+# Availability-only Developer Builds destination
+	Could not check for developer builds.	დეველოპერული აწყობების შემოწმება ვერ მოხერხდა.
+	No developer builds are available yet.	დეველოპერული აწყობები ჯერ ხელმისაწვდომი არ არის.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	დეველოპერული არხი ყოველ ღამე ავტომატურად განახლდება უახლესი კოდით. მასში შეიძლება იყოს შეცდომები, წარმადობისა და სტაბილურობის პრობლემები და დაუსრულებელი ფუნქციები. მნიშვნელოვანი სამუშაოსთვის გამოიყენეთ სტაბილური არხი.
 
-# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
-# and are kept unchanged until storytold/craft-i18n updates their wording.
-	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	წინასწარი ვერსიები სიახლეების ადრე გამოცდის საშუალებას გაძლევთ, თუმცა მათში იქნება ხარვეზები და შესაძლოა შეუნახავი ნამუშევარი დაიკარგოს.
-	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	ისინი სტაბილური აპლიკაციების გვერდით, საკუთარი პარამეტრებითა და მონაცემებით ყენდება და თქვენს სტაბილურ გარემოს უცვლელად ტოვებს. მნიშვნელოვანი ფაილების წინასწარ ვერსიაში გახსნამდე ყოველთვის შექმენით მათი სარეზერვო ასლები, რადგან უფრო ახალ ვერსიებში შენახული ფაილები შესაძლოა სტაბილურ ვერსიებში აღარ გაიხსნას.
-	You can turn this off at any time without deleting your installed developer builds or their data.	ამ პარამეტრის გამორთვა ნებისმიერ დროს შეგიძლიათ, დაინსტალირებული წინასწარი ვერსიებისა და მათი მონაცემების წაშლის გარეშე.
+# Approved consent Copy A: translated paragraphs.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	დეველოპერული აწყობები სიახლეების ადრე გამოცდის საშუალებას გაძლევთ, თუმცა მათში იქნება ხარვეზები და შესაძლოა შეუნახავი ნამუშევარი დაიკარგოს.
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	ისინი სტაბილური აპლიკაციების გვერდით, საკუთარი პარამეტრებითა და მონაცემებით ინსტალირდება და თქვენს სტაბილურ გარემოს უცვლელად ტოვებს. მნიშვნელოვანი ფაილების დეველოპერულ აწყობაში გახსნამდე ყოველთვის შექმენით მათი სარეზერვო ასლები, რადგან უფრო ახალ ვერსიებში შენახული ფაილები შესაძლოა სტაბილურ ვერსიებში აღარ გაიხსნას.
+	You can turn this off at any time without deleting your installed developer builds or their data.	ამ პარამეტრის გამორთვა ნებისმიერ დროს შეგიძლიათ, დაინსტალირებული დეველოპერული აწყობებისა და მათი მონაცემების წაშლის გარეშე.
 
 # Nightly build calendar date (date-only, never publication time or a local timestamp).
 	{month}/{day}/{year}	{day}.{month}.{year}
 
 # Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
 	Nightly builds	ღამის აწყობები
-	Discover nightly builds (Developer Builds page)	ღამის აწყობების მოძიება (Developer Builds გვერდი)
+	Discover nightly builds (Developer Builds page)	ღამის აწყობების მოძიება (გვერდი „დეველოპერული აწყობები“)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	ცალკე ინსტალაციები, პარამეტრები და მონაცემები. გამორთვა ინარჩუნებს დაინსტალირებულ ასლებსა და მათ მონაცემებს.
-	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
-	Betas and release candidates can replace your stable installation.	ბეტა და გამოშვების კანდიდატმა ვერსიებმა შეიძლება ჩაანაცვლოს თქვენი სტაბილური ინსტალაცია.
+	Developer builds aren't available on this platform yet.	ამ პლატფორმაზე დეველოპერული აწყობები ჯერ ხელმისაწვდომი არ არის.
+	Betas and release candidates can replace your stable installation.	ბეტა-ვერსიებმა და გამოშვების კანდიდატებმა შეიძლება ჩაანაცვლოს თქვენი სტაბილური ინსტალაცია.
 
 # Nightly status (English fallback; localization is maintained upstream).
-	Previous verified result is stale. Check again before installing.	Previous verified result is stale. Check again before installing.
-	Last verified: {ago}	Last verified: {ago}
-	Last attempt: {ago}	Last attempt: {ago}
-	Retry available in {minutes} min	Retry available in {minutes} min
+	Previous verified result is stale. Check again before installing.	წინა გადამოწმების შედეგი მოძველებულია. ინსტალაციამდე ხელახლა შეამოწმეთ.
+	Last verified: {ago}	ბოლო გადამოწმება: {ago}
+	Last attempt: {ago}	ბოლო მცდელობა: {ago}
+	Retry available in {minutes} min	ხელახლა ცდა შესაძლებელი იქნება {minutes} წუთში
 	Announcements	განცხადებები
 	No announcements	განცხადებები არ არის
 @plural	Announcements, {n} unread|Announcements, {n} unread	განცხადებები, {n} წაუკითხავი|განცხადებები, {n} წაუკითხავი
