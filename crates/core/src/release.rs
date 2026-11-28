@@ -476,7 +476,9 @@ pub fn parse_sha256sums(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|line| {
             let (hash, rest) = line.trim().split_once(char::is_whitespace)?;
-            let name = rest.trim_start().trim_start_matches('*');
+            let name = rest.trim_start();
+            // Only one asterisk is a binary-mode marker; any others belong to the file name.
+            let name = name.strip_prefix('*').unwrap_or(name);
             (is_hex64(hash) && valid_file_name(name)).then(|| (hash.to_ascii_lowercase(), name.to_string()))
         })
         .collect()
@@ -827,6 +829,15 @@ mod tests {
         assert_eq!(parse_github_release_list(json, REPO, false).unwrap().unwrap().tag, "v0.5.0");
         assert_eq!(parse_github_release_list(json, REPO, true).unwrap().unwrap().tag, "v0.6.0-rc.1");
         assert_eq!(parse_github_release_list("[]", REPO, false).unwrap(), None);
+    }
+
+    #[test]
+    fn checksum_binary_marker_is_consumed_only_once() {
+        let other_hash = "0".repeat(64);
+        for invalid in ["**app.zip", "***app.zip"] {
+            let sums = parse_sha256sums(&format!("{HASH}  first.zip\n{HASH} {invalid}\n{other_hash} *app.zip\n"));
+            assert_eq!(sums, [(HASH.to_string(), "first.zip".to_string()), (other_hash.clone(), "app.zip".to_string())], "{invalid}");
+        }
     }
 
     #[test]
