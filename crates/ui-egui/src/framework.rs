@@ -18,6 +18,7 @@ use craft_theme::{ThemeDef, ThemeId, Variants};
 use craft_ui::fonts::{I18nScripts, SystemFonts, UiFonts};
 use craft_ui::runtime::env::{RootEnv, Scale};
 use craft_ui::runtime::frame::FrameInput;
+use craft_ui::runtime::install::WheelModifiers;
 use craft_ui::runtime::keys::{Intent, with_window_intents};
 use craft_ui::shell::embed::{self, CloseDecision};
 use craft_window::system::{NoWindows, SystemWindows, WindowSystem};
@@ -32,7 +33,12 @@ pub use craft_ui::shell::embed::before_ui;
 static SCRIPTS: I18nScripts = I18nScripts;
 
 fn install_with(ctx: &egui::Context, app_id: &str, shell: ShellInfo, windows: Arc<dyn WindowSystem>) -> Result<(), String> {
-    let spec = craft_ui::InstallSpec::new(shell, windows).app_id(app_id);
+    let mut spec = craft_ui::InstallSpec::new(shell, windows).app_id(app_id);
+    // On a Mac, a finger resting on the trackpad while ⌘ is held for a shortcut would zoom the whole launcher: there the
+    // wheel never zooms. Pinching and ⌘+ / ⌘− / ⌘0 still do.
+    if cfg!(target_os = "macos") {
+        spec = spec.wheel(WheelModifiers::new(egui::Modifiers::NONE, egui::Modifiers::SHIFT));
+    }
     // `theme::install_fonts` replaces this first stack before anything is drawn.
     let fonts = UiFonts::new(&SCRIPTS).system_fonts(SystemFonts::Off);
     embed::install(ctx, spec, &fonts).map(drop).map_err(|error| format!("the UI runtime could not be installed: {error}"))
