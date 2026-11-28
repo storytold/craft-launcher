@@ -38,6 +38,63 @@ fn the_app_list_has_every_app_with_a_cli_started_as_plain_mcp() {
     assert_eq!(v["version"], 1);
 }
 
+fn detected_copy(location: &Path, source: artcraft_launcher_core::status::InstallSource) -> artcraft_launcher_core::Installed {
+    artcraft_launcher_core::Installed {
+        version: None,
+        source,
+        location: location.to_str().unwrap().into(),
+        package: None,
+        externally_managed: false,
+        origin: None,
+        installation: None,
+    }
+}
+
+#[test]
+fn a_macos_bundle_contributes_its_bundled_cli_to_the_app_list() {
+    use artcraft_launcher_core::status::InstallSource;
+
+    let dir = tempfile::tempdir().unwrap();
+    let bundle = dir.path().join("PhotoCraft.app");
+    let bin = bundle.join("Contents").join("MacOS");
+    std::fs::create_dir_all(&bin).unwrap();
+    let cli = bin.join("photocraft-cli");
+    std::fs::write(&cli, []).unwrap();
+
+    let services = installed_apps(|app| (app.id == "photocraft").then(|| detected_copy(&bundle, InstallSource::MacApp)));
+    let entries = app_entries(&services);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].command, cli);
+}
+
+#[test]
+fn apps_without_a_bundled_cli_are_not_exposed() {
+    use artcraft_launcher_core::status::InstallSource;
+
+    let dir = tempfile::tempdir().unwrap();
+    let bundle = dir.path().join("PhotoCraft.app");
+    std::fs::create_dir_all(bundle.join("Contents").join("MacOS")).unwrap();
+    std::fs::write(dir.path().join("photocraft-cli"), []).unwrap();
+
+    let services = installed_apps(|app| (app.id == "photocraft").then(|| detected_copy(&bundle, InstallSource::MacApp)));
+    assert!(app_entries(&services).is_empty(), "the CLI must belong to the detected app bundle");
+}
+
+#[test]
+fn a_non_bundle_install_still_uses_its_sibling_cli() {
+    use artcraft_launcher_core::status::InstallSource;
+
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("photocraft.exe");
+    let cli = dir.path().join("photocraft-cli.exe");
+    std::fs::write(&exe, []).unwrap();
+    std::fs::write(&cli, []).unwrap();
+    let services = installed_apps(|app| (app.id == "photocraft").then(|| detected_copy(&exe, InstallSource::Msi)));
+    let entries = app_entries(&services);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].command, cli);
+}
+
 #[test]
 fn claude_desktop_from_the_microsoft_store_is_found_in_its_package() {
     let dir = tempfile::tempdir().unwrap();

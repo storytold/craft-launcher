@@ -15,7 +15,8 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use artcraft_launcher_core::protocol::{McpAgents, McpClient, McpClientState};
 use serde_json::{Map, Value, json};
 
-use artcraft_launcher_core::CraftApp;
+use artcraft_launcher_core::status::InstallSource;
+use artcraft_launcher_core::{CraftApp, Installed};
 
 /// The key our entry has in a client's `mcpServers`.
 pub use artcraft_launcher_core::mcp_config::SERVER_KEY;
@@ -207,23 +208,23 @@ pub fn unregister(config: &Path, gateway: &Path) -> Result<(), String> {
     crate::paths::write_atomic(config, text.as_bytes())
 }
 
-/// An installed Craft app, with the CLI beside it that serves MCP (`<app>-cli mcp`).
+/// An installed Craft app and its CLI that serves MCP (`<app>-cli mcp`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstalledApp {
     /// The app id (`wordcraft`), stable across versions.
     pub id: String,
     /// Display name (`WordCraft`).
     pub name: String,
-    /// The detected main executable; the CLI lives beside it.
+    /// The detected app bundle or executable.
     pub location: String,
-    /// The `-cli` binary. `None` when detection found the app but no CLI beside it.
+    /// The bundled or sibling `-cli` binary, if the installed app provides one.
     pub cli_path: Option<PathBuf>,
 }
 
 /// Every installed Craft app, in suite order. `detect` decides what is installed (the backend
 /// passes its own detection, which tests keep off the host); this adds the CLI each app serves
 /// MCP from.
-pub fn installed_apps(detect: impl Fn(&CraftApp) -> Option<artcraft_launcher_core::Installed>) -> Vec<InstalledApp> {
+pub fn installed_apps(detect: impl Fn(&CraftApp) -> Option<Installed>) -> Vec<InstalledApp> {
     artcraft_launcher_core::SUITE
         .iter()
         .filter_map(|app| {
@@ -232,16 +233,17 @@ pub fn installed_apps(detect: impl Fn(&CraftApp) -> Option<artcraft_launcher_cor
                 id: app.id.to_string(),
                 name: app.name.to_string(),
                 location: installed.location.clone(),
-                cli_path: cli_path_for(&installed.location, app),
+                cli_path: cli_path_for(&installed, app),
             })
         })
         .collect()
 }
 
-/// The `-cli` binary beside a detected main executable, under any name the app has shipped as
-/// (current first), with or without `.exe`.
-fn cli_path_for(location: &str, app: &CraftApp) -> Option<PathBuf> {
-    let dir = Path::new(location).parent()?;
+/// Find the CLI next to the executable, or inside a detected macOS app bundle. Use the names
+/// the app has shipped under, current first.
+fn cli_path_for(installed: &Installed, app: &CraftApp) -> Option<PathBuf> {
+    let location = Path::new(&installed.location);
+    let dir = if installed.source == InstallSource::MacApp { location.join("Contents").join("MacOS") } else { location.parent()?.to_path_buf() };
     for stem in app.stems() {
         for ext in ["", ".exe"] {
             let candidate = dir.join(format!("{stem}-cli{ext}"));
