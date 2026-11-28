@@ -572,6 +572,7 @@ impl LauncherUi {
         let options = BackendOptions {
             kinds: self.settings.preferred_kinds.clone(),
             prereleases: self.settings.prereleases,
+            install_cli: self.settings.install_cli,
             nightly_enabled: false, // The stable backend never acquires nightly consent.
             versions: self.settings.versions.clone(),
             launcher_version: self.settings.launcher_version.clone(),

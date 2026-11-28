@@ -130,6 +130,8 @@ enum Admission {
 struct Shared {
     /// Immutable: Configure cannot turn the stable backend into a nightly installer.
     channel: artcraft_launcher_core::nightly::InstallChannel,
+    /// Where the launcher keeps its files.
+    paths: Paths,
     host: HostDetection,
     events: Mutex<Vec<Event>>,
     /// Held while an app's latest release or installed copy changes and its [`Event::Installable`]
@@ -228,10 +230,19 @@ struct JobGuard {
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
-        let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
-        self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
-        process.remove(&self.shared.job_key(&self.app_id));
+        self.shared.release_job(&self.app_id);
+    }
+}
+
+/// The per-app reservation an install holds, taken for a moment by a cleanup that must not overlap one.
+struct CleanupReservation<'a> {
+    shared: &'a Shared,
+    app_id: &'a str,
+}
+
+impl Drop for CleanupReservation<'_> {
+    fn drop(&mut self) {
+        self.shared.release_job(self.app_id);
     }
 }
 
@@ -241,6 +252,20 @@ const SYSTEM_KINDS_FOR: Duration = Duration::from_secs(60);
 impl Shared {
     fn job_key(&self, app: &str) -> String {
         if self.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly { format!("nightly:{app}") } else { app.to_owned() }
+    }
+    /// Gives up the reservation [`Shared::reserve_job`] made for `app`.
+    fn release_job(&self, app: &str) {
+        let _reporting = self.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut process = self.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+        self.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(app);
+        process.remove(&self.job_key(app));
+    }
+    /// The same per-app reservation an install takes, or `None` while a job for the app runs or the launcher restarts.
+    fn reserve_for_cleanup<'a>(&'a self, app: &'a str) -> Option<CleanupReservation<'a>> {
+        match self.reserve_job(app, Arc::new(Stop::default())) {
+            Admission::Reserved => Some(CleanupReservation { shared: self, app_id: app }),
+            Admission::AlreadyActive | Admission::Restarting => None,
+        }
     }
     fn reserve_job(&self, app: &str, stop: Arc<Stop>) -> Admission {
         let _reporting = self.reporting.lock().unwrap_or_else(PoisonError::into_inner);
@@ -491,6 +516,7 @@ impl NativeBackend {
 
         let shared = Arc::new(Shared {
             channel,
+            paths: paths.clone(),
             host: HostDetection::System,
             #[cfg(test)]
             nightly_detection_observer: Mutex::new(None),
@@ -1166,15 +1192,15 @@ impl NativeBackend {
                     shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Removing });
                     let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
                     match &existing {
-                        Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).map(|()| {
+                        Some(inst) => install::uninstall(app, inst, record.as_ref(), &paths, &stop, &mut phase).and_then(|()| {
                             let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
-                            let released = m.releases.remove(app.id).is_some();
-                            if m.apps.remove(app.id).is_some() || released {
-                                let _ = m.save(&paths.manifest());
-                            }
-                            format!("{} was removed", app.name)
+                            finish_uninstall(&paths, &mut m, app, true)
                         }),
-                        None => Err(format!("{} isn't installed", app.name)),
+                        // The app is already gone, but its command-line tool may be left from a removal that failed: try again.
+                        None => {
+                            let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+                            finish_uninstall(&paths, &mut m, app, false)
+                        }
                     }
                 } else {
                     let (approved, batch) = match &work {
@@ -1924,7 +1950,149 @@ fn run_install(
             log::warn!("couldn't save the install record: {e}");
         }
     }
-    Ok(installed_text(app, existing.is_some(), &release))
+    let mut text = installed_text(app, existing.is_some(), &release);
+    text.push_str(&install_cli_tool(app, shared, paths, platform, options, &release, &mut job));
+    Ok(text)
+}
+
+/// macOS, when the option is on: the app's command-line tool at the release's version, installed
+/// with the app and updated with it. A tool that can't be installed never fails the app's install:
+/// the note says what happened. A release that publishes no tool adds nothing, and leaves a tool
+/// installed earlier where it is, the note naming its version.
+#[cfg_attr(not(unix), allow(unused_variables))]
+fn install_cli_tool(
+    app: &CraftApp,
+    shared: &Shared,
+    paths: &Paths,
+    platform: Platform,
+    options: &BackendOptions,
+    release: &Release,
+    job: &mut Job<'_>,
+) -> String {
+    #[cfg(unix)]
+    {
+        use artcraft_launcher_core::Os;
+        if !(options.install_cli && platform.os == Os::MacOs) {
+            return String::new();
+        }
+        // The portable folder moves with the executable, but the PATH line the settings show names the standard one.
+        if crate::paths::portable_root().is_some() {
+            return " (its command-line tool isn't installed in portable mode)".to_string();
+        }
+        let existing = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).cli.get(app.id).cloned();
+        let Some(asset) = install::cli_tool::asset(app, release, platform) else {
+            return match existing {
+                Some(old) if old.version != release.version_label() => {
+                    format!(" (its command-line tool stays at {}: this release has none)", old.version)
+                }
+                _ => String::new(),
+            };
+        };
+        let mut run = crate::process::run_with_output;
+        match install::cli_tool::install(app, release, asset, existing.as_ref(), job, &mut run) {
+            Ok(placed) => {
+                let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+                // Final only once the record is saved; a failure puts the previous tool and record back.
+                match install::cli_tool::record(&mut m, app.id, placed, existing, paths, |m| m.save(&paths.manifest())) {
+                    Ok(()) => {
+                        if m.cli_pending.remove(app.id).is_some() {
+                            let _ = m.save(&paths.manifest());
+                        }
+                        " and its command-line tool".to_string()
+                    }
+                    Err(e) => {
+                        log::warn!("{}: command-line tool: {e}", app.name);
+                        format!(" (its command-line tool wasn't installed: {e})")
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("{}: command-line tool: {e}", app.name);
+                format!(" (its command-line tool wasn't installed: {e})")
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    String::new()
+}
+
+/// Removes the command-line tool the launcher installed for `id`, and its record: whether the
+/// manifest changed. A tool that can't be removed keeps its record, so a later removal can try again, and the
+/// error says why.
+#[cfg_attr(not(unix), allow(unused_variables))]
+fn remove_cli_tool(paths: &Paths, manifest: &mut crate::manifest::Manifest, id: &str) -> Result<bool, String> {
+    let Some(record) = manifest.cli.get(id) else { return Ok(false) };
+    #[cfg(unix)]
+    if let Err(e) = install::cli_tool::remove(paths, record) {
+        log::warn!("{id}: command-line tool: {e}");
+        return Err(e);
+    }
+    Ok(manifest.cli.remove(id).is_some())
+}
+
+/// Retries the removal of a command-line tool that a failed uninstall marked pending (`Manifest::cli_pending`), once
+/// the app is gone. Only that tool: a check that finds an app not installed says nothing about a tool that is not marked,
+/// and a result that was worked out before an install finished can reach this function after it. So it takes the same
+/// per-app reservation an install holds and, under it, confirms that the app is not installed and that the marked record is
+/// still the app's: a tool installed since, with a record of its own, is never touched (and the stale mark is dropped).
+fn retry_pending_cli_removal(shared: &Shared, app: &CraftApp) {
+    if !shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).cli_pending.contains_key(app.id) {
+        return;
+    }
+    // A job for the app is running (or the launcher is restarting): the next check looks again.
+    let Some(_reserved) = shared.reserve_for_cleanup(app.id) else { return };
+    if shared.installed.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id) {
+        return;
+    }
+    let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+    let Some(pending) = m.cli_pending.get(app.id).cloned() else { return };
+    if m.cli.get(app.id) != Some(&pending) {
+        m.cli_pending.remove(app.id);
+        let _ = m.save(&shared.paths.manifest());
+        return;
+    }
+    match remove_cli_tool(&shared.paths, &mut m, app.id) {
+        Ok(_) => {
+            m.cli_pending.remove(app.id);
+            let _ = m.save(&shared.paths.manifest());
+            log::info!("{}: the command-line tool left behind was removed", app.id);
+        }
+        Err(e) => log::warn!("{}: the command-line tool left behind still can't be removed ({e}); it is tried again at the next check", app.id),
+    }
+}
+
+/// What an uninstall does beyond the app itself: forget its record and take away its command-line tool.
+/// `installed` says whether the app was there and has just been removed. A tool that can't be removed is
+/// reported and keeps its record, so a later uninstall retries it, even when the app itself is gone by then
+/// (an app with no tool left to clean up is "not installed" as before).
+fn finish_uninstall(paths: &Paths, m: &mut crate::manifest::Manifest, app: &CraftApp, installed: bool) -> Result<String, String> {
+    if !installed && !m.cli.contains_key(app.id) {
+        return Err(format!("{} isn't installed", app.name));
+    }
+    let removed_app = installed && m.apps.remove(app.id).is_some();
+    let released = installed && m.releases.remove(app.id).is_some();
+    let tool = remove_cli_tool(paths, m, app.id);
+    // A tool that could not be removed is marked as the one to retry: the record the failure was about.
+    let marked = match (&tool, m.cli.get(app.id).cloned()) {
+        (Err(_), Some(record)) => {
+            m.cli_pending.insert(app.id.to_string(), record);
+            true
+        }
+        _ => false,
+    };
+    let cleared = tool.is_ok() && m.cli_pending.remove(app.id).is_some();
+    if removed_app || released || marked || cleared || matches!(tool, Ok(true)) {
+        let _ = m.save(&paths.manifest());
+    }
+    match (installed, tool) {
+        (true, Ok(_)) => Ok(format!("{} was removed", app.name)),
+        (true, Err(e)) => Ok(format!(
+            "{} was removed, but its command-line tool couldn't be removed ({e}). The launcher will try again the next time it checks for apps",
+            app.name
+        )),
+        (false, Ok(_)) => Ok(format!("The command-line tool of {} was removed", app.name)),
+        (false, Err(e)) => Err(format!("The command-line tool of {} couldn't be removed ({e})", app.name)),
+    }
 }
 
 /// What the launcher keeps of the Windows Installer copy it just installed from `release` (see
@@ -2203,6 +2371,9 @@ fn publish_latest(app: &CraftApp, latest: LatestRelease, from: Origin, shared: &
 /// go ahead to replace it, in one batch.
 fn publish_detected(app: &CraftApp, found: Option<Installed>, shared: &Shared, platform: Option<Platform>) {
     let system = (shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable && found.is_some()).then(|| shared.system_kinds());
+    if found.is_none() {
+        retry_pending_cli_removal(shared, app);
+    }
     let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
     shared.store_detected(app.id, found.as_ref());
     let installable = installable_event(app, shared, platform, system);
@@ -3683,6 +3854,7 @@ mod tests {
     pub(super) fn shared() -> Shared {
         Shared {
             channel: artcraft_launcher_core::nightly::InstallChannel::Stable,
+            paths: Paths::under(std::path::Path::new("/nonexistent-launcher-test-root")),
             host: HostDetection::Stub(Arc::new(|_| None)),
             nightly_detection_observer: Mutex::new(None),
             #[cfg(test)]
@@ -4631,7 +4803,8 @@ prerelease = true
 
     /// A backend that knows `release("0.5.0")` and keeps its files under `root`.
     pub(super) fn backend(root: &std::path::Path, platform: Platform, source: Option<Arc<dyn ReleaseSource>>) -> NativeBackend {
-        let shared = shared();
+        let mut shared = shared();
+        shared.paths = Paths::under(root);
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
         NativeBackend {
@@ -5562,6 +5735,192 @@ prerelease = true
                     "it refuses without starting a download: {events:?}"
                 );
                 assert!(backend.shared.jobs.lock().unwrap().is_empty());
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    mod cli_cleanup {
+        use super::*;
+        use crate::manifest::{CliRecord, Manifest};
+
+        /// A tool installed under `real`, reached through a `cli` link, so that removing it is refused until the link is a real folder.
+        fn blocked(dir: &std::path::Path) -> (Paths, Manifest, std::path::PathBuf) {
+            let paths = Paths::under(dir);
+            let real = dir.join("elsewhere");
+            let folder_name = "pdfcraft-cli-0.20.0-macos-universal";
+            std::fs::create_dir_all(real.join("bin")).unwrap();
+            std::fs::create_dir_all(real.join(folder_name)).unwrap();
+            std::fs::write(real.join(folder_name).join("pdfcraft-cli"), "tool").unwrap();
+            std::fs::create_dir_all(paths.cli().parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(&real, paths.cli()).unwrap();
+            let folder = paths.cli().join(folder_name);
+            let link = paths.cli_bin().join("pdfcraft-cli");
+            std::os::unix::fs::symlink(folder.join("pdfcraft-cli"), &link).unwrap();
+            let mut m = Manifest::default();
+            m.cli.insert("pdfcraft".into(), CliRecord { version: "0.20.0".into(), folder, link, installed_at: 1 });
+            (paths, m, real)
+        }
+
+        fn app() -> &'static CraftApp {
+            CraftApp::by_id("pdfcraft").unwrap()
+        }
+
+        #[test]
+        fn an_uninstall_says_when_the_tool_could_not_be_removed_and_keeps_its_record() {
+            let dir = tempfile::tempdir().unwrap();
+            let (paths, mut m, _) = blocked(dir.path());
+            let text = finish_uninstall(&paths, &mut m, app(), true).unwrap();
+            assert!(text.contains("was removed, but its command-line tool couldn't be removed"), "{text}");
+            assert!(m.cli.contains_key("pdfcraft"), "the record stays for a retry");
+        }
+
+        #[test]
+        fn a_later_uninstall_retries_the_tool_even_when_the_app_is_gone() {
+            let dir = tempfile::tempdir().unwrap();
+            let (paths, mut m, real) = blocked(dir.path());
+            let record = m.cli.get("pdfcraft").unwrap().clone();
+            let err = finish_uninstall(&paths, &mut m, app(), false).unwrap_err();
+            assert!(err.contains("couldn't be removed"), "{err}");
+            assert!(m.cli.contains_key("pdfcraft"));
+            // What blocked it is put right: `cli` is a real folder now.
+            std::fs::remove_file(paths.cli()).unwrap();
+            std::fs::rename(&real, paths.cli()).unwrap();
+            let text = finish_uninstall(&paths, &mut m, app(), false).unwrap();
+            assert!(text.contains("command-line tool of"), "{text}");
+            assert!(m.cli.is_empty(), "the record is gone");
+            assert!(std::fs::symlink_metadata(&record.link).is_err(), "the link is gone");
+            assert!(std::fs::symlink_metadata(&record.folder).is_err(), "the folder is gone");
+        }
+
+        #[test]
+        fn an_app_that_is_gone_and_has_no_tool_is_not_installed() {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = Paths::under(dir.path());
+            let err = finish_uninstall(&paths, &mut Manifest::default(), app(), false).unwrap_err();
+            assert!(err.contains("isn't installed"), "{err}");
+        }
+
+        fn platform() -> Platform {
+            Platform { os: Os::Windows, arch: artcraft_launcher_core::Arch::X64 }
+        }
+
+        fn backend_with(m: Manifest, dir: &std::path::Path) -> NativeBackend {
+            let backend = backend(dir, platform(), None);
+            *backend.shared.manifest.lock().unwrap() = m;
+            backend
+        }
+
+        fn has_record(backend: &NativeBackend) -> bool {
+            backend.shared.manifest.lock().unwrap().cli.contains_key("pdfcraft")
+        }
+
+        /// A manifest with the blocked tool recorded and, when `pending`, marked as a failed removal would mark it.
+        fn pending_backend(dir: &std::path::Path, pending: bool) -> (NativeBackend, Paths, std::path::PathBuf, CliRecord) {
+            let (paths, mut m, real) = blocked(dir);
+            let record = m.cli.get("pdfcraft").unwrap().clone();
+            if pending {
+                let text = finish_uninstall(&paths, &mut m, app(), true).unwrap();
+                assert!(text.contains("couldn't be removed"), "{text}");
+                assert_eq!(m.cli_pending.get("pdfcraft"), Some(&record), "the failed removal marks the specific record");
+            }
+            (backend_with(m, dir), paths, real, record)
+        }
+
+        fn unblock(paths: &Paths, real: &std::path::Path) {
+            std::fs::remove_file(paths.cli()).unwrap();
+            std::fs::rename(real, paths.cli()).unwrap();
+        }
+
+        fn is_pending(backend: &NativeBackend) -> bool {
+            backend.shared.manifest.lock().unwrap().cli_pending.contains_key("pdfcraft")
+        }
+
+        #[test]
+        fn a_failed_uninstall_marks_the_tool_and_a_later_check_retries_it() {
+            let dir = tempfile::tempdir().unwrap();
+            let (backend, paths, real, record) = pending_backend(dir.path(), true);
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(has_record(&backend) && is_pending(&backend), "still blocked: recorded and marked for the next check");
+            unblock(&paths, &real);
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(!has_record(&backend) && !is_pending(&backend), "removed, record and mark gone");
+            let saved = Manifest::load(&paths.manifest());
+            assert!(saved.cli.is_empty() && saved.cli_pending.is_empty(), "the manifest on disk forgets both");
+            assert!(std::fs::symlink_metadata(&record.link).is_err(), "the link is gone");
+            assert!(std::fs::symlink_metadata(&record.folder).is_err(), "the folder is gone");
+        }
+
+        #[test]
+        fn a_marked_tool_is_kept_while_its_app_is_installed_or_a_job_for_it_holds_the_reservation() {
+            let dir = tempfile::tempdir().unwrap();
+            let (backend, paths, real, _) = pending_backend(dir.path(), true);
+            unblock(&paths, &real);
+            publish_detected(
+                app(),
+                Some(copy_of("0.20.0", InstallSource::Launcher, "/Applications/PdfCraft.app")),
+                &backend.shared,
+                Some(platform()),
+            );
+            assert!(has_record(&backend), "an installed app keeps its tool");
+            backend.shared.installed.lock().unwrap().clear();
+            assert!(matches!(backend.shared.reserve_job("pdfcraft", Arc::new(Stop::default())), Admission::Reserved));
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(has_record(&backend), "an app whose reservation is held (an install in progress) keeps its tool");
+            backend.shared.release_job("pdfcraft");
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(!has_record(&backend), "with the app gone and nothing reserved, the marked tool is removed");
+        }
+
+        #[test]
+        fn a_tool_that_is_not_marked_is_not_removed_by_a_not_installed_check() {
+            let dir = tempfile::tempdir().unwrap();
+            let (backend, paths, real, record) = pending_backend(dir.path(), false);
+            unblock(&paths, &real);
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(has_record(&backend), "the record stays");
+            assert!(std::fs::symlink_metadata(&record.link).is_ok() && std::fs::symlink_metadata(&record.folder).is_ok(), "and so does the tool");
+        }
+
+        #[test]
+        fn a_check_worked_out_before_an_install_cannot_remove_the_tool_that_install_made() {
+            for installed_is_published in [true, false] {
+                let dir = tempfile::tempdir().unwrap();
+                let (backend, paths, real, old) = pending_backend(dir.path(), true);
+                unblock(&paths, &real);
+                // The install finishes first: a new tool and record, the old tool replaced as an update replaces it.
+                std::fs::remove_dir_all(&old.folder).unwrap();
+                std::fs::remove_file(&old.link).unwrap();
+                let folder = paths.cli().join("pdfcraft-cli-0.21.0-macos-universal");
+                std::fs::create_dir_all(&folder).unwrap();
+                std::fs::write(folder.join("pdfcraft-cli"), "new tool").unwrap();
+                std::os::unix::fs::symlink(folder.join("pdfcraft-cli"), &old.link).unwrap();
+                let new = CliRecord { version: "0.21.0".into(), folder: folder.clone(), link: old.link.clone(), installed_at: 2 };
+                backend.shared.manifest.lock().unwrap().cli.insert("pdfcraft".into(), new.clone());
+                if installed_is_published {
+                    backend
+                        .shared
+                        .installed
+                        .lock()
+                        .unwrap()
+                        .insert("pdfcraft".into(), copy_of("0.21.0", InstallSource::Launcher, "/Applications/PdfCraft.app"));
+                }
+                // Then the older "not installed" result reaches publish_detected.
+                publish_detected(app(), None, &backend.shared, Some(platform()));
+                assert_eq!(
+                    backend.shared.manifest.lock().unwrap().cli.get("pdfcraft"),
+                    Some(&new),
+                    "the new record is intact ({installed_is_published})"
+                );
+                assert_eq!(
+                    std::fs::read_to_string(folder.join("pdfcraft-cli")).unwrap(),
+                    "new tool",
+                    "and so is the new tool ({installed_is_published})"
+                );
+                assert!(std::fs::symlink_metadata(&old.link).is_ok(), "and its link ({installed_is_published})");
+                if !installed_is_published {
+                    assert!(!is_pending(&backend), "the stale mark about the old tool is dropped");
+                }
             }
         }
     }

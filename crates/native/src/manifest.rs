@@ -23,6 +23,18 @@ pub struct Record {
     pub needs_root: bool,
 }
 
+/// One command-line tool the launcher installed beside an app (macOS).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CliRecord {
+    pub version: String,
+    /// The folder the tool was installed into, under the launcher's own `cli` folder.
+    pub folder: PathBuf,
+    /// The link to the tool in the launcher's `cli/bin` folder, the one place a PATH line needs.
+    pub link: PathBuf,
+    /// Unix seconds.
+    pub installed_at: i64,
+}
+
 /// The release behind a Windows Installer copy the launcher installed. Windows Installer keeps
 /// only the numbers of a version, so `0.24.0-rc.1` reads back as `0.24.0`; this keeps the release
 /// the launcher checked and installed, tied to the one registration (`package`, its product code)
@@ -39,6 +51,13 @@ pub struct InstalledRelease {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
     pub apps: BTreeMap<String, Record>,
+    /// Command-line tools, by app id.
+    #[serde(default)]
+    pub cli: BTreeMap<String, CliRecord>,
+    /// Command-line tools whose removal failed after their app was uninstalled, by app id: the exact record the
+    /// failure was about. Only a tool named here is ever retried on its own, and only while this is still the app's record.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cli_pending: BTreeMap<String, CliRecord>,
     /// For copies the system's installer keeps the record of (`apps` has none for them).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub releases: BTreeMap<String, InstalledRelease>,
