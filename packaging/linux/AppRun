@@ -137,5 +137,12 @@ other_entry_runs() {
   )
 }
 
+# A version query exits without launching the UI, so it doesn't need a desktop entry.
+for arg in "$@"; do
+  case "$arg" in
+    --version | -V) exec "$APPDIR/usr/bin/artcraft-launcher" "$@" ;;
+  esac
+done
+
 integrate
 exec "$APPDIR/usr/bin/artcraft-launcher" "$@"
