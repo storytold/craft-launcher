@@ -163,12 +163,15 @@ pub(crate) fn run_command_bounded(mut cmd: Command, program: &str, timeout: Dura
     Ok(RunOutput { success: status.success(), code: status.code(), status: status.to_string(), stdout: out, stderr: err })
 }
 
+/// The most of a helper's output [`run`] keeps.
+const OUTPUT_LIMIT: usize = 8 << 20;
+
 /// Captures at most 8 MB of a child's pipe and drains the rest on its own thread.
 fn read_all<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut out = Vec::new();
         if let Some(mut pipe) = pipe {
-            let _ = std::io::Read::read_to_end(&mut std::io::Read::take(&mut pipe, 8 << 20), &mut out);
+            let _ = std::io::Read::read_to_end(&mut std::io::Read::take(&mut pipe, OUTPUT_LIMIT as u64), &mut out);
             // Keep reading without retaining more output: closing a full pipe early can make a
             // successful helper fail with a broken pipe (SIGPIPE on Unix).
             let _ = std::io::copy(&mut pipe, &mut std::io::sink());
@@ -800,6 +803,7 @@ mod desktop_shortcut_tests {
 }
 
 /// Whether a process started from inside `path` (an exe, an AppImage, or a `.app`) is running.
+/// On macOS and Linux the app's command-line tool doesn't count (see [`runs_from`]).
 pub fn is_running(path: &Path) -> bool {
     if cfg!(windows) {
         let Some(name) = path.file_name().and_then(OsStr::to_str) else { return false };
@@ -810,14 +814,30 @@ pub fn is_running(path: &Path) -> bool {
         run_command(cmd, "tasklist", Duration::from_secs(5)).ok().is_some_and(|out| out.to_ascii_lowercase().contains(&name.to_ascii_lowercase()))
     } else {
         let Some(p) = path.to_str() else { return false };
-        let pattern = pgrep_pattern(p);
-        // pgrep exits 0 when something matches; it never matches itself.
-        if in_sandbox() {
-            capture("flatpak-spawn", &["--host", "pgrep", "-f", "--", &pattern], Duration::from_secs(5)).is_some()
+        // `ps` escapes the bytes its locale can't decode; a UTF-8 locale keeps a non-ASCII path as it is.
+        let ps = ["env", "LC_ALL=C.UTF-8", "ps", "-A", "-ww", "-o", "command="];
+        let commands = if in_sandbox() {
+            capture("flatpak-spawn", &[&["--host"][..], &ps].concat(), Duration::from_secs(5))
         } else {
-            capture("pgrep", &["-f", "--", &pattern], Duration::from_secs(5)).is_some()
-        }
+            capture(ps[0], &ps[1..], Duration::from_secs(5))
+        };
+        // A listing cut at the output limit may have lost the app's line, so it counts as running.
+        commands.is_some_and(|commands| commands.len() >= OUTPUT_LIMIT || commands.lines().any(|command| runs_from(command.trim_start(), p)))
     }
+}
+
+/// Whether the command line `command` runs a program from `path`: `path` itself, or one inside it.
+/// A process that only names `path` among its arguments (an AI app's wrapper around an MCP
+/// server) doesn't run from it. Nor does the app's command-line tool (`…-cli`): AI apps keep it
+/// running as their MCP server for as long as they are open, and a running program keeps its own
+/// copy while the app is replaced, so it needn't hold an update back (craft-launcher#1511).
+fn runs_from(command: &str, path: &str) -> bool {
+    let Some(rest) = command.strip_prefix(path) else { return false };
+    if !(rest.is_empty() || rest.starts_with(['/', ' '])) {
+        return false;
+    }
+    let program = format!("{path}{}", rest.split(' ').next().unwrap_or_default());
+    !Path::new(&program).file_stem().and_then(OsStr::to_str).is_some_and(|stem| stem.ends_with("-cli"))
 }
 
 fn windows_system_program(relative: &str) -> Result<PathBuf, String> {
@@ -829,18 +849,6 @@ fn windows_system_program(relative: &str) -> Result<PathBuf, String> {
         return Err("Windows provided a non-absolute system folder".into());
     }
     Ok(root.join(relative))
-}
-
-/// Quote the path's metacharacters for pgrep's extended regular expression.
-fn pgrep_pattern(path: &str) -> String {
-    let mut pattern = String::with_capacity(path.len());
-    for c in path.chars() {
-        if matches!(c, '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\') {
-            pattern.push('\\');
-        }
-        pattern.push(c);
-    }
-    pattern
 }
 
 #[cfg(test)]
@@ -882,12 +890,16 @@ mod tests {
         assert_eq!(which_in(&path, Some(dir.path()), "missing"), None);
     }
 
+    /// A process whose command line starts with `program` (its `argv[0]`), with `args` at its end.
     struct RunningProbe(Child);
 
     impl RunningProbe {
-        fn start(path: &str) -> Self {
+        fn start(program: &str, args: &[&str]) -> Self {
+            use std::os::unix::process::CommandExt as _;
             let child = command("/bin/sh")
-                .args(["-c", "printf 'ready\\n'; read line", path])
+                .arg0(program)
+                .args(["-c", "printf 'ready\\n'; read line", "sh"])
+                .args(args)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
@@ -920,9 +932,25 @@ mod tests {
         ] {
             let actual = format!("{root}/{actual}");
             let requested = format!("{root}/{requested}");
-            let _probe = RunningProbe::start(&actual);
+            let _probe = RunningProbe::start(&format!("{actual}/Contents/MacOS/PhotoCraft"), &[]);
             assert_eq!(is_running(Path::new(&requested)), expected, "{requested}");
         }
+    }
+
+    /// craft-launcher#1511: AI apps keep the app's CLI running as their MCP server, some through a
+    /// wrapper that names it; neither is the app, and neither holds its update back.
+    #[test]
+    fn the_apps_cli_and_a_wrapper_naming_it_are_not_the_app_running() {
+        let root = format!("/tmp/artcraft-launcher-cli-{}", std::process::id());
+        let app = format!("{root}/SolidCraft.app");
+        let cli = format!("{app}/Contents/MacOS/solidcraft-cli");
+        {
+            let _server = RunningProbe::start(&cli, &["mcp"]);
+            let _wrapper = RunningProbe::start(&format!("{root}/wrapper"), &["--", &cli, "mcp"]);
+            assert!(!is_running(Path::new(&app)), "only the CLI and a wrapper naming it run");
+        }
+        let _app = RunningProbe::start(&format!("{app}/Contents/MacOS/SolidCraft"), &[]);
+        assert!(is_running(Path::new(&app)), "the app itself runs");
     }
 }
 
