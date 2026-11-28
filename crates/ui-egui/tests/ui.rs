@@ -4488,7 +4488,8 @@ fn next_frame_input(h: &mut Harness<'_, Option<LauncherUi>>) {
 }
 
 #[test]
-/// Command-plus-wheel over the main UI raises the global zoom factor.
+/// Command-plus-wheel over the main UI raises the global zoom factor, except on a Mac: there a finger resting on the
+/// trackpad while ⌘ is held for a shortcut would zoom the whole launcher, so the wheel only scrolls.
 fn control_wheel_zooms_the_main_ui() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(4);
@@ -4498,8 +4499,25 @@ fn control_wheel_zooms_the_main_ui() {
         phase: egui::TouchPhase::Move,
         delta: egui::vec2(0.0, 100.0),
         modifiers: egui::Modifiers::COMMAND,
-        source: egui::MouseWheelSource::Unknown,
+        source: egui::MouseWheelSource::Trackpad,
     });
+    h.step();
+    next_frame_input(&mut h);
+    h.run_steps(2);
+    if cfg!(target_os = "macos") {
+        assert_eq!(h.ctx.zoom_factor(), before, "⌘ with the trackpad or wheel must not zoom on a Mac");
+    } else {
+        assert!(h.ctx.zoom_factor() > before);
+    }
+}
+
+#[test]
+/// Pinching over the main UI zooms it, on a Mac too.
+fn pinch_zooms_the_main_ui() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(4);
+    let before = h.ctx.zoom_factor();
+    h.input_mut().events.push(egui::Event::Zoom(1.5));
     h.step();
     next_frame_input(&mut h);
     h.run_steps(2);
@@ -4548,6 +4566,14 @@ fn changelog_shortcuts_zoom_only_the_notes_text() {
     h.step();
     h.run_steps(2);
     assert_eq!(h.ctx.zoom_factor(), global);
+    if cfg!(target_os = "macos") {
+        // ⌘ with the wheel zooms nothing on a Mac; a pinch zooms the notes there.
+        assert!((h.get_by_label("What's Changed").rect().height() - before).abs() < 0.5);
+        h.input_mut().events.push(egui::Event::Zoom(1.5));
+        h.step();
+        h.run_steps(2);
+        assert_eq!(h.ctx.zoom_factor(), global);
+    }
     let larger = h.get_by_label("What's Changed").rect().height();
     assert!(larger > before);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Minus);
