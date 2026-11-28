@@ -922,17 +922,41 @@ pub fn inline_glyph_button(ui: &mut Ui, glyph: Glyph, tip: &str) -> Response {
     resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
+/// Use the same inverse pair as the other square controls. Let egui choose text and fill
+/// together, so keyboard focus and submenu navigation keep their native behavior.
+fn action_menu_interaction(style: &mut egui::Style, t: Tokens) {
+    let v = &mut style.visuals;
+    v.override_text_color = None;
+    for state in [&mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
+        state.bg_fill = t.invert_bg;
+        state.weak_bg_fill = t.invert_bg;
+        state.fg_stroke.color = t.invert_fg;
+    }
+}
+
 /// The "…" button that opens an app's menu: an outlined square like [`glyph_button`]. The visible
 /// dots are not a name a screen reader can use, so the button is named after the app.
 pub fn more_menu<R>(ui: &mut Ui, app_name: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
+    use egui::containers::menu::{MenuButton, MenuConfig, menu_style};
+
     let t = Tokens::get(ui.ctx());
-    let btn =
-        egui::Button::new(RichText::new("…").size(15.0).color(t.muted)).fill(Color32::TRANSPARENT).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
-    let (response, _) = egui::containers::menu::MenuButton::from_button(btn).ui(ui, |ui| {
-        ui.set_min_width(200.0);
-        add_contents(ui)
+    ui.scope(|ui| {
+        action_menu_interaction(ui.style_mut(), t);
+        let inactive = &mut ui.visuals_mut().widgets.inactive;
+        inactive.weak_bg_fill = Color32::TRANSPARENT;
+        inactive.fg_stroke.color = t.muted;
+        let config = MenuConfig::new().style(move |style: &mut egui::Style| {
+            menu_style(style);
+            action_menu_interaction(style, t);
+            style.visuals.widgets.inactive.fg_stroke.color = t.ink;
+        });
+        let btn = egui::Button::new(RichText::new("…").size(15.0)).min_size(vec2(theme::CONTROL_H, theme::CONTROL_H));
+        let (response, _) = MenuButton::from_button(btn).config(config).ui(ui, |ui| {
+            ui.set_min_width(200.0);
+            add_contents(ui)
+        });
+        response.accessible_name(crate::i18n::fmt(tl!("More actions for {name}"), &[("name", app_name)]));
     });
-    response.accessible_name(crate::i18n::fmt(tl!("More actions for {name}"), &[("name", app_name)]));
 }
 
 /// ArtCraft's social accounts as a row of small monochrome icons (faint, brighter on hover).

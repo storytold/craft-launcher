@@ -2284,6 +2284,61 @@ fn hide_clears_pin() {
 }
 
 #[test]
+fn hovering_an_app_menu_inverts_its_trigger_and_action_in_both_themes() {
+    fn painted(shape: &egui::Shape, rect: egui::Rect, label: &str, bg: egui::Color32, fg: egui::Color32) -> (bool, bool) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().fold((false, false), |(fill, text), shape| {
+                let (has_fill, has_text) = painted(shape, rect, label, bg, fg);
+                (fill || has_fill, text || has_text)
+            }),
+            egui::Shape::Rect(r) => ((r.rect.min - rect.min).length() < 2.0 && (r.rect.max - rect.max).length() < 2.0 && r.fill == bg, false),
+            egui::Shape::Text(t) => {
+                (false, rect.contains(t.pos) && t.galley.text() == label && t.override_text_color.unwrap_or(t.fallback_color) == fg)
+            }
+            _ => (false, false),
+        }
+    }
+
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        let tokens = if theme == egui::Theme::Light {
+            artcraft_launcher_ui_egui::theme::Tokens::LIGHT
+        } else {
+            artcraft_launcher_ui_egui::theme::Tokens::DARK
+        };
+        for details in [false, true] {
+            let (mut h, _) = harness(ViewMode::Grid, theme, true);
+            h.run_steps(6);
+            if details {
+                h.get_by_label("PhotoCraft details").click();
+                h.run_steps(10);
+            }
+            let trigger = h.get_all_by_label("More actions for PhotoCraft").last().unwrap();
+            let trigger_rect = trigger.rect();
+            trigger.hover();
+            h.run_steps(3);
+            let state = |h: &Harness<'static, Option<LauncherUi>>, rect, label| {
+                h.output()
+                    .shapes
+                    .iter()
+                    .map(|item| painted(&item.shape, rect, label, tokens.invert_bg, tokens.invert_fg))
+                    .fold((false, false), |(fill, text), (has_fill, has_text)| (fill || has_fill, text || has_text))
+            };
+            assert_eq!(state(&h, trigger_rect, "…"), (true, true), "{theme:?}, details={details}: hovered menu trigger");
+            h.get_all_by_label("More actions for PhotoCraft").last().unwrap().click();
+            h.run_steps(4);
+            let action = h.get_by_label("Choose version");
+            let rect = action.rect();
+            action.hover();
+            h.run_steps(3);
+            assert_eq!(state(&h, rect, "Choose version"), (true, true), "{theme:?}, details={details}: hovered action");
+            h.get_by_label("Release notes").hover();
+            h.run_steps(3);
+            assert_eq!(state(&h, rect, "Choose version"), (false, false), "{theme:?}, details={details}: pointer left the action");
+        }
+    }
+}
+
+#[test]
 /// After pinning from the menu, opening it again offers Unpin and clears the pin.
 fn pinned_app_menu_offers_unpin() {
     let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
