@@ -66,6 +66,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	用空格分隔各个参数。含有空格的值请用引号括起来。
 	A quote isn't closed.	有引号未闭合。
 	{name} wasn't opened: a quote in its launch options isn't closed.	未打开 {name}：其启动选项中有引号未闭合。
+	Lets agents (MCP) drive the app through this local port.	允许代理（MCP）通过此本地端口控制应用。
+	File holding the key agents use to connect.	保存代理连接所用密钥的文件。
+	Draws with the processor, after a graphics driver crash.	在显卡驱动崩溃后使用处理器绘制。
+	Starts without plug-ins.	启动时不加载插件。
+	Opens a separate copy of the app.	打开应用的另一个独立副本。
+	Opens files in a new window.	在新窗口中打开文件。
+	Graphics mode: default, dx12, low-power or software.	图形模式：default、dx12、low-power 或 software。
+	Starts without asking about unsaved changes.	启动时不询问未保存的更改。
+	Starts without opening an audio device.	启动时不打开音频设备。
+	Graphics card to use, by name.	按名称指定要使用的显卡。
+	Graphics power preference: high, low or none.	图形功耗偏好：high、low 或 none。
+	{flag} needs a value.	{flag} 需要一个值。
+	Value of {flag}	{flag} 的值
+	Choices for {flag}	{flag} 的可选值
+	Add a flag	添加参数
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	允许代理（MCP）控制应用。需要在此电脑上设置 FILMCRAFT_CONTROL_TOKEN。
+	Folder agents may read from.	代理可以读取的文件夹。
+	Folder agents may write to.	代理可以写入的文件夹。
+	How frames reach the screen: fifo, autovsync or novsync.	画面呈现方式：fifo、autovsync 或 novsync。
+	macOS: keeps the menus inside the window.	macOS：将菜单保留在窗口内。
+	Opens sample content.	打开示例内容。
+	Starts with an empty project.	以空项目启动。
+	Recovers unsaved changes without asking.	不询问即恢复未保存的更改。
+	Folder for auto-save, recovery and logs.	自动保存、恢复和日志所在的文件夹。
+	Folder of the photo library.	照片库所在的文件夹。
+	Shows two pages side by side.	并排显示两页。
+	Theme: graphite or high-contrast.	主题：graphite 或 high-contrast。
+	Interface size, as a percentage.	界面大小（百分比）。
+	Interface language, such as fr; auto follows the system.	界面语言，例如 fr；auto 跟随系统。
 	Save	保存
 	All releases	所有版本
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} 已可更新。

@@ -8,38 +8,133 @@ pub struct UnclosedQuote;
 /// argument (`--name "My Projects"`). A backslash is an ordinary character, so Windows paths
 /// (`C:\Users\me`) come through as typed. An unclosed quote is an error, not a guess.
 pub fn split(text: &str) -> Result<Vec<String>, UnclosedQuote> {
-    let mut args = Vec::new();
+    Ok(words(text)?.into_iter().map(|w| w.value).collect())
+}
+
+/// One argument: as it was typed (quotes and all) and as the app receives it.
+struct Word<'a> {
+    typed: &'a str,
+    value: String,
+}
+
+fn words(text: &str) -> Result<Vec<Word<'_>>, UnclosedQuote> {
+    let mut words = Vec::new();
     let mut current = String::new();
-    // Whether `current` is an argument, even an empty one (`""`).
-    let mut started = false;
+    // Where the argument being read starts, even an empty one (`""`).
+    let mut start: Option<usize> = None;
     let mut quote: Option<char> = None;
-    for c in text.chars() {
+    for (at, c) in text.char_indices() {
         match quote {
             Some(q) if c == q => quote = None,
             Some(_) => current.push(c),
             None if c == '"' || c == '\'' => {
                 quote = Some(c);
-                started = true;
+                start.get_or_insert(at);
             }
             None if c.is_whitespace() => {
-                if started {
-                    args.push(std::mem::take(&mut current));
-                    started = false;
+                if let Some(typed) = start.take().and_then(|from| text.get(from..at)) {
+                    words.push(Word { typed, value: std::mem::take(&mut current) });
                 }
             }
             None => {
                 current.push(c);
-                started = true;
+                start.get_or_insert(at);
             }
         }
     }
     if quote.is_some() {
         return Err(UnclosedQuote);
     }
-    if started {
-        args.push(current);
+    if let Some(typed) = start.and_then(|from| text.get(from..)) {
+        words.push(Word { typed, value: current });
     }
-    Ok(args)
+    Ok(words)
+}
+
+/// One place a flag is given: the words it covers and its value.
+struct Found {
+    at: usize,
+    len: usize,
+    value: Option<String>,
+}
+
+/// Where `flag` is given, up to a `--`: as `--flag`, `--flag=value` or, when it `takes_value`,
+/// `--flag value`.
+fn find(words: &[Word<'_>], flag: &str, takes_value: bool) -> Vec<Found> {
+    let mut found = Vec::new();
+    let mut at = 0;
+    while let Some(word) = words.get(at) {
+        if word.value == "--" {
+            break;
+        }
+        let mut len = 1;
+        if word.value == flag {
+            let value = words.get(at + 1).filter(|next| takes_value && !next.value.starts_with("--")).map(|next| next.value.clone());
+            len += usize::from(value.is_some());
+            found.push(Found { at, len, value });
+        } else if let Some(value) = word.value.strip_prefix(flag).and_then(|rest| rest.strip_prefix('=')) {
+            found.push(Found { at, len, value: Some(value.to_string()) });
+        }
+        at += len;
+    }
+    found
+}
+
+/// Whether `text` gives `flag`, and its value: `None` when it isn't there, `Some(None)` when it is
+/// there bare. The last one counts. Text with an unclosed quote gives nothing.
+pub fn flag(text: &str, flag: &str, takes_value: bool) -> Option<Option<String>> {
+    find(&words(text).ok()?, flag, takes_value).pop().map(|found| found.value)
+}
+
+/// How many times `text` gives `flag`.
+pub fn count(text: &str, flag: &str, takes_value: bool) -> usize {
+    words(text).map_or(0, |words| find(&words, flag, takes_value).len())
+}
+
+/// Whether any place `text` gives `flag`, one that takes a value, leaves that value out or empty.
+pub fn lacks_value(text: &str, flag: &str) -> bool {
+    words(text).is_ok_and(|words| find(&words, flag, true).iter().any(|found| found.value.as_deref().is_none_or(str::is_empty)))
+}
+
+/// `value` as one word of launch options.
+fn quoted(value: &str) -> String {
+    if !value.contains(|c: char| c.is_whitespace() || c == '"' || c == '\'') {
+        value.to_string()
+    } else if !value.contains('"') {
+        format!("\"{value}\"")
+    } else {
+        // Both kinds of quote: single-quoted runs, joined by each `'` written as `"'"`.
+        format!("'{}'", value.replace('\'', r#"'"'"'"#))
+    }
+}
+
+/// `text` with `flag` taken out (`to` is `None`), or given once: bare for `Some(None)` or an empty
+/// value. It stays where it was, or goes last (before a `--`). The other arguments are kept as
+/// typed.
+pub fn set_flag(text: &str, flag: &str, takes_value: bool, to: Option<Option<&str>>) -> Result<String, UnclosedQuote> {
+    let words = words(text)?;
+    let found = find(&words, flag, takes_value);
+    let end = words.iter().position(|w| w.value == "--").unwrap_or(words.len());
+    let here = found.first().map_or(end, |f| f.at);
+    let mut out: Vec<String> = Vec::new();
+    for at in 0..=words.len() {
+        if at == here
+            && let Some(value) = to
+        {
+            match value.filter(|v| !v.is_empty()) {
+                // Apart from its flag, a value starting with `--` would read as the next flag.
+                Some(v) if v.starts_with("--") => out.push(format!("{flag}={}", quoted(v))),
+                v => {
+                    out.push(flag.to_string());
+                    out.extend(v.map(quoted));
+                }
+            }
+        }
+        if !found.iter().any(|f| (f.at..f.at + f.len).contains(&at)) {
+            out.extend(words.get(at).map(|w| w.typed.to_string()));
+        }
+    }
+    Ok(out.join(" "))
 }
 
 #[cfg(test)]
@@ -74,5 +169,44 @@ mod tests {
     fn an_unclosed_quote_is_an_error() {
         assert_eq!(split(r#"--dir "My Projects"#), Err(UnclosedQuote));
         assert_eq!(split("'"), Err(UnclosedQuote));
+    }
+
+    #[test]
+    fn a_flag_is_read_with_its_value_up_to_the_separator() {
+        assert_eq!(flag("--control 7878 --safe-gpu", "--control", true), Some(Some("7878".into())));
+        assert_eq!(flag("--control=7879", "--control", true), Some(Some("7879".into())));
+        assert_eq!(flag("--control --safe-gpu", "--control", true), Some(None));
+        assert_eq!(flag("--safe-gpu file", "--safe-gpu", false), Some(None));
+        assert_eq!(flag("--control-token x", "--control", true), None);
+        assert_eq!(flag("-- --control 1", "--control", true), None);
+        assert_eq!(flag("--control '1", "--control", true), None);
+    }
+
+    #[test]
+    fn a_required_value_left_out_or_empty_is_noticed_wherever_the_flag_is_given() {
+        for text in ["--root", "--root=", r#"--root """#, "--root --root /tmp", "--root /tmp --root="] {
+            assert!(lacks_value(text, "--root"), "{text}");
+        }
+        for text in ["", "--root /tmp", "--root=/a --root /b", "-- --root"] {
+            assert!(!lacks_value(text, "--root"), "{text}");
+        }
+    }
+
+    #[test]
+    fn setting_a_flag_keeps_the_other_arguments_as_typed() {
+        let text = r#"--dir "My Docs" --control 1 'a b'"#;
+        assert_eq!(set_flag(text, "--control", true, Some(Some("2"))).unwrap(), r#"--dir "My Docs" --control 2 'a b'"#);
+        assert_eq!(set_flag(text, "--control", true, None).unwrap(), r#"--dir "My Docs" 'a b'"#);
+        assert_eq!(set_flag("a -- b", "--safe-gpu", false, Some(None)).unwrap(), "a --safe-gpu -- b");
+        assert_eq!(set_flag("--control=1 --control 2", "--control", true, Some(Some(""))).unwrap(), "--control");
+        assert_eq!(set_flag("--x '", "--control", true, None), Err(UnclosedQuote));
+    }
+
+    #[test]
+    fn a_value_with_spaces_or_a_quote_is_read_back_as_one() {
+        for value in [r"C:\My Files\key", "it's here", r#"say "hi""#, r#"it's a "key""#, "--key", "--my key"] {
+            let text = set_flag("", "--control-token-file", true, Some(Some(value))).unwrap();
+            assert_eq!(flag(&text, "--control-token-file", true), Some(Some(value.into())), "{text}");
+        }
     }
 }

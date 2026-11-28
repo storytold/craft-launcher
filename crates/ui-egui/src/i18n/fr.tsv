@@ -82,6 +82,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	Séparez les options par des espaces. Mettez entre guillemets une valeur qui contient des espaces.
 	A quote isn't closed.	Un guillemet n'est pas fermé.
 	{name} wasn't opened: a quote in its launch options isn't closed.	{name} n'a pas été ouvert : un guillemet n'est pas fermé dans ses options de lancement.
+	Lets agents (MCP) drive the app through this local port.	Permet aux agents (MCP) de piloter l’application par ce port local.
+	File holding the key agents use to connect.	Fichier contenant la clé que les agents utilisent pour se connecter.
+	Draws with the processor, after a graphics driver crash.	Dessine avec le processeur, après un plantage du pilote graphique.
+	Starts without plug-ins.	Démarre sans les modules complémentaires.
+	Opens a separate copy of the app.	Ouvre une copie distincte de l’application.
+	Opens files in a new window.	Ouvre les fichiers dans une nouvelle fenêtre.
+	Graphics mode: default, dx12, low-power or software.	Mode graphique : default, dx12, low-power ou software.
+	Starts without asking about unsaved changes.	Démarre sans poser de question sur les modifications non enregistrées.
+	Starts without opening an audio device.	Démarre sans ouvrir de périphérique audio.
+	Graphics card to use, by name.	Carte graphique à utiliser, par son nom.
+	Graphics power preference: high, low or none.	Préférence d’énergie graphique : high, low ou none.
+	{flag} needs a value.	{flag} a besoin d’une valeur.
+	Value of {flag}	Valeur de {flag}
+	Choices for {flag}	Valeurs proposées pour {flag}
+	Add a flag	Ajouter une option
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	Permet aux agents (MCP) de piloter l’application. Nécessite la variable FILMCRAFT_CONTROL_TOKEN sur cet ordinateur.
+	Folder agents may read from.	Dossier que les agents peuvent lire.
+	Folder agents may write to.	Dossier où les agents peuvent écrire.
+	How frames reach the screen: fifo, autovsync or novsync.	Mode d’affichage des images : fifo, autovsync ou novsync.
+	macOS: keeps the menus inside the window.	macOS : garde les menus dans la fenêtre.
+	Opens sample content.	Ouvre un contenu d’exemple.
+	Starts with an empty project.	Démarre avec un projet vide.
+	Recovers unsaved changes without asking.	Récupère les modifications non enregistrées sans demander.
+	Folder for auto-save, recovery and logs.	Dossier des sauvegardes automatiques, de la récupération et des journaux.
+	Folder of the photo library.	Dossier de la photothèque.
+	Shows two pages side by side.	Affiche deux pages côte à côte.
+	Theme: graphite or high-contrast.	Thème : graphite ou high-contrast.
+	Interface size, as a percentage.	Taille de l’interface, en pourcentage.
+	Interface language, such as fr; auto follows the system.	Langue de l’interface, par exemple fr ; auto suit le système.
 	Save	Enregistrer
 	All releases	Toutes les versions
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} est disponible.

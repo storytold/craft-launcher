@@ -86,6 +86,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	フラグはスペースで区切ってください。スペースを含む値は引用符で囲んでください。
 	A quote isn't closed.	引用符が閉じられていません。
 	{name} wasn't opened: a quote in its launch options isn't closed.	{name} を開けませんでした: 起動オプションの引用符が閉じられていません。
+	Lets agents (MCP) drive the app through this local port.	このローカルポートを通じて、エージェント（MCP）がアプリを操作できるようにします。
+	File holding the key agents use to connect.	エージェントの接続に使うキーを保存するファイルです。
+	Draws with the processor, after a graphics driver crash.	グラフィックドライバーのクラッシュ後に、プロセッサーで描画します。
+	Starts without plug-ins.	プラグインなしで起動します。
+	Opens a separate copy of the app.	アプリを別のコピーとして開きます。
+	Opens files in a new window.	ファイルを新しいウィンドウで開きます。
+	Graphics mode: default, dx12, low-power or software.	グラフィックモード：default、dx12、low-power、software。
+	Starts without asking about unsaved changes.	未保存の変更について確認せずに起動します。
+	Starts without opening an audio device.	オーディオデバイスを開かずに起動します。
+	Graphics card to use, by name.	使用するグラフィックカードを名前で指定します。
+	Graphics power preference: high, low or none.	グラフィックの電力設定：high、low、none。
+	{flag} needs a value.	{flag} には値が必要です。
+	Value of {flag}	{flag} の値
+	Choices for {flag}	{flag} の選択肢
+	Add a flag	フラグを追加
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	エージェント（MCP）がアプリを操作できるようにします。このコンピューターで FILMCRAFT_CONTROL_TOKEN の設定が必要です。
+	Folder agents may read from.	エージェントが読み取れるフォルダーです。
+	Folder agents may write to.	エージェントが書き込めるフォルダーです。
+	How frames reach the screen: fifo, autovsync or novsync.	画面への表示方法：fifo、autovsync、novsync。
+	macOS: keeps the menus inside the window.	macOS：メニューをウィンドウ内に表示します。
+	Opens sample content.	サンプルコンテンツを開きます。
+	Starts with an empty project.	空のプロジェクトで起動します。
+	Recovers unsaved changes without asking.	未保存の変更を確認せずに復元します。
+	Folder for auto-save, recovery and logs.	自動保存、復元、ログのフォルダーです。
+	Folder of the photo library.	写真ライブラリのフォルダーです。
+	Shows two pages side by side.	2ページを並べて表示します。
+	Theme: graphite or high-contrast.	テーマ：graphite または high-contrast。
+	Interface size, as a percentage.	インターフェースの大きさ（パーセント）。
+	Interface language, such as fr; auto follows the system.	表示言語（例：fr）。auto はシステムに従います。
 	Save	保存
 	All releases	すべてのリリース
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} が利用可能です。

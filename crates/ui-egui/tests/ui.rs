@@ -5138,3 +5138,53 @@ fn settings_without_app_management_is_one_column() {
     edges.dedup();
     assert!(!edges.is_empty() && edges.iter().all(|x| *x == edges[0]), "checkboxes start at {edges:?}");
 }
+
+#[test]
+fn flag_switches_and_the_launch_options_text_follow_each_other() {
+    use egui::accesskit::Role;
+    let (mut h, _) = harness(ViewMode::Table, egui::Theme::Dark, true);
+    h.run_steps(6);
+    h.get_by_label("More actions for PhotoCraft").click();
+    h.run_steps(3);
+    h.get_by_label("Launch options…").click();
+    // The dialog takes a few frames to settle where it will be clicked.
+    h.run_steps(8);
+    let field = "Flags added each time the app is opened";
+    let text = |h: &Harness<'static, Option<LauncherUi>>| h.get_by_role_and_label(Role::TextInput, field).value().unwrap_or_default();
+
+    // A switch writes the flag, with the value it starts with, and the value field edits it.
+    h.get_by_role_and_label(Role::CheckBox, "--control").click();
+    h.run_steps(3);
+    assert_eq!(text(&h), "--control 7878");
+    h.get_by_role_and_label(Role::TextInput, "Value of --control").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::TextInput, "Value of --control").type_text("9");
+    h.run_steps(3);
+    assert!(text(&h).contains('9'), "{}", text(&h));
+    h.get_by_role_and_label(Role::CheckBox, "--control").click();
+    h.run_steps(3);
+    assert_eq!(text(&h), "");
+
+    // Typed text switches it on. A value only the user knows has to be given before saving.
+    h.get_by_role_and_label(Role::TextInput, field).click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::TextInput, field).type_text("--control-token-file");
+    h.run_steps(3);
+    assert_eq!(h.get_by_role_and_label(Role::CheckBox, "--control-token-file").accesskit_node().toggled(), Some(egui::accesskit::Toggled::True));
+    h.get_by_label("--control-token-file needs a value.");
+
+    // A less common flag is picked from the list, and its value from the known ones.
+    h.get_by_label("+ Add a flag").click();
+    h.run_steps(3);
+    h.get_by_label("--present-mode").click();
+    h.run_steps(8);
+    assert_eq!(text(&h), "--control-token-file --present-mode fifo");
+    h.get_by_role_and_label(Role::ComboBox, "Choices for --present-mode").click();
+    h.run_steps(3);
+    h.get_by_label("novsync").click();
+    h.run_steps(3);
+    assert_eq!(text(&h), "--control-token-file --present-mode novsync");
+    h.get_by_label("Save").click();
+    h.run_steps(3);
+    assert!(h.state().as_ref().unwrap().settings.launch_flags.is_empty());
+}

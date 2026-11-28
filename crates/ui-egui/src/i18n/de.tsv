@@ -84,6 +84,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	Flags durch Leerzeichen trennen. Werte mit Leerzeichen in Anführungszeichen setzen.
 	A quote isn't closed.	Ein Anführungszeichen wird nicht geschlossen.
 	{name} wasn't opened: a quote in its launch options isn't closed.	{name} wurde nicht geöffnet: Ein Anführungszeichen in den Startoptionen wird nicht geschlossen.
+	Lets agents (MCP) drive the app through this local port.	Lässt Agenten (MCP) die App über diesen lokalen Port steuern.
+	File holding the key agents use to connect.	Datei mit dem Schlüssel, mit dem sich Agenten verbinden.
+	Draws with the processor, after a graphics driver crash.	Zeichnet mit dem Prozessor, nach einem Absturz des Grafiktreibers.
+	Starts without plug-ins.	Startet ohne Plug-ins.
+	Opens a separate copy of the app.	Öffnet eine separate Kopie der App.
+	Opens files in a new window.	Öffnet Dateien in einem neuen Fenster.
+	Graphics mode: default, dx12, low-power or software.	Grafikmodus: default, dx12, low-power oder software.
+	Starts without asking about unsaved changes.	Startet, ohne nach nicht gespeicherten Änderungen zu fragen.
+	Starts without opening an audio device.	Startet, ohne ein Audiogerät zu öffnen.
+	Graphics card to use, by name.	Zu verwendende Grafikkarte, nach Name.
+	Graphics power preference: high, low or none.	Energiepräferenz der Grafik: high, low oder none.
+	{flag} needs a value.	{flag} benötigt einen Wert.
+	Value of {flag}	Wert von {flag}
+	Choices for {flag}	Auswahl für {flag}
+	Add a flag	Flag hinzufügen
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	Lässt Agenten (MCP) die App steuern. Benötigt die Variable FILMCRAFT_CONTROL_TOKEN auf diesem Computer.
+	Folder agents may read from.	Ordner, aus dem Agenten lesen dürfen.
+	Folder agents may write to.	Ordner, in den Agenten schreiben dürfen.
+	How frames reach the screen: fifo, autovsync or novsync.	Wie Bilder auf den Bildschirm kommen: fifo, autovsync oder novsync.
+	macOS: keeps the menus inside the window.	macOS: behält die Menüs im Fenster.
+	Opens sample content.	Öffnet Beispielinhalte.
+	Starts with an empty project.	Startet mit einem leeren Projekt.
+	Recovers unsaved changes without asking.	Stellt nicht gespeicherte Änderungen ohne Nachfrage wieder her.
+	Folder for auto-save, recovery and logs.	Ordner für automatisches Speichern, Wiederherstellung und Protokolle.
+	Folder of the photo library.	Ordner der Fotobibliothek.
+	Shows two pages side by side.	Zeigt zwei Seiten nebeneinander.
+	Theme: graphite or high-contrast.	Design: graphite oder high-contrast.
+	Interface size, as a percentage.	Größe der Oberfläche in Prozent.
+	Interface language, such as fr; auto follows the system.	Sprache der Oberfläche, etwa fr; auto folgt dem System.
 	Save	Speichern
 	All releases	Alle Versionen
 	ArtCraft Launcher {version} is available.	ArtCraft Launcher {version} ist verfügbar.

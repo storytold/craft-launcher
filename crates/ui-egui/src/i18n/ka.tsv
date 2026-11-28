@@ -130,6 +130,35 @@
 	Separate flags with spaces. Quote a value that has spaces in it.	ფლაგები ჰარით გამოყავით. ჰარის შემცველი მნიშვნელობა ბრჭყალებში ჩასვით.
 	A quote isn't closed.	ბრჭყალი არ არის დახურული.
 	{name} wasn't opened: a quote in its launch options isn't closed.	{name} არ გაიხსნა: მისი გაშვების პარამეტრებში ბრჭყალი არ არის დახურული.
+	Lets agents (MCP) drive the app through this local port.	აგენტებს (MCP) აპის ამ ლოკალური პორტით მართვის საშუალებას აძლევს.
+	File holding the key agents use to connect.	ფაილი გასაღებით, რომლითაც აგენტები უკავშირდებიან.
+	Draws with the processor, after a graphics driver crash.	ხატავს პროცესორით, გრაფიკული დრაივერის ავარიის შემდეგ.
+	Starts without plug-ins.	იწყება დამატებების გარეშე.
+	Opens a separate copy of the app.	ხსნის აპის ცალკე ასლს.
+	Opens files in a new window.	ხსნის ფაილებს ახალ ფანჯარაში.
+	Graphics mode: default, dx12, low-power or software.	გრაფიკის რეჟიმი: default, dx12, low-power ან software.
+	Starts without asking about unsaved changes.	იწყება შეუნახავი ცვლილებების შესახებ კითხვის გარეშე.
+	Starts without opening an audio device.	იწყება აუდიომოწყობილობის გახსნის გარეშე.
+	Graphics card to use, by name.	გამოსაყენებელი ვიდეობარათი, სახელით.
+	Graphics power preference: high, low or none.	გრაფიკის ენერგიის პარამეტრი: high, low ან none.
+	{flag} needs a value.	{flag} საჭიროებს მნიშვნელობას.
+	Value of {flag}	{flag}-ის მნიშვნელობა
+	Choices for {flag}	{flag}-ის ვარიანტები
+	Add a flag	პარამეტრის დამატება
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	აგენტებს (MCP) აპის მართვის საშუალებას აძლევს. ამ კომპიუტერზე საჭიროა ცვლადი FILMCRAFT_CONTROL_TOKEN.
+	Folder agents may read from.	საქაღალდე, საიდანაც აგენტებს წაკითხვა შეუძლიათ.
+	Folder agents may write to.	საქაღალდე, სადაც აგენტებს ჩაწერა შეუძლიათ.
+	How frames reach the screen: fifo, autovsync or novsync.	როგორ ხვდება კადრები ეკრანზე: fifo, autovsync ან novsync.
+	macOS: keeps the menus inside the window.	macOS: მენიუები ფანჯარაში რჩება.
+	Opens sample content.	ხსნის სანიმუშო შიგთავსს.
+	Starts with an empty project.	იწყება ცარიელი პროექტით.
+	Recovers unsaved changes without asking.	აღადგენს შეუნახავ ცვლილებებს კითხვის გარეშე.
+	Folder for auto-save, recovery and logs.	ავტოშენახვის, აღდგენისა და ჟურნალების საქაღალდე.
+	Folder of the photo library.	ფოტობიბლიოთეკის საქაღალდე.
+	Shows two pages side by side.	აჩვენებს ორ გვერდს გვერდიგვერდ.
+	Theme: graphite or high-contrast.	თემა: graphite ან high-contrast.
+	Interface size, as a percentage.	ინტერფეისის ზომა პროცენტებში.
+	Interface language, such as fr; auto follows the system.	ინტერფეისის ენა, მაგალითად fr; auto მიჰყვება სისტემას.
 	Checked {ago}	ბოლო შემოწმება: {ago}
 	just now	ახლახან
 	yesterday	გუშინ

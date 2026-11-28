@@ -424,6 +424,35 @@ materialcraft	Preview materials in 2D and on 3D models.	Pregledajte materijale u
 	{latest} is out, but ArtCraft Launcher can't install it over this copy.	Izašla je verzija {latest}, ali ArtCraft Launcher je ne može instalirati preko ove kopije.
 	{name} launch options	{name}: opcije pokretanja
 	{name} wasn't opened: a quote in its launch options isn't closed.	{name} nije otvoren: navodnik u opcijama pokretanja nije zatvoren.
+	Lets agents (MCP) drive the app through this local port.	Omogućava agentima (MCP) da upravljaju aplikacijom preko ovog lokalnog porta.
+	File holding the key agents use to connect.	Datoteka s ključem kojim se agenti povezuju.
+	Draws with the processor, after a graphics driver crash.	Crta pomoću procesora, nakon pada grafičkog drajvera.
+	Starts without plug-ins.	Pokreće se bez dodataka.
+	Opens a separate copy of the app.	Otvara zasebnu kopiju aplikacije.
+	Opens files in a new window.	Otvara datoteke u novom prozoru.
+	Graphics mode: default, dx12, low-power or software.	Grafički način: default, dx12, low-power ili software.
+	Starts without asking about unsaved changes.	Pokreće se bez pitanja o nesačuvanim izmjenama.
+	Starts without opening an audio device.	Pokreće se bez otvaranja audio uređaja.
+	Graphics card to use, by name.	Grafička kartica koja se koristi, po nazivu.
+	Graphics power preference: high, low or none.	Postavka potrošnje grafike: high, low ili none.
+	{flag} needs a value.	{flag} zahtijeva vrijednost.
+	Value of {flag}	Vrijednost za {flag}
+	Choices for {flag}	Ponuđene vrijednosti za {flag}
+	Add a flag	Dodaj opciju
+	Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer.	Omogućava agentima (MCP) da upravljaju aplikacijom. Potrebna je varijabla FILMCRAFT_CONTROL_TOKEN na ovom računaru.
+	Folder agents may read from.	Folder iz kojeg agenti smiju čitati.
+	Folder agents may write to.	Folder u koji agenti smiju pisati.
+	How frames reach the screen: fifo, autovsync or novsync.	Kako kadrovi stižu na ekran: fifo, autovsync ili novsync.
+	macOS: keeps the menus inside the window.	macOS: zadržava menije unutar prozora.
+	Opens sample content.	Otvara ogledni sadržaj.
+	Starts with an empty project.	Pokreće se s praznim projektom.
+	Recovers unsaved changes without asking.	Vraća nesačuvane izmjene bez pitanja.
+	Folder for auto-save, recovery and logs.	Folder za automatsko spremanje, oporavak i zapisnike.
+	Folder of the photo library.	Folder biblioteke fotografija.
+	Shows two pages side by side.	Prikazuje dvije stranice jednu pored druge.
+	Theme: graphite or high-contrast.	Tema: graphite ili high-contrast.
+	Interface size, as a percentage.	Veličina interfejsa u procentima.
+	Interface language, such as fr; auto follows the system.	Jezik interfejsa, npr. fr; auto prati sistem.
 
 # Taglines for apps added on main.
 anicraft	2D vector animation	2D vektorska animacija

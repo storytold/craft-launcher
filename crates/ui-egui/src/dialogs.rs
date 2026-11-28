@@ -2,6 +2,8 @@
 
 use crate::i18n::fmt;
 use artcraft_launcher_core::Os;
+use artcraft_launcher_core::args;
+use artcraft_launcher_core::launch_flags::{self, Effect};
 use artcraft_launcher_core::protocol::Command;
 use egui::{RichText, vec2};
 
@@ -254,20 +256,30 @@ impl LauncherUi {
         let t = Tokens::get(ui.ctx());
         ui.set_width(460.0f32.min(ui.ctx().content_rect().width() - 80.0));
         Self::title(ui, crate::icons::app(id), &fmt(tl!("{name} launch options"), &[("name", app.name)]), "");
+        // Scrolls in a short window, so the text field and buttons stay in reach.
+        let room = (ui.ctx().content_rect().height() - 340.0).max(120.0);
+        egui::ScrollArea::vertical().max_height(room).show(ui, |ui| launch_flag_switches(ui, id, flags));
         let label = ui.label(tl!("Flags added each time the app is opened"));
         ui.add(egui::TextEdit::singleline(flags).id_salt("launch_flags").hint_text("--flag \"…\"").desired_width(f32::INFINITY))
             .labelled_by(label.id);
-        let split = artcraft_launcher_core::args::split(flags);
-        let (note, color) = match split {
-            Ok(_) => (tl!("Separate flags with spaces. Quote a value that has spaces in it."), t.muted),
-            Err(_) => (tl!("A quote isn't closed."), t.bad),
+        let split = args::split(flags);
+        // Read after both the switches and the field, so Save checks the text it saves.
+        let missing = launch_flags::for_app(id)
+            .iter()
+            .chain(launch_flags::extras(id))
+            .find(|f| f.value.is_some() && args::lacks_value(flags, f.flag))
+            .map(|f| f.flag);
+        let (note, color) = match (&split, missing) {
+            (Err(_), _) => (tl!("A quote isn't closed.").to_string(), t.bad),
+            (Ok(_), Some(flag)) => (fmt(tl!("{flag} needs a value."), &[("flag", flag)]), t.bad),
+            (Ok(_), None) => (tl!("Separate flags with spaces. Quote a value that has spaces in it.").to_string(), t.muted),
         };
         ui.label(RichText::new(note).color(color));
         ui.add_space(14.0);
         let mut close = false;
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let save = ui.add_enabled_ui(split.is_ok(), |ui| widgets::button(ui, tl!("Save"), Kind::Primary, 90.0)).inner;
+                let save = ui.add_enabled_ui(split.is_ok() && missing.is_none(), |ui| widgets::button(ui, tl!("Save"), Kind::Primary, 90.0)).inner;
                 if save.clicked() {
                     let trimmed = flags.trim();
                     if trimmed.is_empty() {
@@ -397,5 +409,113 @@ impl LauncherUi {
                 folder.clear();
             }
         });
+    }
+}
+
+/// One line saying what a launch flag does.
+fn effect_text(effect: Effect) -> &'static str {
+    match effect {
+        Effect::Control => tl!("Lets agents (MCP) drive the app through this local port."),
+        Effect::ControlNeedsToken => tl!("Lets agents (MCP) drive the app. Needs FILMCRAFT_CONTROL_TOKEN set on this computer."),
+        Effect::ControlTokenFile => tl!("File holding the key agents use to connect."),
+        Effect::ReadRoot => tl!("Folder agents may read from."),
+        Effect::WriteRoot => tl!("Folder agents may write to."),
+        Effect::SafeGpu => tl!("Draws with the processor, after a graphics driver crash."),
+        Effect::SafeMode => tl!("Starts without plug-ins."),
+        Effect::NewInstance => tl!("Opens a separate copy of the app."),
+        Effect::NewWindow => tl!("Opens files in a new window."),
+        Effect::Graphics => tl!("Graphics mode: default, dx12, low-power or software."),
+        Effect::NoRecover => tl!("Starts without asking about unsaved changes."),
+        Effect::NoAudio => tl!("Starts without opening an audio device."),
+        Effect::Gpu => tl!("Graphics card to use, by name."),
+        Effect::PowerPreference => tl!("Graphics power preference: high, low or none."),
+        Effect::PresentMode => tl!("How frames reach the screen: fifo, autovsync or novsync."),
+        Effect::MacMenus => tl!("macOS: keeps the menus inside the window."),
+        Effect::Sample => tl!("Opens sample content."),
+        Effect::Empty => tl!("Starts with an empty project."),
+        Effect::Recover => tl!("Recovers unsaved changes without asking."),
+        Effect::DataDir => tl!("Folder for auto-save, recovery and logs."),
+        Effect::Library => tl!("Folder of the photo library."),
+        Effect::TwoPaged => tl!("Shows two pages side by side."),
+        Effect::Theme => tl!("Theme: graphite or high-contrast."),
+        Effect::Scale => tl!("Interface size, as a percentage."),
+        Effect::Language => tl!("Interface language, such as fr; auto follows the system."),
+    }
+}
+
+/// A switch for each flag the app accepts, with a field for its value. They read and write
+/// `flags`, the launch options as typed, so the two never disagree.
+fn launch_flag_switches(ui: &mut egui::Ui, id: &str, flags: &mut String) {
+    let t = Tokens::get(ui.ctx());
+    let readable = args::split(flags).is_ok();
+    // The common flags, then the others the text already gives.
+    let given_extra = |f: &&launch_flags::LaunchFlag| args::flag(flags, f.flag, f.value.is_some()).is_some();
+    let extras = launch_flags::extras(id);
+    let shown: Vec<_> = launch_flags::for_app(id).iter().chain(extras.iter().filter(given_extra)).collect();
+    for known in shown {
+        let takes_value = known.value.is_some();
+        let given = args::flag(flags, known.flag, takes_value);
+        let on = given.is_some();
+        let mut value = given.flatten().unwrap_or_default();
+        let mut set = None;
+        ui.add_enabled_ui(readable, |ui| {
+            ui.horizontal(|ui| {
+                if widgets::toggle(ui, known.flag, on, 200.0).clicked() {
+                    set = Some((!on).then(|| known.value.map(str::to_string)));
+                }
+                if let Some(default) = known.value {
+                    let name = fmt(tl!("Value of {flag}"), &[("flag", known.flag)]);
+                    // Room for the list of known values after the field.
+                    let list = if known.choices.is_empty() { 0.0 } else { theme::CONTROL_H + ui.spacing().item_spacing.x };
+                    let width = (ui.available_width() - list).max(40.0);
+                    let field = egui::TextEdit::singleline(&mut value).id_salt(known.flag).hint_text(default).desired_width(width - 8.0);
+                    // Given several times, the values are edited in the text, so none is lost.
+                    let one = !known.repeats() || args::count(flags, known.flag, true) <= 1;
+                    let response = ui.add_enabled(on && one, field);
+                    if response.changed() {
+                        set = Some(Some(Some(value.clone())));
+                    }
+                    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, on, &name));
+                    if !known.choices.is_empty() {
+                        let name = fmt(tl!("Choices for {flag}"), &[("flag", known.flag)]);
+                        ui.add_enabled_ui(on, |ui| {
+                            let button = widgets::picker(ui, &name);
+                            egui::Popup::menu(&button).show(|ui| {
+                                for choice in known.choices {
+                                    if ui.selectable_label(value == *choice, *choice).clicked() {
+                                        set = Some(Some(Some((*choice).to_string())));
+                                    }
+                                }
+                            });
+                        });
+                    }
+                }
+            });
+        });
+        ui.label(RichText::new(effect_text(known.effect)).color(t.muted));
+        ui.add_space(8.0);
+        if let Some(to) = set
+            && let Ok(text) = args::set_flag(flags, known.flag, takes_value, to.as_ref().map(Option::as_deref))
+        {
+            *flags = text;
+        }
+    }
+    let others: Vec<_> = extras.iter().filter(|f| args::flag(flags, f.flag, f.value.is_some()).is_none()).collect();
+    if readable && !others.is_empty() {
+        let mut picked = None;
+        ui.menu_button(format!("+ {}", tl!("Add a flag")), |ui| {
+            for other in others {
+                if ui.button(other.flag).on_hover_text(effect_text(other.effect)).clicked() {
+                    picked = Some(other);
+                    ui.close();
+                }
+            }
+        });
+        ui.add_space(8.0);
+        if let Some(other) = picked
+            && let Ok(text) = args::set_flag(flags, other.flag, other.value.is_some(), Some(other.value))
+        {
+            *flags = text;
+        }
     }
 }
