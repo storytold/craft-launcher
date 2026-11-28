@@ -3203,7 +3203,7 @@ fn mcp_state(shared: &Shared) -> Event {
 }
 
 /// [`mcp_state`] for apps already detected.
-fn mcp_state_for(detected: &[crate::agents::InstalledApp]) -> Event {
+fn mcp_state_for(detected: &[crate::agents::AppEntry]) -> Event {
     Event::Mcp { agents: crate::agents::state(detected) }
 }
 
@@ -3228,8 +3228,8 @@ fn run_mcp(shared: &Shared, cmd: Command) {
     shared.emit(mcp_state_for(&apps));
 }
 
-/// The installed apps with their CLIs, from a fresh detection snapshot.
-fn detected_apps(shared: &Shared) -> Vec<crate::agents::InstalledApp> {
+/// The installed apps with their MCP commands, from a fresh detection snapshot.
+fn detected_apps(shared: &Shared) -> Vec<crate::agents::AppEntry> {
     let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
     let snapshot = shared.host.snapshot();
     crate::agents::installed_apps(|app| shared.host.detect(app, &manifest, &snapshot))
