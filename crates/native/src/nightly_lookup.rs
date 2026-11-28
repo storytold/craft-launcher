@@ -25,7 +25,7 @@ const MAX_PAGES: usize = 5;
 const MAX_REQUESTS: usize = 32;
 const MAX_PAGE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
-const MAX_TIME: Duration = Duration::from_secs(30);
+pub(crate) const MAX_TIME: Duration = Duration::from_secs(30);
 const MAX_RECORDS: usize = 64;
 const MAX_METADATA: u64 = 64 * 1024;
 
@@ -182,15 +182,16 @@ fn outcome(result: Result<Option<VerifiedRelease>, NightlyHttpError>) -> Outcome
 /// older selections and unsupported targets fall back to complete bounded GitHub discovery.
 pub(crate) fn catalog_candidate(feed: &artcraft_launcher_core::feed::Feed, app: &CraftApp, now: i64, previous_tag: Option<&str>) -> Option<Release> {
     use artcraft_launcher_core::feed::FeedAnswer;
-    // The server reconciles releases hourly. Do not let a day-old snapshot hide new nightlies.
-    let at = feed.last_fetched?;
-    if !feed.channel_aware || !(0..=2 * 60 * 60).contains(&now.saturating_sub(at)) {
+    // Re-signing an unchanged website must not refresh the release reconciliation timestamp.
+    let generated = feed.last_fetched?;
+    let reconciled = feed.apps.get(app.id)?.nightly.as_ref()?.reconciled_at?;
+    if !feed.channel_aware || reconciled > generated || !(0..=2 * 60 * 60).contains(&now.saturating_sub(reconciled)) {
         return None;
     }
     let FeedAnswer::Fresh(Some(release)) = feed.answer_nightly(app, now) else { return None };
     let version = artcraft_launcher_core::release::canonical_nightly_version(&release)?;
     if previous_tag.and_then(artcraft_launcher_core::version::parse).is_some_and(|old| artcraft_launcher_core::version::is_newer(&old, &version))
-        || release.published_at.is_none_or(|at| at <= 0 || at > now)
+        || release.published_at.is_none_or(|at| at <= 0 || at > reconciled)
         || !release.assets.iter().any(|a| a.name == artcraft_launcher_core::nightly::MANIFEST_NAME && a.size > 0 && a.sha256.is_some())
     {
         return None;
@@ -241,6 +242,8 @@ pub(crate) struct LookupPolicy<'a> {
     pub candidate: Option<Release>,
     pub previous: Option<&'a VerifiedRelease>,
     pub backoff: Option<i64>,
+    pub github_blocked: bool,
+    pub before_lookup: &'a mut dyn FnMut() -> Result<(), NightlyHttpError>,
     pub manual: bool,
     pub installed: bool,
     pub fallback_used: &'a mut usize,
@@ -257,18 +260,16 @@ pub(crate) fn lookup_prefer_catalog<'a>(
     elapsed: &'a dyn Fn() -> Duration,
     enabled: &'a dyn Fn() -> bool,
 ) -> Option<(Outcome, Origin)> {
-    if let Some(retry_at) = policy.backoff {
-        return Some((
-            Outcome::Indeterminate(NightlyHttpError {
-                over_budget: false,
-                why: "Nightly discovery is waiting for server backoff.".into(),
-                retry_at: Some(retry_at),
-            }),
-            Origin::GitHub,
-        ));
+    if policy.backoff.is_some() {
+        return None;
     }
     let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
+    let mut started = false;
     if let Some(release) = policy.candidate {
+        if let Err(error) = (policy.before_lookup)() {
+            return Some((Outcome::Indeterminate(error), Origin::ArtCraftApi));
+        }
+        started = true;
         match verify_catalog_candidate(app, platform, (release, policy.previous), &mut budget) {
             Ok(Some(verified)) => return Some((Outcome::Verified(Box::new(verified)), Origin::ArtCraftApi)),
             Ok(None) => {}
@@ -276,8 +277,11 @@ pub(crate) fn lookup_prefer_catalog<'a>(
             Err(error) => log::info!("{}: catalog Nightly could not be verified; falling back: {}", app.id, error.why),
         }
     }
-    if !reserve_fallback(policy.manual, policy.installed, policy.fallback_used) {
+    if policy.github_blocked || !reserve_fallback(policy.manual, policy.installed, policy.fallback_used) {
         return None;
+    }
+    if !started && let Err(error) = (policy.before_lookup)() {
+        return Some((Outcome::Indeterminate(error), Origin::GitHub));
     }
     Some((outcome(scan(app, platform, &mut budget)), Origin::GitHub))
 }
@@ -523,11 +527,21 @@ impl State {
             let previous = self.records.get(key).cloned().unwrap_or_default();
             self.deferred_from.insert(key.clone(), (previous.attempted_at, previous.complete));
             let record = self.records.entry(key.clone()).or_default();
-            record.attempted_at = Some(now);
+            // Queueing is not an attempt. A crash or opt-out before the worker reaches this app
+            // must not consume its six-hour turn.
             record.complete = false;
         }
         self.in_flight = true;
         chosen
+    }
+
+    /// Mark a lookup only when it actually starts, never when merely queued.
+    pub(crate) fn attempt(&mut self, key: &str, now: i64) {
+        if self.deferred_from.contains_key(key) {
+            let record = self.records.entry(key.to_owned()).or_default();
+            record.attempted_at = Some(now);
+            record.complete = false;
+        }
     }
 
     /// Puts a key this sweep chose back where it was: a budget refusal never happened, so it must not

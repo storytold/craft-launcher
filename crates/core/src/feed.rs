@@ -67,6 +67,8 @@ pub struct FeedRelease {
     pub tag: String,
     pub name: String,
     pub published_at: Option<i64>,
+    /// Actual release reconciliation time, independent of the website rebuild time.
+    pub reconciled_at: Option<i64>,
     pub html_url: String,
     pub prerelease: bool,
     pub notes: String,
@@ -345,6 +347,8 @@ struct CatalogRelease {
     #[serde(default)]
     published_at: Option<String>,
     #[serde(default)]
+    reconciled_at: Option<String>,
+    #[serde(default)]
     html_url: Option<String>,
     #[serde(default)]
     prerelease: bool,
@@ -373,6 +377,7 @@ impl CatalogRelease {
             tag,
             name: self.name.unwrap_or_default(),
             published_at: self.published_at.as_deref().and_then(parse_rfc3339),
+            reconciled_at: self.reconciled_at.as_deref().and_then(parse_rfc3339),
             html_url: self.html_url.unwrap_or_default(),
             prerelease: self.prerelease,
             notes: self.notes_markdown.unwrap_or_default(),
@@ -490,6 +495,7 @@ impl RawRelease {
             tag,
             name: self.name.unwrap_or_default(),
             published_at: self.published_at.as_deref().and_then(parse_rfc3339),
+            reconciled_at: None,
             html_url: self.html_url.unwrap_or_default(),
             prerelease: self.prerelease,
             notes: self.notes_markdown.unwrap_or_default(),

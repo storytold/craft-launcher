@@ -16,7 +16,11 @@ fn app() -> &'static CraftApp {
 fn complete(shared: &Shared, paths: &Paths, platform: Platform, run: u64) {
     let key = nightly_lookup::key(app(), platform);
     let now = crate::now();
-    shared.nightly_state.lock().unwrap().begin(&[key], &Default::default(), now, true, true);
+    {
+        let mut state = shared.nightly_state.lock().unwrap();
+        state.begin(std::slice::from_ref(&key), &Default::default(), now, true, true);
+        state.attempt(&key, now);
+    }
     finish_nightly_result(app(), platform, 0, Outcome::Verified(Box::new(nightly_lookup::tests::verified(run))), Origin::GitHub, shared, paths);
     shared.nightly_state.lock().unwrap().finish();
 }
@@ -113,10 +117,7 @@ fn actual_backend_fresh_off_schedules_nothing_and_later_off_cancels_queued_sweep
         .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
         .filter(|app| state.record(&nightly_lookup::key(app, platform)).attempted_at.is_some())
         .collect();
-    let eligible =
-        artcraft_launcher_core::hosted_catalog::apps().iter().filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os)).count();
-    assert_eq!(attempted.len(), eligible, "catalog sweep schedules every due app");
-    assert!(attempted.iter().all(|app| state.record(&nightly_lookup::key(app, platform)).verified_at.is_none()));
+    assert!(attempted.is_empty(), "unstarted apps do not consume their next check turn");
     assert!(!shared.checking.load(Ordering::SeqCst));
 }
 
@@ -332,4 +333,76 @@ fn nightly_catalog_fetch_stops_before_signature_if_consent_is_withdrawn() {
         .is_none()
     );
     assert!(!paths.feed_cache().exists());
+}
+
+#[test]
+fn real_sweep_keeps_installed_priority_and_uses_catalog_after_github_budget_refusal() {
+    let (_temp, shared, paths, platform) = fixture();
+    let now = crate::now();
+    let (mut feed, _, body) = nightly_lookup::tests::catalog_fixture("v1.0.0-nightly.20261120.20.1.gabcdefabcdef", true);
+    feed.last_fetched = Some(now);
+    let entry = feed.apps.get_mut(app().id).unwrap();
+    entry.fetched_at = Some(now);
+    entry.nightly.as_mut().unwrap().reconciled_at = Some(now);
+    let release = nightly_lookup::catalog_candidate(&feed, app(), now, None).unwrap();
+    let verified = crate::nightly::verified_descriptor(app(), release, &body, platform).unwrap().unwrap();
+    shared.nightly_verified.lock().unwrap().insert(app().id.into(), verified);
+    *shared.nightly_catalog_fixture.lock().unwrap() = Some(feed);
+    let cad = CraftApp::by_id("cadcraft").unwrap();
+    shared.manifest.lock().unwrap().apps.insert(
+        cad.id.into(),
+        crate::manifest::Record {
+            version: "1.0.0".into(),
+            kind: PackageKind::TarGz,
+            path: paths.apps().join("cadcraft/cadcraft"),
+            installed_at: now,
+            files: vec![],
+            needs_root: false,
+        },
+    );
+    let budget = crate::github_budget::GitHubBudget::in_memory(crate::github_budget::DEVELOPER_BUILDS);
+    while budget.take(Priority::User, now).is_ok() {}
+    let http = Http::new().unwrap().without_token().with_budget(budget);
+    let backend = NativeBackend {
+        shared: shared.clone(),
+        paths: paths.clone(),
+        http: Some(http),
+        source: None,
+        platform: Some(platform),
+        pins: None,
+        spawn: Arc::new(|task| task()),
+    };
+    backend.check(false);
+    let state = shared.nightly_state.lock().unwrap();
+    assert_eq!(state.record(&nightly_lookup::key(cad, platform)).attempted_at, None, "installed fallback refused before a request stays due");
+    assert!(state.record(&nightly_lookup::key(app(), platform)).complete, "cached verified candidate still completes after quota refusal");
+    assert!(state.record(&nightly_lookup::key(app(), platform)).attempted_at.is_some());
+    let events = shared.events.lock().unwrap();
+    assert!(events.iter().any(|e| matches!(e,Event::Latest {app,from:Origin::ArtCraftApi,latest:LatestRelease::Found(_)} if app=="photocraft")));
+    assert!(events.iter().any(|e| matches!(e, Event::CheckFinished { source: Source::Feed, .. })));
+}
+
+#[test]
+fn unavailable_https_keeps_unstarted_apps_due() {
+    let (_temp, shared, paths, platform) = fixture();
+    let backend = NativeBackend {
+        shared: shared.clone(),
+        paths,
+        http: None,
+        source: None,
+        platform: Some(platform),
+        pins: None,
+        spawn: Arc::new(|task| task()),
+    };
+    backend.check(false);
+    let state = shared.nightly_state.lock().unwrap();
+    assert!(backend.nightly_apps().iter().all(|app| state.record(&nightly_lookup::key(app, platform)).attempted_at.is_none()));
+    assert!(
+        shared
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| matches!(event,Event::Notice {result:Err(why),..} if why.contains("Secure Nightly connections")))
+    );
 }
