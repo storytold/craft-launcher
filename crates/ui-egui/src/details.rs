@@ -29,17 +29,27 @@ const ARROW: f32 = 36.0;
 const SLIDE_SECS: f32 = 0.22;
 /// The width of the main button and its menu in the page's top, when the page is wide.
 const ACTION_W: f32 = 300.0;
+const PLATFORM_ICON_SIZE: f32 = 18.0;
 
 fn platform_icons(ui: &mut Ui, platforms: &str, t: &Tokens) {
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = vec2(5.0, 3.0);
-        for name in platforms.split(',').map(str::trim).filter(|name| !name.is_empty()) {
-            if let Some(icon) = crate::icons::platform(name) {
-                ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(18.0, 18.0)).tint(t.ink_strong).alt_text(name)).on_hover_text(name);
-            } else {
-                ui.label(RichText::new(name).size(14.0).color(t.ink_strong));
+    ui.scope(|ui| {
+        ui.spacing_mut().interact_size.y = PLATFORM_ICON_SIZE;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = vec2(5.0, 3.0);
+            for name in platforms.split(',').map(str::trim).filter(|name| !name.is_empty()) {
+                if let Some(icon) = crate::icons::platform(name) {
+                    let image =
+                        egui::Image::new(icon).fit_to_exact_size(vec2(PLATFORM_ICON_SIZE, PLATFORM_ICON_SIZE)).tint(t.ink_strong).alt_text(name);
+                    let response = ui.add(image);
+                    let mut tooltip = egui::Tooltip::for_enabled(&response);
+                    let frame = egui::Frame::popup(ui.style()).corner_radius(CornerRadius::ZERO).fill(t.bg).stroke(t.hairline());
+                    tooltip.popup = tooltip.popup.align(egui::emath::RectAlign::TOP).frame(frame);
+                    tooltip.show(|ui| ui.label(name));
+                } else {
+                    ui.label(RichText::new(name).size(14.0).color(t.ink_strong));
+                }
             }
-        }
+        });
     });
 }
 
@@ -429,20 +439,34 @@ impl LauncherUi {
         .filter_map(|(label, value, platforms)| value.filter(|value| !value.trim().is_empty()).map(|value| (label, value, platforms)))
         .collect::<Vec<_>>();
         for pair in facts.chunks(per_row) {
-            ui.columns(per_row, |cols| {
-                for (col, (label, value, platforms)) in cols.iter_mut().zip(pair) {
-                    egui::Frame::new().stroke(t.hairline()).inner_margin(theme::BOX_MARGIN).show(col, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.spacing_mut().item_spacing.y = 2.0;
-                        widgets::hud(ui, label, t.faint);
-                        if *platforms {
-                            platform_icons(ui, value, t);
-                        } else {
-                            ui.add(egui::Label::new(RichText::new(*value).size(14.0).color(t.ink_strong)).wrap());
-                        }
-                    });
-                }
+            let boxes = ui.columns(per_row, |cols| {
+                cols.iter_mut()
+                    .zip(pair)
+                    .map(|(col, (label, value, platforms))| {
+                        egui::Frame::new()
+                            .inner_margin(theme::BOX_MARGIN)
+                            .show(col, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.set_min_height(32.0);
+                                ui.spacing_mut().item_spacing.y = 2.0;
+                                widgets::hud(ui, label, t.faint);
+                                if *platforms {
+                                    platform_icons(ui, value, t);
+                                } else {
+                                    ui.add(egui::Label::new(RichText::new(*value).size(14.0).color(t.ink_strong)).wrap());
+                                }
+                            })
+                            .response
+                            .rect
+                    })
+                    .collect::<Vec<_>>()
             });
+            // If a value wraps, extend the other outlines to the same bottom edge.
+            let bottom = boxes.iter().map(Rect::bottom).fold(f32::NEG_INFINITY, f32::max);
+            for mut rect in boxes {
+                rect.max.y = bottom;
+                ui.painter().rect_stroke(rect, CornerRadius::ZERO, t.hairline(), egui::StrokeKind::Inside);
+            }
         }
         ui.add_space(4.0);
         widgets::eyebrow(ui, "03", tl!("What's Changed"));

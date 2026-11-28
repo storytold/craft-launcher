@@ -3879,6 +3879,44 @@ fn a_page_without_pictures_has_no_gallery() {
 }
 
 #[test]
+fn release_fact_cards_align_and_platform_names_appear_above_icons() {
+    use egui::{Shape, accesskit::Role};
+
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(8);
+    h.get_by_label("PdfCraft details").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("PdfCraft details").click();
+    h.run_steps(10);
+
+    let card_for = |label| {
+        let label = h.get_by_label(label).rect();
+        h.output()
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                Shape::Rect(shape) if !shape.stroke.is_empty() && shape.rect.contains_rect(label) => Some(shape.rect),
+                _ => None,
+            })
+            .min_by(|a, b| a.area().total_cmp(&b.area()))
+            .expect("the fact has an outline")
+    };
+    let download = card_for("Download");
+    let platforms = card_for("Platforms");
+    assert!(!download.intersects(platforms), "each fact has its own card");
+    assert!((download.width() - platforms.width()).abs() < 1.0, "the two cards use equal column widths");
+    assert!((download.bottom() - platforms.bottom()).abs() < 1.0, "the two cards align at the bottom");
+
+    let icon = h.get_by_role_and_label(Role::Image, "Windows").rect();
+    h.hover_at(icon.center());
+    h.run_steps(40);
+    let tooltip = h.get_by_role_and_label(Role::Label, "Windows").rect();
+    assert!(tooltip.bottom() < icon.top(), "the platform name appears above the icon");
+    h.check_accessibility();
+    snapshot(&mut h, "release-platform-tooltip-dark");
+}
+
+#[test]
 /// Enlarge adds a second, keyboard-navigable view over the drawer; Esc closes the enlarged
 /// picture before the drawer.
 fn the_lead_picture_can_be_enlarged() {
