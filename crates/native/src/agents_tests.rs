@@ -342,6 +342,11 @@ fn a_refresh_that_cannot_write_the_app_list_fails() {
     let dir = tempfile::tempdir().unwrap();
     write_apps(dir.path(), &[]).unwrap();
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+    if std::fs::write(dir.path().join("probe"), b"").is_ok() {
+        // Running as root: permissions don't stop the write.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        return;
+    }
     let result = refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
     assert!(result.is_err(), "{result:?}");

@@ -3115,7 +3115,9 @@ fn run_mcp(shared: &Shared, cmd: Command) {
         Command::McpState => (Ok(()), Some(crate::agents::refresh(&apps).is_ok())),
         Command::McpSetAgents { enabled } => {
             let result = crate::agents::set_enabled(enabled, &apps);
-            let written = result.is_ok();
+            // Turning on keeps a gateway copy a client holds busy; a refresh reports it, so the
+            // next detection pass tries again.
+            let written = result.is_ok() && (!enabled || crate::agents::refresh(&apps).is_ok());
             (result, Some(written))
         }
         Command::McpSetClient { client, added } => (crate::agents::set_client(client, added), None),
