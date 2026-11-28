@@ -820,6 +820,159 @@ pub fn is_running(path: &Path) -> bool {
     }
 }
 
+/// A running program as the system lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunningProgram {
+    /// Its executable's file name, such as `photocraft.exe`.
+    pub name: String,
+    /// Its executable's full path, when the system gave it.
+    pub path: Option<PathBuf>,
+}
+
+/// What the running programs say about a set of installed executables.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Running {
+    /// None of them is running.
+    No,
+    /// This installed executable is running.
+    Confirmed(PathBuf),
+    /// A program with this file name is running, and its location is unknown, so it may be
+    /// another copy.
+    Possible(String),
+}
+
+/// Which of `targets` runs among `programs`. A program whose path is known counts only when the
+/// path is one of the targets; one whose path is unknown counts as possible when its file name is
+/// a target's. A confirmed match wins over a possible one.
+pub fn match_running(targets: &[PathBuf], programs: &[RunningProgram]) -> Running {
+    let mut possible = None;
+    for program in programs {
+        match &program.path {
+            Some(path) => {
+                if let Some(target) = targets.iter().find(|target| same_program(target, path)) {
+                    return Running::Confirmed(target.clone());
+                }
+                if possible.is_none()
+                    && targets.iter().any(|target| {
+                        let reported = path.to_string_lossy().replace('/', "\\");
+                        let expected = target.to_string_lossy().replace('/', "\\");
+                        reported.trim_start_matches(r"\\?\").eq_ignore_ascii_case(expected.trim_start_matches(r"\\?\"))
+                            && (file_identity(target).is_none() || file_identity(path).is_none())
+                    })
+                {
+                    possible = Some(program.name.clone());
+                }
+            }
+            None if possible.is_none()
+                && targets.iter().any(|target| windows_file_name(target).is_some_and(|name| name.eq_ignore_ascii_case(&program.name))) =>
+            {
+                possible = Some(program.name.clone());
+            }
+            None => {}
+        }
+    }
+    possible.map_or(Running::No, Running::Possible)
+}
+
+/// The file name at the end of a Windows path, after the last `\` or `/`, on every platform.
+fn windows_file_name(path: &Path) -> Option<String> {
+    let text = path.to_string_lossy();
+    text.rsplit(['\\', '/']).next().filter(|name| !name.is_empty()).map(str::to_string)
+}
+
+/// Whether two executable paths identify the same file, including hardlinks and symbolic links.
+fn same_program(left: &Path, right: &Path) -> bool {
+    file_identity(left).zip(file_identity(right)).is_some_and(|(left, right)| left == right)
+}
+
+fn file_identity(path: &Path) -> Option<(u64, u64)> {
+    #[cfg(windows)]
+    {
+        use winsafe::{HFILE, co};
+        let (file, _) = HFILE::CreateFile(
+            path.to_str()?,
+            co::GENERIC::default(),
+            Some(co::FILE_SHARE::READ | co::FILE_SHARE::WRITE | co::FILE_SHARE::DELETE),
+            None,
+            co::DISPOSITION::OPEN_EXISTING,
+            co::FILE_ATTRIBUTE::NORMAL,
+            None,
+            None,
+            None,
+        )
+        .ok()?;
+        let info = file.GetFileInformationByHandle().ok()?;
+        Some((u64::from(info.dwVolumeSerialNumber), info.nFileIndex()))
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = std::fs::metadata(path).ok()?;
+        Some((metadata.dev(), metadata.ino()))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        None
+    }
+}
+
+/// Whether any of `targets` (an app's executable and its command-line tool) is running. On Windows
+/// the programs are matched by full path where the system gives one; when the process list can't
+/// be read, a program with a target's file name counts as possible. Elsewhere [`is_running`]
+/// checks the first target.
+pub fn app_running(targets: &[PathBuf]) -> Running {
+    #[cfg(windows)]
+    {
+        let names: Vec<String> = targets.iter().filter_map(|t| t.file_name()).map(|n| n.to_string_lossy().into_owned()).collect();
+        match running_programs(&names) {
+            Some(programs) => match_running(targets, &programs),
+            None => targets
+                .iter()
+                .find(|target| is_running(target))
+                .and_then(|target| target.file_name())
+                .map_or(Running::No, |name| Running::Possible(name.to_string_lossy().into_owned())),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        match targets.first() {
+            Some(target) if is_running(target) => Running::Confirmed(target.clone()),
+            _ => Running::No,
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn keep_running_program(names: &[String], program: &RunningProgram) -> bool {
+    program.path.is_some() || names.iter().any(|wanted| wanted.eq_ignore_ascii_case(&program.name))
+}
+
+/// The running programs whose file name is one of `names`, with each one's full path where
+/// Windows gives it (not for a program of another user or an elevated one). `None` when the
+/// process list can't be read.
+#[cfg(windows)]
+fn running_programs(names: &[String]) -> Option<Vec<RunningProgram>> {
+    use winsafe::{HPROCESS, HPROCESSLIST, co};
+    /// More processes than any Windows desktop runs; the list stops there.
+    const MAX_PROCESSES: usize = 65_536;
+    let mut list = HPROCESSLIST::CreateToolhelp32Snapshot(co::TH32CS::SNAPPROCESS, None).ok()?;
+    let mut out = Vec::new();
+    for entry in list.iter_processes().take(MAX_PROCESSES) {
+        let entry = entry.ok()?;
+        let name = entry.szExeFile();
+        let path = HPROCESS::OpenProcess(co::PROCESS::QUERY_LIMITED_INFORMATION, false, entry.th32ProcessID)
+            .ok()
+            .and_then(|process| process.QueryFullProcessImageName(co::PROCESS_NAME::WIN32).ok())
+            .map(PathBuf::from);
+        let program = RunningProgram { name, path };
+        if keep_running_program(names, &program) {
+            out.push(program);
+        }
+    }
+    Some(out)
+}
+
 fn windows_system_program(relative: &str) -> Result<PathBuf, String> {
     let root = std::env::var_os("SystemRoot")
         .filter(|root| !root.is_empty())
@@ -923,6 +1076,192 @@ mod tests {
             let _probe = RunningProbe::start(&actual);
             assert_eq!(is_running(Path::new(&requested)), expected, "{requested}");
         }
+    }
+}
+
+#[cfg(test)]
+mod running_tests {
+    use super::*;
+
+    #[test]
+    fn an_executable_path_that_does_not_exist_is_not_confirmed() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("photocraft.exe");
+        assert!(!same_program(&missing, &missing));
+    }
+
+    #[test]
+    fn a_matching_reported_path_with_unreadable_identity_is_possible() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photocraft.exe");
+        let programs = [RunningProgram { name: "photocraft.exe".into(), path: Some(path.clone()) }];
+        assert_eq!(match_running(&[path], &programs), Running::Possible("photocraft.exe".into()));
+    }
+
+    #[test]
+    fn hardlinked_executable_paths_identify_the_same_program() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("photocraft.exe");
+        let alias = dir.path().join("other.exe");
+        std::fs::write(&source, b"program").unwrap();
+        std::fs::hard_link(&source, &alias).unwrap();
+        assert!(same_program(&source, &alias));
+    }
+
+    #[test]
+    fn a_known_process_image_is_kept_when_its_name_differs() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("photocraft.exe");
+        let alias = dir.path().join("other.exe");
+        std::fs::write(&source, b"program").unwrap();
+        std::fs::hard_link(&source, &alias).unwrap();
+        let program = RunningProgram { name: "other.exe".into(), path: Some(alias) };
+        let programs: Vec<_> = std::iter::once(program).filter(|program| keep_running_program(&["photocraft.exe".into()], program)).collect();
+        assert_eq!(match_running(&[source], &programs), Running::Confirmed(dir.path().join("photocraft.exe")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn enumeration_matches_a_running_hardlink_and_rejects_a_distinct_copy() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::process::{Child, Stdio};
+
+        if std::env::var_os("CRAFT_RUNNING_IMAGE_FIXTURE").is_some() {
+            std::io::stdout().write_all(b"\nready\n").unwrap();
+            std::io::stdout().flush().unwrap();
+            std::io::stdin().read_exact(&mut [0]).unwrap();
+            return;
+        }
+
+        struct Probe(Child);
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let start = |path: &Path| {
+            let mut child = Probe(
+                command(path)
+                    .args(["--exact", "process::running_tests::enumeration_matches_a_running_hardlink_and_rejects_a_distinct_copy", "--nocapture"])
+                    .env("CRAFT_RUNNING_IMAGE_FIXTURE", "1")
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            );
+            let mut output = BufReader::new(child.0.stdout.as_mut().unwrap());
+            let mut line = String::new();
+            loop {
+                line.clear();
+                assert!(output.read_line(&mut line).unwrap() > 0, "fixture exited before readiness");
+                if line.trim_end() == "ready" {
+                    break;
+                }
+            }
+            child
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("probe.exe");
+        let alias = dir.path().join("other.exe");
+        let other_dir = dir.path().join("separate");
+        std::fs::create_dir(&other_dir).unwrap();
+        let distinct = other_dir.join("probe.exe");
+        let executable = std::env::current_exe().unwrap();
+        std::fs::copy(&executable, &source).unwrap();
+        std::fs::copy(&executable, &distinct).unwrap();
+        std::fs::hard_link(&source, &alias).unwrap();
+        let active = start(&alias);
+        assert_eq!(
+            match_running(std::slice::from_ref(&source), &running_programs(&["probe.exe".into()]).unwrap()),
+            Running::Confirmed(source.clone())
+        );
+        drop(active);
+        let _distinct = start(&distinct);
+        assert_eq!(match_running(&[source], &running_programs(&["probe.exe".into()]).unwrap()), Running::No);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn distinct_case_sensitive_executable_paths_are_not_confirmed() {
+        let dir = tempfile::tempdir().unwrap();
+        let lower = dir.path().join("craft");
+        let upper = dir.path().join("Craft");
+        std::fs::create_dir(&lower).unwrap();
+        if let Err(error) = std::fs::create_dir(&upper) {
+            assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+            return;
+        }
+        let lower = lower.join("photocraft.exe");
+        let upper = upper.join("photocraft.exe");
+        std::fs::write(&lower, b"one").unwrap();
+        std::fs::write(&upper, b"two").unwrap();
+        assert!(!same_program(&lower, &upper));
+    }
+
+    fn targets() -> (tempfile::TempDir, Vec<PathBuf>) {
+        let dir = tempfile::tempdir().unwrap();
+        let targets = vec![dir.path().join("photocraft.exe"), dir.path().join("photocraft-cli.exe")];
+        for path in &targets {
+            std::fs::write(path, b"program").unwrap();
+        }
+        (dir, targets)
+    }
+
+    fn program(name: &str, path: Option<&str>) -> RunningProgram {
+        RunningProgram { name: name.into(), path: path.map(PathBuf::from) }
+    }
+
+    #[test]
+    fn the_installed_app_or_its_command_line_tool_is_confirmed_by_path() {
+        let (_dir, targets) = targets();
+        let gui = [program("photocraft.exe", Some(&targets[0].to_string_lossy()))];
+        assert_eq!(match_running(&targets, &gui), Running::Confirmed(targets[0].clone()));
+        #[cfg(windows)]
+        let cli_path = PathBuf::from(format!(r"\\?\{}", targets[1].display()).to_uppercase());
+        #[cfg(not(windows))]
+        let cli_path = targets[1].clone();
+        let cli = [program("photocraft-cli.exe", Some(&cli_path.to_string_lossy()))];
+        assert_eq!(match_running(&targets, &cli), Running::Confirmed(targets[1].clone()));
+    }
+
+    #[test]
+    fn another_copy_with_the_same_name_is_not_this_one() {
+        let (_dir, targets) = targets();
+        let other =
+            [program("photocraft.exe", Some(r"D:\Portable\PhotoCraft\photocraft.exe")), program("notepad.exe", Some(r"C:\Windows\notepad.exe"))];
+        assert_eq!(match_running(&targets, &other), Running::No);
+        assert_eq!(match_running(&targets, &[]), Running::No);
+    }
+
+    #[test]
+    fn a_name_without_a_path_is_only_possible_and_a_confirmed_match_wins() {
+        let (_dir, targets) = targets();
+        let unknown = [program("PhotoCraft-CLI.exe", None)];
+        assert_eq!(match_running(&targets, &unknown), Running::Possible("PhotoCraft-CLI.exe".into()));
+        let both = [program("photocraft.exe", None), program("photocraft.exe", Some(&targets[0].to_string_lossy()))];
+        assert_eq!(match_running(&targets, &both), Running::Confirmed(targets[0].clone()));
+        let slashed = [PathBuf::from("C:/Apps/PhotoCraft/photocraft.exe")];
+        assert_eq!(match_running(&slashed, &[program("PHOTOCRAFT.EXE", None)]), Running::Possible("PHOTOCRAFT.EXE".into()));
+    }
+
+    #[test]
+    fn a_program_reached_through_a_link_is_the_installed_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("PhotoCraft");
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(folder.join("photocraft.exe"), b"program").unwrap();
+        let link = dir.path().join("Linked");
+        #[cfg(windows)]
+        assert!(std::process::Command::new("cmd.exe").args(["/C", "mklink", "/J"]).arg(&link).arg(&folder).status().unwrap().success());
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&folder, &link).unwrap();
+        let installed = vec![link.join("photocraft.exe")];
+        let running = [program("photocraft.exe", Some(&folder.join("photocraft.exe").to_string_lossy()))];
+        assert_eq!(match_running(&installed, &running), Running::Confirmed(installed[0].clone()));
+        let missing = [program("photocraft.exe", Some(&dir.path().join("Other").join("photocraft.exe").to_string_lossy()))];
+        assert_eq!(match_running(&installed, &missing), Running::No);
     }
 }
 

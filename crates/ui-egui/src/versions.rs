@@ -40,6 +40,8 @@ impl LauncherUi {
             self.settings.launcher_version = VersionTrack::Stable;
         } else {
             self.settings.versions.remove(id);
+            self.chosen_installs.remove(id);
+            self.chosen_retry_allowed.remove(id);
         }
         self.configure();
         self.check_now_from_ui();
@@ -116,6 +118,8 @@ impl LauncherUi {
             // Installing keeps the new choice. May open the folder dialog in this one's place;
             // `dialogs` keeps it.
             self.version_before = None;
+            self.chosen_installs.remove(id);
+            self.chosen_retry_allowed.remove(id);
             match self.going_back_to(id) {
                 // Picked by name, so the backend goes back to it, also to the latest release.
                 Some(tag) => self.install_chosen(id, tag, None),
@@ -212,6 +216,14 @@ impl LauncherUi {
     /// "Install version X" and the version dialog's Install button both ask this.
     pub(crate) fn version_installs(&self, entry: &crate::model::AppEntry, tag: &str) -> Option<bool> {
         entry.release().filter(|r| r.tag == tag).map(|_| entry.installs_here(self.platform))
+    }
+
+    pub(crate) fn retry_version_installs(&self, entry: &crate::model::AppEntry, tag: &str) -> bool {
+        match self.chosen_retry_allowed.get(entry.app.id) {
+            Some(Some(allowed)) => *allowed,
+            Some(None) => true,
+            None => self.version_installs(entry, tag) == Some(true),
+        }
     }
 
     /// Why "Install version X" is disabled, for an installed copy the install would refuse to

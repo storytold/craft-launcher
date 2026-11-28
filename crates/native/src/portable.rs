@@ -192,6 +192,43 @@ fn recorded_files<'a>(app: &CraftApp, record: &'a Record) -> Result<(&'a Path, V
     Ok((root, files))
 }
 
+/// A file operation of a portable replacement that Windows refused, with its raw error code: 5
+/// (access denied) or 32 (another program has the file open).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Refused {
+    pub code: i32,
+    pub path: PathBuf,
+}
+
+/// `error` as text, kept in `refused` when it is Windows error 5 or 32 on `path` and nothing was
+/// kept before.
+fn noted(error: std::io::Error, path: &Path, refused: &mut Option<Refused>) -> String {
+    if refused.is_none()
+        && let Some(code @ (5 | 32)) = error.raw_os_error()
+    {
+        *refused = Some(Refused { code, path: dunce::simplified(path).to_path_buf() });
+    }
+    error.to_string()
+}
+
+/// Others may read a held program file, but not write, rename or delete it, or open it for
+/// themselves alone.
+const FILE_SHARE_READ: u32 = 0x1;
+
+/// Copies the program file `old` to `saved` for a rollback with `copy` (`std::fs::copy`, which
+/// keeps its attributes, modified time and alternate data streams). A handle on `old` is held
+/// from before the copy to its end, so no other program can take the file for itself or write it
+/// in between: Windows refusing that handle is kept in `refused`, and a copy that then fails (the
+/// backup could not be written) is not.
+fn back_up(old: &Path, saved: &Path, refused: &mut Option<Refused>, copy: &dyn Fn(&Path, &Path) -> std::io::Result<u64>) -> Result<(), String> {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    let held = std::fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(old).map_err(|e| noted(e, old, refused))?;
+    let copied = copy(old, saved).map(|_| ()).map_err(|e| e.to_string());
+    drop(held);
+    copied
+}
+
 /// Keeps existing portable installations at their location and preserves unrecorded user files,
 /// unless `replace` allows writing over them.
 #[allow(clippy::too_many_arguments)]
@@ -206,6 +243,32 @@ pub fn install(
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
     install_checked(Package { app, file, version, previous, paths, directory, replace }, &|_, _| Ok(()), commit)
+}
+
+/// [`install`], which also sets `refused` when Windows refuses to remove or write a program file
+/// with error 5 or 32 (see [`Refused`]). When the replacement fails, `on_failure` runs before the
+/// previous files are put back.
+#[allow(clippy::too_many_arguments)]
+pub fn install_noting(
+    app: &CraftApp,
+    file: &Path,
+    version: &str,
+    previous: Option<&Record>,
+    paths: &Paths,
+    directory: Option<&Path>,
+    replace: bool,
+    commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+    refused: &mut Option<Refused>,
+    on_failure: &mut dyn FnMut(),
+) -> Result<Record, String> {
+    install_with_authentication(
+        Package { app, file, version, previous, paths, directory, replace },
+        &|_, _| Ok(()),
+        None,
+        commit,
+        refused,
+        on_failure,
+    )
 }
 
 pub(crate) struct Package<'a> {
@@ -226,15 +289,18 @@ pub(crate) fn install_checked(
     check_layout: &CheckLayout<'_>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
-    install_with_authentication(package, check_layout, None, commit)
+    install_with_authentication(package, check_layout, None, commit, &mut None, &mut || {})
 }
 
 /// The signed Nightly entry point always authenticates its permitted staged executable.
-/// Stable's transaction entry point and policy are unchanged.
+/// Stable's transaction entry point and policy are unchanged. It sets `refused` and runs
+/// `on_failure` as [`install_noting`] does.
 pub(crate) fn install_signed(
     package: Package<'_>,
     check_layout: &CheckLayout<'_>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+    refused: &mut Option<Refused>,
+    on_failure: &mut dyn FnMut(),
 ) -> Result<Record, String> {
     // The staged payload is authenticated as the row's own executable, whatever the app.
     let adapter = windows_nightly_adapter(package.app)?;
@@ -243,6 +309,8 @@ pub(crate) fn install_signed(
         check_layout,
         Some(&move |root, files| crate::nightly_signing::authenticate_windows(adapter, root, files)),
         commit,
+        refused,
+        on_failure,
     )
 }
 
@@ -255,11 +323,14 @@ fn windows_nightly_adapter(app: &CraftApp) -> Result<crate::nightly_profile::Ada
 
 type Authenticate = dyn Fn(&Path, &[PathBuf]) -> Result<std::fs::File, String>;
 
+/// Sets `refused` and runs `on_failure` as [`install_noting`] does.
 fn install_with_authentication(
     package: Package<'_>,
     check_layout: &CheckLayout<'_>,
     authenticate: Option<&Authenticate>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
+    refused: &mut Option<Refused>,
+    on_failure: &mut dyn FnMut(),
 ) -> Result<Record, String> {
     let Package { app, file, version, previous, paths, directory, replace } = package;
     let (destination, mut old_files) = match previous {
@@ -339,22 +410,25 @@ fn install_with_authentication(
             let saved = backup.join(relative);
             std::fs::create_dir_all(saved.parent().ok_or("no backup folder")?).map_err(|e| e.to_string())?;
             // Copy the rollback copy: cache and custom installation can be on different drives.
-            std::fs::copy(&old, &saved).map_err(|e| e.to_string())?;
-            std::fs::remove_file(&old).map_err(|e| e.to_string())?;
+            // The backup's handle on the program file is closed before the remove, so the file
+            // is not left pending deletion.
+            back_up(&old, &saved, refused, &|from, to| std::fs::copy(from, to))?;
+            std::fs::remove_file(&old).map_err(|e| noted(e, &old, refused))?;
             moved.push(relative.clone());
         }
         for relative in &files {
             let target = destination.join(relative);
             std::fs::create_dir_all(target.parent().ok_or("no destination folder")?).map_err(|e| e.to_string())?;
             let mut input = std::fs::File::open(unpacked.join(relative)).map_err(|e| e.to_string())?;
-            let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| e.to_string())?;
+            let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|e| noted(e, &target, refused))?;
             copied.push(relative.clone());
-            std::io::copy(&mut input, &mut output).map_err(|e| e.to_string())?;
+            std::io::copy(&mut input, &mut output).map_err(|e| noted(e, &target, refused))?;
         }
         commit(&record)?;
         Ok::<(), String>(())
     })();
     if let Err(error) = transaction {
+        on_failure();
         for relative in copied {
             let _ = std::fs::remove_file(destination.join(relative));
         }
@@ -671,6 +745,8 @@ pub(crate) mod tests {
                 committed = true;
                 Ok(())
             },
+            &mut None,
+            &mut || {},
         );
         assert!(result.unwrap_err().contains("wrong publisher"));
         assert!(!committed);
@@ -997,6 +1073,151 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read(record.path).unwrap(), b"old");
         assert_eq!(std::fs::read(paths.apps().join("photocraft/lib.dll")).unwrap(), b"library");
         assert!(!paths.apps().join("photocraft/new.dll").exists());
+    }
+
+    #[test]
+    fn a_failed_replace_restores_a_read_only_program_file_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old"), ("lib.dll", b"library")]);
+        let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let library = paths.apps().join("photocraft/lib.dll");
+        let modified = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        std::fs::File::options().write(true).open(&library).unwrap().set_modified(modified).unwrap();
+        let mut permissions = std::fs::metadata(&library).unwrap().permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&library, permissions).unwrap();
+        let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("lib.dll", b"new library")]);
+        let result = install(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Err("manifest disk full".into()));
+        assert_eq!(result.unwrap_err(), "manifest disk full");
+        assert_eq!(std::fs::read(&library).unwrap(), b"library");
+        let restored = std::fs::metadata(&library).unwrap();
+        assert!(restored.permissions().readonly(), "the restored file is read-only again");
+        assert_eq!(restored.modified().unwrap(), modified);
+        let mut permissions = restored.permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+        std::fs::set_permissions(&library, permissions).unwrap();
+    }
+
+    /// While its backup is copied, the program file stays held: another program can't take it for
+    /// itself in between. A file another program already holds is named; a backup that can't be
+    /// written names no program file.
+    #[test]
+    fn a_program_file_stays_held_while_its_backup_is_copied() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("lib.dll");
+        std::fs::write(&old, b"library").unwrap();
+        let mut refused = None;
+        let copy = |from: &Path, to: &Path| {
+            let taken = std::fs::OpenOptions::new().read(true).share_mode(0).open(from).map(drop).map_err(|e| e.raw_os_error());
+            assert_eq!(taken, Err(Some(32)), "another program took the file during the copy");
+            std::fs::copy(from, to)
+        };
+        let saved = dir.path().join("lib.dll.backup");
+        assert_eq!(back_up(&old, &saved, &mut refused, &copy), Ok(()));
+        assert_eq!(std::fs::read(&saved).unwrap(), b"library");
+        assert_eq!(refused, None);
+        let mut refused = None;
+        let unwritable = |_: &Path, _: &Path| -> std::io::Result<u64> { Err(std::io::Error::from_raw_os_error(5)) };
+        assert!(back_up(&old, &dir.path().join("other.backup"), &mut refused, &unwritable).is_err());
+        assert_eq!(refused, None, "the backup could not be written");
+        // The file is no longer held once its backup is made.
+        let holder = std::fs::OpenOptions::new().read(true).share_mode(0).open(&old).unwrap();
+        let mut refused = None;
+        assert!(back_up(&old, &dir.path().join("third.backup"), &mut refused, &|_, _| panic!("nothing is copied")).is_err());
+        assert_eq!(refused.map(|refused| refused.code), Some(32), "a file another program holds is named");
+        drop(holder);
+    }
+
+    #[test]
+    fn a_refused_file_operation_keeps_its_raw_code_and_file() {
+        let path = Path::new(r"C:\Apps\photocraft\photocraft.exe");
+        let mut refused = None;
+        assert_eq!(noted(std::io::Error::from_raw_os_error(5), path, &mut refused), std::io::Error::from_raw_os_error(5).to_string());
+        assert_eq!(refused, Some(Refused { code: 5, path: path.to_path_buf() }));
+        // The first refusal is the one that stopped the replacement.
+        noted(std::io::Error::from_raw_os_error(32), Path::new(r"C:\Apps\photocraft\lib.dll"), &mut refused);
+        assert_eq!(refused, Some(Refused { code: 5, path: path.to_path_buf() }));
+        let mut in_use = None;
+        noted(std::io::Error::from_raw_os_error(32), path, &mut in_use);
+        assert_eq!(in_use, Some(Refused { code: 32, path: path.to_path_buf() }));
+        let mut other = None;
+        noted(std::io::Error::from_raw_os_error(2), path, &mut other);
+        assert_eq!(other, None);
+    }
+
+    /// A failed replacement runs `on_failure` while the new files are still in place, before the
+    /// previous ones are put back.
+    #[test]
+    fn a_failed_replacement_reports_before_putting_the_previous_files_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old")]);
+        let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new")]);
+        let mut seen = None;
+        let result = install_noting(
+            app,
+            &next,
+            "0.6.0",
+            Some(&record),
+            &paths,
+            None,
+            false,
+            &mut |_| Err("the record could not be saved".into()),
+            &mut None,
+            &mut || seen = std::fs::read(&record.path).ok(),
+        );
+        assert_eq!(result.unwrap_err(), "the record could not be saved");
+        assert_eq!(seen.as_deref(), Some(&b"new"[..]));
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"old");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_file_another_program_holds_is_named_and_the_previous_program_stays() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let paths = Paths::under(dir.path());
+        let old = archive(dir.path(), "old.zip", &[("photocraft.exe", b"old"), ("lib.dll", b"library")]);
+        let record = install(app, &old, "0.5.0", None, &paths, None, false, &mut |_| Ok(())).unwrap();
+        // In the folder as the install resolved it: a temporary folder reached through an alias
+        // (a short 8.3 name, a junction) is named differently.
+        let held = record.path.parent().unwrap().join("lib.dll");
+        // Shared for reading only, as a running program holds its libraries: it can't be removed.
+        let shared = std::fs::OpenOptions::new().read(true).share_mode(1).open(&held).unwrap();
+        let next = archive(dir.path(), "next.zip", &[("photocraft.exe", b"new"), ("lib.dll", b"new library")]);
+        let mut refused = None;
+        // The program file was already moved away when the held library stopped the replacement.
+        let mut moved_away = false;
+        let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused, &mut || {
+            moved_away = !record.path.exists()
+        });
+        assert!(result.is_err());
+        assert!(moved_away);
+        let refused = refused.unwrap();
+        assert_eq!(refused.code, 32);
+        assert!(same_windows_path(&refused.path, Path::new(&held.to_string_lossy().replace('/', "\\"))), "{}", refused.path.display());
+        assert!(!refused.path.to_string_lossy().starts_with(r"\\?\"), "shown as a plain path: {}", refused.path.display());
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"old");
+        assert_eq!(std::fs::read(&held).unwrap(), b"library");
+        drop(shared);
+        // Not shared at all: the file can't even be read for the backup, and is still named.
+        let holder = std::fs::OpenOptions::new().read(true).share_mode(0).open(&held).unwrap();
+        let mut refused = None;
+        let result = install_noting(app, &next, "0.6.0", Some(&record), &paths, None, false, &mut |_| Ok(()), &mut refused, &mut || {});
+        assert!(result.is_err());
+        let refused = refused.expect("a file another program holds unshared is named");
+        assert_eq!(refused.code, 32);
+        assert!(same_windows_path(&refused.path, Path::new(&held.to_string_lossy().replace('/', "\\"))), "{}", refused.path.display());
+        drop(holder);
+        assert_eq!(std::fs::read(&record.path).unwrap(), b"old");
+        assert_eq!(std::fs::read(&held).unwrap(), b"library");
     }
 
     #[test]

@@ -168,6 +168,8 @@
 	Update cancelled	Обновление отменено
 	Uninstall cancelled	Удаление отменено
 	Retry install	Повторить установку
+	Retry reinstall	Повторить переустановку
+	Retry	Повторить
 	Retry update	Повторить обновление
 	Retry update to {version}	Повторить обновление до {version}
 	The download is still here. It's checked again, then installed.	Скачанный файл сохранён. Он будет проверен ещё раз, затем установлен.
@@ -239,6 +241,23 @@ month	Dec	дек.
 	Not available here	Недоступно здесь
 	Updating…	Обновление…
 	Update paused	Обновление приостановлено
+	Update stopped	Обновление остановлено
+	Install stopped	Установка остановлена
+	Reinstall stopped	Переустановка остановлена
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} или его инструмент командной строки открыт. Закройте его и повторите попытку.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Запущена программа с тем же именем, что и {name}. Если это именно эта копия, закройте её и повторите попытку.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Выполняется другая установка. Дождитесь её завершения и повторите попытку.
+	Another program is using a file of {name}. Close that program, then press Retry.	Другая программа использует файл {name}. Закройте эту программу и повторите попытку.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows запретила доступ к файлу {name}. Проверьте права доступа к папке и повторите попытку.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} или его инструмент командной строки открыт. Закройте его и продолжите скачивание.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Запущена программа с тем же именем, что и {name}. Если это именно эта копия, закройте её и продолжите скачивание.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Выполняется другая установка. Дождитесь её завершения и продолжите скачивание.
+	Another program is using a file of {name}. Close that program, then press Resume.	Другая программа использует файл {name}. Закройте эту программу и продолжите скачивание.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows запретила доступ к файлу {name}. Проверьте права доступа к папке и продолжите скачивание.
+	The Windows Installer couldn't finish. The details below give its error code.	Установщику Windows не удалось завершить работу. Ниже указан код ошибки.
+	The installer of {name} stopped at one of its own checks and changed nothing. See the details below.	Установщик {name} остановился на одной из своих проверок и ничего не изменил. Подробности ниже.
+	The saved installer of the installed {name} version is missing. Repair that version with msiexec /fv, then try again.	Сохранённый установщик установленной версии {name} отсутствует. Восстановите эту версию с помощью msiexec /fv и повторите попытку.
+	Details: {details}	Подробности: {details}
 	Download paused	Скачивание приостановлено
 	{version} installed → {latest} released	{version} установлено → {latest} выпущено
 	Version {version}	Версия {version}
@@ -313,6 +332,12 @@ filter	Installed	Установлены
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Приложение {name} установлено: {version} (в этом релизе нет контрольных сумм, поэтому проверен только размер)
 @msg	{name} was removed	Приложение {name} удалено
 @msg	{name} is running. Quit it, then try again.	Приложение {name} запущено. Закройте его и попробуйте снова.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	Инструмент командной строки {name} запущен. Закройте его и попробуйте снова.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Запущена программа {program}. Если это {name}, закройте её и попробуйте снова.
+@msg	Another program is using {file}. Close it, then try again.	Другая программа использует {file}. Закройте её и попробуйте снова.
+@msg	Windows denied access to {file}.	Windows запретила доступ к {file}.
+@msg	{name}'s installer stopped at one of its own checks: {message}	Установщик {name} остановился на одной из своих проверок: {message}
+@msg	The Windows Installer can't find its saved copy of the installer of the {name} version installed now, so it can't replace that version. Repair that version from its own installer (msiexec /fv with the installer's path), then try again.	Установщик Windows не может найти сохранённую копию установщика версии {name}, установленной сейчас, поэтому не может заменить эту версию. Восстановите эту версию с помощью её собственного установщика (msiexec /fv с путём к установщику) и повторите попытку.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Приложение {name} установлено из репозитория {repo} или из AUR ({pkg}). Обновите его командой {cmd} или sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Приложение {name} установлено из репозитория {repo} или из AUR ({pkg}). Обновите его с помощью вашего помощника AUR (например: yay -S {pkg}) или командой sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Приложение {name} установлено из AUR ({pkg}). Обновите его командой {cmd}
@@ -423,6 +448,7 @@ column	Author	Автор
 	Nightly	Ночная сборка
 	Nightly (none published yet)	Ночная сборка (пока нет)
 	Install version {version}	Установить версию {version}
+	Retry install of version {version}	Повторить установку версии {version}
 	Download selected version	Скачать выбранную версию
 	Older launcher versions require a manual reinstall.	Для возврата к старой версии лаунчера нужна переустановка вручную.
 	Your files may not open in older versions.	В старой версии ваши файлы могут не открыться.

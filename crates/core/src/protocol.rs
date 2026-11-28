@@ -214,6 +214,38 @@ pub const CANCELLED: &str = "cancelled";
 /// user dismissed after the download finished (not a failure).
 pub const INSTALL_CANCELLED: &str = "install cancelled";
 
+/// What stopped an install or update, as the app's card names it until the next try.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Blocker {
+    /// The installed app or its command-line tool is running from the installed copy.
+    AppOpen,
+    /// A program with the file name of the app or its command-line tool is running, and its
+    /// location couldn't be read, so it may be another copy.
+    MaybeAppOpen,
+    /// Another Windows Installer installation is in progress (Windows Installer error 1618).
+    InstallerBusy,
+    /// Another program has a file of the app open (Windows error 32).
+    FileInUse,
+    /// Windows denied access to a file of the app (Windows error 5).
+    AccessDenied,
+    /// The Windows Installer stopped with an error that names no cause (1603 and others).
+    InstallerFailed,
+    /// One of the package's launch conditions failed, so the Windows Installer changed nothing
+    /// (error 1603, named by its log). The details hold the condition's message.
+    InstallerCondition,
+    /// The Windows Installer's cached copy of the installed version's package is missing, so it
+    /// can't remove that version to install the new one (error 1603, named by its log).
+    CachedPackageMissing,
+}
+
+/// Why an install or update stopped: the cause, and the raw details (error code, file, program
+/// and installer log, separated by ` · `).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstallFailure {
+    pub blocker: Blocker,
+    pub details: String,
+}
+
 /// Whether a `JobFinished` error means the job paused rather than failed: the download is kept
 /// and Resume sends the request that started the job again ([`Command::InstallChosen`] included,
 /// with the release and fallback the person agreed to). A pause ends a job as an error, so every
@@ -328,6 +360,19 @@ pub enum Event {
     Occupied {
         app: String,
         path: String,
+    },
+    /// What stopped an install or update job, sent just before its `JobFinished`. `None` when the
+    /// job finished, or stopped for a reason the card doesn't keep (a download error, a pause).
+    Blocked {
+        app: String,
+        failure: Option<InstallFailure>,
+    },
+    /// The result of an install attempt for one release.
+    BlockedForRelease {
+        app: String,
+        release: Release,
+        retry_allowed: Option<bool>,
+        failure: Option<InstallFailure>,
     },
     /// Going back from the installed `installed` (a version with no release of its own) to
     /// `chosen` stopped before changing anything: if it fails, only `fallback`, a published

@@ -169,7 +169,9 @@
 	Update cancelled	Оновлення скасовано
 	Uninstall cancelled	Видалення скасовано
 	Retry install	Повторити встановлення
+	Retry reinstall	Повторити перевстановлення
 	Retry update to {version}	Повторити оновлення до {version}
+	Retry	Повторити
 	Retry update	Повторити оновлення
 	The download is still here. It's checked again, then installed.	Завантажений файл усе ще на місці. Його перевірять ще раз, а потім встановлять.
 	Waiting for another app…	Очікування іншого застосунку…
@@ -235,6 +237,23 @@ month	Dec	груд.
 	Not available here	Недоступно тут
 	Updating…	Оновлення…
 	Update paused	Оновлення призупинено
+	Update stopped	Оновлення зупинено
+	Install stopped	Встановлення зупинено
+	Reinstall stopped	Перевстановлення зупинено
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} або його інструмент командного рядка відкрито. Закрийте його, а потім спробуйте ще раз.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Запущено програму з такою ж назвою, як {name}. Якщо це ця копія, закрийте її, а потім спробуйте ще раз.
+	Another installation is in progress. Wait for it to finish, then press Retry.	Триває інше встановлення. Дочекайтеся його завершення, а потім спробуйте ще раз.
+	Another program is using a file of {name}. Close that program, then press Retry.	Інша програма використовує файл {name}. Закрийте цю програму, а потім спробуйте ще раз.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows відмовила в доступі до файлу {name}. Перевірте дозволи папки, а потім спробуйте ще раз.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} або його інструмент командного рядка відкрито. Закрийте його, а потім продовжте завантаження.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Запущено програму з такою ж назвою, як {name}. Якщо це ця копія, закрийте її, а потім продовжте завантаження.
+	Another installation is in progress. Wait for it to finish, then press Resume.	Триває інше встановлення. Дочекайтеся його завершення, а потім продовжте завантаження.
+	Another program is using a file of {name}. Close that program, then press Resume.	Інша програма використовує файл {name}. Закрийте цю програму, а потім продовжте завантаження.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows відмовила в доступі до файлу {name}. Перевірте дозволи папки, а потім продовжте завантаження.
+	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer не зміг завершити роботу. Код помилки наведено в подробицях нижче.
+	The installer of {name} stopped at one of its own checks and changed nothing. See the details below.	Інсталятор {name} зупинився на одній зі своїх перевірок і нічого не змінив. Подробиці наведено нижче.
+	The saved installer of the installed {name} version is missing. Repair that version with msiexec /fv, then try again.	Збережений інсталятор встановленої версії {name} відсутній. Відновіть цю версію за допомогою msiexec /fv, а потім спробуйте ще раз.
+	Details: {details}	Подробиці: {details}
 	Download paused	Завантаження призупинено
 	{version} installed → {latest} released	{version} встановлено → {latest} випущено
 	Version {version}	Версія {version}
@@ -310,6 +329,12 @@ filter	Installed	Встановлені
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	Застосунок {name} встановлено: {version} (у цьому випуску немає контрольних сум, тому перевірено лише розмір)
 @msg	{name} was removed	Застосунок {name} видалено
 @msg	{name} is running. Quit it, then try again.	Застосунок {name} запущено. Закрийте його та спробуйте ще раз.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	Інструмент командного рядка застосунку {name} запущено. Закрийте його та спробуйте ще раз.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Запущено програму з назвою {program}. Якщо це {name}, закрийте її та спробуйте ще раз.
+@msg	Another program is using {file}. Close it, then try again.	Інша програма використовує {file}. Закрийте її та спробуйте ще раз.
+@msg	Windows denied access to {file}.	Windows відмовила в доступі до {file}.
+@msg	{name}'s installer stopped at one of its own checks: {message}	Інсталятор застосунку {name} зупинився на одній зі своїх перевірок: {message}
+@msg	The Windows Installer can't find its saved copy of the installer of the {name} version installed now, so it can't replace that version. Repair that version from its own installer (msiexec /fv with the installer's path), then try again.	Windows Installer не може знайти збережену копію інсталятора встановленої зараз версії {name}, тому не може замінити цю версію. Відновіть цю версію з її власного інсталятора (msiexec /fv зі шляхом до інсталятора), а потім спробуйте ще раз.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	Застосунок {name} встановлено з репозиторію {repo} або з AUR ({pkg}). Оновіть його командою {cmd} або sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	Застосунок {name} встановлено з репозиторію {repo} або з AUR ({pkg}). Оновіть його за допомогою вашого помічника AUR (наприклад: yay -S {pkg}) або командою sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	Застосунок {name} встановлено з AUR ({pkg}). Оновіть його командою {cmd}
@@ -417,6 +442,7 @@ filter	Installed	Встановлені
 	Nightly	Нічна збірка
 	Nightly (none published yet)	Нічна збірка (ще не опубліковано)
 	Install version {version}	Встановити версію {version}
+	Retry install of version {version}	Повторити встановлення версії {version}
 	Download selected version	Завантажити обрану версію
 	Older launcher versions require a manual reinstall.	Для повернення до старішої версії лаунчера потрібне ручне перевстановлення.
 	Your files may not open in older versions.	У старіших версіях ваші файли можуть не відкритися.

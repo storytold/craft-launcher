@@ -140,6 +140,8 @@
 	Update cancelled	Ažuriranje otkazano
 	Uninstall cancelled	Deinstalacija otkazana
 	Retry install	Ponovi instalaciju
+	Retry reinstall	Ponovi ponovnu instalaciju
+	Retry	Pokušaj ponovo
 	Retry update	Ponovo pokušaj ažuriranje
 	Retry update to {version}	Ponovi ažuriranje na {version}
 	The download is still here. It's checked again, then installed.	Preuzimanje je još ovdje. Ponovo se provjerava, a zatim instalira.
@@ -199,6 +201,23 @@ month	Dec	dec
 	Not available here	Ovdje nije dostupno
 	Updating…	Ažuriranje…
 	Update paused	Ažuriranje pauzirano
+	Update stopped	Ažuriranje zaustavljeno
+	Install stopped	Instalacija zaustavljena
+	Reinstall stopped	Ponovna instalacija zaustavljena
+	{name} or its command-line tool is open. Close it, then press Retry.	{name} ili njegov alat za komandnu liniju je otvoren. Zatvorite ga, a zatim pokušajte ponovo.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Retry.	Pokrenut je program s istim imenom kao {name}. Ako je to ova kopija, zatvorite je, a zatim pokušajte ponovo.
+	Another installation is in progress. Wait for it to finish, then press Retry.	U toku je druga instalacija. Sačekajte da završi, a zatim pokušajte ponovo.
+	Another program is using a file of {name}. Close that program, then press Retry.	Drugi program koristi datoteku aplikacije {name}. Zatvorite taj program, a zatim pokušajte ponovo.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Retry.	Windows je odbio pristup datoteci aplikacije {name}. Provjerite dozvole foldera, a zatim pokušajte ponovo.
+	{name} or its command-line tool is open. Close it, then press Resume.	{name} ili njegov alat za komandnu liniju je otvoren. Zatvorite ga, a zatim nastavite preuzimanje.
+	A program with the same name as {name} is running. If it is this copy, close it, then press Resume.	Pokrenut je program s istim imenom kao {name}. Ako je to ova kopija, zatvorite je, a zatim nastavite preuzimanje.
+	Another installation is in progress. Wait for it to finish, then press Resume.	U toku je druga instalacija. Sačekajte da završi, a zatim nastavite preuzimanje.
+	Another program is using a file of {name}. Close that program, then press Resume.	Drugi program koristi datoteku aplikacije {name}. Zatvorite taj program, a zatim nastavite preuzimanje.
+	Windows denied access to a file of {name}. Check the folder's permissions, then press Resume.	Windows je odbio pristup datoteci aplikacije {name}. Provjerite dozvole foldera, a zatim nastavite preuzimanje.
+	The Windows Installer couldn't finish. The details below give its error code.	Windows Installer nije mogao završiti. Detalji ispod navode kod greške.
+	The installer of {name} stopped at one of its own checks and changed nothing. See the details below.	Instalacijski program za {name} zaustavio se na jednoj od svojih provjera i ništa nije promijenio. Pogledajte detalje ispod.
+	The saved installer of the installed {name} version is missing. Repair that version with msiexec /fv, then try again.	Sačuvani instalacijski program instalirane verzije aplikacije {name} nedostaje. Popravite tu verziju pomoću msiexec /fv, a zatim pokušajte ponovo.
+	Details: {details}	Detalji: {details}
 	Download paused	Preuzimanje pauzirano
 	{version} installed → {latest} released	Instalirano {version} → objavljeno {latest}
 	Version {version}	Verzija {version}
@@ -280,6 +299,12 @@ filter	Installed	Instalirano
 @msg	{name} installed: {version} (this release publishes no checksum, so only its size was checked)	{name} je instaliran: {version} (ovo izdanje ne objavljuje kontrolni zbir, pa je provjerena samo veličina)
 @msg	{name} was removed	{name} je uklonjen
 @msg	{name} is running. Quit it, then try again.	{name} je pokrenut. Zatvorite ga i pokušajte ponovo.
+@msg	{name}'s command-line tool is running. Quit it, then try again.	Alat za komandnu liniju aplikacije {name} je pokrenut. Zatvorite ga i pokušajte ponovo.
+@msg	A program named {program} is running. If it is {name}, quit it, then try again.	Pokrenut je program s imenom {program}. Ako je to {name}, zatvorite ga i pokušajte ponovo.
+@msg	Another program is using {file}. Close it, then try again.	Drugi program koristi {file}. Zatvorite ga i pokušajte ponovo.
+@msg	Windows denied access to {file}.	Windows je odbio pristup datoteci {file}.
+@msg	{name}'s installer stopped at one of its own checks: {message}	Instalacijski program za {name} zaustavio se na jednoj od svojih provjera: {message}
+@msg	The Windows Installer can't find its saved copy of the installer of the {name} version installed now, so it can't replace that version. Repair that version from its own installer (msiexec /fv with the installer's path), then try again.	Windows Installer ne može pronaći sačuvanu kopiju instalacijskog programa trenutno instalirane verzije aplikacije {name}, pa ne može zamijeniti tu verziju. Popravite tu verziju iz njenog instalacijskog programa (msiexec /fv s putanjom do instalacijskog programa), a zatim pokušajte ponovo.
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with {cmd} or sudo pacman -Syu	{name} je instaliran iz repozitorija {repo} ili AUR-a ({pkg}). Ažurirajte ga pomoću {cmd} ili sudo pacman -Syu
 @msg	{name} was installed from the {repo} repository or the AUR ({pkg}). Update it with your AUR helper (for example: yay -S {pkg}) or sudo pacman -Syu	{name} je instaliran iz repozitorija {repo} ili AUR-a ({pkg}). Ažurirajte ga svojim AUR pomoćnikom (na primjer: yay -S {pkg}) ili sudo pacman -Syu
 @msg	{name} was installed from the AUR ({pkg}). Update it with {cmd}	{name} je instaliran iz AUR-a ({pkg}). Ažurirajte ga pomoću {cmd}
@@ -367,6 +392,7 @@ column	Author	Autor
 	Nightly	Noćna verzija
 	Nightly (none published yet)	Noćna verzija (još nijedna nije objavljena)
 	Install version {version}	Instaliraj verziju {version}
+	Retry install of version {version}	Ponovi instalaciju verzije {version}
 	Download selected version	Preuzmi odabranu verziju
 	Older launcher versions require a manual reinstall.	Starije verzije Launchera zahtijevaju ručnu ponovnu instalaciju.
 	Your files may not open in older versions.	Vaše datoteke se možda neće otvoriti u starijim verzijama.

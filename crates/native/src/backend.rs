@@ -9,8 +9,8 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED_BY_CONNECTION,
-    PausedDownload, Source, VersionTrack, is_paused,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, InstallFailure, JobPhase, LatestRelease, Origin,
+    PAUSED_BY_CONNECTION, PausedDownload, Source, VersionTrack, is_paused,
 };
 use artcraft_launcher_core::release::{Asset, Priority, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
@@ -226,12 +226,36 @@ struct JobGuard {
     app_id: String,
 }
 
+impl JobGuard {
+    /// Queues the job's last events and frees its slot in one hold of the admission lock, so an
+    /// attempt admitted after it cannot queue an event ahead of them. The UI is woken afterwards.
+    fn finish(mut self, events: impl IntoIterator<Item = Event>) {
+        let app_id = std::mem::take(&mut self.app_id);
+        {
+            let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+            let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
+            self.shared.events.lock().unwrap_or_else(PoisonError::into_inner).extend(events);
+            self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&app_id);
+            process.remove(&self.shared.job_key(&app_id));
+            #[cfg(test)]
+            tests::note_slot_freed(&self.shared, &app_id);
+        }
+        (self.shared.waker)();
+    }
+}
+
 impl Drop for JobGuard {
     fn drop(&mut self) {
+        // `finish` already freed the slot.
+        if self.app_id.is_empty() {
+            return;
+        }
         let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
         let mut process = self.shared.lifecycle.jobs.lock().unwrap_or_else(PoisonError::into_inner);
         self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.app_id);
         process.remove(&self.shared.job_key(&self.app_id));
+        #[cfg(test)]
+        tests::note_slot_freed(&self.shared, &self.app_id);
     }
 }
 
@@ -1157,6 +1181,9 @@ impl NativeBackend {
                 let job = job;
                 let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
                 let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+                // What stopped an install, for the app's card.
+                let mut failure = None;
+                let mut attempted_release = None;
                 let result = if let Work::Launch(args) = &work {
                     run_nightly_launch(app, &shared, &paths, platform, &stop, args)
                 } else if uninstall && shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
@@ -1198,6 +1225,8 @@ impl NativeBackend {
                         &stop,
                         approved,
                         source.as_deref(),
+                        &mut failure,
+                        &mut attempted_release,
                         batch,
                         place,
                         by_name,
@@ -1217,7 +1246,7 @@ impl NativeBackend {
                     shared.host.detect(app, &manifest, &shared.host.snapshot())
                 };
                 // One installer call can cover several apps, and fail after some of them went in.
-                let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+                let latest = attempted_release.clone().or_else(|| shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned());
                 let result = match (result, latest) {
                     (Err(e), Some(release))
                         if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable
@@ -1231,10 +1260,40 @@ impl NativeBackend {
                 };
                 // The manifest may change the package plan even when detection finds the same copy.
                 shared.invalidate_download_size(app.id);
+                let retry_choice = match &work {
+                    Work::Chosen(chosen) => Some(chosen),
+                    _ => None,
+                };
+                let retry_options = chosen_options(&options, app, retry_choice);
+                let retry_allowed = attempted_release.as_ref().map(|release| match repository_update(app, found.as_ref(), &options) {
+                    Some(update) => update.is_ok(),
+                    None => install_plan(
+                        app,
+                        Some(release.clone()),
+                        platform,
+                        &retry_options,
+                        (found.as_ref(), manifest.apps.get(app.id)),
+                        Asking::Answer(&shared.last_system_kinds()),
+                    )
+                    .is_ok(),
+                });
                 publish_detected(app, found, &shared, platform);
                 report_partial(app, &shared, &paths, platform);
-                drop(job);
-                shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+                // One poll sees both: a Blocked alone would offer Retry while the job still runs.
+                let blocked = (!uninstall && !launching).then(|| {
+                    let failure = failure.filter(|_| result.is_err());
+                    match (attempted_release, retry_choice) {
+                        (Some(release), _) => Event::BlockedForRelease { app: app.id.to_string(), release, retry_allowed, failure },
+                        (None, Some(chosen)) => Event::BlockedForRelease {
+                            app: app.id.to_string(),
+                            release: Release { tag: chosen.tag.clone(), ..Release::default() },
+                            retry_allowed: None,
+                            failure,
+                        },
+                        (None, None) => Event::Blocked { app: app.id.to_string(), failure },
+                    }
+                });
+                job.finish(blocked.into_iter().chain([Event::JobFinished { app: app.id.to_string(), result }]));
             }));
         }))
     }
@@ -1393,6 +1452,31 @@ enum Work {
 struct Chosen {
     tag: String,
     fallback: Option<String>,
+}
+
+fn requested_release(
+    latest: Option<Release>,
+    chosen: Option<&Chosen>,
+    source: Option<&dyn ReleaseSource>,
+    query: &ReleaseQuery,
+) -> Result<Option<Release>, String> {
+    if let Some(chosen) = chosen.filter(|chosen| latest.as_ref().is_none_or(|release| release.tag != chosen.tag)) {
+        let source = source.ok_or("the selected release is not available without a release source")?;
+        return match source.chosen_within(query, &VersionTrack::Pinned(chosen.tag.clone()), crate::source::CHOOSER_FRESH).latest {
+            LatestRelease::Found(release) if release.tag == chosen.tag => Ok(Some(release)),
+            LatestRelease::Failed(error) => Err(error),
+            _ => Err(format!("the selected release {} is not available", chosen.tag)),
+        };
+    }
+    Ok(latest)
+}
+
+fn chosen_options(options: &BackendOptions, app: &CraftApp, chosen: Option<&Chosen>) -> BackendOptions {
+    let mut selected = options.clone();
+    if let Some(chosen) = chosen {
+        selected.versions.insert(app.id.into(), VersionTrack::Pinned(chosen.tag.clone()));
+    }
+    selected
 }
 
 /// Whether `release` may be installed on `track`. The app stays part of the call because the
@@ -1613,6 +1697,10 @@ fn nightly_install_plan(app: &CraftApp, shared: &Shared, paths: &Paths, platform
 /// Runs only the verified private portable transaction; its commit can never update Stable's
 /// manifest. Consent is checked again at the transactional commit, including after queue waits.
 fn run_nightly_install(app: &CraftApp, shared: &Shared, platform: Option<Platform>, job: &mut install::Job<'_>) -> Result<String, String> {
+    #[cfg(test)]
+    if let Some(hook) = REVIEW_NIGHTLY_INSTALL.with(|hook| hook.borrow_mut().take()) {
+        return hook(job);
+    }
     let paths = job.paths;
     let adapter = crate::nightly_profile::for_app(app, platform.ok_or("This nightly platform is not supported.")?)?;
     let lease = crate::nightly_transaction::Lease::acquire(paths, adapter)?;
@@ -1708,6 +1796,8 @@ fn run_install(
     stop: &Stop,
     approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
+    failure: &mut Option<InstallFailure>,
+    attempted_release: &mut Option<Release>,
     batch: Option<crate::queue::Gather>,
     place: Option<crate::downloads::Place<'static>>,
     by_name: Option<&Chosen>,
@@ -1737,9 +1827,12 @@ fn run_install(
             downgrade: None,
             batch: None,
             place,
+            failure: None,
             put_back: None,
         };
-        return run_nightly_install(app, shared, platform, &mut job);
+        let result = run_nightly_install(app, shared, platform, &mut job);
+        *failure = job.failure.take();
+        return result;
     }
     // The ways out below that never reach the installer (a missing release, the overwrite
     // question, a paused download) free the rest of the batch at once; from `install_at` on, the
@@ -1785,7 +1878,10 @@ fn run_install(
         }
     }
     let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
-    let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
+    let latest = requested_release(latest, by_name, source, &release_query(load_feed(paths).as_ref(), app))?;
+    *attempted_release = latest.clone();
+    let plan_options = chosen_options(options, app, by_name);
+    let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, &plan_options, (existing, record), Asking::Install)?;
     // The person picked a release by name: install that one, or nothing.
     if let Some(chosen) = by_name.filter(|c| c.tag != release.tag) {
         return Err(format!("{} {} isn't the version to install any more, so nothing was changed. Choose the version again.", app.name, chosen.tag));
@@ -1876,6 +1972,7 @@ fn run_install(
         replace,
         approved_path,
         downgrade,
+        failure: None,
         batch: batch.take(),
         place,
         put_back: None,
@@ -1888,7 +1985,9 @@ fn run_install(
         *manifest = updated;
         Ok(())
     };
-    let new_record = match install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record)) {
+    let installed = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record));
+    *failure = job.failure.take();
+    let new_record = match installed {
         Ok(new_record) => new_record,
         Err(e) => {
             // A failed Windows Installer downgrade that put `previous` back reports which
@@ -3032,7 +3131,10 @@ impl Backend for NativeBackend {
                 }
             }
             Command::Cancel { app } => {
-                let running = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app).cloned();
+                let running = {
+                    let _reporting = self.shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+                    self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app).cloned()
+                };
                 match running {
                     Some(stop) => stop.cancel(),
                     // A paused download, or one kept after a failed install: throw the file away.
@@ -3274,6 +3376,20 @@ mod tests {
         });
     }
 
+    std::thread_local! {
+        /// For each freed job slot on this thread, whether that app's `JobFinished` was queued by then.
+        static SLOT_FREED: std::cell::RefCell<Option<Vec<bool>>> = const { std::cell::RefCell::new(None) };
+    }
+
+    pub(super) fn note_slot_freed(shared: &Shared, app: &str) {
+        SLOT_FREED.with(|freed| {
+            if let Some(freed) = freed.borrow_mut().as_mut() {
+                let queued = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app: a, .. } if a == app));
+                freed.push(queued);
+            }
+        });
+    }
+
     /// A member of a batch that ends before it ever reaches the installer — its download failed,
     /// or it turned out to need none of the batch's prompts — frees the rest of the batch at
     /// once, rather than holding them back until the batch's wait runs out.
@@ -3327,6 +3443,8 @@ mod tests {
             &stop,
             None,
             None,
+            &mut None,
+            &mut None,
             Some(gather.clone()),
             None,
             None,
@@ -3339,6 +3457,32 @@ mod tests {
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    #[test]
+    fn a_named_retry_resolves_its_release_after_the_latest_changes() {
+        struct Versions(Release);
+        impl ReleaseSource for Versions {
+            fn latest(&self, _: &ReleaseQuery, _: bool) -> crate::source::Answer {
+                panic!("a named retry does not ask for latest")
+            }
+            fn versions(&self, _: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                Ok(vec![self.0.clone()])
+            }
+            fn cached(&self, _: &ReleaseQuery, _: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let old = tagged("0.3.0");
+        let chosen = Chosen { tag: old.tag.clone(), fallback: None };
+        let release =
+            requested_release(Some(tagged("0.5.0")), Some(&chosen), Some(&Versions(old.clone())), &ReleaseQuery::for_app(app, app.repo)).unwrap();
+        assert_eq!(release, Some(old));
     }
 
     /// A Flatpak its repository updates can't install a release picked by name: the repository
@@ -3365,7 +3509,24 @@ mod tests {
         let picked = Chosen { tag: "v0.4.0".into(), fallback: None };
         let (options, stop) = (BackendOptions::default(), Stop::default());
         let paths = Paths::under(dir.path());
-        let result = run_install(app, &shared, &paths, None, None, &options, Some(&installed), None, &stop, None, None, None, None, Some(&picked));
+        let result = run_install(
+            app,
+            &shared,
+            &paths,
+            None,
+            None,
+            &options,
+            Some(&installed),
+            None,
+            &stop,
+            None,
+            None,
+            &mut None,
+            &mut None,
+            None,
+            None,
+            Some(&picked),
+        );
         assert!(result.as_ref().is_err_and(|e| e.as_str() != artcraft_launcher_core::protocol::CANCELLED), "{result:?}");
         assert_eq!(*seen.lock().unwrap(), 0, "nothing started: no progress was reported");
     }
@@ -5079,6 +5240,114 @@ prerelease = true
         }
     }
 
+    /// A poll that finds an install's `Blocked` also finds its `JobFinished`, so the card never
+    /// offers Retry while the job is still running.
+    #[test]
+    fn blocked_and_job_finished_arrive_in_one_poll() {
+        let Some(platform) = native_platform() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
+        let shared_for_waker = shared.clone();
+        let (sent, received) = mpsc::channel();
+        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+            let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
+                return;
+            };
+            let polled: Vec<Event> = shared.events.lock().unwrap().drain(..).collect();
+            let blocked = polled.iter().any(|event| matches!(event, Event::Blocked { app, .. } | Event::BlockedForRelease { app, .. } if app == APP));
+            let finished = polled.iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
+            if blocked || finished {
+                let _ = sent.send((blocked, finished));
+            }
+        });
+        *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
+
+        assert!(backend.start_job(APP, Work::Install(None)));
+        // The worker then holds the last reference to the waker, so the channel closes if it
+        // exits without sending.
+        drop(backend);
+        assert_eq!(received.recv().unwrap(), (true, true));
+    }
+
+    /// Opening an app sends no `Blocked`, so the card keeps what stopped the last install.
+    #[test]
+    fn opening_an_app_keeps_the_install_blocker() {
+        let Some(platform) = native_platform() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
+        let shared_for_waker = shared.clone();
+        let (sent, received) = mpsc::channel();
+        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+            let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
+                return;
+            };
+            let polled: Vec<Event> = shared.events.lock().unwrap().drain(..).collect();
+            for event in polled {
+                if matches!(&event, Event::Blocked { app, .. } | Event::BlockedForRelease { app, .. } | Event::JobFinished { app, .. } if app == APP)
+                {
+                    let _ = sent.send(event);
+                }
+            }
+        });
+        *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
+
+        assert!(backend.start_job(APP, Work::Launch(Vec::new())));
+        // The worker then holds the last reference to the waker, so the channel closes once it
+        // exits, and everything it sent can be read to the end.
+        drop(backend);
+        let sent: Vec<Event> = received.iter().collect();
+        assert!(matches!(sent.as_slice(), [Event::JobFinished { .. }]), "{sent:?}");
+    }
+
+    /// A job's last events are queued before its slot is freed, so an attempt admitted next
+    /// cannot queue its progress ahead of the old `Blocked` and `JobFinished`.
+    #[test]
+    fn a_job_queues_its_last_events_before_freeing_its_slot() {
+        let Some(platform) = native_platform() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        backend.spawn = Arc::new(|work| work());
+        SLOT_FREED.with(|freed| *freed.borrow_mut() = Some(Vec::new()));
+        assert!(backend.start_job(APP, Work::Install(None)));
+        let freed = SLOT_FREED.with(|freed| freed.borrow_mut().take()).unwrap();
+        assert_eq!(freed, [true]);
+    }
+
+    /// A nightly update stopped by the running app hands its blocker to the worker, which sends
+    /// it in `Blocked`.
+    #[test]
+    fn a_nightly_update_reports_what_blocked_it() {
+        let mut shared = shared();
+        shared.channel = artcraft_launcher_core::nightly::InstallChannel::Nightly;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let http = Http::new().unwrap();
+        let open = InstallFailure { blocker: artcraft_launcher_core::protocol::Blocker::AppOpen, details: "photocraft".into() };
+        let set = open.clone();
+        REVIEW_NIGHTLY_INSTALL.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |job: &mut install::Job<'_>| {
+                job.failure = Some(set);
+                Err("PhotoCraft is open.".into())
+            }))
+        });
+        let app = CraftApp::by_id(APP).unwrap();
+        let mut failure = None;
+        let options = BackendOptions::default();
+        let stop = Stop::default();
+        let result =
+            run_install(app, &shared, &paths, Some(&http), None, &options, None, None, &stop, None, None, &mut failure, &mut None, None, None, None);
+        assert_eq!(result, Err("PhotoCraft is open.".into()));
+        assert_eq!(failure, Some(open));
+    }
+
     /// Puts the planned download on disk, as a failed install leaves it.
     fn keep_file(backend: &NativeBackend) -> std::path::PathBuf {
         let app = CraftApp::by_id(APP).unwrap();
@@ -5567,6 +5836,11 @@ prerelease = true
     }
 }
 
+/// Runs in place of [`run_nightly_install`] once, on the thread that sets it.
+#[cfg(test)]
+type ReviewNightlyInstallHook = Box<dyn FnOnce(&mut install::Job<'_>) -> Result<String, String>>;
+#[cfg(test)]
+thread_local! { static REVIEW_NIGHTLY_INSTALL: std::cell::RefCell<Option<ReviewNightlyInstallHook>> = std::cell::RefCell::new(None); }
 #[cfg(test)]
 thread_local! { static REVIEW_BEFORE_MANIFEST_SAVE: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = std::cell::RefCell::new(None); }
 #[cfg(test)]

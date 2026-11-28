@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use artcraft_launcher_core::protocol::{
     Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, McpAgents, PAUSED, Source,
-    is_paused,
 };
 use artcraft_launcher_core::release::Release;
 use artcraft_launcher_core::status::AppStatus;
@@ -195,9 +194,11 @@ pub struct LauncherUi {
     /// While the Choose version dialog is open: its app and the choice it had before, put back
     /// unless the dialog's Install keeps the new one.
     pub(crate) version_before: Option<(String, artcraft_launcher_core::protocol::VersionTrack)>,
-    /// The `InstallChosen` last sent for an app, while its job runs or its download is paused, so
+    /// The `InstallChosen` last sent for an app, while its job runs, pauses, or waits for retry, so
     /// Resume asks for the same release by name again rather than the track's.
     pub(crate) chosen_installs: std::collections::HashMap<String, Command>,
+    pub(crate) chosen_retry_allowed: std::collections::HashMap<String, Option<bool>>,
+    install_results: std::collections::HashSet<String>,
     /// The launcher's own update, while it downloads and installs.
     pub(crate) launcher_job: Option<artcraft_launcher_core::protocol::JobPhase>,
     /// The new launcher is in place: quit so it can start.
@@ -338,6 +339,8 @@ impl LauncherUi {
             version_requests: std::collections::HashSet::new(),
             version_before: None,
             chosen_installs: std::collections::HashMap::new(),
+            chosen_retry_allowed: std::collections::HashMap::new(),
+            install_results: std::collections::HashSet::new(),
             launcher_job: None,
             restart_requested: false,
             announcements: Vec::new(),
@@ -625,9 +628,10 @@ impl LauncherUi {
     }
 
     /// Installs the release `tag` the person picked by name ([`Command::InstallChosen`]), and keeps
-    /// the request so Resume repeats it.
+    /// the request so Resume and Retry repeat it.
     pub(crate) fn install_chosen(&mut self, id: &str, tag: String, fallback: Option<String>) {
         let command = Command::InstallChosen { app: id.to_string(), tag, fallback };
+        self.chosen_retry_allowed.remove(id);
         self.chosen_installs.insert(id.to_string(), command.clone());
         self.act_command(command);
     }
@@ -635,7 +639,10 @@ impl LauncherUi {
     /// Resumes `id`'s paused download: as the request by name that started it, else as an install.
     pub(crate) fn resume_app(&mut self, id: &str) {
         match self.chosen_installs.get(id).cloned() {
-            Some(command) => self.act_command(command),
+            Some(command) => {
+                self.chosen_retry_allowed.remove(id);
+                self.act_command(command);
+            }
             None => self.install_app(id),
         }
     }
@@ -719,9 +726,32 @@ impl LauncherUi {
                 true
             }
             Event::Detected { app, installed } => {
+                let mut copy_changed = false;
                 if let Some(e) = self.entry_mut(&app) {
+                    // A copy updated, moved, removed or replaced by another kind of copy (a
+                    // portable copy where an MSI copy was) outside the launcher makes the last stop
+                    // stale. A job's own look comes before its `Blocked`, so this does not clear
+                    // the stop of the job that just ended.
+                    let same_copy = match (&e.installed, &installed) {
+                        (Some(was), Some(now)) => {
+                            was.version == now.version
+                                && was.location == now.location
+                                && was.source == now.source
+                                && was.package == now.package
+                                && was.installation == now.installation
+                        }
+                        (None, None) => true,
+                        _ => false,
+                    };
+                    if !same_copy {
+                        e.blocked = None;
+                        copy_changed = true;
+                    }
                     e.installed = installed;
                     e.detected = true;
+                }
+                if copy_changed && self.chosen_retry_allowed.remove(&app).is_some() {
+                    self.chosen_installs.remove(&app);
                 }
                 true
             }
@@ -761,6 +791,33 @@ impl LauncherUi {
             }
             Event::Occupied { app, path } => {
                 self.dialog = Some(Dialog::Replace { app, path });
+                false
+            }
+            Event::Blocked { app, failure } => {
+                self.install_results.insert(app.clone());
+                self.chosen_installs.remove(&app);
+                self.chosen_retry_allowed.remove(&app);
+                if let Some(e) = self.entry_mut(&app) {
+                    e.blocked = failure;
+                }
+                false
+            }
+            Event::BlockedForRelease { app, release, retry_allowed, failure } => {
+                self.install_results.insert(app.clone());
+                let named_attempt = matches!(self.chosen_installs.get(&app), Some(Command::InstallChosen { tag, .. }) if *tag == release.tag);
+                if named_attempt {
+                    self.chosen_retry_allowed.insert(app.clone(), retry_allowed);
+                } else {
+                    self.chosen_installs.remove(&app);
+                    self.chosen_retry_allowed.remove(&app);
+                }
+                if let Some(e) = self.entry_mut(&app)
+                    && (named_attempt
+                        || matches!(&e.latest, Some(LatestRelease::Found(current))
+                            if current.tag == release.tag && current.version == release.version && current.assets == release.assets))
+                {
+                    e.blocked = failure;
+                }
                 false
             }
             Event::GoBackFallback { app, installed, chosen, fallback } => {
@@ -803,9 +860,18 @@ impl LauncherUi {
 
     // A failed check keeps the release we already know about (and where it came from).
     fn on_latest(&mut self, app: String, latest: LatestRelease, from: artcraft_launcher_core::protocol::Origin) {
+        let named_retry = self.chosen_installs.contains_key(&app) && self.chosen_retry_allowed.contains_key(&app);
         if let Some(e) = self.entry_mut(&app)
             && !(matches!(latest, LatestRelease::Failed(_)) && matches!(e.latest, Some(LatestRelease::Found(_))))
         {
+            // What stopped the last try belongs to the release it tried: a newer one is a new
+            // try, and the same release coming back keeps it.
+            if let (Some(LatestRelease::Found(was)), LatestRelease::Found(now)) = (&e.latest, &latest)
+                && was.tag != now.tag
+                && !named_retry
+            {
+                e.blocked = None;
+            }
             e.latest = Some(latest);
             e.origin = Some(from);
         }
@@ -820,6 +886,13 @@ impl LauncherUi {
             }
         } else if let Some(e) = self.entry_mut(&app) {
             e.job = Some(phase);
+            // A new install or update has started, so the cause of the last one is cleared. A
+            // removal reports only `Waiting` and `Removing`: one that fails keeps the copy and
+            // what stopped its last update, and one that works clears it when the copy is
+            // detected gone.
+            if !matches!(phase, JobPhase::Waiting | JobPhase::Removing) {
+                e.blocked = None;
+            }
         }
     }
 
@@ -832,10 +905,11 @@ impl LauncherUi {
             e.job = None;
         }
         let kept = self.entry(&app).is_some_and(|e| e.ready);
-        // A paused job is resumed by the same request, so the request is kept: every pause
-        // outcome, the connection-caused one included (is_paused), not just the plain PAUSED.
-        if !matches!(&result, Err(e) if is_paused(e)) {
+        // A failed or paused named install keeps the selected release for the next attempt.
+        if self.install_results.remove(&app) && (result.is_ok() || matches!(&result, Err(error) if error == CANCELLED || error == INSTALL_CANCELLED))
+        {
             self.chosen_installs.remove(&app);
+            self.chosen_retry_allowed.remove(&app);
         }
         match result {
             Ok(msg) => self.toast(msg, false),
