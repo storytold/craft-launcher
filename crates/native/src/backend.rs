@@ -130,6 +130,8 @@ enum Admission {
 struct Shared {
     /// Immutable: Configure cannot turn the stable backend into a nightly installer.
     channel: artcraft_launcher_core::nightly::InstallChannel,
+    /// Where the launcher keeps its files.
+    paths: Paths,
     host: HostDetection,
     events: Mutex<Vec<Event>>,
     /// Held while an app's latest release or installed copy changes and its [`Event::Installable`]
@@ -491,6 +493,7 @@ impl NativeBackend {
 
         let shared = Arc::new(Shared {
             channel,
+            paths: paths.clone(),
             host: HostDetection::System,
             #[cfg(test)]
             nightly_detection_observer: Mutex::new(None),
@@ -1999,6 +2002,27 @@ fn remove_cli_tool(paths: &Paths, manifest: &mut crate::manifest::Manifest, id: 
     Ok(manifest.cli.remove(id).is_some())
 }
 
+/// A command-line tool left behind by a removal that failed (its record is still in the manifest) is taken away
+/// once its app is gone: every check that finds the app not installed tries again, so the user has nothing to do.
+/// Never while a job for the app is running (an update that swaps the app out for a moment must not lose its tool).
+fn retry_leftover_cli_tool(shared: &Shared, app: &CraftApp) {
+    if shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id) {
+        return;
+    }
+    let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+    if !m.cli.contains_key(app.id) {
+        return;
+    }
+    match remove_cli_tool(&shared.paths, &mut m, app.id) {
+        Ok(true) => {
+            let _ = m.save(&shared.paths.manifest());
+            log::info!("{}: the command-line tool left behind was removed", app.id);
+        }
+        Ok(false) => {}
+        Err(e) => log::warn!("{}: the command-line tool left behind still can't be removed ({e}); it is tried again at the next check", app.id),
+    }
+}
+
 /// What an uninstall does beyond the app itself: forget its record and take away its command-line tool.
 /// `installed` says whether the app was there and has just been removed. A tool that can't be removed is
 /// reported and keeps its record, so a later uninstall retries it, even when the app itself is gone by then
@@ -2015,7 +2039,10 @@ fn finish_uninstall(paths: &Paths, m: &mut crate::manifest::Manifest, app: &Craf
     }
     match (installed, tool) {
         (true, Ok(_)) => Ok(format!("{} was removed", app.name)),
-        (true, Err(e)) => Ok(format!("{} was removed, but its command-line tool couldn't be removed ({e}). Remove it again to retry", app.name)),
+        (true, Err(e)) => Ok(format!(
+            "{} was removed, but its command-line tool couldn't be removed ({e}). The launcher will try again the next time it checks for apps",
+            app.name
+        )),
         (false, Ok(_)) => Ok(format!("The command-line tool of {} was removed", app.name)),
         (false, Err(e)) => Err(format!("The command-line tool of {} couldn't be removed ({e})", app.name)),
     }
@@ -2297,6 +2324,9 @@ fn publish_latest(app: &CraftApp, latest: LatestRelease, from: Origin, shared: &
 /// go ahead to replace it, in one batch.
 fn publish_detected(app: &CraftApp, found: Option<Installed>, shared: &Shared, platform: Option<Platform>) {
     let system = (shared.channel == artcraft_launcher_core::nightly::InstallChannel::Stable && found.is_some()).then(|| shared.system_kinds());
+    if found.is_none() {
+        retry_leftover_cli_tool(shared, app);
+    }
     let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
     shared.store_detected(app.id, found.as_ref());
     let installable = installable_event(app, shared, platform, system);
@@ -3777,6 +3807,7 @@ mod tests {
     pub(super) fn shared() -> Shared {
         Shared {
             channel: artcraft_launcher_core::nightly::InstallChannel::Stable,
+            paths: Paths::under(std::path::Path::new("/nonexistent-launcher-test-root")),
             host: HostDetection::Stub(Arc::new(|_| None)),
             nightly_detection_observer: Mutex::new(None),
             #[cfg(test)]
@@ -4725,7 +4756,8 @@ prerelease = true
 
     /// A backend that knows `release("0.5.0")` and keeps its files under `root`.
     pub(super) fn backend(root: &std::path::Path, platform: Platform, source: Option<Arc<dyn ReleaseSource>>) -> NativeBackend {
-        let shared = shared();
+        let mut shared = shared();
+        shared.paths = Paths::under(root);
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
         NativeBackend {
@@ -5720,6 +5752,62 @@ prerelease = true
             let paths = Paths::under(dir.path());
             let err = finish_uninstall(&paths, &mut Manifest::default(), app(), false).unwrap_err();
             assert!(err.contains("isn't installed"), "{err}");
+        }
+
+        fn platform() -> Platform {
+            Platform { os: Os::Windows, arch: artcraft_launcher_core::Arch::X64 }
+        }
+
+        fn backend_with(m: Manifest, dir: &std::path::Path) -> NativeBackend {
+            let backend = backend(dir, platform(), None);
+            *backend.shared.manifest.lock().unwrap() = m;
+            backend
+        }
+
+        fn has_record(backend: &NativeBackend) -> bool {
+            backend.shared.manifest.lock().unwrap().cli.contains_key("pdfcraft")
+        }
+
+        #[test]
+        fn a_tool_left_behind_is_removed_when_a_check_finds_its_app_gone() {
+            let dir = tempfile::tempdir().unwrap();
+            let (paths, m, real) = blocked(dir.path());
+            let record = m.cli.get("pdfcraft").unwrap().clone();
+            let backend = backend_with(m, dir.path());
+            // Still blocked: the record stays for the next check.
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(has_record(&backend), "a removal that fails keeps its record");
+            // What blocked it is put right; the next check takes the tool away, with nobody asking.
+            std::fs::remove_file(paths.cli()).unwrap();
+            std::fs::rename(&real, paths.cli()).unwrap();
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(!has_record(&backend), "the record is gone");
+            assert!(Manifest::load(&paths.manifest()).cli.is_empty(), "the manifest on disk forgets it too");
+            assert!(std::fs::symlink_metadata(&record.link).is_err(), "the link is gone");
+            assert!(std::fs::symlink_metadata(&record.folder).is_err(), "the folder is gone");
+        }
+
+        #[test]
+        fn a_tool_is_kept_while_its_app_is_installed_or_a_job_for_it_runs() {
+            let dir = tempfile::tempdir().unwrap();
+            let (paths, m, real) = blocked(dir.path());
+            // Nothing blocks the removal now, so only the guards keep the tool.
+            std::fs::remove_file(paths.cli()).unwrap();
+            std::fs::rename(&real, paths.cli()).unwrap();
+            let backend = backend_with(m, dir.path());
+            publish_detected(
+                app(),
+                Some(copy_of("0.20.0", InstallSource::Launcher, "/Applications/PdfCraft.app")),
+                &backend.shared,
+                Some(platform()),
+            );
+            assert!(has_record(&backend), "an installed app keeps its tool");
+            backend.shared.jobs.lock().unwrap().insert("pdfcraft".to_string(), Arc::new(Stop::default()));
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(has_record(&backend), "an app with a job running (an update swapping it out for a moment) keeps its tool");
+            backend.shared.jobs.lock().unwrap().remove("pdfcraft");
+            publish_detected(app(), None, &backend.shared, Some(platform()));
+            assert!(!has_record(&backend), "with the app gone and no job running, the tool is removed");
         }
     }
 }
