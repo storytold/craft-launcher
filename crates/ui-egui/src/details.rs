@@ -156,6 +156,9 @@ impl LauncherUi {
 
                 ui.set_min_size(panel.size());
                 ui.set_max_size(panel.size());
+                // Nothing on the page draws past the card: the scroll area keeps its bar at the
+                // clip's right edge, so a page wider than the card can't push the bar out (#1615).
+                ui.set_clip_rect(panel.intersect(ui.clip_rect()));
                 // A bar that stays on screen says there is more below the fold; in the app's colour.
                 let page_visuals = crate::sheet::accent_scroll(ui, t, t.app_ink(entry.app));
                 // One scroll position per app, so the next app opens at its top.
@@ -313,16 +316,24 @@ impl LauncherUi {
         let app = entry.app;
         let app_color = rgb(app.color);
         let status = entry.status(self.platform, self.caps.manage_apps);
+        // The main button grows with its label ("Install version v0.24.0-rc.1"), so the actions'
+        // width is the one they took the last time they sat beside the name (ACTION_W at least),
+        // remembered for what decides that label.
+        let key = format!("{status:?} {:?} {:?} {}", self.settings.versions.get(app.id), current(), entry.job.is_some());
+        let actions_id = Id::unique(("details-actions-w", app.id, key));
+        let actions_w = ui.data(|d| d.get_temp::<f32>(actions_id)).unwrap_or(ACTION_W).max(ACTION_W);
         let hero = egui::Frame::new().fill(tint(app_color, if t.dark { 0.09 } else { 0.07 })).inner_margin(Margin::same(PAD as i8)).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 widgets::hud(ui, tl!("App details"), t.faint);
                 self.hero_top_row(ui, around, t);
             });
-            self.hero_identity(ui, entry, details, &status, t, wide);
+            // Beside the name on a wide page, when they leave the text 200 px; else under it.
+            let beside = wide && ui.available_width() >= ICON + 16.0 + 200.0 + actions_w + 24.0;
+            self.hero_identity(ui, entry, details, &status, t, beside.then_some((actions_id, actions_w)));
             ui.add_space(14.0);
             // The menu leaves out the links: they are the buttons right below.
-            if !wide {
+            if !beside {
                 let row_w = ui.available_width();
                 ui.horizontal(|ui| self.actions_in(ui, entry, &status, row_w, crate::views::Place::Details));
             }
@@ -354,8 +365,8 @@ impl LauncherUi {
     }
 
     /// The icon, name, headline and version line, with the main action button beside them when
-    /// the page is wide.
-    fn hero_identity(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, status: &AppStatus, t: &Tokens, wide: bool) {
+    /// `beside` gives where to remember their width and how wide they were last time.
+    fn hero_identity(&mut self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, status: &AppStatus, t: &Tokens, beside: Option<(Id, f32)>) {
         let app = entry.app;
         let hero_w = ui.available_width();
         ui.horizontal(|ui| {
@@ -365,7 +376,10 @@ impl LauncherUi {
             }
             ui.add_space(8.0);
             // Beside the buttons when the page is wide: the text keeps what they leave.
-            let text_w = if wide { (hero_w - ICON - 16.0 - ACTION_W - 24.0).max(200.0) } else { (hero_w - ICON - 16.0).max(40.0) };
+            let text_w = match beside {
+                Some((_, actions_w)) => (hero_w - ICON - 16.0 - actions_w - 24.0).max(200.0),
+                None => (hero_w - ICON - 16.0).max(40.0),
+            };
             ui.vertical(|ui| {
                 ui.set_width(text_w);
                 ui.spacing_mut().item_spacing.y = 5.0;
@@ -380,12 +394,17 @@ impl LauncherUi {
                     });
                 }
             });
-            if wide {
+            if let Some((actions_id, actions_w)) = beside {
                 // The main button and its menu, at the right, level with the name.
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.allocate_ui_with_layout(vec2(ACTION_W, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    let row = ui.allocate_ui_with_layout(vec2(actions_w, theme::CONTROL_H), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         self.actions_in(ui, entry, status, ACTION_W, crate::views::Place::Details);
                     });
+                    let used = row.response.rect.width();
+                    if (used.max(ACTION_W) - actions_w).abs() > 0.5 {
+                        ui.data_mut(|d| d.insert_temp(actions_id, used));
+                        ui.ctx().request_discard("details actions width");
+                    }
                 });
             }
         });
