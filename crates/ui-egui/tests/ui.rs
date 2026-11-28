@@ -4522,6 +4522,7 @@ fn the_macos_title_bar_keeps_its_size_when_the_launcher_zooms() {
     let (bar, brand, card) = (on_screen(&h, "Settings"), on_screen(&h, "Craft App Suite"), on_screen(&h, "More actions for PhotoCraft"));
     let (status, link) = (on_screen(&h, "Checked 3 min ago · using ArtCraft API"), on_screen(&h, "Discord"));
     snapshot(&mut h, "macos-title-bar-zoom-1");
+    assert!((status.y - brand.y).abs() < 0.5, "the status text is as tall as the title bar's wordmark: {status:?} vs {brand:?}");
     for (key, presses, name) in [(egui::Key::Plus, 5, "in"), (egui::Key::Minus, 8, "out")] {
         for _ in 0..presses {
             h.key_press_modifiers(egui::Modifiers::COMMAND, key);

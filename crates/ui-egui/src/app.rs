@@ -1081,8 +1081,8 @@ impl LauncherUi {
             self.lights = host.mac_lights();
         }
         let header_h = self.header_h(bar);
-        // macOS: the title bar and the status bar are drawn by their own contexts, at the platform's scale and at
-        // `STATUS_ZOOM`; the window's context keeps their places, the same size on screen.
+        // macOS: the title bar and the status bar are drawn by their own contexts at the platform's scale, so the
+        // status text matches the title bar's wordmark; the window's context keeps their places.
         #[cfg(not(target_arch = "wasm32"))]
         let panes = (bar == TitleBar::MacOs).then(|| {
             use craft_window::panes::Place;
@@ -1094,7 +1094,7 @@ impl LauncherUi {
         let panes: Option<()> = None;
         #[cfg(not(target_arch = "wasm32"))]
         let (header_room, footer_room) = match panes {
-            Some(_) => (header_h / ctx.zoom_factor(), crate::views::FOOTER_H * crate::bar_pane::STATUS_ZOOM / ctx.zoom_factor()),
+            Some(_) => (header_h / ctx.zoom_factor(), crate::views::FOOTER_H / ctx.zoom_factor()),
             None => (header_h, crate::views::FOOTER_H),
         };
         #[cfg(target_arch = "wasm32")]
@@ -1123,7 +1123,7 @@ impl LauncherUi {
                 self.header(ui, bar);
                 ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, ui.visuals().widgets.noninteractive.bg_stroke);
             });
-            status.show(&ctx, tl!("Status bar"), crate::bar_pane::STATUS_ZOOM, footer.response.rect, look, |ui, rect| {
+            status.show(&ctx, tl!("Status bar"), 1.0, footer.response.rect, look, |ui, rect| {
                 ui.painter().rect_filled(rect, 0.0, tokens.bg);
                 ui.painter().hline(rect.x_range(), rect.top() + 0.5, ui.visuals().widgets.noninteractive.bg_stroke);
                 ui.scope_builder(egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(20.0, 0.0))), |ui| self.footer(ui));

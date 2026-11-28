@@ -7,10 +7,6 @@ use craft_window::panes::{Pane, Place};
 use crate::i18n::Lang;
 use crate::theme::{self, ThemeChoice};
 
-/// The status bar's zoom over the platform's scale: its 11 pt mono capitals at 13 pt, its 13 pt icons at about 15 pt
-/// and its 34 pt height at about 40 pt.
-pub(crate) const STATUS_ZOOM: f32 = 13.0 / 11.0;
-
 /// A bar's pane, with what was last given to its context.
 pub(crate) struct BarPane {
     pane: Pane,
