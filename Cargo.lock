@@ -302,6 +302,7 @@ dependencies = [
  "artcraft-launcher-core",
  "artcraft-launcher-native",
  "artcraft-launcher-ui-egui",
+ "craft-window",
  "eframe",
  "egui",
  "env_logger",

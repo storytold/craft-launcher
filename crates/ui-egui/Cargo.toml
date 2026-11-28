@@ -26,7 +26,7 @@ craft-host = { workspace = true }
 craft-i18n = { workspace = true }
 craft-theme = { workspace = true }
 craft-ui = { workspace = true }
-craft-window = { workspace = true }
+craft-window = { workspace = true, features = ["ui"] }
 # `Network`, for the downloads default.
 craft-font-store = { workspace = true }
 # The OS's preferred UI languages, without spawning `defaults` or `reg.exe`.

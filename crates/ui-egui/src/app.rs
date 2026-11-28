@@ -31,10 +31,24 @@ pub enum TitleBar {
 }
 
 /// What only the shell can do. Every method has a do-nothing default (the web build).
+/// Where macOS's traffic lights are over the title bar, in points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MacLights {
+    /// From the window's top to the lights' middle line.
+    pub centre_from_top: f32,
+    /// The room they take at the leading edge, with the gap after them.
+    pub leading: f32,
+}
+
 pub trait Host {
     /// Who draws the title bar.
     fn title_bar(&self) -> TitleBar {
         TitleBar::Native
+    }
+    /// macOS: where the traffic lights are over the title bar, measured; `None` before the window can be measured,
+    /// in full screen and elsewhere.
+    fn mac_lights(&mut self) -> Option<MacLights> {
+        None
     }
     /// Shows a system notification.
     fn notify(&mut self, _title: &str, _body: &str) {}
@@ -227,6 +241,11 @@ pub struct LauncherUi {
     pub(crate) pictures: std::collections::HashMap<(String, String), crate::details::Picture>,
     started: bool,
     applied_theme: Option<theme::ThemeChoice>,
+    /// macOS: the title bar's and the status bar's own contexts, at a fixed scale while the rest of the window zooms.
+    #[cfg(not(target_arch = "wasm32"))]
+    bar_panes: Option<(crate::bar_pane::BarPane, crate::bar_pane::BarPane)>,
+    /// macOS: the traffic lights, measured this frame.
+    pub(crate) lights: Option<MacLights>,
     /// The OS asks for fewer animations: what the host last said, and the context's time to ask
     /// it again at.
     pub(crate) reduce_motion: bool,
@@ -355,6 +374,9 @@ impl LauncherUi {
             pictures: std::collections::HashMap::new(),
             started: false,
             applied_theme: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            bar_panes: None,
+            lights: None,
             reduce_motion: false,
             motion_recheck: 0.0,
             applied_motion: None,
@@ -387,6 +409,10 @@ impl LauncherUi {
         egui_extras::install_image_loaders(ctx);
         self.fonts_ready = false;
         self.applied_theme = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.bar_panes = None;
+        }
         self.applied_motion = None;
         self.motion_recheck = 0.0;
         #[cfg(not(target_arch = "wasm32"))]
@@ -1051,18 +1077,59 @@ impl LauncherUi {
 
         // The bars' separator lines are the hairlines under the header and over the footer.
         let bar = host.title_bar();
-        // macOS: the header is the window's title bar, so it keeps the size it has unzoomed, as the traffic lights do.
-        let unzoomed = if bar == TitleBar::MacOs { ctx.zoom_factor() } else { 1.0 };
-        egui::Panel::top("header")
-            .frame(egui::Frame::new().fill(tokens.bg))
-            .exact_size(crate::views::HEADER_H / unzoomed)
-            .resizable(false)
-            .show(ui, |ui| if unzoomed == 1.0 { self.header(ui, bar) } else { self.header_unzoomed(ui, bar, unzoomed) });
-        egui::Panel::bottom("footer")
+        if bar == TitleBar::MacOs {
+            self.lights = host.mac_lights();
+        }
+        let header_h = self.header_h(bar);
+        // macOS: the title bar and the status bar are drawn by their own contexts, at the platform's scale and at
+        // `STATUS_ZOOM`; the window's context keeps their places, the same size on screen.
+        #[cfg(not(target_arch = "wasm32"))]
+        let panes = (bar == TitleBar::MacOs).then(|| {
+            use craft_window::panes::Place;
+            self.bar_panes.take().unwrap_or_else(|| {
+                (crate::bar_pane::BarPane::new(&ctx, "title bar", Place::Before), crate::bar_pane::BarPane::new(&ctx, "status bar", Place::After))
+            })
+        });
+        #[cfg(target_arch = "wasm32")]
+        let panes: Option<()> = None;
+        #[cfg(not(target_arch = "wasm32"))]
+        let (header_room, footer_room) = match panes {
+            Some(_) => (header_h / ctx.zoom_factor(), crate::views::FOOTER_H * crate::bar_pane::STATUS_ZOOM / ctx.zoom_factor()),
+            None => (header_h, crate::views::FOOTER_H),
+        };
+        #[cfg(target_arch = "wasm32")]
+        let (header_room, footer_room) = (header_h, crate::views::FOOTER_H);
+        let header = egui::Panel::top("header").frame(egui::Frame::new().fill(tokens.bg)).exact_size(header_room).resizable(false).show(ui, |ui| {
+            if panes.is_none() {
+                self.header(ui, bar);
+            }
+        });
+        let footer = egui::Panel::bottom("footer")
             .frame(egui::Frame::new().fill(tokens.bg).inner_margin(egui::Margin::symmetric(20, 0)))
-            .exact_size(crate::views::FOOTER_H)
+            .exact_size(footer_room)
             .resizable(false)
-            .show(ui, |ui| self.footer(ui));
+            .show(ui, |ui| {
+                if panes.is_none() {
+                    self.footer(ui);
+                }
+            });
+        #[cfg(target_arch = "wasm32")]
+        let _ = (header, footer);
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some((mut title, mut status)) = panes {
+            let look = (self.settings.theme, self.cjk_font);
+            title.show(&ctx, tl!("Title bar"), 1.0, header.response.rect, look, |ui, rect| {
+                ui.painter().rect_filled(rect, 0.0, tokens.bg);
+                self.header(ui, bar);
+                ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, ui.visuals().widgets.noninteractive.bg_stroke);
+            });
+            status.show(&ctx, tl!("Status bar"), crate::bar_pane::STATUS_ZOOM, footer.response.rect, look, |ui, rect| {
+                ui.painter().rect_filled(rect, 0.0, tokens.bg);
+                ui.painter().hline(rect.x_range(), rect.top() + 0.5, ui.visuals().widgets.noninteractive.bg_stroke);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(20.0, 0.0))), |ui| self.footer(ui));
+            });
+            self.bar_panes = Some((title, status));
+        }
         egui::CentralPanel::default().frame(egui::Frame::new().fill(tokens.bg)).show(ui, |ui| {
             // The Pre-Release channel has its own page; Apps and Fonts belong to Stable.
             if self.nightly.active {

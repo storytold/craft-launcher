@@ -521,3 +521,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+# Screen-reader names of the title bar and the status bar on macOS (English fallback; translations are maintained in craft-i18n).
+	Title bar	Title bar
+	Status bar	Status bar

@@ -43,6 +43,8 @@ tray-icon = "0.26"
 # setting (motion.rs). Safe AppKit calls only, and already in Cargo.lock through winit and
 # tray-icon; pinned exactly to those versions.
 [target.'cfg(target_os = "macos")'.dependencies]
+# The title bar's traffic lights: a unified toolbar centres them, and their place is measured (DesktopHost::mac_lights).
+craft-window = { workspace = true, features = ["appkit"] }
 objc2 = "=0.6.5"
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSArray", "NSEnumerator"] }
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSAccessibility", "NSApplication", "NSResponder", "NSWindow", "NSWorkspace"] }

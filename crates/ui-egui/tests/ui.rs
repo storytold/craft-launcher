@@ -4507,25 +4507,38 @@ fn control_wheel_zooms_the_main_ui() {
 }
 
 #[test]
-/// On macOS the header is the window's title bar: zooming the launcher leaves it the size it is on screen, while the
-/// page under it grows.
+/// On macOS the header (the window's title bar) and the footer (its status bar) are drawn by their own contexts at
+/// a fixed scale: zooming the launcher in or out leaves both bars and their text the size they are on screen, while
+/// the page between them zooms, and the bars' controls still answer where they are drawn.
 fn the_macos_title_bar_keeps_its_size_when_the_launcher_zooms() {
-    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::MacOs);
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 2.0, artcraft_launcher_ui_egui::TitleBar::MacOs);
     h.run_steps(4);
-    // Sizes on screen: egui points times the zoom.
-    let on_screen = |h: &Harness<'_, Option<LauncherUi>>, label: &str| h.get_by_label(label).rect().height() * h.ctx.zoom_factor();
-    let bar = on_screen(&h, "Settings");
-    let card = on_screen(&h, "More actions for PhotoCraft");
-    for _ in 0..5 {
-        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Plus);
-        h.step();
-        next_frame_input(&mut h);
+    // Screen readers name both bars.
+    for name in ["Title bar", "Status bar"] {
+        h.get_by_role_and_label(egui::accesskit::Role::Pane, name);
     }
-    h.run_steps(3);
-    assert!(h.ctx.zoom_factor() > 1.2, "the launcher zoomed in");
-    assert!((on_screen(&h, "Settings") - bar).abs() < 0.5, "the title bar keeps its size on screen");
-    assert!(on_screen(&h, "More actions for PhotoCraft") > card + 1.0, "the page zooms");
-    snapshot(&mut h, "macos-title-bar-zoomed-in");
+    // Sizes on screen, in pixels: the window's points times its pixels per point.
+    let on_screen = |h: &Harness<'_, Option<LauncherUi>>, label: &str| h.get_by_label(label).rect().size() * h.ctx.pixels_per_point();
+    let (bar, brand, card) = (on_screen(&h, "Settings"), on_screen(&h, "Craft App Suite"), on_screen(&h, "More actions for PhotoCraft"));
+    let (status, link) = (on_screen(&h, "Checked 3 min ago · using ArtCraft API"), on_screen(&h, "Discord"));
+    snapshot(&mut h, "macos-title-bar-zoom-1");
+    for (key, presses, name) in [(egui::Key::Plus, 5, "in"), (egui::Key::Minus, 8, "out")] {
+        for _ in 0..presses {
+            h.key_press_modifiers(egui::Modifiers::COMMAND, key);
+            h.step();
+            next_frame_input(&mut h);
+        }
+        h.run_steps(3);
+        let zoom = h.ctx.zoom_factor();
+        assert!(if name == "in" { zoom > 1.2 } else { zoom < 0.9 }, "the launcher zoomed {name}: {zoom}");
+        assert!((on_screen(&h, "Settings") - bar).length() < 0.5, "zoomed {name}, the title bar keeps its size on screen");
+        assert!((on_screen(&h, "Craft App Suite") - brand).length() < 0.5, "zoomed {name}, the bar's text keeps its size on screen");
+        assert!((on_screen(&h, "Checked 3 min ago · using ArtCraft API") - status).length() < 0.5, "zoomed {name}, the status keeps its size");
+        assert!((on_screen(&h, "Discord") - link).length() < 0.5, "zoomed {name}, the status bar's links keep their size");
+        let page = on_screen(&h, "More actions for PhotoCraft");
+        assert!(if name == "in" { page.y > card.y + 1.0 } else { page.y < card.y - 1.0 }, "zoomed {name}, the page zooms");
+        snapshot(&mut h, &format!("macos-title-bar-zoomed-{name}"));
+    }
     // The bar's controls still answer where they are drawn.
     h.get_by_label("Settings").click();
     h.run_steps(4);

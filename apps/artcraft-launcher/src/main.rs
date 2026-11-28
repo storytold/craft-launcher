@@ -690,6 +690,15 @@ impl Host for DesktopHost {
         if cfg!(target_os = "macos") { TitleBar::MacOs } else { TitleBar::Custom }
     }
 
+    /// The window gets a unified toolbar, as a Finder window has, so AppKit centres the traffic lights in a taller
+    /// title bar and keeps them there; the header takes its height and left room from where they are.
+    #[cfg(target_os = "macos")]
+    fn mac_lights(&mut self) -> Option<artcraft_launcher_ui_egui::MacLights> {
+        craft_window::mac::set_unified_toolbar("ArtCraft Launcher");
+        craft_window::mac::measure()
+            .map(|inset| artcraft_launcher_ui_egui::MacLights { centre_from_top: inset.centre_from_top, leading: inset.leading })
+    }
+
     fn notify(&mut self, title: &str, body: &str) {
         let (title, body) = (title.to_string(), body.to_string());
         // Some platforms block while the notification is delivered.
