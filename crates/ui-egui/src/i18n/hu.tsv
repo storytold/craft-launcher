@@ -562,3 +562,24 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+
+# Update installation scope
+	Choose how to update {name}	Válassza ki a(z) {name} frissítésének módját
+	Keep the current location	A jelenlegi hely megtartása
+	Administrator permission is required for each update.	Minden frissítéshez rendszergazdai engedély szükséges.
+	Install only for me	Telepítés csak nekem
+	All Windows users keep access.	Minden Windows-felhasználó megtartja a hozzáférést.
+	Windows asks for administrator permission one last time, to remove the shared copy.	A Windows utoljára kér rendszergazdai engedélyt a közös példány eltávolításához.
+	After that, updates need no administrator permission.	Ezután a frissítésekhez nem kell rendszergazdai engedély.
+	Other Windows users will lose access to the app.	A többi Windows-felhasználó elveszíti a hozzáférést az alkalmazáshoz.
+	Remember my choice and don't ask on later updates	Választásom megjegyzése, a későbbi frissítéseknél ne kérdezzen
+	These apps update for everyone without asking: {apps}	Ezek az alkalmazások kérdés nélkül frissülnek mindenkinek: {apps}
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	A profil beállításai és készletei a helyükön maradnak. A program mappájában lévő bővítményeket esetleg újra kell telepíteni; előbb készítsen róluk másolatot.
+	I accept removal of the shared copy and the risk to add-ons beside it.	Elfogadom a közös telepítés eltávolítását és a mappájában lévő bővítményeket érintő kockázatot.
+	Ask again how to update apps installed for everyone	Újra rákérdezni, hogyan frissüljenek a mindenkinek telepített alkalmazások
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	A telepítés vagy a kiválasztott verzió megváltozott. Keressen frissítéseket, és válasszon újra; semmi sem lett eltávolítva.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Ehhez a verzióhoz nem érhető el áttelepítés. Tartsa meg a jelenlegi helyet; semmi sem lett eltávolítva.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	A telepítési mappák nem ellenőrizhetők, vagy a cél foglalt. Tartsa meg a jelenlegi helyet; semmi sem lett eltávolítva.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Hordozható adatokat találtunk a program mellett. Tartsa meg a jelenlegi helyet, és előbb helyezze át kézzel ezeket az adatokat.

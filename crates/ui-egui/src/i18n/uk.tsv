@@ -547,3 +547,24 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+
+# Update installation scope
+	Choose how to update {name}	Виберіть спосіб оновлення {name}
+	Keep the current location	Залишити в поточній папці
+	Administrator permission is required for each update.	Для кожного оновлення потрібен дозвіл адміністратора.
+	Install only for me	Встановити лише для мене
+	All Windows users keep access.	Усі користувачі Windows зберігають доступ.
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows востаннє запитає дозвіл адміністратора, щоб видалити спільну копію.
+	After that, updates need no administrator permission.	Після цього оновленням не потрібен дозвіл адміністратора.
+	Other Windows users will lose access to the app.	Інші користувачі Windows втратять доступ до застосунку.
+	Remember my choice and don't ask on later updates	Запам’ятати мій вибір і не питати під час наступних оновлень
+	These apps update for everyone without asking: {apps}	Ці застосунки оновлюються для всіх без запитань: {apps}
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Налаштування та пресети профілю залишаться на місці. Доповнення в папці програми, можливо, доведеться перевстановити; спершу зробіть їх резервну копію.
+	I accept removal of the shared copy and the risk to add-ons beside it.	Я погоджуюся на видалення спільної копії та ризик для доповнень у її папці.
+	Ask again how to update apps installed for everyone	Знову запитати, як оновлювати застосунки, встановлені для всіх
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	Встановлення або вибрана версія змінилися. Перевірте оновлення й виберіть знову; нічого не видалено.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Перенесення недоступне для цієї версії. Залиште поточне розташування; нічого не видалено.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	Не вдалося перевірити папки встановлення, або папку призначення зайнято. Залиште поточне розташування; нічого не видалено.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Поруч із програмою знайдено дані портативної версії. Залиште поточне розташування й спершу перенесіть ці дані вручну.

@@ -144,6 +144,9 @@ pub struct Settings {
     /// Extra command-line flags each app is opened with (catalog id → the text as typed, split
     /// by [`args::split`](artcraft_launcher_core::args::split) at launch).
     pub launch_flags: BTreeMap<String, String>,
+    /// Windows: catalog ids of apps whose all-users copy the person chose to keep, so their
+    /// updates no longer ask where to update. Settings › Ask again clears it.
+    pub keep_shared_installs: std::collections::BTreeSet<String>,
     /// The Fonts page's sample text and size.
     pub fonts: FontSettings,
 }
@@ -334,6 +337,7 @@ impl Default for Settings {
             pinned: Vec::new(),
             launch_flags: BTreeMap::new(),
             fonts: FontSettings::default(),
+            keep_shared_installs: std::collections::BTreeSet::new(),
         }
     }
 }

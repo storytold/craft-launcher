@@ -521,3 +521,24 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+
+# Update installation scope
+	Choose how to update {name}	選擇如何更新 {name}
+	Keep the current location	保留目前位置
+	Administrator permission is required for each update.	每次更新都需要管理員授權。
+	Install only for me	僅為我安裝
+	All Windows users keep access.	所有 Windows 使用者仍可使用。
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows 將最後一次要求管理員權限，以移除共用副本。
+	After that, updates need no administrator permission.	之後更新不再需要管理員權限。
+	Other Windows users will lose access to the app.	其他 Windows 使用者將無法再使用此應用程式。
+	Remember my choice and don't ask on later updates	記住我的選擇，之後更新時不再詢問
+	These apps update for everyone without asking: {apps}	這些應用程式將為所有使用者更新，不再詢問：{apps}
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	使用者設定檔中的設定和預設集將保留原位。程式資料夾中的附加元件可能需要重新安裝，請先備份。
+	I accept removal of the shared copy and the risk to add-ons beside it.	我同意移除共用安裝，並接受其資料夾中附加元件可能受影響的風險。
+	Ask again how to update apps installed for everyone	重新詢問如何更新為所有使用者安裝的應用程式
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	安裝狀態或所選版本已變更。請檢查更新並重新選擇；未刪除任何內容。
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	此版本不支援遷移。請保留目前位置；未刪除任何內容。
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	無法驗證安裝資料夾，或目的地已被占用。請保留目前位置；未刪除任何內容。
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	在程式旁發現可攜版資料。請保留目前位置，並先手動移動這些資料。

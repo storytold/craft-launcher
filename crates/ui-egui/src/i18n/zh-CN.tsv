@@ -529,3 +529,24 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+
+# Update installation scope
+	Choose how to update {name}	选择如何更新 {name}
+	Keep the current location	保留当前位置
+	Administrator permission is required for each update.	每次更新都需要管理员授权。
+	Install only for me	仅为我安装
+	All Windows users keep access.	所有 Windows 用户仍可使用。
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows 将最后一次请求管理员权限，以删除共享副本。
+	After that, updates need no administrator permission.	之后更新不再需要管理员权限。
+	Other Windows users will lose access to the app.	其他 Windows 用户将无法再使用此应用。
+	Remember my choice and don't ask on later updates	记住我的选择，以后更新时不再询问
+	These apps update for everyone without asking: {apps}	这些应用将为所有用户更新，不再询问：{apps}
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	用户配置文件中的设置和预设将保留原位。程序文件夹中的附加组件可能需要重新安装，请先备份。
+	I accept removal of the shared copy and the risk to add-ons beside it.	我同意删除共享安装，并接受其文件夹中附加组件可能受影响的风险。
+	Ask again how to update apps installed for everyone	重新询问如何更新为所有用户安装的应用
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	安装状态或所选版本已更改。请检查更新并重新选择；未删除任何内容。
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	此版本不支持迁移。请保留当前位置；未删除任何内容。
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	无法验证安装文件夹，或目标位置已被占用。请保留当前位置；未删除任何内容。
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	在程序旁发现便携版数据。请保留当前位置，并先手动移动这些数据。

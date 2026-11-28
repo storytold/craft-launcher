@@ -564,3 +564,24 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+
+# Update installation scope
+	Choose how to update {name}	{name} の更新方法を選択
+	Keep the current location	現在の場所を維持
+	Administrator permission is required for each update.	更新のたびに管理者の許可が必要です。
+	Install only for me	自分専用にインストール
+	All Windows users keep access.	すべての Windows ユーザーが引き続き利用できます。
+	Windows asks for administrator permission one last time, to remove the shared copy.	共有コピーを削除するため、Windows が最後にもう一度管理者の許可を求めます。
+	After that, updates need no administrator permission.	その後の更新には管理者の許可は不要です。
+	Other Windows users will lose access to the app.	他の Windows ユーザーはこのアプリを利用できなくなります。
+	Remember my choice and don't ask on later updates	選択を記憶し、今後の更新では確認しない
+	These apps update for everyone without asking: {apps}	次のアプリは確認なしで全ユーザー向けに更新されます: {apps}
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	プロファイルの設定とプリセットはそのまま残ります。プログラムのフォルダー内のアドオンは再インストールが必要になる場合があるため、先にバックアップしてください。
+	I accept removal of the shared copy and the risk to add-ons beside it.	共有インストールの削除と、そのフォルダー内のアドオンへのリスクを了承します。
+	Ask again how to update apps installed for everyone	すべてのユーザー向けにインストールしたアプリの更新方法をもう一度確認する
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	インストール状態または選択したバージョンが変更されました。更新を確認し、もう一度選択してください。何も削除されていません。
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	このバージョンは移行できません。現在の場所を維持してください。何も削除されていません。
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	インストール先フォルダーを確認できないか、移行先が使用中です。現在の場所を維持してください。何も削除されていません。
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	プログラムの隣にポータブル版のデータが見つかりました。現在の場所を維持し、まずそのデータを手動で移動してください。

@@ -529,3 +529,24 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+
+# Update installation scope
+	Choose how to update {name}	Vyberte způsob aktualizace {name}
+	Keep the current location	Ponechat aktuální umístění
+	Administrator permission is required for each update.	Každá aktualizace vyžaduje oprávnění správce.
+	Install only for me	Nainstalovat pouze pro mě
+	All Windows users keep access.	Všichni uživatelé Windows si ponechají přístup.
+	Windows asks for administrator permission one last time, to remove the shared copy.	Windows naposledy požádá o oprávnění správce, aby odstranil sdílenou kopii.
+	After that, updates need no administrator permission.	Poté aktualizace oprávnění správce nevyžadují.
+	Other Windows users will lose access to the app.	Ostatní uživatelé Windows ztratí přístup k aplikaci.
+	Remember my choice and don't ask on later updates	Zapamatovat si mou volbu a při dalších aktualizacích se neptat
+	These apps update for everyone without asking: {apps}	Tyto aplikace se aktualizují pro všechny bez dotazu: {apps}
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	Nastavení a předvolby profilu zůstanou na místě. Doplňky ve složce programu mohou vyžadovat novou instalaci; nejprve je zálohujte.
+	I accept removal of the shared copy and the risk to add-ons beside it.	Souhlasím s odstraněním sdílené instalace a s rizikem pro doplňky v její složce.
+	Ask again how to update apps installed for everyone	Znovu se zeptat, jak aktualizovat aplikace nainstalované pro všechny
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	Instalace nebo vybraná verze se změnila. Vyhledejte aktualizace a vyberte znovu; nic nebylo odstraněno.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	Přesun není pro tuto verzi dostupný. Zachovejte aktuální umístění; nic nebylo odstraněno.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	Složky instalace nelze ověřit nebo je cíl obsazený. Zachovejte aktuální umístění; nic nebylo odstraněno.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	Vedle programu byla nalezena data přenosné verze. Zachovejte aktuální umístění a nejprve tato data přesuňte ručně.

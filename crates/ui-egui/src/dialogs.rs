@@ -15,6 +15,9 @@ impl LauncherUi {
     /// so a smaller prompt cannot inherit a taller one's last size, and closing (button, Escape or
     /// a click outside) discards the dialog.
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context, host: &mut dyn Host) {
+        if self.dialog.is_none() {
+            self.dialog = self.update_choices.pop_front();
+        }
         let Some(mut dialog) = self.dialog.clone() else {
             // No dialog on screen: next time settings opens we want fresh MCP state.
             self.mcp_requested = false;
@@ -46,6 +49,9 @@ impl LauncherUi {
             Dialog::GoBackFallback { app, installed, chosen, fallback } => {
                 modal.show(ctx, |ui| close = self.go_back_fallback_dialog(ui, app, installed, chosen, fallback))
             }
+            Dialog::MsiUpdate { app, plan, migrate, accepted, remember } => {
+                modal.show(ctx, |ui| close = self.msi_update_dialog(ui, app, plan, migrate, accepted, remember))
+            }
             Dialog::Settings => modal.show(ctx, |ui| close = self.settings_dialog(ui, host)),
             Dialog::LauncherUpdate(r) => modal.show(ctx, |ui| close = self.launcher_update_dialog(ui, r)),
             Dialog::Versions(id) => modal.show(ctx, |ui| close = self.version_dialog(ui, id)),
@@ -56,6 +62,10 @@ impl LauncherUi {
             return;
         }
         if close || response.should_close() || self.nightly.consent_open {
+            if matches!(dialog, Dialog::MsiUpdate { .. }) {
+                // The last pending choice sends the kept updates, even when it was cancelled.
+                self.send_kept_updates();
+            }
             self.dialog = if matches!(&dialog, Dialog::UnlockVersion { app, .. } if app == artcraft_launcher_core::catalog::LAUNCHER_ID) {
                 Some(Dialog::Settings)
             } else {
@@ -125,6 +135,94 @@ impl LauncherUi {
             });
         });
         ui.add_space(14.0);
+    }
+
+    /// An all-users update is never silently converted to a user install. Only the migration
+    /// option needs destructive consent; Cancel or Escape sends no install command.
+    fn msi_update_dialog(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: &str,
+        plan: &artcraft_launcher_core::protocol::MsiUpdatePlan,
+        migrate: &mut bool,
+        accepted: &mut bool,
+        remember: &mut bool,
+    ) -> bool {
+        let Some(app) = self.entry(id).map(|e| e.app) else { return true };
+        let t = Tokens::get(ui.ctx());
+        ui.set_width(540.0f32.min((ui.ctx().content_rect().width() - 80.0).max(240.0)));
+        Self::title(ui, crate::icons::app(id), &fmt(tl!("Choose how to update {name}"), &[("name", app.name)]), "");
+        egui::ScrollArea::vertical().max_height((ui.ctx().content_rect().height() - 240.0).max(160.0)).show(ui, |ui| {
+            Self::update_option(ui, &t, !*migrate, |ui| {
+                ui.radio_value(migrate, false, tl!("Keep the current location"));
+                ui.label(RichText::new(&plan.installed.location).small().color(t.faint));
+                ui.add_space(6.0);
+                ui.label(RichText::new(tl!("Administrator permission is required for each update.")).color(t.ink));
+                ui.label(RichText::new(tl!("All Windows users keep access.")).color(t.ink));
+                if !*migrate {
+                    ui.add_space(8.0);
+                    ui.checkbox(remember, tl!("Remember my choice and don't ask on later updates"));
+                }
+            });
+            ui.add_space(10.0);
+            Self::update_option(ui, &t, *migrate, |ui| {
+                ui.radio_value(migrate, true, tl!("Install only for me"));
+                ui.label(RichText::new(&plan.user_folder).small().color(t.faint));
+                ui.add_space(6.0);
+                ui.label(RichText::new(tl!("Windows asks for administrator permission one last time, to remove the shared copy.")).color(t.ink));
+                ui.label(RichText::new(tl!("After that, updates need no administrator permission.")).color(t.ink));
+                ui.label(RichText::new(tl!("Other Windows users will lose access to the app.")).color(t.ink));
+                if *migrate {
+                    ui.add_space(10.0);
+                    ui.label(
+                        RichText::new(tl!(
+                            "Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first."
+                        ))
+                        .color(t.muted),
+                    );
+                    ui.add_space(8.0);
+                    ui.checkbox(accepted, tl!("I accept removal of the shared copy and the risk to add-ons beside it."));
+                } else {
+                    *accepted = false;
+                }
+            });
+        });
+        ui.add_space(16.0);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_enabled_ui(!*migrate || *accepted, |ui| {
+                    if widgets::button(ui, tl!("Update"), Kind::Primary, 110.0).clicked() {
+                        if *migrate {
+                            self.act_command(Command::ConfirmMsiUpdate { app: id.to_string(), plan: plan.clone(), migrate: true });
+                        } else if *remember {
+                            // Remembered, and sent with the other kept updates once the choices are made.
+                            self.settings.keep_shared_installs.insert(id.to_string());
+                            self.kept_updates.push(id.to_string());
+                        } else {
+                            // This update only: the next one asks again.
+                            self.act_command(Command::ConfirmMsiUpdate { app: id.to_string(), plan: plan.clone(), migrate: false });
+                        }
+                        close = true;
+                    }
+                });
+                if widgets::button(ui, tl!("Cancel"), Kind::Secondary, 90.0).clicked() {
+                    close = true;
+                }
+            });
+        });
+        close
+    }
+
+    /// One choice in the update dialog: a bordered box, outlined in the accent when chosen. The
+    /// radio button inside still carries the choice for the keyboard and assistive technology.
+    fn update_option(ui: &mut egui::Ui, t: &Tokens, chosen: bool, add: impl FnOnce(&mut egui::Ui)) {
+        let stroke = if chosen { egui::Stroke::new(1.5, t.accent) } else { t.hairline() };
+        egui::Frame::new().stroke(stroke).inner_margin(theme::BOX_MARGIN).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 4.0;
+            add(ui);
+        });
     }
 
     /// An app's release notes: a large card like the app page, the notes in a scrolling body.

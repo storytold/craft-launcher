@@ -1075,7 +1075,7 @@ impl NativeBackend {
                     }
                     Ok(())
                 }
-                Work::Replace(_) | Work::Install(Some(_)) | Work::Chosen(_) => {
+                Work::Replace(_) | Work::Install(Some(_)) | Work::Chosen(_) | Work::Update(..) => {
                     Err("Nightly cannot replace a Stable/custom path or join a shared installer batch.".into())
                 }
             }
@@ -1157,6 +1157,7 @@ impl NativeBackend {
                 let job = job;
                 let existing = shared.installed.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
                 let record = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).apps.get(app.id).cloned();
+                let mut update_choice = None;
                 let result = if let Work::Launch(args) = &work {
                     run_nightly_launch(app, &shared, &paths, platform, &stop, args)
                 } else if uninstall && shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
@@ -1180,13 +1181,13 @@ impl NativeBackend {
                     let (approved, batch) = match &work {
                         Work::Replace(path) => (Some(path.as_str()), None),
                         Work::Install(batch) => (None, batch.clone()),
-                        Work::Uninstall | Work::Launch(_) | Work::Chosen(_) => (None, None),
+                        Work::Uninstall | Work::Launch(_) | Work::Chosen(_) | Work::Update(..) => (None, None),
                     };
                     let by_name = match &work {
                         Work::Chosen(chosen) => Some(chosen),
                         _ => None,
                     };
-                    let r = run_install(
+                    let r = run_install_with_choice(
                         app,
                         &shared,
                         &paths,
@@ -1201,6 +1202,11 @@ impl NativeBackend {
                         batch,
                         place,
                         by_name,
+                        match &work {
+                            Work::Update(plan, migrate) => Some((plan, *migrate)),
+                            _ => None,
+                        },
+                        &mut update_choice,
                     );
                     // Stopped by the connection rather than by the user: say so, and how to go on.
                     // Still a pause (`protocol::is_paused`), so the UI keeps the request by name.
@@ -1234,7 +1240,12 @@ impl NativeBackend {
                 publish_detected(app, found, &shared, platform);
                 report_partial(app, &shared, &paths, platform);
                 drop(job);
-                shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+                if let Some(plan) = update_choice {
+                    shared.emit(Event::MsiUpdateChoice { app: app.id.to_string(), plan });
+                }
+                if result.as_ref().err().is_none_or(|e| e != UPDATE_CHOICE_REQUIRED) {
+                    shared.emit(Event::JobFinished { app: app.id.to_string(), result });
+                }
             }));
         }))
     }
@@ -1379,6 +1390,7 @@ enum Work {
     /// Install or update. Carries the batch this job is part of, if any (see
     /// [`Command::InstallAll`]): where the platform needs a permission prompt, the batch shares one.
     Install(Option<crate::queue::Gather>),
+    Update(artcraft_launcher_core::protocol::MsiUpdatePlan, bool),
     /// Install over the path the user agreed to overwrite (see [`Command::Replace`]).
     Replace(String),
     Uninstall,
@@ -1468,7 +1480,7 @@ fn downgrade_previous(
 /// What an install does with a Flatpak its repository updates: `flatpak update`, on Linux, and
 /// only on the stable track (it follows the repository's latest build, never a pinned or nightly
 /// one). `None` for any other copy, which [`install_plan`] decides; else the copy, or why the
-/// update can't run. [`run_install`] and the UI's [`Event::Installable`] both ask this.
+/// update can't run. [`run_install_with_choice`] and the UI's [`Event::Installable`] both ask this.
 fn repository_update<'a>(app: &CraftApp, existing: Option<&'a Installed>, options: &BackendOptions) -> Option<Result<&'a Installed, String>> {
     let inst = existing.filter(|i| i.source == artcraft_launcher_core::InstallSource::Flatpak && i.externally_managed)?;
     Some(if !matches!(options.versions.get(app.id), None | Some(VersionTrack::Stable)) {
@@ -1646,7 +1658,7 @@ fn run_nightly_install(app: &CraftApp, shared: &Shared, platform: Option<Platfor
 /// The checks an install makes before it downloads anything: a copy installed outside the
 /// launcher (a system binary, a repository package) isn't replaced; the release must be known and
 /// on the chosen version track; and it must have a package that can replace the copy the way it
-/// was installed. [`run_install`] and the UI's [`Event::Installable`] both ask this, so the UI
+/// was installed. [`run_install_with_choice`] and the UI's [`Event::Installable`] both ask this, so the UI
 /// never offers an update the install would refuse.
 fn install_plan(
     app: &CraftApp,
@@ -1693,10 +1705,12 @@ fn install_plan(
     Ok(InstallPlan { release, platform, asset, kind })
 }
 
+const UPDATE_CHOICE_REQUIRED: &str = "msi-update-choice-required";
+
 /// Plans and runs an install or update of `app` from its latest known release, and returns the
 /// message to show. `place` is the job's spot in the download line, used when the download starts.
 #[allow(clippy::too_many_arguments)]
-fn run_install(
+fn run_install_with_choice(
     app: &CraftApp,
     shared: &Shared,
     paths: &Paths,
@@ -1711,6 +1725,8 @@ fn run_install(
     batch: Option<crate::queue::Gather>,
     place: Option<crate::downloads::Place<'static>>,
     by_name: Option<&Chosen>,
+    update: Option<(&artcraft_launcher_core::protocol::MsiUpdatePlan, bool)>,
+    update_choice: &mut Option<artcraft_launcher_core::protocol::MsiUpdatePlan>,
 ) -> Result<String, String> {
     if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
         if approved.is_some() || batch.is_some() || by_name.is_some() {
@@ -1745,6 +1761,12 @@ fn run_install(
     // question, a paused download) free the rest of the batch at once; from `install_at` on, the
     // same guard does it there.
     let mut batch = install::BatchPlace(batch);
+    #[cfg(not(windows))]
+    let _ = &update_choice;
+    #[cfg(not(windows))]
+    if update.is_some() {
+        return Err(install::MIGRATION_UNAVAILABLE.into());
+    }
     if let Some(update) = repository_update(app, existing, options) {
         // A repository-managed Flatpak never joins the batch's installer call: leave before its
         // own update (network, maybe a prompt) so the ready members don't wait for it.
@@ -1792,6 +1814,54 @@ fn run_install(
     }
     let http = http.ok_or("secure connections aren't available on this system")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
+    #[cfg(windows)]
+    if let Some(plan) = install::msi_update_plan(app, kind, existing, &release)?
+        // A copy the person chose to keep updates where it is, like any all-users update.
+        && !keeps_shared_install(options, app.id, update.is_some())
+    {
+        let Some((approved_plan, migrate)) = update.filter(|(approved_plan, _)| **approved_plan == plan) else {
+            *update_choice = Some(plan);
+            return Err(UPDATE_CHOICE_REQUIRED.into());
+        };
+        if migrate {
+            let installed_version = approved_plan.installed.version.as_ref().ok_or(install::MIGRATION_UNAVAILABLE)?;
+            let next_version = release.version.as_ref().ok_or(install::MIGRATION_UNAVAILABLE)?;
+            if next_version < installed_version {
+                return Err(install::MIGRATION_UNAVAILABLE.into());
+            }
+            let versions = source.ok_or("secure connections aren't available")?.versions(&release_query(load_feed(paths).as_ref(), app))?;
+            let previous = versions.into_iter().find(|r| r.version == approved_plan.installed.version).ok_or(install::MIGRATION_UNAVAILABLE)?;
+            let previous_asset = planned_asset(app, &previous, platform, options, existing, record)
+                .filter(|(_, k)| *k == PackageKind::Msi)
+                .map(|(a, _)| a)
+                .ok_or(install::MIGRATION_UNAVAILABLE)?;
+            let mut phase = |phase| shared.emit(Event::Progress { app: app.id.to_string(), phase });
+            let mut job = Job {
+                http,
+                paths,
+                stop,
+                phase: &mut phase,
+                install_locations: &options.install_locations,
+                replace: false,
+                approved_path: None,
+                downgrade: None,
+                batch: None,
+                place: None,
+                put_back: None,
+            };
+            install::migrate_msi_to_user(app, &release, &asset, &previous, &previous_asset, approved_plan, &mut job)?;
+            // Installed the platform's own way, as the normal MSI path below: an old launcher record is stale.
+            let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            if m.apps.remove(app.id).is_some()
+                && let Err(e) = m.save(&paths.manifest())
+            {
+                log::warn!("couldn't save the install record: {e}");
+            }
+            return Ok(installed_text(app, true, &release));
+        }
+    } else if update.is_some() {
+        return Err(install::MIGRATION_CHANGED.into());
+    }
     // Going back to a version chosen by name. A macOS bundle, a launcher AppImage or Flatpak keeps the old
     // copy until the new one is in place. Otherwise the installed version's own package is found
     // first, so a downgrade that fails can put it back. Without it nothing changes.
@@ -1966,6 +2036,13 @@ fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &
     if let Err(e) = m.save(&paths.manifest()) {
         log::warn!("couldn't save the install record: {e}");
     }
+}
+
+/// Whether an all-users update goes ahead without asking where to update: the person chose to
+/// keep this app's shared copy, and this isn't the answer to a question already asked.
+#[cfg(any(windows, test))]
+fn keeps_shared_install(options: &BackendOptions, app: &str, answered: bool) -> bool {
+    !answered && options.keep_shared_installs.contains(app)
 }
 
 /// Whether an install may write over what is at its destination.
@@ -3017,6 +3094,9 @@ impl Backend for NativeBackend {
                 self.start_job(&app, Work::Install(None));
             }
             Command::InstallAll { apps } => self.install_all(&apps),
+            Command::ConfirmMsiUpdate { app, plan, migrate } => {
+                self.start_job(&app, Work::Update(plan, migrate));
+            }
             Command::Replace { app, path } => {
                 self.start_job(&app, Work::Replace(path));
             }
@@ -3315,7 +3395,7 @@ mod tests {
         let stop = Stop::default();
         stop.cancel();
         let options = BackendOptions::default();
-        let result = run_install(
+        let result = run_install_with_choice(
             app,
             &shared,
             &Paths::under(dir.path()),
@@ -3330,6 +3410,8 @@ mod tests {
             Some(gather.clone()),
             None,
             None,
+            None,
+            &mut None,
         );
         assert_eq!(result, Err(artcraft_launcher_core::protocol::CANCELLED.into()));
         let seen = seen.lock().unwrap();
@@ -3365,7 +3447,24 @@ mod tests {
         let picked = Chosen { tag: "v0.4.0".into(), fallback: None };
         let (options, stop) = (BackendOptions::default(), Stop::default());
         let paths = Paths::under(dir.path());
-        let result = run_install(app, &shared, &paths, None, None, &options, Some(&installed), None, &stop, None, None, None, None, Some(&picked));
+        let result = run_install_with_choice(
+            app,
+            &shared,
+            &paths,
+            None,
+            None,
+            &options,
+            Some(&installed),
+            None,
+            &stop,
+            None,
+            None,
+            None,
+            None,
+            Some(&picked),
+            None,
+            &mut None,
+        );
         assert!(result.as_ref().is_err_and(|e| e.as_str() != artcraft_launcher_core::protocol::CANCELLED), "{result:?}");
         assert_eq!(*seen.lock().unwrap(), 0, "nothing started: no progress was reported");
     }
@@ -5564,6 +5663,17 @@ prerelease = true
                 assert!(backend.shared.jobs.lock().unwrap().is_empty());
             }
         }
+    }
+
+    /// A kept all-users copy updates without asking again; any other app, or an answer the person
+    /// just gave in the dialog, goes as before.
+    #[test]
+    fn a_kept_shared_install_updates_without_asking_again() {
+        let options = BackendOptions { keep_shared_installs: ["photocraft".to_string()].into(), ..BackendOptions::default() };
+        assert!(keeps_shared_install(&options, "photocraft", false));
+        assert!(!keeps_shared_install(&options, "gridcraft", false));
+        assert!(!keeps_shared_install(&options, "photocraft", true));
+        assert!(!keeps_shared_install(&BackendOptions::default(), "photocraft", false));
     }
 }
 

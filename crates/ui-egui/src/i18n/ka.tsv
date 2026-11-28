@@ -561,3 +561,24 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+
+
+# Update installation scope
+	Choose how to update {name}	აირჩიეთ {name}-ის განახლების მეთოდი
+	Keep the current location	მიმდინარე მდებარეობის შენარჩუნება
+	Administrator permission is required for each update.	ყოველი განახლება ადმინისტრატორის ნებართვას მოითხოვს.
+	Install only for me	ინსტალაცია მხოლოდ ჩემთვის
+	All Windows users keep access.	Windows-ის ყველა მომხმარებელი ინარჩუნებს წვდომას.
+	Windows asks for administrator permission one last time, to remove the shared copy.	საერთო ასლის წასაშლელად Windows ბოლოჯერ მოითხოვს ადმინისტრატორის ნებართვას.
+	After that, updates need no administrator permission.	ამის შემდეგ განახლებებს ადმინისტრატორის ნებართვა აღარ სჭირდება.
+	Other Windows users will lose access to the app.	Windows-ის სხვა მომხმარებლები აპზე წვდომას დაკარგავენ.
+	Remember my choice and don't ask on later updates	ჩემი არჩევანის დამახსოვრება და შემდეგ განახლებებზე აღარ კითხვა
+	These apps update for everyone without asking: {apps}	ეს აპები ყველასთვის განახლდება კითხვის გარეშე: {apps}
+	Profile settings and presets stay where they are. Add-ons beside the program may need reinstalling; back them up first.	პროფილის პარამეტრები და წინასწარი ნაკრებები ადგილზე დარჩება. პროგრამის საქაღალდეში არსებულ დამატებებს შესაძლოა ხელახლა ინსტალაცია დასჭირდეს; ჯერ მათი ასლი შექმენით.
+	I accept removal of the shared copy and the risk to add-ons beside it.	ვეთანხმები საერთო ინსტალაციის წაშლას და მის საქაღალდეში არსებული დამატებების რისკს.
+	Ask again how to update apps installed for everyone	ხელახლა კითხვა, როგორ განახლდეს ყველასთვის დაინსტალირებული აპლიკაციები
+
+@msg	The installation or selected version changed. Check for updates and choose again; nothing was removed.	ინსტალაცია ან არჩეული ვერსია შეიცვალა. შეამოწმეთ განახლებები და ხელახლა აირჩიეთ; არაფერი წაშლილა.
+@msg	Migration is unavailable for this version. Keep the current location; nothing was removed.	ამ ვერსიის გადატანა მიუწვდომელია. შეინარჩუნეთ მიმდინარე მდებარეობა; არაფერი წაშლილა.
+@msg	The installation folders could not be verified or the destination is occupied. Keep the current location; nothing was removed.	ინსტალაციის საქაღალდეები ვერ შემოწმდა ან სამიზნე დაკავებულია. შეინარჩუნეთ მიმდინარე მდებარეობა; არაფერი წაშლილა.
+@msg	Portable data was found beside the program. Keep the current location and move that data manually first.	პროგრამის გვერდით პორტატული ვერსიის მონაცემები მოიძებნა. შეინარჩუნეთ მიმდინარე მდებარეობა და ჯერ ეს მონაცემები ხელით გადაიტანეთ.
