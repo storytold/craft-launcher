@@ -24,6 +24,9 @@ pub struct Tray {
     tooltip: String,
     language: String,
     labels: Vec<(MenuItem, &'static str)>,
+    /// Where a desktop shows the icon from: the session bus its StatusNotifierWatcher is on.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    bus: Option<zbus::blocking::Connection>,
 }
 
 fn load_icon() -> Result<tray_icon::Icon, String> {
@@ -114,7 +117,37 @@ impl Tray {
             (discord, "Join the ArtCraft Discord"),
             (quit, "Quit ArtCraft Launcher"),
         ];
-        Ok(Self { icon, show: show_id, check: check_id, quit: quit_id, rx, tooltip: String::new(), language: String::new(), labels })
+        Ok(Self {
+            icon,
+            show: show_id,
+            check: check_id,
+            quit: quit_id,
+            rx,
+            tooltip: String::new(),
+            language: String::new(),
+            labels,
+            #[cfg(all(unix, not(target_os = "macos")))]
+            bus: zbus::blocking::Connection::session().inspect_err(|e| log::warn!("tray: no session bus: {e}")).ok(),
+        })
+    }
+
+    /// Whether a desktop is showing the icon, so there is a tray to come back from. On Linux and
+    /// the BSDs the icon exists even with no StatusNotifierWatcher on the session bus (plain GNOME,
+    /// without the AppIndicator extension, has none): tray-icon registers it if one appears later.
+    /// So ask the bus whether a watcher is there now.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    pub fn shown(&self) -> bool {
+        let Some(bus) = &self.bus else { return false };
+        let owned = zbus::blocking::fdo::DBusProxy::new(bus)
+            .map_err(zbus::fdo::Error::from)
+            .and_then(|dbus| dbus.name_has_owner(zbus::names::WellKnownName::from_static_str_unchecked("org.kde.StatusNotifierWatcher").into()));
+        owned.inspect_err(|e| log::debug!("tray: can't ask for the StatusNotifierWatcher: {e}")).unwrap_or(false)
+    }
+
+    /// Windows and macOS always show the icon.
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    pub fn shown(&self) -> bool {
+        true
     }
 
     pub fn actions(&self) -> Vec<TrayAction> {
