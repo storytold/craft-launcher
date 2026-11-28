@@ -395,6 +395,10 @@ impl LauncherUi {
     fn release_section(&self, ui: &mut Ui, entry: &AppEntry, details: &AppDetails, t: &Tokens, per_row: usize) {
         widgets::eyebrow(ui, "02", tl!("Latest release"));
         ui.add_space(4.0);
+        if crate::card_parts::macos_launch_only(entry.app) {
+            let note = tr_ctx(current(), "platforms", "macOS: launch-only — the launcher opens an installed copy.");
+            ui.add(egui::Label::new(RichText::new(note).size(14.0).color(t.ink)).wrap());
+        }
         let Some(r) = entry.release() else {
             ui.label(RichText::new(tl!("No release published yet")).color(t.muted));
             return;

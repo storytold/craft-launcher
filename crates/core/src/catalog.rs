@@ -266,6 +266,8 @@ mod tests {
         let app = CraftApp::by_id("commitcraft").expect("CommitCraft is bundled");
         assert_eq!(app.kind, AppKind::Community);
         assert_eq!(app.repo, "srt8hellcat2-ui/commitcraft");
+        assert!(app.runs_on(crate::Os::MacOs));
+        assert!(!app.installs(crate::PackageKind::Dmg));
         assert_eq!(app.tagline, "Visual Git for creatives — see your art's history");
         let icon = app_icon_png(app.id).expect("CommitCraft icon is bundled");
         assert_eq!(&icon[16..24], &[0, 0, 0, 128, 0, 0, 0, 128]);

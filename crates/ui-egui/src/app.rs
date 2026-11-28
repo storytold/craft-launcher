@@ -1660,6 +1660,10 @@ mod tests {
         harness.get_by_label("CommitCraft details");
         harness.get_by_label("CommitCraft icon");
         harness.get_by_label("Visual Git for creatives — see your art's history");
+        harness.get_by_label("macOS: launch-only");
+        harness.get_by_label("CommitCraft details").click_accesskit();
+        harness.run_steps(4);
+        harness.get_by_label("macOS: launch-only — the launcher opens an installed copy.");
     }
 
     /// Opens Settings and its language combo through visible labels, leaving the picker open for a
