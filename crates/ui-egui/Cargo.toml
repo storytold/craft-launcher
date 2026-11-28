@@ -51,3 +51,7 @@ egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # Real fonts for the Fonts page's fake font store: egui's Ubuntu Light.
 epaint_default_fonts = "0.37"
+
+[target.'cfg(windows)'.dev-dependencies]
+# Configure the existing screenshot renderer's adapter selection on Windows.
+egui-wgpu = { workspace = true, default-features = false }

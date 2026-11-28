@@ -383,6 +383,7 @@ dependencies = [
  "craft-ui",
  "craft-window",
  "egui",
+ "egui-wgpu",
  "egui_extras",
  "egui_kittest",
  "epaint_default_fonts",
