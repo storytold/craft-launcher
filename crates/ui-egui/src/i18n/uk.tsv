@@ -547,3 +547,7 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Go back	Go back
 	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
 	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.
+# The command-line tool setting: explicit English fallback; translations are supplied through craft-i18n.
+	Install each app's command-line tool and keep it up to date	Install each app's command-line tool and keep it up to date
+	The tool is installed the next time an app is installed or updated, and only if its release has one.	The tool is installed the next time an app is installed or updated, and only if its release has one.
+	To use the tools in Terminal, add this line to your shell's start-up file:	To use the tools in Terminal, add this line to your shell's start-up file:
