@@ -5,15 +5,17 @@
 # everything. The launcher is a GUI app, so it isn't run here.
 name: Windows ARM64
 
-# Nightly on main (dependency and runner-image drift shows up within a day), and on PRs that
-# change the Windows packaging itself.
+# Nightly on main and on pushes to `release` (dependency and runner-image drift shows up within a
+# day, and always before a release ships), and on PRs that change the Windows packaging itself.
 on:
+  schedule:
+    - cron: "47 4 * * *"
+  push:
+    branches: [release]
   pull_request:
     paths:
       - .github/workflows/windows-arm64.yml
       - packaging/windows/**
-  schedule:
-    - cron: "47 4 * * *"
   workflow_dispatch:
 
 concurrency:
