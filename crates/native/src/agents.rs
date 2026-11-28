@@ -329,23 +329,26 @@ fn lock() -> MutexGuard<'static, ()> {
 
 /// While agents are on, write the app list for `services` and refresh the gateway copy, so an app
 /// installed, updated or removed (or a gateway shipped with a launcher update) since then is used
-/// too. A failed refresh keeps the previous ones. Nothing is read or written while agents are off.
-pub fn refresh(services: &[InstalledApp]) {
-    if flag_on() {
-        refresh_in(mcp_dir().as_deref(), services);
+/// too. A failed refresh keeps the previous ones and returns the first error. Nothing is read or
+/// written while agents are off.
+pub fn refresh(services: &[InstalledApp]) -> Result<(), String> {
+    #[cfg(test)]
+    if tests::REFRESH_FAILS.get() {
+        return Err("the test failed the refresh".into());
     }
+    if flag_on() { refresh_in(mcp_dir().as_deref(), services) } else { Ok(()) }
 }
 
 /// [`refresh`] with the app list's folder `dir`, for the flag on.
-fn refresh_in(dir: Option<&Path>, services: &[InstalledApp]) {
-    let Some(dir) = dir else { return };
+fn refresh_in(dir: Option<&Path>, services: &[InstalledApp]) -> Result<(), String> {
+    let Some(dir) = dir else { return Ok(()) };
     let _guard = lock();
-    if enabled(dir) {
-        let _ = write_apps(dir, services);
-        if let Some(src) = locate_gateway() {
-            let _ = install_gateway(&src, dir);
-        }
+    if !enabled(dir) {
+        return Ok(());
     }
+    let written = write_apps(dir, services);
+    let gateway = locate_gateway().map_or(Ok(()), |src| install_gateway(&src, dir).map(|_| ()));
+    written.and(gateway)
 }
 
 /// What Settings shows. It writes nothing: [`refresh`] brings the app list and the gateway copy up

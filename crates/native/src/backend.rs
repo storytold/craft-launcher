@@ -150,8 +150,9 @@ struct Shared {
     nightly_detection_observer: Mutex<Option<ReviewDetectionHook>>,
     download_sizes: Mutex<HashMap<String, DownloadSize>>,
     installed: Mutex<HashMap<String, Installed>>,
-    /// The installed apps the AI agents' app list was last refreshed for ([`sync_mcp_apps`]).
-    mcp_apps: Mutex<Option<Vec<crate::agents::InstalledApp>>>,
+    /// The installed apps the AI agents' app list was last refreshed for ([`sync_mcp_apps`]):
+    /// `None` before the first refresh, `Some(None)` after a failed one.
+    mcp_apps: Mutex<Option<Option<Vec<crate::agents::InstalledApp>>>>,
     jobs: Mutex<HashMap<String, Arc<Stop>>>,
     /// Process lifetime is shared; per-channel installed state and job views are not.
     lifecycle: Arc<ProcessLifecycle>,
@@ -3078,8 +3079,8 @@ static MCP_WORK: Mutex<()> = Mutex::new(());
 /// the ones the AI agents' app list was last refreshed for, refresh it and the gateway copy
 /// ([`crate::agents::refresh`]) and send the new state. The first call in a process only
 /// refreshes; Settings asks for the state when it opens. With the same apps nothing is read or
-/// written. The Nightly backend's installed apps are its own, so it leaves the list to the stable
-/// backend.
+/// written. After a failed refresh the next call refreshes again, whatever the apps. The Nightly
+/// backend's installed apps are its own, so it leaves the list to the stable backend.
 fn sync_mcp_apps(shared: &Shared) {
     if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
         return;
@@ -3089,12 +3090,16 @@ fn sync_mcp_apps(shared: &Shared) {
         let installed = shared.installed.lock().unwrap_or_else(PoisonError::into_inner);
         crate::agents::installed_apps(|app| installed.get(app.id).cloned())
     };
-    let previous = shared.mcp_apps.lock().unwrap_or_else(PoisonError::into_inner).replace(apps.clone());
-    if previous.as_ref() == Some(&apps) {
-        return;
-    }
-    crate::agents::refresh(&apps);
-    if previous.is_some() {
+    let first = {
+        let refreshed = shared.mcp_apps.lock().unwrap_or_else(PoisonError::into_inner);
+        if matches!(&*refreshed, Some(Some(previous)) if *previous == apps) {
+            return;
+        }
+        refreshed.is_none()
+    };
+    let written = crate::agents::refresh(&apps).is_ok();
+    *shared.mcp_apps.lock().unwrap_or_else(PoisonError::into_inner) = Some(written.then(|| apps.clone()));
+    if !first {
         shared.emit(mcp_state_for(&apps));
     }
 }
@@ -3102,19 +3107,24 @@ fn sync_mcp_apps(shared: &Shared) {
 /// One AI agents command, on a worker thread: detection can run package-manager queries for
 /// seconds (flatpak on Linux). Commands run one at a time; the new state is sent when done.
 /// Opening Settings ([`Command::McpState`]) refreshes the app list and the gateway copy first.
+/// A command that writes the app list records the apps it wrote for [`sync_mcp_apps`].
 fn run_mcp(shared: &Shared, cmd: Command) {
     let _guard = MCP_WORK.lock().unwrap_or_else(PoisonError::into_inner);
     let apps = detected_apps(shared);
-    let result = match cmd {
-        Command::McpState => {
-            crate::agents::refresh(&apps);
-            Ok(())
+    let (result, written) = match cmd {
+        Command::McpState => (Ok(()), Some(crate::agents::refresh(&apps).is_ok())),
+        Command::McpSetAgents { enabled } => {
+            let result = crate::agents::set_enabled(enabled, &apps);
+            let written = result.is_ok();
+            (result, Some(written))
         }
-        Command::McpSetAgents { enabled } => crate::agents::set_enabled(enabled, &apps),
-        Command::McpSetClient { client, added } => crate::agents::set_client(client, added),
-        Command::McpRestartClient { client } => crate::agents::restart_client(client),
-        _ => Ok(()),
+        Command::McpSetClient { client, added } => (crate::agents::set_client(client, added), None),
+        Command::McpRestartClient { client } => (crate::agents::restart_client(client), None),
+        _ => (Ok(()), None),
     };
+    if let Some(written) = written {
+        *shared.mcp_apps.lock().unwrap_or_else(PoisonError::into_inner) = Some(written.then(|| apps.clone()));
+    }
     if let Err(message) = result {
         shared.emit(Event::McpError { message });
     }
@@ -4603,6 +4613,56 @@ prerelease = true
         assert_eq!((installed, installed_again), (1, 0));
         assert_eq!(updated_in_place, 0, "the same app at the same place gives the same app list");
         assert_eq!(removed, 1);
+    }
+
+    /// A failed refresh is tried again on the next pass, even when the installed apps are the
+    /// same; a successful one is not.
+    #[test]
+    fn a_failed_agents_refresh_is_tried_again() {
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let sent = |backend: &mut NativeBackend| {
+            sync_mcp_apps(&backend.shared);
+            backend.poll().iter().filter(|e| matches!(e, Event::Mcp { .. })).count()
+        };
+        crate::agents::tests::FLAG.set(Some(false));
+        let first = sent(&mut backend);
+        backend.shared.store_detected(APP, Some(&copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app")));
+        crate::agents::tests::REFRESH_FAILS.set(true);
+        let failed = sent(&mut backend);
+        crate::agents::tests::REFRESH_FAILS.set(false);
+        let retried = sent(&mut backend);
+        let unchanged = sent(&mut backend);
+        crate::agents::tests::FLAG.set(None);
+        assert_eq!((first, failed), (0, 1));
+        assert_eq!(retried, 1, "the pass after a failed refresh did not refresh again");
+        assert_eq!(unchanged, 0);
+    }
+
+    /// When Settings writes the app list for the apps it detected, a later pass compares the
+    /// installed apps with that list, not with the one before it.
+    #[test]
+    fn a_list_written_from_settings_is_the_one_compared() {
+        let platform = Platform { os: Os::MacOs, arch: Arch::Arm64 };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let sent = |backend: &mut NativeBackend| {
+            sync_mcp_apps(&backend.shared);
+            backend.poll().iter().filter(|e| matches!(e, Event::Mcp { .. })).count()
+        };
+        crate::agents::tests::FLAG.set(Some(false));
+        // The launcher's records hold PhotoCraft; the system detection Settings runs finds nothing.
+        backend.shared.store_detected(APP, Some(&copy_of("0.4.0", InstallSource::Launcher, "/Applications/PhotoCraft.app")));
+        let first = sent(&mut backend);
+        run_mcp(&backend.shared, Command::McpState);
+        let _ = backend.poll();
+        let after_settings = sent(&mut backend);
+        let unchanged = sent(&mut backend);
+        crate::agents::tests::FLAG.set(None);
+        assert_eq!(first, 0);
+        assert_eq!(after_settings, 1, "the pass after Settings wrote another list skipped the refresh");
+        assert_eq!(unchanged, 0);
     }
 
     /// The Nightly backend's installed apps never replace the stable backend's app list.

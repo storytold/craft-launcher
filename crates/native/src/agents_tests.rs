@@ -266,6 +266,8 @@ fn a_gateway_of_the_same_size_but_other_bytes_replaces_the_copy() {
 thread_local! {
     /// Stands in for the `AI-MCP` flag in [`flag_on`] on this test's thread.
     pub(crate) static FLAG: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+    /// Makes [`refresh`] fail on this test's thread.
+    pub(crate) static REFRESH_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 #[test]
@@ -292,11 +294,11 @@ fn the_state_writes_nothing_and_a_refresh_writes_the_app_list() {
     assert_eq!(std::fs::read(&list).unwrap(), before, "the state rewrote the app list");
 
     FLAG.set(Some(false));
-    refresh(&apps);
+    refresh(&apps).unwrap();
     FLAG.set(None);
     assert_eq!(std::fs::read(&list).unwrap(), before, "a refresh with the flag off wrote the app list");
 
-    refresh_in(Some(dir.path()), &apps);
+    refresh_in(Some(dir.path()), &apps).unwrap();
     let (written, _) = craft_ai_agents::load(dir.path()).unwrap().unwrap();
     assert_eq!(written, app_entries(&apps));
 }
@@ -304,7 +306,20 @@ fn the_state_writes_nothing_and_a_refresh_writes_the_app_list() {
 #[test]
 fn a_refresh_while_agents_are_off_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();
-    refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]).unwrap();
     assert!(!enabled(dir.path()));
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
+/// A refresh that can't write the app list says so, so the caller tries again later.
+#[cfg(unix)]
+#[test]
+fn a_refresh_that_cannot_write_the_app_list_fails() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    write_apps(dir.path(), &[]).unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+    let result = refresh_in(Some(dir.path()), &[service("vectorcraft", "VectorCraft", Some(std::env::temp_dir().join("vectorcraft-cli")))]);
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(result.is_err(), "{result:?}");
 }
