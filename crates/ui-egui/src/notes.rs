@@ -27,11 +27,23 @@ pub(crate) fn classify(line: &str) -> Line<'_> {
             && !url.contains(' ')
         {
             let start = b.len() - url.len() - "https://".len();
-            return Line::Bullet(text, b.get(start..));
+            return Line::Bullet(strip_generated_author(text, url), b.get(start..));
         }
         return Line::Bullet(b, None);
     }
     Line::Text(l)
+}
+
+/// Strips the author suffix used in GitHub-generated pull request bullets.
+fn strip_generated_author<'a>(text: &'a str, url: &str) -> &'a str {
+    let Some((repo, number)) = url.strip_prefix("github.com/").and_then(|path| path.rsplit_once("/pull/")) else { return text };
+    let valid_repo = repo.split_once('/').is_some_and(|(owner, name)| !owner.is_empty() && !name.is_empty() && !name.contains('/'));
+    if !valid_repo || number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return text;
+    }
+    let Some((title, author)) = text.rsplit_once(" by @") else { return text };
+    let handle = author.strip_suffix("[bot]").unwrap_or(author);
+    if !handle.is_empty() && handle.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') { title } else { text }
 }
 
 /// How many changes show before the rest folds away.
@@ -103,12 +115,10 @@ fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
             ui.label(crate::widgets::heading(h, 16.0 * scale, t.ink_strong));
         }
         Line::Bullet(text, link) => {
-            // The author's handle is noise in a list of what changed.
-            let text = text.rsplit_once(" by @").map_or(*text, |(change, _)| change);
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 ui.label(RichText::new("•").color(t.faint));
-                ui.label(RichText::new(text).color(t.ink));
+                ui.label(RichText::new(*text).color(t.ink));
                 if let Some(url) = link.filter(|u| artcraft_launcher_core::release::safe_web_link(u)) {
                     let short = url.rsplit('/').next().map_or_else(|| tl!("link").to_string(), |n| format!("#{n}"));
                     ui.hyperlink_to(RichText::new(short).size(12.0 * scale), url);
@@ -133,11 +143,22 @@ mod tests {
         assert_eq!(classify("## What's Changed"), Line::Heading("What's Changed"));
         assert_eq!(
             classify("* Add the Patch tool (#213) by @a in https://github.com/storytold/photocraft/pull/381"),
-            Line::Bullet("Add the Patch tool (#213) by @a", Some("https://github.com/storytold/photocraft/pull/381"))
+            Line::Bullet("Add the Patch tool (#213)", Some("https://github.com/storytold/photocraft/pull/381"))
         );
         assert_eq!(classify("- plain bullet"), Line::Bullet("plain bullet", None));
         assert_eq!(classify("   "), Line::Blank);
         assert_eq!(classify("hello"), Line::Text("hello"));
+    }
+
+    #[test]
+    fn preserves_mentions_in_handwritten_notes() {
+        let text = "Fix reported by @maya when reopening the timeline";
+        assert_eq!(classify(&format!("- {text}")), Line::Bullet(text, None));
+        let pr = "https://github.com/storytold/photocraft/pull/381";
+        assert_eq!(classify(&format!("- {text} in {pr}")), Line::Bullet(text, Some(pr)));
+        assert_eq!(classify(&format!("* {text} by @build-bot[bot] in {pr}")), Line::Bullet(text, Some(pr)));
+        let issue = "https://github.com/storytold/photocraft/issues/381";
+        assert_eq!(classify(&format!("- Fix reported by @maya in {issue}")), Line::Bullet("Fix reported by @maya", Some(issue)));
     }
 
     #[test]
