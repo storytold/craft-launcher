@@ -761,7 +761,7 @@ fn a_version_row_sizes_the_package_this_install_would_use() {
         (Some(InstallSource::Launcher), vec![Msi], "90 MB", "the launcher's portable copy updates from the ZIP"),
         (Some(InstallSource::Msi), vec![PortableZip], "120 MB", "an MSI install updates from the MSI"),
         (None, vec![PortableZip], "90 MB", "a fresh install takes the preferred ZIP"),
-        (None, vec![], "120 MB", "a fresh install takes the MSI by default"),
+        (None, vec![], "90 MB", "a fresh install takes the fast install's ZIP by default"),
     ];
     for (source, preferred, size, why) in cases {
         let more = vec![source.map_or_else(photocraft_not_installed, photocraft_installed)];

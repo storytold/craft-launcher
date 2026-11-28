@@ -293,7 +293,8 @@ impl LauncherUi {
         }
     }
 
-    /// The Windows install-format chooser: an MSI or a portable ZIP.
+    /// The Windows install-format chooser: the launcher's own fast install, the release MSI, or a
+    /// portable ZIP.
     fn windows_kinds(&mut self, ui: &mut Ui) {
         sheet::panel(ui, tl!("Installing on Windows"), |ui| {
             let mut choice = self
@@ -301,15 +302,15 @@ impl LauncherUi {
                 .preferred_kinds
                 .first()
                 .copied()
-                .filter(|kind| matches!(kind, PackageKind::Msi | PackageKind::PortableZip))
-                .or(Some(PackageKind::Msi));
+                .filter(|kind| matches!(kind, PackageKind::FastInstall | PackageKind::Msi | PackageKind::PortableZip))
+                .or(Some(PackageKind::FastInstall));
             row(ui, tl!("Install new apps as"), 210.0, &mut |ui, label| {
-                let shown = choice.map_or_else(|| crate::i18n::t(PackageKind::Msi.label()), |kind| crate::i18n::t(kind.label()));
+                let shown = choice.map_or_else(|| crate::i18n::t(PackageKind::FastInstall.label()), |kind| crate::i18n::t(kind.label()));
                 egui::ComboBox::from_id_salt("windows-kind")
                     .selected_text(shown)
                     .width(210.0)
                     .show_ui(ui, |ui| {
-                        for kind in [PackageKind::Msi, PackageKind::PortableZip] {
+                        for kind in [PackageKind::FastInstall, PackageKind::Msi, PackageKind::PortableZip] {
                             ui.selectable_value(&mut choice, Some(kind), crate::i18n::t(kind.label()));
                         }
                     })
@@ -317,6 +318,12 @@ impl LauncherUi {
                     .labelled_by(label);
             });
             self.settings.preferred_kinds = choice.into_iter().collect();
+            note(
+                ui,
+                tl!(
+                    "Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator."
+                ),
+            );
             note(ui, tl!("Updates always use the format an app was installed with."));
         });
     }

@@ -1114,12 +1114,9 @@ mod tests {
         // MailCraft moved from `UCS-Care-Group` to `UCSLabs` (#1593). Before the rename the new name
         // is a 404, after it the new name answers: either way the release is found once, and its
         // downloads belong to the repo that answered.
-        let mut app = *artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
-        app.repo = "UCSLabs/mailcraft";
-        app.former_repo = Some("UCS-Care-Group/mailcraft");
-        let app = &app;
+        let app = artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
         let query = ReleaseQuery::for_app(app, app.repo);
-        let former = "UCS-Care-Group/mailcraft";
+        let former = app.former_repo.unwrap();
         let (_temp, source) = fresh_source();
         for live in [former, app.repo] {
             let asked = std::cell::RefCell::new(Vec::new());
@@ -1150,11 +1147,8 @@ mod tests {
     #[test]
     fn a_release_saved_under_the_former_name_still_stands_in() {
         // Checked before the rename, opened offline after it: nothing is saved under the new name.
-        let mut app = *artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
-        app.repo = "UCSLabs/mailcraft";
-        app.former_repo = Some("UCS-Care-Group/mailcraft");
-        let app = &app;
-        let (_temp, source, release) = shared_selection_saved_source("UCS-Care-Group/mailcraft", "v0.15.0");
+        let app = artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
+        let (_temp, source, release) = shared_selection_saved_source(app.former_repo.unwrap(), "v0.15.0");
         assert_eq!(source.cached(&ReleaseQuery::for_app(app, app.repo), true), Some(LatestRelease::Found(release)));
     }
 

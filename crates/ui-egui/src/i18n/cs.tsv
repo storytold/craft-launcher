@@ -94,6 +94,7 @@
 	Installing on Windows	Instalace ve Windows
 	Install new apps as	Instalovat nové aplikace jako
 	System package (recommended)	Systémový balíček (doporučeno)
+	Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator.	Rychlá instalace rozbalí aplikaci do vaší vlastní složky Programy, přidá zástupce do nabídky Start a uvede ji v seznamu Aplikace a funkce, a to vše bez vyžádání správce.
 	Updates always use the format an app was installed with.	Aktualizace vždy použijí formát, ve kterém byla aplikace nainstalována.
 	Running in the background	Běh na pozadí
 	Keep running in the tray when the window is closed	Po zavření okna ponechat spuštěné v oznamovací oblasti
@@ -165,6 +166,7 @@
 	No limit	Bez omezení
 	Downloads running together share your connection, so each one is slower.	Souběžná stahování sdílejí vaše připojení, takže každé je pomalejší.
 	Waiting for other installs…	Čekání na dokončení ostatních instalací…
+	Fast install (recommended)	Rychlá instalace (doporučeno)
 	Installer (.msi)	Instalační program (.msi)
 	Portable (.zip)	Přenosná verze (.zip)
 	Disk image (.dmg)	Obraz disku (.dmg)

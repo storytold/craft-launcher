@@ -50,14 +50,6 @@ fn download(http: &Http, url: &str, saved: &Path) -> Result<Vec<u8>, Failure> {
     Ok(bytes)
 }
 
-/// Try the fallback for the same picture before treating the primary failure as network-wide.
-fn download_with_fallback(http: &Http, url: &str, fallback: Option<&str>, saved: &Path) -> Result<Vec<u8>, Failure> {
-    download(http, url, saved).or_else(|primary| match fallback {
-        Some(fallback) => download(http, fallback, saved).map_err(|err| if matches!(err, Failure::Picture(_)) { err } else { primary }),
-        None => Err(primary),
-    })
-}
-
 /// Every picture of `details`, lead first, handed to `emit` one by one as it is had. Saved copies
 /// need no network. Once the network or the server has failed, the pictures still to fetch fail at
 /// once with the same reason instead of each waiting for its own timeout; saved ones are still
@@ -75,7 +67,7 @@ pub fn fetch_all(http: Option<&Http>, paths: &Paths, details: &AppDetails, mut e
             continue;
         }
         let result = match (http, details.screenshot_url(shot.key)) {
-            (Some(http), Some(url)) => download_with_fallback(http, &url, details.screenshot_fallback_url(shot.key).as_deref(), &saved),
+            (Some(http), Some(url)) => download(http, &url, &saved),
             (None, _) => Err(Failure::Network("HTTPS isn't available".into())),
             (_, None) => Err(Failure::Picture("this page has no such picture".into())),
         };
@@ -129,20 +121,6 @@ mod tests {
         let (url, _) = serve(jpeg(), vec![Reply::Full]);
         assert_eq!(download(&http, &url, &saved).unwrap(), jpeg());
         assert_eq!(saved_copy(&saved), Some(jpeg()));
-    }
-
-    #[test]
-    fn screenshot_fallback_recovers_and_missing_fallback_is_picture_specific() {
-        let dir = tempfile::tempdir().unwrap();
-        let saved = dir.path().join("pic.jpg");
-        let http = Http::new().unwrap();
-        let gone = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
-        let primary = format!("http://{gone}/pic.jpg");
-        let (fallback, _) = serve(jpeg(), vec![Reply::Full]);
-        assert_eq!(download_with_fallback(&http, &primary, Some(&fallback), &saved).unwrap(), jpeg());
-        assert_eq!(saved_copy(&saved), Some(jpeg()));
-        let (missing, _) = serve(Vec::new(), vec![Reply::Missing]);
-        assert!(matches!(download_with_fallback(&http, &primary, Some(&missing), &saved), Err(Failure::Picture(_))));
     }
 
     #[test]

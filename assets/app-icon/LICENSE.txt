@@ -1,8 +1,0 @@
-ArtCraft Launcher app icon (every file in this directory)
-
-These files are the ArtCraft "A" mark (docs/brand/artcraft-mark-black.svg), rendered unmodified by
-packaging/icons.sh. The mark is a trademark of the ArtCraft Team. It is NOT open source and is NOT
-covered by ArtCraft Launcher's MIT or Apache-2.0 license.
-
-Its terms are in docs/brand/LICENSE-brand.txt. In short: it may be used only unmodified, only as
-part of this repository and ArtCraft Launcher, and forks and modified versions must remove it.

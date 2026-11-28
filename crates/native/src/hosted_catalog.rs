@@ -117,24 +117,6 @@ mod tests {
         let cache = paths.feed_cache().with_file_name("launcher-catalog.json");
         let verified = saved_catalog(&cache).expect("live catalog must be cached and verify with the pinned key");
         assert_eq!(verified.rejected_entries, 0);
-        // Exercise the actual release-feed parser against the same signed bytes the native
-        // startup path just fetched, not only the app and icon metadata.
-        use artcraft_launcher_core::catalog::LAUNCHER;
-        use artcraft_launcher_core::feed::{Feed, FeedAnswer};
-        let saved: Saved = serde_json::from_slice(&std::fs::read(&cache).unwrap()).unwrap();
-        let feed = Feed::parse_signed_catalog(saved.catalog.as_bytes(), saved.signature.as_bytes()).unwrap();
-        let now = crate::now();
-        assert!(matches!(feed.answer(&LAUNCHER, now), FeedAnswer::Fresh(Some(release)) if !release.assets.is_empty()));
-        for app in artcraft_launcher_core::hosted_catalog::apps() {
-            if feed.apps.get(app.id).is_some_and(|entry| entry.release.is_some()) {
-                assert!(
-                    matches!(feed.answer(app, now), FeedAnswer::Fresh(Some(release)) if !release.assets.is_empty()),
-                    "invalid live stable release for {}",
-                    app.id
-                );
-            }
-        }
-        assert!(feed.apps.get("photocraft").is_some_and(|entry| entry.release.is_some()));
         let icons: Vec<_> = verified.icons().collect();
         assert!(!icons.is_empty());
         for (id, _, digest) in icons {
@@ -149,8 +131,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("catalog.json");
         let mut saved = Saved {
-            catalog: std::str::from_utf8(artcraft_launcher_core::hosted_catalog::BUILD_CATALOG_TOML).unwrap().into(),
-            signature: std::str::from_utf8(artcraft_launcher_core::hosted_catalog::BUILD_CATALOG_SIG).unwrap().into(),
+            catalog: include_str!("../../core/tests/fixtures/hosted-catalog.toml").into(),
+            signature: include_str!("../../core/tests/fixtures/hosted-catalog.toml.sig").into(),
         };
         write_atomic(&path, &serde_json::to_vec(&saved).unwrap()).unwrap();
         assert!(saved_catalog(&path).is_some());

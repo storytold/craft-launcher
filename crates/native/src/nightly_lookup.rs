@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::time::Duration;
 
-use artcraft_launcher_core::protocol::{NightlyStatus, Origin};
+use artcraft_launcher_core::protocol::NightlyStatus;
 use artcraft_launcher_core::{CraftApp, Platform, Release, version};
 use serde::{Deserialize, Serialize};
 
@@ -18,29 +18,16 @@ pub(crate) const EVERY: i64 = 6 * 60 * 60;
 const INSTALLED_EVERY: i64 = 60 * 60;
 /// At most this many apps nobody has installed are looked up in one automatic sweep, so the whole
 /// roster stays inside its six-hour cadence without spending an hour's GitHub budget at once.
-pub(crate) const DISCOVERY_PER_SWEEP: usize = 3;
+const DISCOVERY_PER_SWEEP: usize = 3;
 const MANUAL_COALESCE: i64 = 60;
 const PER_PAGE: usize = 100;
 const MAX_PAGES: usize = 5;
 const MAX_REQUESTS: usize = 32;
 const MAX_PAGE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
-pub(crate) const MAX_TIME: Duration = Duration::from_secs(30);
+const MAX_TIME: Duration = Duration::from_secs(30);
 const MAX_RECORDS: usize = 64;
 const MAX_METADATA: u64 = 64 * 1024;
-
-/// Only per-app GitHub enumeration spends the automatic discovery allowance. Installed apps
-/// and manual checks keep their existing priority; catalog answers need no allowance.
-pub(crate) fn reserve_fallback(manual: bool, installed: bool, used: &mut usize) -> bool {
-    if manual || installed {
-        return true;
-    }
-    if *used >= DISCOVERY_PER_SWEEP {
-        return false;
-    }
-    *used += 1;
-    true
-}
 
 type Fetch<'a> = dyn FnMut(&str, usize, Duration, i64) -> Result<Option<Vec<u8>>, NightlyHttpError> + 'a;
 
@@ -119,14 +106,8 @@ impl Budget<'_> {
         Ok(())
     }
 
-    fn verify(
-        &mut self,
-        app: &CraftApp,
-        mut release: Release,
-        platform: Platform,
-        fetch_sums: bool,
-    ) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
-        if fetch_sums && let Some(sums) = release.sums_asset() {
+    fn verify(&mut self, app: &CraftApp, mut release: Release, platform: Platform) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
+        if let Some(sums) = release.sums_asset() {
             if !artcraft_launcher_core::release::valid_file_name(&sums.name)
                 || sums.url != format!("https://github.com/{}/releases/download/{}/{}", app.repo, release.tag, sums.name)
             {
@@ -156,7 +137,6 @@ impl Budget<'_> {
 /// Complete bounded release-page coverage, then verify candidates in canonical preference
 /// order. Invalid potentially winning evidence is indeterminate; a compatible winner proves
 /// dominated descriptor bodies unnecessary. A full last page never proves complete coverage.
-#[cfg(test)]
 pub(crate) fn lookup<'a>(
     app: &CraftApp,
     platform: Platform,
@@ -166,131 +146,11 @@ pub(crate) fn lookup<'a>(
     enabled: &'a dyn Fn() -> bool,
 ) -> Outcome {
     let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
-    outcome(scan(app, platform, &mut budget))
-}
-
-fn outcome(result: Result<Option<VerifiedRelease>, NightlyHttpError>) -> Outcome {
-    match result {
+    match scan(app, platform, &mut budget) {
         Ok(Some(verified)) => Outcome::Verified(Box::new(verified)),
         Ok(None) => Outcome::NoCompatibleBuild,
         Err(error) => Outcome::Indeterminate(error),
     }
-}
-
-/// The catalog is one signed publication snapshot, not a proof that every older target is absent.
-/// Only a fresh compatible entry can avoid the GitHub enumeration. Missing/incomplete entries,
-/// older selections and unsupported targets fall back to complete bounded GitHub discovery.
-pub(crate) fn catalog_candidate(feed: &artcraft_launcher_core::feed::Feed, app: &CraftApp, now: i64, previous_tag: Option<&str>) -> Option<Release> {
-    use artcraft_launcher_core::feed::FeedAnswer;
-    // Re-signing an unchanged website must not refresh the release reconciliation timestamp.
-    let generated = feed.last_fetched?;
-    let reconciled = feed.apps.get(app.id)?.nightly.as_ref()?.reconciled_at?;
-    if !feed.channel_aware || reconciled > generated || !(0..=2 * 60 * 60).contains(&now.saturating_sub(reconciled)) {
-        return None;
-    }
-    let FeedAnswer::Fresh(Some(release)) = feed.answer_nightly(app, now) else { return None };
-    let version = artcraft_launcher_core::release::canonical_nightly_version(&release)?;
-    if previous_tag.and_then(artcraft_launcher_core::version::parse).is_some_and(|old| artcraft_launcher_core::version::is_newer(&old, &version))
-        || release.published_at.is_none_or(|at| at <= 0 || at > reconciled)
-        || !release.assets.iter().any(|a| a.name == artcraft_launcher_core::nightly::MANIFEST_NAME && a.size > 0 && a.sha256.is_some())
-    {
-        return None;
-    }
-    Some(release)
-}
-
-/// Verify the catalog's exact immutable candidate with the same descriptor, adapter and size/hash
-/// checks as the GitHub path. Its signed checksums came from the published SHA256SUMS, so we need
-/// only the descriptor body, not another checksum-list or release API call. A previously verified
-/// identical snapshot needs no descriptor download either. Never synthesize a token from metadata.
-#[cfg(test)]
-pub(crate) fn verify_catalog<'a>(
-    app: &CraftApp,
-    platform: Platform,
-    now: i64,
-    candidate: (Release, Option<&VerifiedRelease>),
-    fetch: &'a mut Fetch<'a>,
-    elapsed: &'a dyn Fn() -> Duration,
-    enabled: &'a dyn Fn() -> bool,
-) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
-    let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
-    verify_catalog_candidate(app, platform, candidate, &mut budget)
-}
-
-fn verify_catalog_candidate(
-    app: &CraftApp,
-    platform: Platform,
-    candidate: (Release, Option<&VerifiedRelease>),
-    budget: &mut Budget<'_>,
-) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
-    crate::nightly_profile::admit_new(app, platform).map_err(failure)?;
-    let (release, previous) = candidate;
-    budget.coverage_complete()?;
-    if let Some(previous) = previous
-        && previous.release() == &release
-        && crate::nightly_profile::for_app(app, platform).ok() == Some(previous.adapter())
-    {
-        return Ok(Some(previous.clone()));
-    }
-    let selected = budget.verify(app, release, platform, false)?;
-    budget.coverage_complete()?;
-    Ok(selected)
-}
-
-/// Inputs to one app's lookup; the fallback allowance is shared by the entire sweep.
-pub(crate) struct LookupPolicy<'a> {
-    pub candidate: Option<Release>,
-    pub previous: Option<&'a VerifiedRelease>,
-    pub backoff: Option<i64>,
-    pub github_blocked: bool,
-    pub before_lookup: &'a mut dyn FnMut() -> Result<(), NightlyHttpError>,
-    pub manual: bool,
-    pub installed: bool,
-    pub fallback_used: &'a mut usize,
-}
-
-/// A compatible catalog result avoids release enumeration. Fallback uses the same cumulative
-/// request/byte/deadline budget, and `None` means the app retains its place in the next sweep.
-pub(crate) fn lookup_prefer_catalog<'a>(
-    app: &CraftApp,
-    platform: Platform,
-    now: i64,
-    policy: LookupPolicy<'_>,
-    fetch: &'a mut Fetch<'a>,
-    elapsed: &'a dyn Fn() -> Duration,
-    enabled: &'a dyn Fn() -> bool,
-) -> Option<(Outcome, Origin)> {
-    if policy.backoff.is_some() {
-        return None;
-    }
-    let mut budget = Budget { fetch, elapsed, enabled, now, requests: 0, bytes: 0 };
-    let mut started = false;
-    let mut catalog_failure = None;
-    if let Some(release) = policy.candidate {
-        if let Err(error) = (policy.before_lookup)() {
-            return Some((Outcome::Indeterminate(error), Origin::ArtCraftApi));
-        }
-        started = true;
-        match verify_catalog_candidate(app, platform, (release, policy.previous), &mut budget) {
-            Ok(Some(verified)) => return Some((Outcome::Verified(Box::new(verified)), Origin::ArtCraftApi)),
-            Ok(None) => {}
-            Err(error) if error.over_budget || error.retry_at.is_some() => return Some((Outcome::Indeterminate(error), Origin::ArtCraftApi)),
-            Err(error) => {
-                log::info!("{}: catalog Nightly could not be verified; falling back: {}", app.id, error.why);
-                if budget.requests > 0 {
-                    catalog_failure = Some(error);
-                }
-            }
-        }
-    }
-    if policy.github_blocked || !reserve_fallback(policy.manual, policy.installed, policy.fallback_used) {
-        // A failed descriptor request is a real attempt, even if enumeration is withheld.
-        return catalog_failure.map(|error| (Outcome::Indeterminate(error), Origin::ArtCraftApi));
-    }
-    if !started && let Err(error) = (policy.before_lookup)() {
-        return Some((Outcome::Indeterminate(error), Origin::GitHub));
-    }
-    Some((outcome(scan(app, platform, &mut budget)), Origin::GitHub))
 }
 
 fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<Option<VerifiedRelease>, NightlyHttpError> {
@@ -345,7 +205,7 @@ fn scan(app: &CraftApp, platform: Platform, budget: &mut Budget<'_>) -> Result<O
     for release in
         artcraft_launcher_core::release::ranked_nightly_candidates(&candidates, artcraft_launcher_core::release::NightlySelection::Canonical)
     {
-        if let Some(verified) = budget.verify(app, release.clone(), platform, true)? {
+        if let Some(verified) = budget.verify(app, release.clone(), platform)? {
             budget.coverage_complete()?;
             return Ok(Some(verified));
         }
@@ -525,7 +385,21 @@ impl State {
             let attempted_at = self.records.get(*key).and_then(|record| record.attempted_at);
             (!installed.contains(*key), attempted_at, (*key).clone())
         });
-        let chosen: Vec<_> = due.into_iter().take(MAX_RECORDS).cloned().collect();
+        let mut chosen = Vec::new();
+        let mut discovered = 0;
+        for key in due {
+            if !manual && !installed.contains(key) {
+                // The roster is sorted installed-first, so the cap ends the sweep here.
+                if discovered >= DISCOVERY_PER_SWEEP {
+                    break;
+                }
+                discovered += 1;
+            }
+            chosen.push(key.clone());
+            if chosen.len() >= MAX_RECORDS {
+                break;
+            }
+        }
         if chosen.is_empty() {
             return chosen;
         }
@@ -534,21 +408,11 @@ impl State {
             let previous = self.records.get(key).cloned().unwrap_or_default();
             self.deferred_from.insert(key.clone(), (previous.attempted_at, previous.complete));
             let record = self.records.entry(key.clone()).or_default();
-            // Queueing is not an attempt. A crash or opt-out before the worker reaches this app
-            // must not consume its six-hour turn.
+            record.attempted_at = Some(now);
             record.complete = false;
         }
         self.in_flight = true;
         chosen
-    }
-
-    /// Mark a lookup only when it actually starts, never when merely queued.
-    pub(crate) fn attempt(&mut self, key: &str, now: i64) {
-        if self.deferred_from.contains_key(key) {
-            let record = self.records.entry(key.to_owned()).or_default();
-            record.attempted_at = Some(now);
-            record.complete = false;
-        }
     }
 
     /// Puts a key this sweep chose back where it was: a budget refusal never happened, so it must not

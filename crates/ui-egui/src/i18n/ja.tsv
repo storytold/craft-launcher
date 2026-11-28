@@ -109,6 +109,7 @@
 	Installing on Windows	Windows へのインストール
 	Install new apps as	新しいアプリのインストール形式
 	System package (recommended)	システムパッケージ（推奨）
+	Fast install unpacks the app into your own Programs folder, adds a Start menu entry and lists it in Apps & features, without asking an administrator.	クイック インストールは、アプリをユーザー自身の Programs フォルダーに展開し、スタート メニューに項目を追加して、［アプリと機能］の一覧に表示します。管理者権限は必要ありません。
 	Updates always use the format an app was installed with.	更新は常に、アプリをインストールしたときの形式で行われます。
 	Running in the background	バックグラウンドで実行
 	Keep running in the tray when the window is closed	ウィンドウを閉じてもトレイで実行し続ける
@@ -183,6 +184,7 @@
 	Waiting for other installs…	他のインストールを待機中…
 
 # Package formats offered for download (PackageKind::label)
+	Fast install (recommended)	クイック インストール（推奨）
 	Installer (.msi)	インストーラー (.msi)
 	Portable (.zip)	ポータブル版 (.zip)
 	Disk image (.dmg)	ディスクイメージ (.dmg)

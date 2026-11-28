@@ -69,12 +69,6 @@ pub struct FeedError {
     pub retry_after: Option<i64>,
 }
 
-impl FeedError {
-    pub(crate) fn failed(why: impl Into<String>) -> Self {
-        Self { why: why.into(), throttled: false, retry_after: None }
-    }
-}
-
 /// `http://<loopback host>:<port>` and an optional path: the host must be exactly 127.0.0.1,
 /// localhost or [::1] (no `user@` in front of another host), with a numeric port.
 pub fn is_loopback(url: &str) -> bool {
@@ -333,7 +327,7 @@ impl Http {
     pub fn get_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
         let agent = if is_loopback(url) { &self.direct } else { &self.small };
         let (physical, agent) = self.request(url, agent)?;
-        Self::get_bytes_with(agent, physical.as_ref(), max).map_err(|e| e.why)
+        Self::get_bytes_with(agent, physical.as_ref(), max)
     }
 
     /// Nightly-only transport: one bounded decoded body and one elapsed-time budget, including
@@ -455,35 +449,27 @@ impl Http {
 
     /// Catalog resources remain on the pinned HTTPS website; redirect responses are refused.
     pub fn get_catalog_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
-        self.get_catalog_feed_bytes(url, max).map_err(|e| e.why)
-    }
-
-    pub(crate) fn get_catalog_feed_bytes(&self, url: &str, max: usize) -> Result<Option<Vec<u8>>, FeedError> {
         if !url.starts_with("https://getartcraft.com/") {
-            return Err(FeedError::failed("catalog resources must use the pinned HTTPS website"));
+            return Err("catalog resources must use the pinned HTTPS website".into());
         }
         Self::get_bytes_with(&self.no_redirect, url, max)
     }
 
-    fn get_bytes_with(agent: &ureq::Agent, url: &str, max: usize) -> Result<Option<Vec<u8>>, FeedError> {
-        let mut resp = agent.get(url).call().map_err(|e| FeedError::failed(format!("{UNREACHABLE} {} ({e})", host(url))))?;
+    fn get_bytes_with(agent: &ureq::Agent, url: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+        let mut resp = agent.get(url).call().map_err(|e| format!("{UNREACHABLE} {} ({e})", host(url)))?;
         match resp.status().as_u16() {
             200 => {
                 let announced = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
-                let too_big = || FeedError::failed(format!("{} sent more than {max} bytes", host(url)));
+                let too_big = || format!("{} sent more than {max} bytes", host(url));
                 if announced.is_some_and(|n| n > max as u64) {
                     return Err(too_big());
                 }
                 let body = read_bytes_capped(&mut resp, max)
-                    .map_err(|e| if e.contains("larger than") { too_big() } else { FeedError::failed(format!("unreadable answer ({e})")) })?;
+                    .map_err(|e| if e.contains("larger than") { too_big() } else { format!("unreadable answer ({e})") })?;
                 Ok(Some(body))
             }
             404 => Ok(None),
-            s => Err(FeedError {
-                why: format!("{} answered HTTP {s}", host(url)),
-                throttled: s == 429,
-                retry_after: resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|r| r.trim().parse::<i64>().ok()),
-            }),
+            s => Err(format!("{} answered HTTP {s}", host(url))),
         }
     }
 
@@ -1349,20 +1335,6 @@ pub(crate) mod tests {
         assert!(error.retry_at.is_none());
         assert!(error.why.contains("unreadable") || error.why.contains("couldn't reach"), "{}", error.why);
         worker.join().unwrap();
-    }
-
-    #[test]
-    fn catalog_byte_transport_preserves_429_and_retry_after() {
-        let (base, seen, worker) =
-            nightly_fixture(vec![(Duration::ZERO, nightly_response("429 Too Many Requests", "Retry-After: 1800\r\nContent-Length: 0\r\n", b""))]);
-        let http = Http::new().unwrap();
-        let error = Http::get_bytes_with(&http.direct, &base, 1024).unwrap_err();
-        assert!(error.throttled);
-        assert_eq!(error.retry_after, Some(1800));
-        seen.recv_timeout(Duration::from_secs(2)).unwrap();
-        worker.join().unwrap();
-        // Test transport never changes the production catalog's pinned origin policy.
-        assert!(http.get_catalog_feed_bytes(&base, 1024).is_err());
     }
 
     #[test]
