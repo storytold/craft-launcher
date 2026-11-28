@@ -42,6 +42,17 @@ pub enum Command {
         app: String,
         path: String,
     },
+    /// `Install`, for the release `tag` the person picked by name in the version dialog. When it is
+    /// older than the installed copy, the install goes back to it the way it goes back to a pinned
+    /// version, also when `tag` is the latest release, whose track then goes on following new
+    /// releases. Nothing is installed when the release to install is no longer `tag`. `fallback` is
+    /// the release the person agreed may be put back if going back fails
+    /// ([`Event::GoBackFallback`]). A backend that can't go back refuses it.
+    InstallChosen {
+        app: String,
+        tag: String,
+        fallback: Option<String>,
+    },
     Uninstall {
         app: String,
     },
@@ -198,11 +209,23 @@ pub struct PausedDownload {
 
 /// The `JobFinished` error a paused job ends with (not a failure).
 pub const PAUSED: &str = "paused";
+/// What a job paused by a connection that keeps dropping says instead of plain [`PAUSED`]: the
+/// download stopped where it was, and Resume continues it. Still a pause, not a failure
+/// ([`is_paused`]), so the UI keeps the request that started the job and sends it again.
+pub const PAUSED_BY_CONNECTION: &str = "The download paused because the connection keeps dropping. Press Resume to continue where it stopped.";
 /// The `JobFinished` error a cancelled job ends with (not a failure).
 pub const CANCELLED: &str = "cancelled";
 /// The `JobFinished` error of an install whose system prompt (password, Windows Installer) the
 /// user dismissed after the download finished (not a failure).
 pub const INSTALL_CANCELLED: &str = "install cancelled";
+
+/// Whether a `JobFinished` error means the job paused rather than failed: the download is kept
+/// and Resume sends the request that started the job again ([`Command::InstallChosen`] included,
+/// with the release and fallback the person agreed to). A pause ends a job as an error, so every
+/// pause outcome is recognised here, in one place: never by matching the message where it is shown.
+pub fn is_paused(error: &str) -> bool {
+    error == PAUSED || error == PAUSED_BY_CONNECTION
+}
 
 /// Which service an app's release information came from (the footer names them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -310,6 +333,16 @@ pub enum Event {
     Occupied {
         app: String,
         path: String,
+    },
+    /// Going back from the installed `installed` (a version with no release of its own) to
+    /// `chosen` stopped before changing anything: if it fails, only `fallback`, a published
+    /// pre-release with the installed numbers, can be put back. `Command::InstallChosen` with
+    /// `fallback` goes ahead once the person agrees.
+    GoBackFallback {
+        app: String,
+        installed: String,
+        chosen: String,
+        fallback: String,
     },
     /// A job ended: `Ok` carries a short success message, `Err` what went wrong.
     /// Clears the app's in-progress job phase in the UI.

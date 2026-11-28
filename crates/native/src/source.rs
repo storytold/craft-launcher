@@ -36,17 +36,39 @@ pub trait ReleaseSource: Send + Sync {
     fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
         Err("version list isn't available here".into())
     }
+    /// [`versions`](Self::versions), with a saved list standing in only when it is less than
+    /// `max_age` seconds old (0: ask GitHub now).
+    fn versions_within(&self, query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+        let _ = max_age;
+        self.versions(query)
+    }
     /// The release `track` follows: the latest stable one, or the chosen nightly or exact version
     /// from [`versions`](Self::versions), with no fallback to another.
     fn chosen(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack) -> Answer {
+        self.chosen_within(query, track, VERSIONS_FRESH)
+    }
+    /// [`chosen`](Self::chosen), with a version list no older than `max_age` seconds (0: a check
+    /// the user pressed asks GitHub now).
+    fn chosen_within(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack, max_age: i64) -> Answer {
         if *track == artcraft_launcher_core::protocol::VersionTrack::Stable {
             return self.latest(query, false);
         }
-        let latest = match self.versions(query) {
+        // A pinned version never changes: once it is saved, GitHub isn't asked about it again.
+        if let artcraft_launcher_core::protocol::VersionTrack::Pinned(_) = track
+            && let Some(saved @ LatestRelease::Found(_)) = self.saved_choice(query, track)
+        {
+            return Answer { latest: saved, source: Source::Cache };
+        }
+        let latest = match self.versions_within(query, max_age) {
             Ok(list) => release::choose_version_for(&list, track, query.separate_nightly).map_or(LatestRelease::None, LatestRelease::Found),
             Err(why) => LatestRelease::Failed(why),
         };
         Answer { latest, source: Source::GitHubApi }
+    }
+    /// The release `track` follows in the version list saved last time, however old, without
+    /// asking GitHub. `None` when no list is saved.
+    fn saved_choice(&self, _query: &ReleaseQuery, _track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        None
     }
     /// The last answer saved for the query's repo, for an instant first paint.
     fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease>;
@@ -75,7 +97,16 @@ struct Entry {
 #[derive(Default, Serialize, Deserialize)]
 struct CacheFile {
     entries: BTreeMap<String, Entry>,
+    /// Each repo's version list and when it was fetched (Unix seconds).
+    #[serde(default)]
+    versions: BTreeMap<String, (i64, Vec<Release>)>,
 }
+
+/// How long a version list stands in for asking GitHub again (#713).
+pub(crate) const VERSIONS_FRESH: i64 = 60 * 60;
+/// How long a version list stands in when the user opens Choose version: the in-memory list's
+/// lifetime before #713, so the picker sees a new release as soon as it did then.
+pub(crate) const CHOOSER_FRESH: i64 = 15 * 60;
 
 /// Once github.com itself hasn't answered, the release-pages route is left alone for this long.
 /// Without it a machine with no network at all would take that route for every app in the catalog
@@ -90,7 +121,7 @@ const LIST_PAGE: usize = 30;
 const VERSIONS_PAGE: usize = 100;
 /// The most pages read past a page full of a separately channelled app's nightlies. Those apps read
 /// [`VERSIONS_PAGE`] releases a page in both the lookup and the version list, so both reach as far.
-const ORDINARY_PAGES: usize = 5;
+const ORDINARY_PAGES: usize = release::ORDINARY_PAGES;
 
 /// The number of entries GitHub returned on one list page, drafts included.
 fn page_len(text: &str) -> Result<usize, String> {
@@ -101,11 +132,23 @@ fn page_len(text: &str) -> Result<usize, String> {
 pub struct GitHubSource {
     http: Http,
     cache: Mutex<CacheFile>,
-    versions_cache: Mutex<BTreeMap<String, (i64, Vec<Release>)>>,
     cache_path: std::path::PathBuf,
     limited_until: Mutex<Option<i64>>,
+    /// The launcher's own GitHub budget held a request back until this time (Unix seconds). Unlike
+    /// [`limited_until`](Self::limited_until) it stops nothing: the budget decides each request
+    /// by its priority. It only tells the footer when GitHub is next asked.
+    over_budget_until: Mutex<Option<i64>>,
     /// github.com couldn't be reached; don't ask it again until this time (Unix seconds).
     pages_quiet_until: Mutex<Option<i64>>,
+    /// Held across taking a snapshot of `cache` and writing it, so writes from several worker
+    /// threads land in the order they were taken and an older snapshot never replaces a newer one.
+    saving: Mutex<()>,
+}
+
+/// The cache key for `repo` under one pre-release setting. Stable keeps the repo as the key
+/// so files written before the two settings were stored separately still load.
+fn cache_key(repo: &str, prereleases: bool) -> String {
+    if prereleases { format!("{repo}+pre") } else { repo.to_string() }
 }
 
 impl GitHubSource {
@@ -114,27 +157,36 @@ impl GitHubSource {
         Self {
             http,
             cache: Mutex::new(cache),
-            versions_cache: Mutex::new(BTreeMap::new()),
             cache_path,
             limited_until: Mutex::new(None),
+            over_budget_until: Mutex::new(None),
             pages_quiet_until: Mutex::new(None),
+            saving: Mutex::new(()),
         }
     }
 
     fn entry(&self, query: &ReleaseQuery, prereleases: bool) -> Option<Entry> {
         let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
-        cache
-            .entries
-            .get(&query.repo)
-            .filter(|entry| {
-                entry.prereleases == prereleases
-                    && entry.release.as_ref().is_none_or(|release| release::ordinary_release_allowed(query.separate_nightly, release))
-            })
-            .cloned()
+        // New files keep one row per setting (`repo` and `repo+pre`). Old files stored one
+        // row under `repo`, so that key is still read when it matches this setting.
+        let allowed = |entry: &Entry| entry.prereleases == prereleases && entry.release.as_ref().is_none_or(release::ordinary_release_allowed);
+        cache.entries.get(&cache_key(&query.repo, prereleases)).or_else(|| cache.entries.get(&query.repo)).filter(|entry| allowed(entry)).cloned()
     }
 
     fn store(&self, repo: &str, entry: Entry) {
-        self.cache.lock().unwrap_or_else(PoisonError::into_inner).entries.insert(repo.to_string(), entry);
+        let key = cache_key(repo, entry.prereleases);
+        let mut cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        // An old file kept one row under `repo`. If that row is for the other setting, move it
+        // to that setting's key so this write cannot evict it.
+        if key == repo
+            && let Some(old) = cache.entries.get(repo).cloned().filter(|old| old.prereleases != entry.prereleases)
+        {
+            cache.entries.insert(cache_key(repo, old.prereleases), old);
+        }
+        if key != repo && cache.entries.get(repo).is_some_and(|old| old.prereleases == entry.prereleases) {
+            cache.entries.remove(repo);
+        }
+        cache.entries.insert(key, entry);
     }
 
     fn limited(&self) -> bool {
@@ -143,7 +195,7 @@ impl GitHubSource {
     }
 
     fn ask_api(&self, query: &ReleaseQuery, prereleases: bool) -> Result<Option<Answer>, String> {
-        self.ask_api_with(query, prereleases, |url, etag| self.http.get_api(url, etag))
+        self.ask_api_with(query, prereleases, |url, etag| self.http.get_api_as(url, etag, query.priority))
     }
 
     fn ask_api_with(
@@ -166,11 +218,11 @@ impl GitHubSource {
             Fetched::Body { text, etag } => {
                 let mut multi_page = false;
                 let release = if prereleases {
-                    let mut release = release::parse_github_release_list(&text, repo, true, separate)?;
-                    // Nightlies of a separately channelled app are not ordinary releases, so a page
-                    // full of them proves nothing: look further, and report an incomplete answer
-                    // rather than caching "no release" when the bounded search ends early.
-                    if release.is_none() && separate {
+                    let mut release = release::parse_github_release_list(&text, repo, true)?;
+                    // A Nightly is never an ordinary release for any app, so a page full of them
+                    // proves nothing: look further, and report an incomplete answer rather than
+                    // caching "no release" when the bounded search ends early.
+                    if release.is_none() {
                         // Page 1's ETag does not cover later pages: a 304 on it could replay an
                         // answer whose page has since changed, so a multi-page answer keeps none.
                         multi_page = true;
@@ -184,12 +236,16 @@ impl GitHubSource {
                             }
                             match fetch(&format!("{url}&page={page}"), None)? {
                                 Fetched::Body { text, .. } => {
-                                    release = release::parse_github_release_list(&text, repo, true, separate)?;
+                                    release = release::parse_github_release_list(&text, repo, true)?;
                                     full = page_len(&text)? >= per_page;
                                 }
                                 Fetched::RateLimited { reset } => {
                                     *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                                     return Ok(None);
+                                }
+                                Fetched::OverBudget { until } => {
+                                    self.note_over_budget(until);
+                                    return Err(over_budget_why(until, crate::now()));
                                 }
                                 Fetched::NotModified | Fetched::NotFound => {
                                     return Err("GitHub's release list changed while it was read; the newest ordinary release is unknown.".into());
@@ -202,8 +258,8 @@ impl GitHubSource {
                 } else {
                     Some(release::parse_github_release(&text, repo)?)
                 };
-                if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(separate, release)) {
-                    return Err("This Nightly belongs to the separate Pre-Release channel, not the ordinary release cache.".into());
+                if release.as_ref().is_some_and(|release| !release::ordinary_release_allowed(release)) {
+                    return Err("A Nightly is not an ordinary release, so it was not cached here.".into());
                 }
                 let etag = if multi_page { None } else { etag };
                 self.store(repo, Entry { etag, release: release.clone(), prereleases, fetched_at: crate::now() });
@@ -224,11 +280,19 @@ impl GitHubSource {
                 *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                 Ok(None)
             }
+            Fetched::OverBudget { until } => {
+                self.note_over_budget(until);
+                Err(over_budget_why(until, crate::now()))
+            }
         }
     }
 
-    /// The version list. For an app whose nightlies have their own channel, pages full of them are
-    /// read past (bounded) so the ordinary versions the picker offers cannot be crowded out.
+    fn note_over_budget(&self, until: i64) {
+        *self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(until);
+    }
+
+    /// The version list. Nightlies are never ordinary versions for any app, so pages full of them
+    /// are read past (bounded) so the ordinary versions the picker offers cannot be crowded out.
     fn versions_with(
         &self,
         query: &ReleaseQuery,
@@ -250,9 +314,13 @@ impl GitHubSource {
                     *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(retry_at(reset, crate::now()));
                     return Err("GitHub's request limit was reached. Try again later.".into());
                 }
+                Fetched::OverBudget { until } => {
+                    self.note_over_budget(until);
+                    return Err(over_budget_why(until, crate::now()));
+                }
                 Fetched::NotFound | Fetched::NotModified => return Err("GitHub returned no version list. Try again.".into()),
             };
-            let crowded = query.separate_nightly && !list.iter().any(|r| release::ordinary_release_allowed(true, r));
+            let crowded = !list.iter().any(release::ordinary_release_allowed);
             if !full || !crowded {
                 return Ok(list);
             }
@@ -308,8 +376,8 @@ impl GitHubSource {
         // nothing about whether github.com itself can be reached for the next app.
         let sums = self.http.get_text(&sums_url)?.map(|t| release::parse_sha256sums(&t)).unwrap_or_default();
         let r = release::release_from_sums(repo, &tag, &sums);
-        if !release::ordinary_release_allowed(query.separate_nightly, &r) {
-            return Err("The latest release is a Nightly of the separate Pre-Release channel, not an ordinary release.".into());
+        if !release::ordinary_release_allowed(&r) {
+            return Err("The latest release is a Nightly of the separate developer channel, not an ordinary release.".into());
         }
         self.store(repo, Entry { etag: None, release: Some(r.clone()), prereleases: false, fetched_at: crate::now() });
         Ok(Answer { latest: LatestRelease::Found(r), source: Source::GitHubPages })
@@ -341,6 +409,18 @@ fn is_release_list(location: &str, repo: &str) -> bool {
 /// docs). Pre-releases aren't published there, so with pre-releases turned on that route is
 /// skipped. Only when neither answered does the lookup settle for the last saved answer, and
 /// report the failure when there isn't one.
+/// How long the footer should say to wait after the launcher's own budget held a request back:
+/// whole minutes, rounded up, at least one, so a retry after that time is due.
+fn over_budget_minutes(until: i64, now: i64) -> i64 {
+    let secs = until.saturating_sub(now);
+    (secs / 60 + i64::from(secs % 60 != 0)).max(1)
+}
+
+fn over_budget_why(until: i64, now: i64) -> String {
+    let minutes = over_budget_minutes(until, now);
+    format!("The launcher has used its GitHub requests for now; try again in {minutes} min.")
+}
+
 fn resolve(
     repo: &str,
     prereleases: bool,
@@ -374,34 +454,92 @@ fn resolve(
     }
 }
 
-impl ReleaseSource for GitHubSource {
-    fn versions(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
-        if let Some((at, list)) = self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).get(&query.repo)
-            && crate::now().saturating_sub(*at) < 15 * 60
+/// Asks `query`'s repo, and its former repo when that has no release: `UCSLabs/mailcraft` doesn't
+/// exist until the owner's rename, and afterwards the former name only redirects
+/// (storytold/craft-launcher#1593). An error is never retried under the other name.
+fn with_former<T>(query: &ReleaseQuery, ask: impl Fn(&ReleaseQuery) -> T, no_release: impl Fn(&T) -> bool) -> T {
+    let answer = ask(query);
+    match query.former() {
+        Some(former) if no_release(&answer) => ask(&former),
+        _ => answer,
+    }
+}
+
+impl GitHubSource {
+    fn versions_in(&self, query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+        if let Some((at, list)) = self.cache.lock().unwrap_or_else(PoisonError::into_inner).versions.get(&query.repo)
+            // A list stamped in the future (the clock set back since) isn't recent.
+            && (0..max_age).contains(&crate::now().saturating_sub(*at))
         {
             return Ok(list.clone());
         }
         if self.limited() {
             return Err("GitHub's request limit was reached. Try again later.".into());
         }
-        let list = self.versions_with(query, |url, etag| self.http.get_api(url, etag))?;
-        self.versions_cache.lock().unwrap_or_else(PoisonError::into_inner).insert(query.repo.clone(), (crate::now(), list.clone()));
+        let list = self.versions_with(query, |url, etag| self.http.get_api_as(url, etag, query.priority))?;
+        self.cache.lock().unwrap_or_else(PoisonError::into_inner).versions.insert(query.repo.clone(), (crate::now(), list.clone()));
+        // Kept on disk at once: a restart shouldn't ask for the list again within the hour.
+        self.save();
         Ok(list)
     }
 
-    fn latest(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
+    fn saved_choice_in(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        let (_, list) = cache.versions.get(&query.repo)?;
+        Some(release::choose_version_for(list, track, query.separate_nightly).map_or(LatestRelease::None, LatestRelease::Found))
+    }
+
+    /// Why the API gave no answer when it was the launcher's own budget that held the request
+    /// back, not GitHub: `None` when GitHub refused, or nothing was held back.
+    fn held_back_why(&self) -> Option<String> {
+        let now = crate::now();
+        if self.limited() {
+            return None;
+        }
+        let until = (*self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner)).filter(|u| *u > now)?;
+        Some(over_budget_why(until, now))
+    }
+
+    fn latest_in(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
         resolve(
             &query.repo,
             prereleases,
             self.limited(),
-            || self.ask_api(query, prereleases),
+            // A request the budget held back says so, instead of GitHub's own limit.
+            || match self.ask_api(query, prereleases) {
+                Ok(None) => self.held_back_why().map_or(Ok(None), Err),
+                other => other,
+            },
             || self.ask_pages(query),
+            // Offline, a release saved under the other name still stands in.
             || self.cached(query, prereleases),
         )
     }
 
-    fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease> {
+    fn cached_in(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease> {
         self.entry(query, prereleases).map(|e| e.release.map_or(LatestRelease::None, LatestRelease::Found))
+    }
+}
+
+impl ReleaseSource for GitHubSource {
+    fn versions(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+        self.versions_within(query, VERSIONS_FRESH)
+    }
+
+    fn versions_within(&self, query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+        with_former(query, |q| self.versions_in(q, max_age), |list| list.as_ref().is_ok_and(Vec::is_empty))
+    }
+
+    fn latest(&self, query: &ReleaseQuery, prereleases: bool) -> Answer {
+        with_former(query, |q| self.latest_in(q, prereleases), |a| a.latest == LatestRelease::None)
+    }
+
+    fn cached(&self, query: &ReleaseQuery, prereleases: bool) -> Option<LatestRelease> {
+        with_former(query, |q| self.cached_in(q, prereleases), |c| matches!(c, None | Some(LatestRelease::None)))
+    }
+
+    fn saved_choice(&self, query: &ReleaseQuery, track: &artcraft_launcher_core::protocol::VersionTrack) -> Option<LatestRelease> {
+        with_former(query, |q| self.saved_choice_in(q, track), |c| matches!(c, None | Some(LatestRelease::None)))
     }
 
     fn newest_tag(&self, repo: &str) -> Option<String> {
@@ -415,11 +553,13 @@ impl ReleaseSource for GitHubSource {
     }
 
     fn rate_limited_until(&self) -> Option<i64> {
-        let until = *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner);
-        until.filter(|u| *u > crate::now())
+        let limited = *self.limited_until.lock().unwrap_or_else(PoisonError::into_inner);
+        let over_budget = *self.over_budget_until.lock().unwrap_or_else(PoisonError::into_inner);
+        limited.max(over_budget).filter(|u| *u > crate::now())
     }
 
     fn save(&self) {
+        let _saving = self.saving.lock().unwrap_or_else(PoisonError::into_inner);
         let json = {
             let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
             serde_json::to_vec(&*cache)
@@ -442,7 +582,7 @@ mod tests {
 
     /// PhotoCraft's own repo has the separate channel; any other repo in these tests does not.
     fn q(repo: &str) -> ReleaseQuery {
-        ReleaseQuery { repo: repo.into(), separate_nightly: repo == REPO }
+        ReleaseQuery { repo: repo.into(), separate_nightly: repo == REPO, former_repo: None, priority: Default::default() }
     }
 
     const REPO: &str = "storytold/photocraft";
@@ -576,6 +716,118 @@ mod tests {
         assert!(err.contains("couldn't be reached a moment ago"), "{err}");
     }
 
+    /// The launcher's own budget holding a background request back says when GitHub is next
+    /// asked, but unlike GitHub's own refusal it doesn't stop the next, more urgent request.
+    #[test]
+    fn a_budget_refusal_isnt_reported_as_githubs_limit() {
+        let asked = std::cell::Cell::new(false);
+        let until = crate::now() + 600;
+        let a = resolve(
+            REPO,
+            true,
+            false,
+            || Err(over_budget_why(until, crate::now())),
+            || {
+                asked.set(true);
+                Err("unused".into())
+            },
+            || None,
+        );
+        assert!(!asked.get(), "pre-releases don't ask the release pages");
+        assert!(
+            matches!(&a.latest, LatestRelease::Failed(why) if why.contains("The launcher has used its GitHub requests") && !why.contains("request limit was reached")),
+            "{a:?}"
+        );
+    }
+
+    #[test]
+    fn a_budget_wait_is_rounded_up_to_a_whole_minute() {
+        assert_eq!(over_budget_minutes(1_000 + 119, 1_000), 2, "119 seconds is still two minutes");
+        assert_eq!(over_budget_minutes(1_000 + 60, 1_000), 1);
+        assert_eq!(over_budget_minutes(1_000, 1_000), 1, "already due still names a minute");
+    }
+
+    #[test]
+    fn a_spent_budget_is_reported_without_stopping_more_urgent_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
+        let source = GitHubSource::new(http, dir.path().join("releases.json"));
+        let until = crate::now() + 600;
+        let refused = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until }));
+        assert!(matches!(&refused, Err(why) if why.contains("The launcher has used its GitHub requests")), "{refused:?}");
+        assert_eq!(source.rate_limited_until(), Some(until), "the footer can say when GitHub is next asked");
+        assert!(!source.limited(), "a more urgent request still goes to the budget");
+        // A budget of nothing never reaches the network.
+        let refused = source.http.get_api_as("https://api.github.com/repos/storytold/wordcraft/releases/latest", None, Default::default());
+        assert!(matches!(refused, Ok(Fetched::OverBudget { .. })), "{refused:?}");
+    }
+
+    /// A pinned version is answered from the saved version list however old it is, the list
+    /// itself stands in for an hour, and both survive a restart (#713). The budget of 0 makes any
+    /// request to GitHub fail, so an answer here came from disk.
+    #[test]
+    fn a_pinned_version_and_a_recent_version_list_are_answered_without_github() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("releases.json");
+        let list: Vec<Release> = ["v0.6.0", "v0.5.0"]
+            .iter()
+            .map(|tag| Release { tag: (*tag).into(), version: artcraft_launcher_core::version::parse(tag), ..Default::default() })
+            .collect();
+        let saved = |age: i64| {
+            let cache = CacheFile { versions: [(REPO.to_string(), (crate::now() - age, list.clone()))].into(), ..Default::default() };
+            std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+            let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
+            GitHubSource::new(http, path.clone())
+        };
+        let pin = artcraft_launcher_core::protocol::VersionTrack::Pinned("v0.5.0".into());
+
+        let day_old = saved(86_400);
+        let answer = day_old.chosen(&q(REPO), &pin);
+        assert!(matches!(&answer.latest, LatestRelease::Found(r) if r.tag == "v0.5.0"), "{answer:?}");
+        assert_eq!(answer.source, Source::Cache);
+        assert!(day_old.versions(&q(REPO)).is_err(), "a list older than an hour is asked for again");
+        assert_eq!(saved(30 * 60).versions(&q(REPO)).unwrap().len(), 2, "a recent list stands in");
+        let ahead = saved(-60);
+        assert!(ahead.versions_within(&q(REPO), 0).is_err(), "a pressed check asks GitHub past a list stamped ahead");
+        assert!(ahead.versions(&q(REPO)).is_err(), "a list stamped in the future isn't recent");
+    }
+
+    /// A request GitHubSource itself held back says so, not that GitHub's limit was
+    /// reached: GitHub refused nothing.
+    #[test]
+    fn a_github_source_budget_refusal_isnt_reported_as_githubs_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = crate::now();
+        let budget = crate::github_budget::GitHubBudget::in_memory(2);
+        for _ in 0..2 {
+            assert!(budget.take(Default::default(), now).is_ok());
+        }
+        let source = GitHubSource::new(Http::new().unwrap().with_budget(budget), dir.path().join("releases.json"));
+        // Pre-releases on, nothing saved: no release-pages route and no saved answer.
+        let answer = source.latest(&q(REPO), true);
+        let LatestRelease::Failed(why) = &answer.latest else { panic!("{answer:?}") };
+        assert!(!why.contains("GitHub's request limit was reached"), "{why}");
+        assert!(why.contains("The launcher has used its GitHub requests"), "{why}");
+    }
+
+    /// GitHub's own refusal is reported as GitHub's limit, and held_back_why stays out of the
+    /// way even when a budget wait is also recorded. A stale version list is not reused then.
+    #[test]
+    fn a_github_rate_limit_isnt_reported_as_a_budget_hold() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), dir.path().join("releases.json"));
+        let until = crate::now() + 600;
+        let budget = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::OverBudget { until }));
+        assert!(budget.is_err(), "{budget:?}");
+        assert!(source.held_back_why().is_some_and(|why| why.contains("The launcher has used its GitHub requests")));
+        let refused = source.ask_api_with(&q(REPO), false, |_, _| Ok(Fetched::RateLimited { reset: Some(until) }));
+        assert!(matches!(refused, Ok(None)), "{refused:?}");
+        assert!(source.limited());
+        assert!(source.held_back_why().is_none(), "GitHub refused, so this isn't a budget hold");
+        let versions = source.versions(&q(REPO));
+        assert!(matches!(&versions, Err(why) if why.contains("GitHub's request limit")), "{versions:?}");
+    }
+
     #[test]
     fn a_refusal_waits_for_the_reset_github_names() {
         assert_eq!(retry_at(Some(1_000 + 600), 1_000), 1_600);
@@ -587,12 +839,44 @@ mod tests {
         assert_eq!(retry_at(Some(i64::MAX), 1_000), 1_000 + 60 * 60);
         assert_eq!(retry_at(Some(99_999_999_999), 1_000), 1_000 + 60 * 60);
     }
+    /// A stable-only save cannot evict the pre-release answer for the same repo, and a cache
+    /// file written when there was only one row per repo still loads under both settings.
+    #[test]
+    fn a_stable_save_keeps_the_saved_prerelease_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("releases.json");
+        let pre =
+            release::parse_github_release(&serde_json::json!({"tag_name":"v0.7.0-rc.1","prerelease":true,"assets":[]}).to_string(), REPO).unwrap();
+        let stable =
+            release::parse_github_release(&serde_json::json!({"tag_name":"v0.6.0","prerelease":false,"assets":[]}).to_string(), REPO).unwrap();
+        // An old file: one row under the repo, for pre-releases.
+        let cache = CacheFile {
+            entries: [(REPO.into(), Entry { etag: None, release: Some(pre.clone()), prereleases: true, fetched_at: 1 })].into(),
+            ..Default::default()
+        };
+        std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+        let source = GitHubSource::new(Http::new().unwrap(), path);
+        let tag = |latest: Option<LatestRelease>| match latest {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => format!("{other:?}"),
+        };
+        assert_eq!(tag(source.cached(&q(REPO), true)), "v0.7.0-rc.1", "the old row still loads");
+        source.store(REPO, Entry { etag: None, release: Some(stable.clone()), prereleases: false, fetched_at: 2 });
+        assert_eq!(tag(source.cached(&q(REPO), true)), "v0.7.0-rc.1", "a stable save leaves the pre-release answer");
+        assert_eq!(tag(source.cached(&q(REPO), false)), "v0.6.0");
+        source.save();
+        let again = GitHubSource::new(Http::new().unwrap(), dir.path().join("releases.json"));
+        assert_eq!(tag(again.cached(&q(REPO), true)), "v0.7.0-rc.1", "both answers survive a restart");
+        assert_eq!(tag(again.cached(&q(REPO), false)), "v0.6.0");
+    }
+
     fn shared_selection_saved_source(repo: &str, tag: &str) -> (tempfile::TempDir, GitHubSource, Release) {
         let temp = tempfile::tempdir().unwrap();
         let release = release::parse_github_release(&serde_json::json!({"tag_name":tag,"prerelease":true,"assets":[]}).to_string(), repo).unwrap();
         let cache = CacheFile {
             entries: [(repo.into(), Entry { etag: Some("old-etag".into()), release: Some(release.clone()), prereleases: true, fetched_at: 7 })]
                 .into(),
+            ..Default::default()
         };
         let path = temp.path().join("releases.json");
         std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
@@ -646,19 +930,20 @@ mod tests {
         assert_eq!(tag_of(&unchanged), Some("v0.9.0-beta.1"));
     }
     #[test]
-    fn shared_selection_legacy_nightly_cache_and_etag_replay_remain_main_compatible() {
+    fn shared_selection_legacy_nightly_cache_and_etag_replay_never_offer_a_nightly_on_the_ordinary_track() {
+        // Main kept a third-party app's saved Nightly as an ordinary answer; no app is offered a
+        // Nightly on its ordinary track now, so the same cache is neither served nor replayable.
         for id in ["solidcraft", "filmcraft"] {
             let repo = artcraft_launcher_core::CraftApp::by_id(id).unwrap().repo;
-            let (_temp, source, release) = shared_selection_saved_source(repo, "v1.0.0-dev.nightly.1");
-            assert_eq!(source.cached(&q(repo), true), Some(LatestRelease::Found(release.clone())));
-            let answer = source
-                .ask_api_with(&q(repo), true, |_, etag| {
-                    assert_eq!(etag, Some("old-etag"));
-                    Ok(Fetched::NotModified)
-                })
-                .unwrap()
-                .unwrap();
-            assert_eq!(answer.latest, LatestRelease::Found(release));
+            let (_temp, source, _release) = shared_selection_saved_source(repo, "v1.0.0-dev.nightly.1");
+            assert_eq!(source.cached(&q(repo), true), None, "{id}: a Nightly is not an ordinary answer");
+            let mut sent_etag = Some("not called".to_string());
+            let replay = source.ask_api_with(&q(repo), true, |_, etag| {
+                sent_etag = etag.map(str::to_owned);
+                Ok(Fetched::NotModified)
+            });
+            assert!(replay.is_err(), "{id}: a saved Nightly cannot replay as an unchanged ordinary answer");
+            assert_eq!(sent_etag, None, "{id}: force a real body instead of accepting the Nightly's stale ETag");
         }
     }
     fn crowded_page(repo: &str, count: usize, offset: usize) -> String {
@@ -727,26 +1012,55 @@ mod tests {
         assert_eq!(asked, 2);
     }
     #[test]
-    fn third_party_lookups_keep_mains_single_page_with_its_nightlies() {
+    fn a_nightly_only_first_page_still_reaches_the_ordinary_release_for_any_app() {
+        // PhotoCraft has its own channel and solidcraft does not; since no app offers a Nightly on
+        // its ordinary track, both must look past a page of them rather than cache "no release".
+        for id in ["solidcraft", "filmcraft"] {
+            let repo = artcraft_launcher_core::CraftApp::by_id(id).unwrap().repo;
+            let (_temp, source) = fresh_source();
+            let mut asked = 0;
+            let answer = source
+                .ask_api_with(&q(repo), true, |url, _| {
+                    asked += 1;
+                    Ok(Fetched::Body {
+                        text: if url.ends_with("&page=2") {
+                            r#"[{"tag_name":"v0.9.0","prerelease":false}]"#.to_string()
+                        } else {
+                            crowded_page(repo, LIST_PAGE, 0)
+                        },
+                        etag: Some("page-1".into()),
+                    })
+                })
+                .unwrap()
+                .unwrap();
+            assert_eq!(tag_of(&answer), Some("v0.9.0"), "{id}: the stable release behind a page of nightlies");
+            assert_eq!(asked, 2, "{id}: one page, then one look past it");
+            let cache = source.cache.lock().unwrap();
+            assert_eq!(
+                cache.entries.get(&cache_key(repo, true)).and_then(|entry| entry.etag.as_deref()),
+                None,
+                "{id}: a multi-page answer keeps no page-1 ETag"
+            );
+        }
+    }
+
+    #[test]
+    fn third_party_lookups_offer_no_nightly_and_stop_one_page_past_them() {
         let repo = artcraft_launcher_core::CraftApp::by_id("solidcraft").unwrap().repo;
         let (_temp, source) = fresh_source();
         let mut asked = 0;
-        let answer = source
-            .ask_api_with(&q(repo), true, |_, _| {
-                asked += 1;
-                Ok(Fetched::Body { text: crowded_page(repo, LIST_PAGE, 0), etag: None })
-            })
-            .unwrap()
-            .unwrap();
-        assert!(tag_of(&answer).is_some_and(|tag| tag.contains("nightly")));
-        let list = source
-            .versions_with(&q(repo), |_, _| {
-                asked += 1;
-                Ok(Fetched::Body { text: crowded_page(repo, VERSIONS_PAGE, 0), etag: None })
-            })
-            .unwrap();
+        // Main offered a third-party app's Nightly here; no app's ordinary track does now, so the
+        // lookup reads one page further and stops there when nothing ordinary is behind them.
+        let page = |url: &str, asked: &mut usize, repo: &str, per_page: usize| {
+            *asked += 1;
+            Ok(Fetched::Body { text: if url.ends_with("&page=2") { "[]".to_string() } else { crowded_page(repo, per_page, 0) }, etag: None })
+        };
+        let answer = source.ask_api_with(&q(repo), true, |url, _| page(url, &mut asked, repo, LIST_PAGE)).unwrap().unwrap();
+        assert!(matches!(answer.latest, LatestRelease::None), "a Nightly is never an ordinary or pre-release candidate");
+        assert_eq!(asked, 2, "one page, then one look past a page of nightlies");
+        let list = source.versions_with(&q(repo), |url, _| page(url, &mut asked, repo, VERSIONS_PAGE)).unwrap();
         assert_eq!(list.len(), VERSIONS_PAGE);
-        assert_eq!(asked, 2, "one request each, as on main");
+        assert_eq!(asked, 4, "one page each, plus the one look past the nightlies");
     }
     #[test]
     fn a_multi_page_answer_is_revalidated_when_only_a_later_page_changes() {
@@ -793,5 +1107,71 @@ mod tests {
             .unwrap();
         assert_eq!(sent_etag, None, "the saved nightly's ETag is not revalidated");
         assert_eq!(tag_of(&answer), Some("v1.0.0-beta.1"));
+    }
+
+    #[test]
+    fn an_app_with_a_former_repo_is_found_under_either_name() {
+        // MailCraft moved from `UCS-Care-Group` to `UCSLabs` (#1593). Before the rename the new name
+        // is a 404, after it the new name answers: either way the release is found once, and its
+        // downloads belong to the repo that answered.
+        let mut app = *artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
+        app.repo = "UCSLabs/mailcraft";
+        app.former_repo = Some("UCS-Care-Group/mailcraft");
+        let app = &app;
+        let query = ReleaseQuery::for_app(app, app.repo);
+        let former = "UCS-Care-Group/mailcraft";
+        let (_temp, source) = fresh_source();
+        for live in [former, app.repo] {
+            let asked = std::cell::RefCell::new(Vec::new());
+            let answer = with_former(
+                &query,
+                |q| {
+                    asked.borrow_mut().push(q.repo.clone());
+                    let body = |repo: &str| {
+                        let url = format!("{}v0.15.0/mailcraft-0.15.0-x.msi", release::download_prefix(repo));
+                        serde_json::json!({"tag_name": "v0.15.0", "assets": [{"name": "mailcraft-0.15.0-x.msi", "size": 1, "browser_download_url": url}]}).to_string()
+                    };
+                    source
+                        .ask_api_with(q, false, |_, _| {
+                            Ok(if q.repo == live { Fetched::Body { text: body(live), etag: None } } else { Fetched::NotFound })
+                        })
+                        .unwrap()
+                        .unwrap()
+                },
+                |a| a.latest == LatestRelease::None,
+            );
+            let LatestRelease::Found(r) = answer.latest else { panic!("{live}: {:?}", answer.latest) };
+            assert!(r.assets.iter().all(|a| a.url.starts_with(&release::download_prefix(live))) && !r.assets.is_empty(), "{live}");
+            assert_eq!(asked.borrow().first(), Some(&app.repo.to_string()), "the current name is asked first");
+            assert_eq!(asked.borrow().len(), if live == app.repo { 1 } else { 2 }, "{live}");
+        }
+    }
+
+    #[test]
+    fn a_release_saved_under_the_former_name_still_stands_in() {
+        // Checked before the rename, opened offline after it: nothing is saved under the new name.
+        let mut app = *artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
+        app.repo = "UCSLabs/mailcraft";
+        app.former_repo = Some("UCS-Care-Group/mailcraft");
+        let app = &app;
+        let (_temp, source, release) = shared_selection_saved_source("UCS-Care-Group/mailcraft", "v0.15.0");
+        assert_eq!(source.cached(&ReleaseQuery::for_app(app, app.repo), true), Some(LatestRelease::Found(release)));
+    }
+
+    #[test]
+    fn a_failed_lookup_is_not_retried_under_the_former_name() {
+        // A rate limit or network error says nothing about which name holds the release.
+        let app = artcraft_launcher_core::CraftApp::by_id("mailcraft").unwrap();
+        let asked = Cell::new(0);
+        let answer = with_former(
+            &ReleaseQuery::for_app(app, app.repo),
+            |_| {
+                asked.set(asked.get() + 1);
+                Answer { latest: LatestRelease::Failed(NO_API.into()), source: Source::GitHubApi }
+            },
+            |a| a.latest == LatestRelease::None,
+        );
+        assert!(matches!(answer.latest, LatestRelease::Failed(_)));
+        assert_eq!(asked.get(), 1);
     }
 }

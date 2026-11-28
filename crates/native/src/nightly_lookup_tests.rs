@@ -1,4 +1,5 @@
 use super::*;
+use artcraft_launcher_core::release::Priority;
 use artcraft_launcher_core::{Arch, Os};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -20,6 +21,202 @@ fn api(page: usize) -> String {
     } else {
         format!("https://api.github.com/repos/{}/releases?per_page=100&page={page}", app().repo)
     }
+}
+
+/// `key()` is what the Nightly scheduling state is saved under, and it contains the adapter's
+/// Debug name. PhotoCraft's three keys read exactly as they did before the adapter became a table
+/// row; a changed Debug name would silently drop every existing user's saved scheduling state.
+#[test]
+fn every_app_is_verified_within_six_hours_under_the_developers_budget() {
+    // The real Developer Builds budget, no token, every sweep automatic: a refused request must
+    // never cost an app its turn, or the apps late in the roster would never be looked up. Ten of
+    // the hour's fifteen requests are already spent, so the first sweep is refused outright and
+    // the five sweeps after it still cover all fifteen apps.
+    let budget = crate::github_budget::GitHubBudget::in_memory(crate::github_budget::DEVELOPER_BUILDS);
+    for _ in 0..10 {
+        assert!(budget.take(Priority::User, NOW).is_ok(), "the user's own checks spend the hour first");
+    }
+    let keys: Vec<String> = (0..15).map(|index| format!("key-{index:02}")).collect();
+    let installed = BTreeSet::new();
+    let mut state = State::default();
+    let mut now = NOW;
+    let mut refusals = 0;
+    for _ in 0..6 {
+        let chosen = state.begin(&keys, &installed, now, false, true);
+        let mut refused = false;
+        let mut used = 0;
+        for key in &chosen {
+            if !reserve_fallback(false, false, &mut used) {
+                state.defer(key);
+                continue;
+            }
+            if refused || budget.take(Priority::Discovery, now).is_err() {
+                refused = true;
+                refusals += 1;
+                state.defer(key);
+                assert_eq!(state.records.get(key).and_then(|record| record.attempted_at), None, "a refusal leaves the key where it was");
+                continue;
+            }
+            state.attempt(key, now);
+            state.outcome(key, now, &Outcome::NoCompatibleBuild);
+        }
+        state.finish();
+        now += 60 * 60;
+    }
+    for key in &keys {
+        assert!(
+            state.records.get(key).and_then(|record| record.verified_at).is_some_and(|at| at < NOW + 6 * 60 * 60),
+            "{key} was verified within six hours"
+        );
+    }
+    assert_eq!(refusals, DISCOVERY_PER_SWEEP, "the refused sweep deferred its whole choice");
+}
+
+#[test]
+fn an_installed_copy_is_due_hourly_while_an_app_nobody_installed_waits_six() {
+    let installed: BTreeSet<String> = ["installed".to_string()].into();
+    let keys: Vec<String> = ["installed", "other"].iter().map(|key| key.to_string()).collect();
+    let mut state = State::default();
+    for key in &keys {
+        state.records.insert(key.clone(), Record { attempted_at: Some(NOW - 61 * 60), ..Record::default() });
+    }
+    assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["installed".to_string()]);
+    state.finish();
+    assert!(state.begin(&keys, &installed, NOW + EVERY, false, true).contains(&"other".to_string()));
+}
+
+#[test]
+fn a_sweep_takes_installed_first_then_never_attempted_then_the_longest_waiting() {
+    let installed: BTreeSet<String> = ["installed".to_string()].into();
+    let keys: Vec<String> = ["stale", "fresh", "installed", "never"].iter().map(|key| key.to_string()).collect();
+    let mut state = State::default();
+    // Past the six-hour discovery cadence, or they would not be due at all; the installed copy is
+    // due on its own hourly clock.
+    for (key, ago) in [("stale", 8 * 60 * 60), ("fresh", 7 * 60 * 60), ("installed", 2 * 60 * 60)] {
+        state.records.insert(key.to_string(), Record { attempted_at: Some(NOW - ago), ..Record::default() });
+    }
+    assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["installed", "never", "stale", "fresh"]);
+    state.finish();
+    // Catalog discovery can inspect every due app; only fallback uses the old three-app allowance.
+    let mut state = State::default();
+    let keys: Vec<String> = ["a", "b", "c", "d", "e"].iter().map(|key| key.to_string()).collect();
+    assert_eq!(state.begin(&keys, &BTreeSet::new(), NOW, false, true), vec!["a", "b", "c", "d", "e"]);
+    let mut used = 0;
+    assert!((0..3).all(|_| reserve_fallback(false, false, &mut used)));
+    assert!(!reserve_fallback(false, false, &mut used));
+    assert!(reserve_fallback(false, true, &mut used));
+    assert!(reserve_fallback(true, false, &mut used));
+}
+
+#[test]
+fn a_deferred_key_keeps_its_place_and_finish_forgets_its_old_values() {
+    let installed = BTreeSet::new();
+    let keys: Vec<String> = ["a", "b", "c", "d"].iter().map(|key| key.to_string()).collect();
+    let mut state = State::default();
+    assert_eq!(state.begin(&keys, &installed, NOW, false, true), vec!["a", "b", "c", "d"]);
+    state.attempt("a", NOW);
+    state.defer("b");
+    state.defer("c");
+    state.defer("d");
+    assert_eq!(state.records.get("b").and_then(|record| record.attempted_at), None, "the refusal never happened");
+    assert!(state.deferred_from.contains_key("b"), "the sweep remembers what it stamped");
+    state.finish();
+    assert!(state.deferred_from.is_empty(), "finish forgets the previous values");
+    assert_eq!(state.begin(&keys, &installed, NOW + 60, false, true), vec!["b", "c", "d"]);
+}
+
+/// A deadline the apps ahead of this one used up is the launcher's own limit, not this app's
+/// failure: the outcome is marked the way a budget refusal is, so the sweep defers this app and
+/// everyone behind it instead of costing them their place.
+#[test]
+fn a_deadline_used_up_before_a_lookup_starts_is_a_launcher_refusal() {
+    let elapsed = Cell::new(MAX_TIME);
+    let mut calls = 0;
+    let outcome = lookup(
+        app(),
+        platform(),
+        NOW,
+        &mut |_, _, _, _| {
+            calls += 1;
+            Ok(Some(b"[]".to_vec()))
+        },
+        &|| elapsed.get(),
+        &|| true,
+    );
+    match outcome {
+        Outcome::Indeterminate(error) => {
+            assert!(error.over_budget, "a deadline refusal is deferred, not saved as this app's failure");
+            assert!(error.why.contains("before this lookup started"), "{}", error.why);
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    assert_eq!(calls, 0, "the deadline is checked before any request is made");
+}
+
+/// A deadline an app spends itself is its own failure, not the launcher's: it records that and waits
+/// its normal cadence. Deferring it would put a slow app back at the front of the queue every sweep.
+#[test]
+fn a_deadline_an_app_spends_itself_is_its_own_failure() {
+    let elapsed = Cell::new(Duration::ZERO);
+    let mut calls = 0;
+    let outcome = lookup(
+        app(),
+        platform(),
+        NOW,
+        &mut |_, _, _, _| {
+            calls += 1;
+            elapsed.set(MAX_TIME);
+            Ok(Some(b"[]".to_vec()))
+        },
+        &|| elapsed.get(),
+        &|| true,
+    );
+    match outcome {
+        Outcome::Indeterminate(error) => {
+            assert!(!error.over_budget, "the app that spent the deadline is not deferred");
+            assert!(error.why.contains("elapsed-time budget"), "{}", error.why);
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    assert_eq!(calls, 1);
+}
+
+/// A sweep that began before Nightly was switched off must not put a record back through `defer`:
+/// `invalidate` forgets the snapshot, so the record stays incomplete until a real lookup verifies it.
+#[test]
+fn invalidate_forgets_a_sweeps_deferred_snapshot() {
+    let installed = BTreeSet::new();
+    let keys: Vec<String> = ["a", "b"].iter().map(|key| key.to_string()).collect();
+    let mut state = State::default();
+    state.records.insert("a".into(), Record { verified_at: Some(NOW - 60), complete: true, ..Record::default() });
+    assert!(state.begin(&keys, &installed, NOW, true, true).contains(&"a".to_string()));
+    state.invalidate();
+    state.defer("a");
+    let record = state.records.get("a").unwrap();
+    assert!(!record.complete, "a deferral cannot revive a record across a generation change");
+    assert_eq!(record.attempted_at, None, "the unstarted app remains due");
+}
+
+#[test]
+fn persisted_scheduling_keys_keep_each_apps_existing_identity() {
+    assert_eq!(
+        key(app(), Platform { os: Os::Linux, arch: Arch::X64 }),
+        "craft-nightly/v1:storytold/photocraft:photocraft:Linux:X64:PhotoCraftLinuxV1"
+    );
+    assert_eq!(
+        key(app(), Platform { os: Os::Windows, arch: Arch::X64 }),
+        "craft-nightly/v1:storytold/photocraft:photocraft:Windows:X64:PhotoCraftWindowsV1"
+    );
+    assert_eq!(
+        key(app(), Platform { os: Os::MacOs, arch: Arch::Arm64 }),
+        "craft-nightly/v1:storytold/photocraft:photocraft:MacOs:Arm64:PhotoCraftMacV1"
+    );
+    let cad = CraftApp::by_id("cadcraft").unwrap();
+    assert_eq!(key(cad, Platform { os: Os::Linux, arch: Arch::X64 }), "craft-nightly/v1:storytold/cadcraft:cadcraft:Linux:X64:CADCraftLinuxV1");
+    assert_eq!(key(cad, Platform { os: Os::Windows, arch: Arch::X64 }), "craft-nightly/v1:storytold/cadcraft:cadcraft:Windows:X64:CADCraftWindowsV1");
+    // An app with no Nightly row keeps its one shared unsupported identity, as before the table.
+    let pdf = CraftApp::by_id("pdfcraft").unwrap();
+    assert_eq!(key(pdf, Platform { os: Os::Linux, arch: Arch::X64 }), "craft-nightly/v1:storytold/pdfcraft:pdfcraft:Linux:X64:unsupported");
 }
 
 /// Entirely synthetic metadata/body fixture; its payload is never downloaded or executed.
@@ -250,13 +447,15 @@ fn metadata_keeps_attempt_and_verified_success_distinct_without_body_or_token_ca
     let paths = Paths::under(&temp.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
     let key = key(app(), platform());
     let mut state = State::default();
-    assert_eq!(state.begin(std::slice::from_ref(&key), NOW, false, true).as_slice(), std::slice::from_ref(&key));
+    assert_eq!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW, false, true).as_slice(), std::slice::from_ref(&key));
+    state.attempt(&key, NOW);
     state.persist_outcome(&paths, &key, NOW, &Outcome::Verified(Box::new(verified(20)))).unwrap();
     state.finish();
     assert!(state.fresh(&key, NOW));
     let later = NOW + EVERY;
-    assert!(!state.begin(std::slice::from_ref(&key), later, false, true).is_empty());
-    let error = Outcome::Indeterminate(NightlyHttpError { why: "offline".into(), retry_at: Some(later + 120) });
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), later, false, true).is_empty());
+    state.attempt(&key, later);
+    let error = Outcome::Indeterminate(NightlyHttpError { over_budget: false, why: "offline".into(), retry_at: Some(later + 120) });
     let record = state.persist_outcome(&paths, &key, later, &error).unwrap();
     state.finish();
     assert_eq!(record.attempted_at, Some(later));
@@ -277,21 +476,31 @@ fn metadata_keeps_attempt_and_verified_success_distinct_without_body_or_token_ca
 fn six_hour_boundaries_manual_coalescing_and_clock_rollback_are_explicit() {
     let key = key(app(), platform());
     let mut state = State::default();
-    assert!(state.begin(std::slice::from_ref(&key), NOW, false, false).is_empty());
-    assert!(!state.begin(std::slice::from_ref(&key), NOW, false, true).is_empty());
+    assert!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW, false, false).is_empty());
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), NOW, false, true).is_empty());
+    state.attempt(&key, NOW);
     state.finish();
-    assert!(state.begin(std::slice::from_ref(&key), NOW + EVERY - 1, false, true).is_empty());
-    assert!(state.begin(std::slice::from_ref(&key), NOW + 59, true, true).is_empty());
-    assert!(!state.begin(std::slice::from_ref(&key), NOW + 60, true, true).is_empty());
+    assert!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW + EVERY - 1, false, true).is_empty());
+    assert!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 59, true, true).is_empty());
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 60, true, true).is_empty());
+    state.attempt(&key, NOW + 60);
     state.finish();
-    assert!(!state.begin(std::slice::from_ref(&key), NOW + 60 + EVERY, false, true).is_empty());
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 60 + EVERY, false, true).is_empty());
+    state.attempt(&key, NOW + 60 + EVERY);
     state.finish();
-    assert!(!state.begin(std::slice::from_ref(&key), NOW - 60, false, true).is_empty(), "future attempts are stale after rollback");
+    assert!(
+        !state.begin(std::slice::from_ref(&key), &Default::default(), NOW - 60, false, true).is_empty(),
+        "future attempts are stale after rollback"
+    );
+    state.attempt(&key, NOW - 60);
     state.finish();
-    state.outcome(&key, NOW, &Outcome::Indeterminate(NightlyHttpError { why: "limited".into(), retry_at: Some(NOW + 120) }));
-    assert!(state.begin(std::slice::from_ref(&key), NOW - 120, true, true).is_empty(), "rollback never bypasses an absolute server backoff");
-    assert!(state.begin(std::slice::from_ref(&key), NOW + 119, true, true).is_empty());
-    assert!(!state.begin(std::slice::from_ref(&key), NOW + 120, true, true).is_empty());
+    state.outcome(&key, NOW, &Outcome::Indeterminate(NightlyHttpError { over_budget: false, why: "limited".into(), retry_at: Some(NOW + 120) }));
+    assert!(
+        state.begin(std::slice::from_ref(&key), &Default::default(), NOW - 120, true, true).is_empty(),
+        "rollback never bypasses an absolute server backoff"
+    );
+    assert!(state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 119, true, true).is_empty());
+    assert!(!state.begin(std::slice::from_ref(&key), &Default::default(), NOW + 120, true, true).is_empty());
 }
 
 #[test]
@@ -304,7 +513,7 @@ fn simultaneous_manual_calls_share_one_inflight_lease() {
             let barrier = barrier.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                !state.lock().unwrap().begin(&[key(app(), platform())], NOW, true, true).is_empty()
+                !state.lock().unwrap().begin(&[key(app(), platform())], &Default::default(), NOW, true, true).is_empty()
             })
         })
         .collect();
@@ -493,14 +702,14 @@ fn malformed_existing_metadata_is_not_fresh_absence_and_requires_valid_reload() 
     let paths = Paths::under(&temp.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
     let row = key(app(), platform());
     let mut fresh = State::load(&paths);
-    assert!(!fresh.begin(std::slice::from_ref(&row), NOW, false, true).is_empty());
+    assert!(!fresh.begin(std::slice::from_ref(&row), &Default::default(), NOW, false, true).is_empty());
     fresh.save(&paths).unwrap();
     fresh.finish();
     let valid = std::fs::read(paths.nightly_checks()).unwrap();
     std::fs::write(paths.nightly_checks(), b"malformed existing metadata").unwrap();
     let mut blocked = State::load(&paths);
     assert!(blocked.record(&row).message.is_some());
-    assert!(blocked.begin(std::slice::from_ref(&row), NOW + EVERY, true, true).is_empty());
+    assert!(blocked.begin(std::slice::from_ref(&row), &Default::default(), NOW + EVERY, true, true).is_empty());
     assert!(blocked.save(&paths).is_err());
     assert!(blocked.prepare(&paths).is_err());
     assert_eq!(std::fs::read(paths.nightly_checks()).unwrap(), b"malformed existing metadata");
@@ -509,7 +718,7 @@ fn malformed_existing_metadata_is_not_fresh_absence_and_requires_valid_reload() 
     std::fs::write(paths.nightly_checks(), valid).unwrap();
     blocked.prepare(&paths).unwrap();
     assert!(blocked.record(&row).message.is_none());
-    assert!(!blocked.begin(std::slice::from_ref(&row), NOW + EVERY, true, true).is_empty());
+    assert!(!blocked.begin(std::slice::from_ref(&row), &Default::default(), NOW + EVERY, true, true).is_empty());
 }
 
 #[test]
@@ -594,4 +803,455 @@ fn shared_selection_unconfigured_platform_lookup_refuses_before_any_network_body
     );
     assert!(matches!(result, Outcome::Indeterminate(_)));
     assert_eq!(requests, 0);
+}
+
+#[test]
+fn signed_catalog_selects_all_due_apps_without_the_fallback_cap() {
+    let keys: Vec<_> = (0..15).map(|index| format!("app-{index:02}")).collect();
+    let mut state = State::default();
+    assert_eq!(state.begin(&keys, &BTreeSet::new(), NOW, false, true), keys);
+}
+
+pub(crate) fn catalog_fixture(tag: &str, linux: bool) -> (artcraft_launcher_core::feed::Feed, String, Vec<u8>) {
+    use artcraft_launcher_core::feed::{Feed, FeedApp, FeedRelease};
+    let (item, url, body) = candidate(tag, linux);
+    let release = artcraft_launcher_core::release::parse_github_release(&item.to_string(), app().repo).unwrap();
+    let feed = Feed {
+        channel_aware: true,
+        last_fetched: Some(NOW),
+        apps: [(
+            app().id.into(),
+            FeedApp {
+                repo: Some(app().repo.into()),
+                fetched_at: Some(NOW),
+                nightly: Some(FeedRelease {
+                    tag: release.tag,
+                    published_at: release.published_at,
+                    reconciled_at: Some(NOW),
+                    prerelease: true,
+                    assets: release.assets.into_iter().map(|a| (a.name, a.size, a.url, a.sha256)).collect(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )]
+        .into(),
+        ..Default::default()
+    };
+    (feed, url, body)
+}
+
+#[test]
+fn complete_catalog_candidate_uses_only_descriptor_then_reuses_same_verified_identity() {
+    let (feed, descriptor_url, body) = catalog_fixture(&tag(20), true);
+    // The fixture represents an already verified signed document. Signature verification is
+    // separately tested at the ingestion boundary; this tests the native selection boundary.
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let mut calls = Vec::new();
+    let verified = verify_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        (release.clone(), None),
+        &mut |url, _, _, _| {
+            calls.push(url.to_owned());
+            Ok(Some(body.clone()))
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(calls, [descriptor_url]);
+    assert_eq!(verified.release().tag, tag(20));
+    let again = verify_catalog(
+        app(),
+        platform(),
+        NOW + 2,
+        (release, Some(&verified)),
+        &mut |_, _, _, _| panic!("unchanged catalog needs no GitHub request"),
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(again.release().tag, tag(20));
+}
+
+#[test]
+fn stale_missing_or_incomplete_catalog_and_a_newer_remembered_tag_require_github() {
+    let (mut feed, _, _) = catalog_fixture(&tag(20), true);
+    assert!(catalog_candidate(&feed, app(), NOW + 2 * 3600 + 1, None).is_none());
+    assert!(catalog_candidate(&feed, app(), NOW + 1, Some(&tag(30))).is_none());
+    feed.apps.get_mut(app().id).unwrap().nightly.as_mut().unwrap().published_at = None;
+    assert!(catalog_candidate(&feed, app(), NOW + 1, None).is_none());
+    feed.apps.get_mut(app().id).unwrap().nightly = None;
+    assert!(catalog_candidate(&feed, app(), NOW + 1, None).is_none());
+}
+
+#[test]
+fn catalog_without_the_current_platform_target_is_not_authoritative_absence() {
+    let (feed, _, body) = catalog_fixture(&tag(20), false);
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let selected =
+        verify_catalog(app(), platform(), NOW + 1, (release, None), &mut |_, _, _, _| Ok(Some(body.clone())), &|| Duration::ZERO, &|| true).unwrap();
+    assert!(selected.is_none(), "caller must fall back to other GitHub candidates");
+}
+
+#[test]
+fn catalog_uses_each_admitted_app_and_platform_row() {
+    use artcraft_launcher_core::feed::{Feed, FeedApp, FeedRelease};
+    let mut checked = 0;
+    for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|app| app.has_separate_nightly_channel()) {
+        for (platform, os, arch, format, suffix) in [
+            (Platform { os: Os::Linux, arch: Arch::X64 }, "linux", "x86_64", "tar_gz", "linux-x86_64-nightly.tar.gz"),
+            (Platform { os: Os::MacOs, arch: Arch::Arm64 }, "macos", "aarch64", "portable_zip", "macos-aarch64-nightly.zip"),
+            (Platform { os: Os::Windows, arch: Arch::X64 }, "windows", "x86_64", "portable_zip", "windows-x86_64-nightly.zip"),
+        ] {
+            let adapter = crate::nightly_profile::admit_new(app, platform).unwrap();
+            let tag = tag(20);
+            let version = version::parse(&tag).unwrap();
+            let prefix = format!("https://github.com/{}/releases/download/{tag}/", app.repo);
+            let name = format!("{}-{version}-{suffix}", app.id);
+            let url = format!("{prefix}{name}");
+            let sha = "a".repeat(64);
+            let mut artifact = json!({"target":{"os":os,"arch":arch,"format":format}, "asset":{"name":name,"url":url,"size":123,"sha256":sha},"isolation":{"package_identity":format!("ai.storyteller.{}.nightly",app.id),"profile_contract":"nightly","profile_version":1,"associations":"none"}});
+            let mut assets = vec![(name.clone(), 123, url, Some(sha))];
+            if os == "linux" {
+                let signature = format!("{name}.asc");
+                let url = format!("{prefix}{signature}");
+                let sha = "b".repeat(64);
+                artifact["signature"] = json!({"name":signature,"url":url,"size":123,"sha256":sha});
+                assets.push((signature, 123, url, Some(sha)));
+            }
+            let descriptor = serde_json::to_vec(&json!({"schema":"craft-nightly/v2","channel":"nightly","app":app.id,"repository":app.repo,"tag":tag,"source_commit":"abcdefabcdefabcdefabcdefabcdefabcdefabcd","published_at":NOW,"artifacts":[artifact]})).unwrap();
+            let descriptor_url = format!("{prefix}NIGHTLY.json");
+            assets.push(("NIGHTLY.json".into(), descriptor.len() as u64, descriptor_url.clone(), Some(format!("{:x}", Sha256::digest(&descriptor)))));
+            let feed = Feed {
+                channel_aware: true,
+                last_fetched: Some(NOW),
+                apps: [(
+                    app.id.into(),
+                    FeedApp {
+                        repo: Some(app.repo.into()),
+                        fetched_at: Some(NOW),
+                        nightly: Some(FeedRelease {
+                            tag,
+                            published_at: Some(NOW),
+                            reconciled_at: Some(NOW),
+                            prerelease: true,
+                            assets,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                )]
+                .into(),
+                ..Default::default()
+            };
+            let release = catalog_candidate(&feed, app, NOW + 1, None).unwrap();
+            let result = verify_catalog(
+                app,
+                platform,
+                NOW + 1,
+                (release, None),
+                &mut |url, _, _, _| {
+                    assert_eq!(url, descriptor_url);
+                    Ok(Some(descriptor.clone()))
+                },
+                &|| Duration::ZERO,
+                &|| true,
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(result.adapter(), adapter);
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 3 * artcraft_launcher_core::hosted_catalog::apps().iter().filter(|app| app.has_separate_nightly_channel()).count());
+}
+
+#[test]
+fn catalog_first_lookup_preserves_fallback_selection_and_the_request_allowance() {
+    let (feed, descriptor_url, body) = catalog_fixture(&tag(20), true);
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let mut used = DISCOVERY_PER_SWEEP;
+    let mut calls = Vec::new();
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy {
+            candidate: Some(release.clone()),
+            previous: None,
+            backoff: None,
+            github_blocked: false,
+            before_lookup: &mut || Ok(()),
+            manual: false,
+            installed: false,
+            fallback_used: &mut used,
+        },
+        &mut |url, _, _, _| {
+            calls.push(url.to_owned());
+            Ok(Some(body.clone()))
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert_eq!(answer.1, Origin::ArtCraftApi);
+    let Outcome::Verified(verified) = answer.0 else { panic!("catalog candidate must verify") };
+    assert_eq!(calls, [descriptor_url]);
+    assert_eq!(used, DISCOVERY_PER_SWEEP);
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 2,
+        LookupPolicy {
+            candidate: Some(release),
+            previous: Some(&verified),
+            backoff: None,
+            github_blocked: false,
+            before_lookup: &mut || Ok(()),
+            manual: false,
+            installed: false,
+            fallback_used: &mut used,
+        },
+        &mut |_, _, _, _| panic!("unchanged candidate needs no request"),
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert!(matches!(answer, (Outcome::Verified(_), Origin::ArtCraftApi)));
+    assert!(
+        lookup_prefer_catalog(
+            app(),
+            platform(),
+            NOW + 2,
+            LookupPolicy {
+                candidate: None,
+                previous: None,
+                backoff: None,
+                github_blocked: false,
+                before_lookup: &mut || Ok(()),
+                manual: false,
+                installed: false,
+                fallback_used: &mut used
+            },
+            &mut |_, _, _, _| panic!("cap must defer missing catalog entries"),
+            &|| Duration::ZERO,
+            &|| true
+        )
+        .is_none()
+    );
+
+    let (api_row, api_descriptor, api_body) = candidate(&tag(10), true);
+    let data = fixtures(vec![api_row], vec![(api_descriptor, api_body)]);
+    let (unsupported_feed, unsupported_url, unsupported_body) = catalog_fixture(&tag(20), false);
+    let unsupported = catalog_candidate(&unsupported_feed, app(), NOW + 1, None).unwrap();
+    let mut used = 0;
+    let mut asked = Vec::new();
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy {
+            candidate: Some(unsupported),
+            previous: None,
+            backoff: None,
+            github_blocked: false,
+            before_lookup: &mut || Ok(()),
+            manual: false,
+            installed: false,
+            fallback_used: &mut used,
+        },
+        &mut |url, _, _, _| {
+            asked.push(url.to_owned());
+            if url == unsupported_url { Ok(Some(unsupported_body.clone())) } else { Ok(data.get(url).cloned()) }
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert_eq!(answer.1, Origin::GitHub);
+    assert!(matches!(answer.0,Outcome::Verified(v) if v.release().tag==tag(10)));
+    assert_eq!(used, 1);
+    assert_eq!(asked[0], unsupported_url);
+    assert_eq!(asked[1], api(1));
+}
+
+#[test]
+fn catalog_first_lookup_respects_backoff_and_falls_back_if_descriptor_is_unavailable() {
+    let (feed, _, _) = catalog_fixture(&tag(20), true);
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let mut used = 0;
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy {
+            candidate: Some(release.clone()),
+            previous: None,
+            backoff: Some(NOW + 600),
+            github_blocked: false,
+            before_lookup: &mut || panic!("backoff is not an attempt"),
+            manual: true,
+            installed: false,
+            fallback_used: &mut used,
+        },
+        &mut |_, _, _, _| panic!("no network during backoff"),
+        &|| Duration::ZERO,
+        &|| true,
+    );
+    assert!(answer.is_none());
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy {
+            candidate: Some(release.clone()),
+            previous: None,
+            backoff: None,
+            github_blocked: false,
+            before_lookup: &mut || Ok(()),
+            manual: true,
+            installed: false,
+            fallback_used: &mut used,
+        },
+        &mut |_, _, _, _| Err(NightlyHttpError { over_budget: false, why: "server backoff".into(), retry_at: Some(NOW + 600) }),
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert!(matches!(answer,(Outcome::Indeterminate(e),Origin::ArtCraftApi) if e.retry_at==Some(NOW+600)));
+    let mut calls = Vec::new();
+    let answer = lookup_prefer_catalog(
+        app(),
+        platform(),
+        NOW + 1,
+        LookupPolicy {
+            candidate: Some(release),
+            previous: None,
+            backoff: None,
+            github_blocked: false,
+            before_lookup: &mut || Ok(()),
+            manual: true,
+            installed: false,
+            fallback_used: &mut used,
+        },
+        &mut |url, _, _, _| {
+            calls.push(url.to_owned());
+            if url == api(1) { Ok(Some(b"[]".to_vec())) } else { Ok(None) }
+        },
+        &|| Duration::ZERO,
+        &|| true,
+    )
+    .unwrap();
+    assert!(matches!(answer, (Outcome::NoCompatibleBuild, Origin::GitHub)));
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1], api(1));
+}
+
+#[test]
+fn catalog_descriptor_failure_counts_as_attempt_when_fallback_is_unavailable() {
+    let (feed, descriptor_url, _) = catalog_fixture(&tag(20), true);
+    let release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    for github_blocked in [false, true] {
+        let mut used = if github_blocked { 0 } else { DISCOVERY_PER_SWEEP };
+        let mut attempts = 0;
+        let mut requests = 0;
+        let answer = lookup_prefer_catalog(
+            app(),
+            platform(),
+            NOW + 1,
+            LookupPolicy {
+                candidate: Some(release.clone()),
+                previous: None,
+                backoff: None,
+                github_blocked,
+                before_lookup: &mut || {
+                    attempts += 1;
+                    Ok(())
+                },
+                manual: false,
+                installed: false,
+                fallback_used: &mut used,
+            },
+            &mut |url, _, _, _| {
+                assert_eq!(url, descriptor_url);
+                requests += 1;
+                Ok(None)
+            },
+            &|| Duration::ZERO,
+            &|| true,
+        );
+        assert!(matches!(answer, Some((Outcome::Indeterminate(error), Origin::ArtCraftApi)) if error.why.contains("not found")));
+        assert_eq!((attempts, requests), (1, 1));
+    }
+}
+
+#[test]
+fn generated_catalog_time_does_not_refresh_old_reconciliation() {
+    let (mut feed, _, _) = catalog_fixture(&tag(20), true);
+    let now = NOW + 3 * 3600;
+    feed.last_fetched = Some(now);
+    let entry = feed.apps.get_mut(app().id).unwrap();
+    entry.fetched_at = Some(now);
+    assert!(catalog_candidate(&feed, app(), now, None).is_none());
+    feed.apps.get_mut(app().id).unwrap().nightly.as_mut().unwrap().reconciled_at = Some(now);
+    assert!(catalog_candidate(&feed, app(), now, None).is_some());
+    feed.apps.get_mut(app().id).unwrap().nightly.as_mut().unwrap().reconciled_at = None;
+    assert!(catalog_candidate(&feed, app(), now, None).is_none());
+}
+
+#[test]
+fn queued_apps_keep_previous_attempts_across_process_exit_and_server_backoff() {
+    let temp = tempfile::tempdir().unwrap();
+    let paths = Paths::under(&temp.path().canonicalize().unwrap()).for_channel(artcraft_launcher_core::nightly::InstallChannel::Nightly);
+    let keys = vec!["first".to_string(), "second".to_string(), "third".to_string()];
+    let mut state = State::default();
+    assert_eq!(state.begin(&keys, &Default::default(), NOW, false, true), keys);
+    state.attempt("first", NOW);
+    state
+        .persist_outcome(
+            &paths,
+            "first",
+            NOW,
+            &Outcome::Indeterminate(NightlyHttpError { over_budget: false, why: "offline".into(), retry_at: Some(NOW + 120) }),
+        )
+        .unwrap();
+    // Simulate a restart before the other two queued apps reached a lookup.
+    let mut restarted = State::load(&paths);
+    assert_eq!(restarted.record("first").attempted_at, Some(NOW));
+    assert_eq!(restarted.record("second").attempted_at, None);
+    assert!(restarted.begin(&keys, &Default::default(), NOW + 119, false, true).is_empty());
+    assert_eq!(restarted.begin(&keys, &Default::default(), NOW + 120, false, true), vec!["second", "third"]);
+}
+
+#[test]
+fn changed_descriptor_metadata_on_same_tag_does_not_reuse_old_token() {
+    let (feed, _, body) = catalog_fixture(&tag(20), true);
+    let mut release = catalog_candidate(&feed, app(), NOW + 1, None).unwrap();
+    let verified =
+        verify_catalog(app(), platform(), NOW + 1, (release.clone(), None), &mut |_, _, _, _| Ok(Some(body.clone())), &|| Duration::ZERO, &|| true)
+            .unwrap()
+            .unwrap();
+    release.assets.iter_mut().find(|a| a.name == "NIGHTLY.json").unwrap().sha256 = Some("c".repeat(64));
+    let mut calls = 0;
+    assert!(
+        verify_catalog(
+            app(),
+            platform(),
+            NOW + 2,
+            (release, Some(&verified)),
+            &mut |_, _, _, _| {
+                calls += 1;
+                Ok(Some(body.clone()))
+            },
+            &|| Duration::ZERO,
+            &|| true
+        )
+        .is_err()
+    );
+    assert_eq!(calls, 1);
 }

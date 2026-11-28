@@ -77,6 +77,16 @@ fn nightly_job_progress(phase: JobPhase) -> (Option<f32>, String) {
     }
 }
 
+/// The line the Developer Builds page shows while the launcher's own GitHub budget is holding the
+/// next check back: the same "next check" wording the stable page uses for the same kind of hold.
+/// `None` when there is no hold in the future, so the page says what it knows.
+fn held_back_line(until: Option<i64>, now: i64) -> Option<String> {
+    use crate::i18n::fmt;
+    let until = until.filter(|until| *until > now)?;
+    let (hour, minute) = crate::local_time::clock(until);
+    Some(fmt(tl!("Next GitHub check at {time}"), &[("time", &format!("{hour:02}:{minute:02}"))]))
+}
+
 fn nightly_ago(at: i64, now: i64) -> String {
     use crate::i18n::tn;
     use artcraft_launcher_core::time::{TimeAgo, ago_kind};
@@ -137,6 +147,9 @@ pub(crate) struct NightlyState {
     pub entries: Vec<AppEntry>,
     options: Option<BackendOptions>,
     checked_at: Option<i64>,
+    /// When the launcher's own GitHub budget will let the next sweep ask again, from the backend's
+    /// `CheckFinished`. The page says it is waiting for GitHub instead of reporting "nothing found".
+    held_back_until: Option<i64>,
     attempted_at: Option<i64>,
     // Request throttling is not evidence that Native actually attempted a lookup.
     requested_at: Option<i64>,
@@ -167,6 +180,7 @@ impl NightlyState {
                 .collect(),
             options: None,
             checked_at: None,
+            held_back_until: None,
             attempted_at: None,
             requested_at: None,
             statuses: BTreeMap::new(),
@@ -214,7 +228,14 @@ impl NightlyState {
 
     pub fn send(&mut self, command: Command, enabled: bool) {
         if !self.discovering(enabled)
-            && matches!(&command, Command::Install { .. } | Command::InstallAll { .. } | Command::Replace { .. } | Command::CheckForUpdates { .. })
+            && matches!(
+                &command,
+                Command::Install { .. }
+                    | Command::InstallChosen { .. }
+                    | Command::InstallAll { .. }
+                    | Command::Replace { .. }
+                    | Command::CheckForUpdates { .. }
+            )
         {
             return; // Consent is not inferred from installed copies or from an old pending click.
         }
@@ -231,8 +252,16 @@ impl NightlyState {
         let events = self.backend.as_mut().map_or_else(Vec::new, |backend| backend.poll());
         for event in events {
             match event {
-                Event::CheckStarted => self.checking = true,
-                Event::CheckFinished { .. } => self.checking = false,
+                Event::CheckStarted => {
+                    self.checking = true;
+                    self.held_back_until = None;
+                }
+                Event::CheckFinished { rate_limited_until, .. } => {
+                    self.checking = false;
+                    // Only a launcher-budget hold is worth saying out loud on this page: a server's
+                    // own backoff arrives through each app's status.
+                    self.held_back_until = rate_limited_until;
+                }
                 Event::NightlyStatus { app, mut status } => {
                     if self.entries.iter().any(|entry| entry.app.id == app) {
                         status.message = status.message.map(|message| message.chars().take(512).collect());
@@ -298,12 +327,20 @@ impl NightlyState {
             }
         }
         let Some(backend) = &mut self.backend else { return };
-        // Nightly has its own six-hour policy, independent of Stable's user preference.
-        // Poll persisted metadata before requesting work. Native remains the final gate,
-        // including server backoff and manual request coalescing.
+        // Nightly asks on its own hourly clock, independent of Stable's preference; the backend
+        // decides which apps are due. Poll persisted metadata before requesting work; Native remains
+        // the final gate, including the budget, server backoff and manual request coalescing.
         let now = backend.now();
         // Like Native, treat an attempt in the future after clock rollback as stale.
-        let due = self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 6 * 60 * 60);
+        let hourly_due = self.attempted_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60 * 60);
+        // A hold the launcher's own budget imposed decides the next check by itself: while it runs,
+        // nothing is asked even if the hourly gate would say yes; once it passes, ask at once rather
+        // than wait out the hour of a sweep that never ran. Consent, coalescing and server backoff
+        // still guard the request. A sweep that completed without a hold keeps the hourly gate.
+        let due = match self.held_back_until {
+            Some(until) => now >= until,
+            None => hourly_due,
+        };
         // Unacknowledged requests are coalesced briefly, not treated as actual attempts.
         // A future request permits one replacement, which resets this baseline to now.
         let request_allowed = self.requested_at.is_none_or(|at| now < at || now.saturating_sub(at) >= 60);
@@ -311,6 +348,8 @@ impl NightlyState {
         if self.available && settings.nightly_enabled && !self.checking && due && request_allowed && retry_allowed {
             // A request is not a successful verification, including when Native coalesces it.
             self.requested_at = Some(now);
+            // The hold has been answered: a fresh hold, if any, arrives with the next CheckFinished.
+            self.held_back_until = None;
             backend.send(Command::CheckForUpdates { force: false });
         }
     }
@@ -332,43 +371,26 @@ impl LauncherUi {
             self.nightly.focus_tab = false;
             return None;
         }
-        let font = egui::TextStyle::Button.resolve(ui.style());
-        let width: f32 = [tl!("Stable"), tl!("Pre-Release")]
-            .iter()
-            .map(|label| ui.painter().layout_no_wrap((*label).into(), font.clone(), Tokens::get(ui.ctx()).ink).size().x + 24.0)
-            .sum();
+        let width: f32 = [tl!("Stable"), tl!("Developer Builds")].iter().map(|label| channel_label_width(ui, label)).sum();
         Some(width)
     }
 
     pub(crate) fn channel_navigation(&mut self, ui: &mut Ui) {
-        let tokens = Tokens::get(ui.ctx());
-        ui.scope(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            ui.spacing_mut().button_padding.x = 12.0;
-            ui.visuals_mut().selection.bg_fill = tokens.invert_bg;
-            ui.visuals_mut().selection.stroke.color = tokens.invert_fg;
-            ui.horizontal(|ui| {
-                let stable = RichText::new(tl!("Stable")).color(if self.nightly.active { tokens.ink } else { tokens.invert_fg });
-                ui.selectable_value(&mut self.nightly.active, false, stable);
-                let prerelease = RichText::new(tl!("Pre-Release")).color(if self.nightly.active { tokens.invert_fg } else { tokens.ink });
-                let tab = ui.selectable_value(&mut self.nightly.active, true, prerelease);
-                if self.nightly.focus_tab {
-                    tab.request_focus();
-                    self.nightly.focus_tab = false;
-                }
-            });
-        });
+        let tab = channel_switch(ui, &mut self.nightly.active, [tl!("Stable"), tl!("Developer Builds")]);
+        if self.nightly.focus_tab {
+            tab.request_focus();
+            self.nightly.focus_tab = false;
+        }
     }
 
     /// Align the actions to the title's right when their translated labels fit.
     /// Allocate left to right so visual and keyboard order remain the same.
     fn nightly_page_heading(&mut self, ui: &mut Ui) -> bool {
-        let heading = tl!("Pre-Release");
-        let labels = [tl!("Check for updates"), tl!("Turn off pre-release builds")];
+        let heading = tl!("Developer Builds");
+        let labels = [tl!("Check for updates"), tl!("Turn off developer builds")];
         let color = Tokens::get(ui.ctx()).ink;
-        // Query the same stock style as Button: this SDK's default uses Body,
-        // not TextStyle::Button. A narrower estimate would wrap the second action.
-        let button_style: egui::widget_style::ButtonStyle = ui.widget_style(ui.scope_id().with("nightly-heading-actions"), &Default::default());
+        // The same stock style as Button: a narrower estimate would wrap the second action.
+        let button_style = stock_button_style(ui);
         let button_font = button_style.atom_layout.text_style.font_id;
         let button_margin = button_style.atom_layout.frame.total_margin().sum().x;
         let actions_width: f32 =
@@ -396,7 +418,7 @@ impl LauncherUi {
             if ui.add_enabled(!self.nightly.checking && retry_allowed, egui::Button::new(tl!("Check for updates"))).clicked() {
                 self.act(UiAction::NightlyCommand(Command::CheckForUpdates { force: true }));
             }
-            if ui.button(tl!("Turn off pre-release builds")).clicked() {
+            if ui.button(tl!("Turn off developer builds")).clicked() {
                 self.act(UiAction::NightlyConsent(false));
             }
         });
@@ -405,23 +427,23 @@ impl LauncherUi {
     pub(crate) fn nightly_page(&mut self, ui: &mut Ui) {
         let tokens = Tokens::get(ui.ctx());
         let inline_actions = self.nightly_page_heading(ui);
-        ui.label(tl!("Nightly builds, separate from your stable apps."));
+        ui.label(tl!("The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work."));
         ui.add_space(8.0);
         if self.settings.nightly_enabled && !self.nightly.available() {
             egui::Frame::new().fill(tokens.sunken).inner_margin(12).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.add(egui::Label::new(RichText::new(tl!("Pre-release builds aren't available on this platform yet.")).strong()).wrap());
+                ui.add(egui::Label::new(RichText::new(tl!("Developer builds aren't available on this platform yet.")).strong()).wrap());
                 ui.add(egui::Label::new(tl!("Separate installs, settings and data. Turning this off keeps installed copies and their data.")).wrap());
-                if ui.button(tl!("Turn off pre-release builds")).clicked() {
+                if ui.button(tl!("Turn off developer builds")).clicked() {
                     self.act(UiAction::NightlyConsent(false));
                 }
             });
         } else if !self.settings.nightly_enabled {
             egui::Frame::new().fill(tokens.sunken).inner_margin(12).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.label(RichText::new(tl!("Pre-release builds are off.")).strong());
+                ui.label(RichText::new(tl!("Developer builds are off.")).strong());
                 ui.add(
-                    egui::Label::new(tl!("Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings."))
+                    egui::Label::new(tl!("Installed copies and their data are kept. To discover new builds, enable developer builds in Settings."))
                         .wrap(),
                 );
                 // Only Settings may enable the channel; this page only manages retained copies.
@@ -433,7 +455,7 @@ impl LauncherUi {
             self.nightly_page_actions(ui);
         }
         if self.nightly.backend.is_none() {
-            ui.label(tl!("Pre-release installation is unavailable on this platform."));
+            ui.label(tl!("Developer build installation is unavailable on this platform."));
         }
         if self.nightly.checking {
             ui.spinner();
@@ -449,14 +471,20 @@ impl LauncherUi {
                 if self.nightly.checking {
                     ui.label(tl!("Checking…"));
                 } else if enabled && let Some(status) = self.nightly.statuses.values().find(|status| status.message.is_some()) {
-                    ui.label(tl!("Could not check for pre-release builds."));
+                    ui.label(tl!("Could not check for developer builds."));
                     let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
                     nightly_status_labels(ui, status, now);
+                } else if enabled
+                    && let Some(line) = held_back_line(self.nightly.held_back_until, self.nightly.backend.as_ref().map_or(0, |backend| backend.now()))
+                {
+                    // Nothing was asked this time, so nothing was found: say the check is waiting for
+                    // GitHub rather than stamping a verification that did not happen.
+                    ui.add(egui::Label::new(line).wrap());
                 } else if enabled
                     && self.nightly.checked_at.is_some()
                     && entries.iter().any(|entry| matches!(entry.latest, Some(LatestRelease::None)))
                 {
-                    ui.label(tl!("No pre-release builds are available yet."));
+                    ui.label(tl!("No developer builds are available yet."));
                     if let Some(status) = self.nightly.statuses.values().find(|status| !status.stale && status.verified_at.is_some()) {
                         let now = self.nightly.backend.as_ref().map_or(0, |backend| backend.now());
                         nightly_status_labels(ui, status, now);
@@ -511,10 +539,10 @@ impl LauncherUi {
                 ui.vertical(|ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(crate::widgets::heading(entry.app.name, crate::theme::DIALOG_TITLE, tokens.ink_strong));
-                        crate::widgets::badge(ui, tl!("Pre-Release"), tokens.accent_ink);
+                        crate::widgets::badge(ui, tl!("Developer Build"), tokens.accent_ink);
                     });
                     if entry.installed.is_some() {
-                        ui.label(RichText::new(tl!("Installed pre-release copy")).color(tokens.ink));
+                        ui.label(RichText::new(tl!("Installed developer build")).color(tokens.ink));
                     }
                     if let Some(version) = nightly_card_version(entry, enabled) {
                         ui.add(egui::Label::new(RichText::new(nightly_build_label(&version, crate::i18n::current())).strong()).wrap());
@@ -533,7 +561,7 @@ impl LauncherUi {
                         match &entry.latest {
                             Some(LatestRelease::Failed(_)) => {}
                             Some(LatestRelease::None) => {
-                                ui.add(egui::Label::new(tl!("No pre-release build is available yet.")).wrap());
+                                ui.add(egui::Label::new(tl!("No developer build is available yet.")).wrap());
                             }
                             Some(LatestRelease::Found(_)) => {}
                             None => {
@@ -557,7 +585,7 @@ impl LauncherUi {
                         self.act(UiAction::NightlyCommand(Command::Reveal { app: entry.app.id.into() }));
                     }
                     // Removal needs its own confirmation, independent of opt-in or stable records.
-                    let uninstall = ui.button(tl!("Uninstall pre-release…"));
+                    let uninstall = ui.button(tl!("Uninstall developer build…"));
                     if uninstall.clicked() {
                         self.nightly_uninstall_prompt(entry.app.id, uninstall.id);
                     }
@@ -572,7 +600,7 @@ impl LauncherUi {
                         .add_enabled(
                             entry.installable == Some(true)
                                 && self.nightly.statuses.get(entry.app.id).is_some_and(|status| !status.stale && status.verified_at.is_some()),
-                            egui::Button::new(RichText::new(tl!("Install pre-release")).color(tokens.invert_fg))
+                            egui::Button::new(RichText::new(tl!("Install developer build")).color(tokens.invert_fg))
                                 .fill(tokens.invert_bg)
                                 .min_size(egui::vec2(ui.available_width(), crate::theme::CONTROL_H)),
                         )
@@ -602,9 +630,9 @@ impl LauncherUi {
             let mut cancel = false;
             let response = egui::Modal::new(egui::Id::unique("nightly-uninstall-v1")).frame(frame).show(ctx, |ui| {
                 ui.set_width(440.0_f32.min(ctx.content_rect().width() - 80.0).max(100.0));
-                ui.label(crate::widgets::heading(tl!("Uninstall pre-release?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
+                ui.label(crate::widgets::heading(tl!("Uninstall developer build?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
                 ui.add_space(8.0);
-                ui.add(egui::Label::new(tl!("Only this pre-release copy will be removed. Stable copies and user data are kept.")).wrap());
+                ui.add(egui::Label::new(tl!("Only this developer build will be removed. Stable copies and user data are kept.")).wrap());
                 ui.add_space(16.0);
                 ui.horizontal_wrapped(|ui| {
                     let no = ui.button(tl!("Cancel"));
@@ -613,7 +641,7 @@ impl LauncherUi {
                         self.nightly.uninstall_focus = false;
                     }
                     cancel = no.clicked();
-                    remove = ui.button(tl!("Uninstall pre-release")).clicked();
+                    remove = ui.button(tl!("Uninstall developer build")).clicked();
                 });
             });
             if remove {
@@ -629,20 +657,20 @@ impl LauncherUi {
         let mut cancel = false;
         let response = egui::Modal::new(egui::Id::unique("nightly-consent-v1")).frame(frame).show(ctx, |ui| {
             ui.set_width(440.0_f32.min(ctx.content_rect().width() - 80.0).max(100.0));
-            ui.label(crate::widgets::heading(tl!("Enable pre-release builds?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
+            ui.label(crate::widgets::heading(tl!("Enable developer builds?"), crate::theme::DIALOG_TITLE, tokens.ink_strong));
             ui.add_space(8.0);
-            ui.add(egui::Label::new(RichText::new(tl!("Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.")).strong()).wrap());
+            ui.add(egui::Label::new(RichText::new(tl!("Developer builds let you try new work early, but they will have bugs and may lose unsaved work.")).strong()).wrap());
             ui.add_space(8.0);
             ui.add(
                 egui::Label::new(tl!(
-                    "They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions."
+                    "They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions."
                 ))
                 .wrap(),
             );
             ui.add_space(8.0);
             ui.add(
                 egui::Label::new(tl!(
-                    "You can turn this off at any time without deleting your installed pre-release apps or their data."
+                    "You can turn this off at any time without deleting your installed developer builds or their data."
                 ))
                 .wrap(),
             );
@@ -654,7 +682,7 @@ impl LauncherUi {
                     self.nightly.consent_focus = false;
                 }
                 cancel = no.clicked();
-                enable = ui.button(tl!("Enable pre-release builds")).clicked();
+                enable = ui.button(tl!("Enable developer builds")).clicked();
             });
         });
         if enable {
@@ -779,24 +807,28 @@ mod keyboard_tests {
     fn consent_has_real_keyboard_focus_escape_cancels_and_confirm_is_explicit() {
         let sent = Rc::new(RefCell::new(Vec::new()));
         let mut backend = Some(super::tests::Recorder(sent));
-        let mut harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                if state.is_none()
-                    && let Some(backend) = backend.take()
-                {
-                    *state =
-                        Some(LauncherUi::new(ui.ctx(), Box::new(backend), Settings { language: "en".into(), notify: false, ..Default::default() }));
-                }
-                if let Some(launcher) = state {
-                    launcher.logic(&ui.ctx().clone(), &mut Host);
-                    launcher.ui(ui, &mut Host);
-                }
-            },
-            None,
-        );
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    if state.is_none()
+                        && let Some(backend) = backend.take()
+                    {
+                        *state = Some(LauncherUi::new(
+                            ui.ctx(),
+                            Box::new(backend),
+                            Settings { language: "en".into(), notify: false, ..Default::default() },
+                        ));
+                    }
+                    if let Some(launcher) = state {
+                        launcher.logic(&ui.ctx().clone(), &mut Host);
+                        launcher.ui(ui, &mut Host);
+                    }
+                },
+                None,
+            );
         harness.run_steps(5);
         assert!(harness.query_by_label("Try nightly builds").is_none());
-        assert!(harness.query_by_label("Pre-Release").is_none(), "no first-run OFF destination");
+        assert!(harness.query_by_label("Developer Builds").is_none(), "no first-run OFF destination");
         harness.get_by_label("Settings").focus();
         harness.key_press(egui::Key::Enter);
         harness.run_steps(3);
@@ -806,8 +838,8 @@ mod keyboard_tests {
         assert!(harness.state().as_ref().unwrap().settings.prereleases, "the existing beta/RC filter still changes independently");
         assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
         assert!(!harness.state().as_ref().unwrap().nightly.consent_open);
-        assert!(harness.query_by_label("Pre-Release").is_none(), "the beta/RC filter never opts into nightly discovery");
-        harness.get_by_label("Discover nightly builds (Pre-Release page)").focus();
+        assert!(harness.query_by_label("Developer Builds").is_none(), "the beta/RC filter never opts into nightly discovery");
+        harness.get_by_label("Discover nightly builds (Developer Builds page)").focus();
         harness.key_press(egui::Key::Space);
         harness.run_steps(3);
         assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
@@ -819,22 +851,22 @@ mod keyboard_tests {
         assert!(matches!(harness.state().as_ref().unwrap().dialog, Some(crate::app::Dialog::Settings)));
         assert!(harness.state().as_ref().unwrap().settings.prereleases, "cancelling nightly consent keeps the beta/RC choice");
         assert!(
-            harness.get_by_label("Discover nightly builds (Pre-Release page)").accesskit_node().is_focused(),
+            harness.get_by_label("Discover nightly builds (Developer Builds page)").accesskit_node().is_focused(),
             "Cancel restores the real Settings checkbox focus"
         );
-        harness.get_by_label("Discover nightly builds (Pre-Release page)").focus();
+        harness.get_by_label("Discover nightly builds (Developer Builds page)").focus();
         harness.key_press(egui::Key::Space);
         harness.run_steps(3);
         harness.key_press(egui::Key::Tab);
         harness.run_steps(2);
-        assert!(harness.get_by_label("Enable pre-release builds").accesskit_node().is_focused());
+        assert!(harness.get_by_label("Enable developer builds").accesskit_node().is_focused());
         harness.key_press(egui::Key::Enter);
         harness.run_steps(3);
         assert!(harness.state().as_ref().unwrap().settings.nightly_enabled);
         assert!(harness.state().as_ref().unwrap().settings.prereleases, "nightly confirmation does not alter the beta/RC filter");
         assert!(harness.state().as_ref().unwrap().nightly.active, "dedicated destination appears only after consent");
         assert!(!harness.state().as_ref().unwrap().nightly.consent_open);
-        assert!(harness.get_by_role_and_label(egui::accesskit::Role::Button, "Pre-Release").accesskit_node().is_focused());
+        assert!(harness.get_by_role_and_label(egui::accesskit::Role::Button, "Developer Builds").accesskit_node().is_focused());
     }
 }
 
@@ -967,6 +999,74 @@ mod build_date_tests {
     }
 }
 
+/// The widest a header switch label is drawn, in points before its padding. A longer
+/// translation is cut short with "…" so it can't push the gear and the bell out of the
+/// header; the full label stays in its tooltip and accessible name.
+const CHANNEL_LABEL_MAX: f32 = 140.0;
+/// The switch buttons' horizontal padding on both sides, plus a point so a label that fits
+/// isn't cut by rounding.
+const CHANNEL_LABEL_PAD: f32 = 25.0;
+
+/// The font a header switch button lays its label out in.
+fn channel_label_font(ui: &Ui) -> egui::FontId {
+    stock_button_style(ui).atom_layout.text_style.font_id
+}
+
+/// The stock style Button lays its label out with (this SDK's default uses Body, not
+/// TextStyle::Button), read without a widget id: `Ui::widget_style` asks for another frame
+/// whenever the id has no response yet, which for a measurement is every frame.
+fn stock_button_style(ui: &Ui) -> egui::widget_style::ButtonStyle {
+    ui.ctx().get_widget_style(&egui::widget_style::StyleArgs {
+        classes: &Default::default(),
+        state: Default::default(),
+        stack: ui.stack(),
+        style: ui.style(),
+        ctx: ui.ctx(),
+    })
+}
+
+/// The width one header switch button takes, its label capped at [`CHANNEL_LABEL_MAX`].
+fn channel_label_width(ui: &Ui, label: &str) -> f32 {
+    let natural = ui.painter().layout_no_wrap(label.into(), channel_label_font(ui), Tokens::get(ui.ctx()).ink).size().x;
+    natural.min(CHANNEL_LABEL_MAX) + CHANNEL_LABEL_PAD
+}
+
+/// The Stable / Developer Builds switch; returns the Developer Builds tab.
+fn channel_switch(ui: &mut Ui, active: &mut bool, [stable, nightly]: [&str; 2]) -> egui::Response {
+    let tokens = Tokens::get(ui.ctx());
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.spacing_mut().button_padding.x = 12.0;
+        ui.visuals_mut().selection.bg_fill = tokens.invert_bg;
+        ui.visuals_mut().selection.stroke.color = tokens.invert_fg;
+        ui.horizontal(|ui| {
+            let mut tab = |ui: &mut Ui, label: &str, value: bool| {
+                let color = if *active == value { tokens.invert_fg } else { tokens.ink };
+                let width = channel_label_width(ui, label);
+                let cut = width - CHANNEL_LABEL_PAD >= CHANNEL_LABEL_MAX;
+                let mut response = ui
+                    .scope(|ui| {
+                        ui.set_max_width(width);
+                        ui.add(egui::Button::selectable(*active == value, RichText::new(label).color(color)).truncate())
+                    })
+                    .inner;
+                if cut {
+                    response = response.on_hover_text(label);
+                }
+                if response.clicked() && *active != value {
+                    *active = value;
+                    response.mark_changed();
+                }
+                response
+            };
+            tab(ui, stable, false);
+            tab(ui, nightly, true)
+        })
+        .inner
+    })
+    .inner
+}
+
 #[cfg(test)]
 mod layout_tests {
     use super::*;
@@ -980,29 +1080,50 @@ mod layout_tests {
     impl crate::Host for Host {}
 
     fn page(width: f32) -> Harness<'static, Option<LauncherUi>> {
-        let mut harness = Harness::builder().with_size(egui::vec2(width, 900.0)).build_ui_state(
-            |ui, state: &mut Option<LauncherUi>| {
-                if state.is_none() {
-                    let backend = super::tests::Recorder(Rc::new(RefCell::new(Vec::new())));
-                    let mut launcher = LauncherUi::new(
-                        ui.ctx(),
-                        Box::new(backend),
-                        Settings { language: "en".into(), notify: false, nightly_enabled: true, ..Default::default() },
-                    );
-                    launcher.nightly.active = true;
-                    let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
-                    photo.latest = Some(LatestRelease::Found(artcraft_launcher_core::Release { tag: format!("v{VERSION}"), ..Default::default() }));
-                    *state = Some(launcher);
-                }
-                if let Some(launcher) = state {
-                    launcher.logic(&ui.ctx().clone(), &mut Host);
-                    launcher.ui(ui, &mut Host);
-                }
-            },
-            None,
-        );
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(width, 900.0)).build_ui_state(
+                |ui, state: &mut Option<LauncherUi>| {
+                    if state.is_none() {
+                        let backend = super::tests::Recorder(Rc::new(RefCell::new(Vec::new())));
+                        let mut launcher = LauncherUi::new(
+                            ui.ctx(),
+                            Box::new(backend),
+                            Settings { language: "en".into(), notify: false, nightly_enabled: true, ..Default::default() },
+                        );
+                        launcher.nightly.active = true;
+                        let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
+                        photo.latest =
+                            Some(LatestRelease::Found(artcraft_launcher_core::Release { tag: format!("v{VERSION}"), ..Default::default() }));
+                        *state = Some(launcher);
+                    }
+                    if let Some(launcher) = state {
+                        launcher.logic(&ui.ctx().clone(), &mut Host);
+                        launcher.ui(ui, &mut Host);
+                    }
+                },
+                None,
+            );
         harness.run_steps(5);
         harness
+    }
+
+    #[test]
+    fn a_long_switch_label_is_cut_short_and_keeps_its_full_name() {
+        const LONG: &str = "Сборки для разработчиков с ночными изменениями";
+        let mut harness = Harness::new_ui_state(
+            |ui, active: &mut bool| {
+                channel_switch(ui, active, ["Stable", LONG]);
+            },
+            false,
+        );
+        assert!(harness.try_run().is_ok(), "measuring the labels doesn't ask for frame after frame");
+        let tab = harness.get_by_label(LONG);
+        assert!(tab.rect().width() <= CHANNEL_LABEL_MAX + CHANNEL_LABEL_PAD + 0.5, "the label is capped: {:?}", tab.rect());
+        tab.click();
+        harness.run_steps(2);
+        assert!(*harness.state(), "the cut-short tab still switches");
+        let stable = harness.get_by_label("Stable").rect();
+        assert!(stable.width() < CHANNEL_LABEL_MAX, "a short label keeps its own width: {stable:?}");
     }
 
     #[test]
@@ -1010,13 +1131,13 @@ mod layout_tests {
         for width in [1180.0, 560.0] {
             let harness = page(width);
             let heading = harness
-                .get_all_by_label("Pre-Release")
+                .get_all_by_label("Developer Builds")
                 .filter(|node| node.accesskit_node().role() == egui::accesskit::Role::Label)
                 .map(|node| node.rect())
                 .min_by(|a, b| a.top().total_cmp(&b.top()))
                 .unwrap();
             let check = harness.get_by_label("Check for updates").rect();
-            let off = harness.get_by_label("Turn off pre-release builds").rect();
+            let off = harness.get_by_label("Turn off developer builds").rect();
             if width > 1000.0 {
                 assert!((heading.center().y - check.center().y).abs() <= 0.5, "actions align with the title");
                 assert!(check.left() > heading.right(), "actions stay to the title's right");
@@ -1048,7 +1169,7 @@ mod layout_tests {
         harness.run_steps(2);
         harness.key_press(egui::Key::Tab);
         harness.run_steps(2);
-        assert!(harness.get_by_label("Turn off pre-release builds").accesskit_node().is_focused());
+        assert!(harness.get_by_label("Turn off developer builds").accesskit_node().is_focused());
         harness.key_press(egui::Key::Enter);
         harness.run_steps(3);
         assert!(!harness.state().as_ref().unwrap().settings.nightly_enabled);
@@ -1180,6 +1301,152 @@ mod status_tests {
     }
 
     #[test]
+    fn a_budget_hold_is_shown_as_waiting_and_cleared_by_the_next_check() {
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        let hold = Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1000 + 60 * 60) };
+        fake.events.borrow_mut().extend([Event::CheckStarted, hold]);
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        state.logic(&Settings::default());
+        assert_eq!(state.held_back_until, Some(1000 + 60 * 60), "a held-back sweep says when GitHub is asked again");
+        let (hour, minute) = crate::local_time::clock(1000 + 60 * 60);
+        assert_eq!(held_back_line(state.held_back_until, 1000).as_deref(), Some(format!("Next GitHub check at {hour:02}:{minute:02}").as_str()));
+        assert_eq!(held_back_line(state.held_back_until, 1000 + 60 * 60), None, "a hold that has passed says nothing");
+        fake.events.borrow_mut().push(Event::CheckStarted);
+        state.logic(&Settings::default());
+        assert_eq!(state.held_back_until, None, "the next check clears it");
+    }
+
+    #[test]
+    fn an_expired_budget_hold_makes_the_next_check_eligible_without_waiting_the_hour() {
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        // A sweep that ran and found nothing, held back by the launcher's budget until 1600.
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(400, 400, true, None),
+            Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1600) },
+        ]);
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        let enabled = Settings { nightly_enabled: true, ..Default::default() };
+        fake.now.set(1599);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "still inside the hold");
+        fake.now.set(1600);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "the hold has passed, so ask now instead of waiting for the hourly gate");
+        assert_eq!(state.held_back_until, None, "the hold is spent once it has been answered");
+        fake.now.set(1601);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "unacknowledged requests still coalesce");
+    }
+
+    #[test]
+    fn a_hold_left_by_a_partly_refused_sweep_is_waited_out_and_then_asks_for_the_deferred_app() {
+        // One sweep: PhotoCraft's Nightly verified, then the launcher's budget refused the rest, so
+        // the backend deferred FilmCraft (its attempt time is put back, which is what makes it due
+        // again). The page must not ask before the hold expires, must ask at the moment it does, and
+        // every other guard must still stand.
+        let fake = FakeBackend::default();
+        fake.now.set(1000);
+        let deferred = Event::NightlyStatus {
+            app: "filmcraft".into(),
+            status: NightlyStatus { attempted_at: None, verified_at: None, retry_at: None, stale: false, message: None },
+        };
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(1000, 1000, false, None),
+            deferred,
+            Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1600) },
+        ]);
+        let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+        let enabled = Settings { nightly_enabled: true, ..Default::default() };
+
+        // Inside the hold: the hourly gate alone would also say no, so this only proves patience.
+        fake.now.set(1599);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "nothing is asked while the budget is still holding the sweep");
+
+        // The deferred app is due at the backend (its attempt time was put back); the page asks now
+        // rather than waiting the rest of the hour, and the sweep that runs picks it up.
+        fake.now.set(1600);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "the hold has expired, so ask for the deferred app");
+        assert_eq!(state.held_back_until, None, "the hold is spent once it has been answered");
+
+        // Coalescing: an unacknowledged request is not repeated.
+        fake.now.set(1601);
+        state.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "a request already sent is coalesced for sixty seconds");
+
+        // Consent still wins: with Nightly switched off, an expired hold asks nothing.
+        let fake = FakeBackend::default();
+        fake.now.set(2000);
+        fake.events
+            .borrow_mut()
+            .extend([Event::CheckStarted, Event::CheckFinished { at: 2000, source: Source::GitHubApi, rate_limited_until: Some(2500) }]);
+        let mut off = NightlyState::new(Some(Box::new(fake.clone())), None);
+        fake.now.set(2600);
+        off.logic(&Settings::default());
+        assert_eq!(checks(&fake), 0, "consent is not inferred from an expired budget hold");
+
+        // A server's own backoff still holds the page back even when the launcher's hold has passed.
+        let fake = FakeBackend::default();
+        fake.now.set(3000);
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(3000, 3000, false, Some(3600)),
+            Event::CheckFinished { at: 3000, source: Source::GitHubApi, rate_limited_until: Some(3100) },
+        ]);
+        let mut backed_off = NightlyState::new(Some(Box::new(fake.clone())), None);
+        fake.now.set(3100);
+        backed_off.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "an app's server backoff still gates the request");
+        fake.now.set(3600);
+        backed_off.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "and the request goes once the server's backoff is over");
+
+        // A hold still in the future is honoured, not treated as expired.
+        let fake = FakeBackend::default();
+        fake.now.set(4000);
+        // An attempt just now, so the hourly gate itself says no, and a hold ten minutes out.
+        fake.events.borrow_mut().extend([
+            Event::CheckStarted,
+            status(4000, 4000, false, None),
+            Event::CheckFinished { at: 4000, source: Source::GitHubApi, rate_limited_until: Some(4600) },
+        ]);
+        let mut later = NightlyState::new(Some(Box::new(fake.clone())), None);
+        later.logic(&enabled);
+        assert_eq!(checks(&fake), 0, "a future hold is waited out");
+        fake.now.set(4600);
+        later.logic(&enabled);
+        assert_eq!(checks(&fake), 1, "and asking resumes when it passes");
+    }
+
+    #[test]
+    fn a_future_hold_holds_even_when_the_hourly_gate_would_ask() {
+        // Two shapes of an already-due page: an attempt long enough ago, and no attempt at all.
+        for attempt in [Some(-2600), None] {
+            let fake = FakeBackend::default();
+            fake.now.set(1000);
+            let mut events = vec![Event::CheckStarted];
+            if let Some(at) = attempt {
+                events.push(status(at, at, false, None));
+            }
+            events.push(Event::CheckFinished { at: 1000, source: Source::GitHubApi, rate_limited_until: Some(1600) });
+            fake.events.borrow_mut().extend(events);
+            let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
+            let enabled = Settings { nightly_enabled: true, ..Default::default() };
+            fake.now.set(1599);
+            state.logic(&enabled);
+            assert_eq!(checks(&fake), 0, "{attempt:?}: a running hold is honoured though the hourly gate says yes");
+            fake.now.set(1600);
+            state.logic(&enabled);
+            assert_eq!(checks(&fake), 1, "{attempt:?}: and asking resumes the moment it passes");
+        }
+    }
+
+    #[test]
     fn completion_without_verified_status_never_claims_success() {
         let fake = FakeBackend::default();
         fake.now.set(100);
@@ -1193,17 +1460,17 @@ mod status_tests {
     }
 
     #[test]
-    fn persisted_attempt_controls_six_hour_boundary_independently_of_stable_and_clock_rollback() {
+    fn persisted_attempt_controls_hourly_boundary_independently_of_stable_and_clock_rollback() {
         for check_every in [crate::settings::CheckEvery::Hour, crate::settings::CheckEvery::Day, crate::settings::CheckEvery::Never] {
             let fake = FakeBackend::default();
             fake.events.borrow_mut().push(status(1000, 500, true, None));
-            fake.now.set(1000 + 6 * 60 * 60 - 1);
+            fake.now.set(1000 + 60 * 60 - 1);
             let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
             let settings = Settings { nightly_enabled: true, check_every, ..Default::default() };
             state.logic(&settings);
             assert_eq!(checks(&fake), 0, "restart polls persisted scheduling metadata before any request");
             assert!(state.entries.iter().all(|entry| entry.latest.is_none()), "metadata never recreates a release body");
-            fake.now.set(1000 + 6 * 60 * 60);
+            fake.now.set(1000 + 60 * 60);
             state.logic(&settings);
             assert_eq!(checks(&fake), 1);
             state.logic(&settings);
@@ -1227,10 +1494,10 @@ mod status_tests {
             state.logic(&settings);
             assert_eq!(state.attempted_at, Some(960));
             assert_eq!(state.checked_at, Some(500));
-            fake.now.set(960 + 6 * 60 * 60 - 1);
+            fake.now.set(960 + 60 * 60 - 1);
             state.logic(&settings);
-            assert_eq!(checks(&fake), 3, "a confirmed actual attempt restores the six-hour policy");
-            fake.now.set(960 + 6 * 60 * 60);
+            assert_eq!(checks(&fake), 3, "a confirmed actual attempt restores the hourly policy");
+            fake.now.set(960 + 60 * 60);
             state.logic(&settings);
             assert_eq!(checks(&fake), 4);
         }
@@ -1255,7 +1522,7 @@ mod status_tests {
     fn unusable_storage_errors_never_open_the_destination_without_consent() {
         let fake = FakeBackend::default();
         let mut state = NightlyState::new(Some(Box::new(fake.clone())), None);
-        let refusal = "Pre-Release storage is unavailable: the nightly folder contains an alias.";
+        let refusal = "Developer build storage is unavailable: the nightly folder contains an alias.";
         fake.events.borrow_mut().push(Event::Notice { app: "photocraft".into(), result: Err(refusal.into()) });
         state.logic(&Settings::default());
         assert!(!state.destination_visible(false), "an error is not consent");
@@ -1360,40 +1627,41 @@ mod polish_tests {
         }
     }
     fn page(width: f32, theme: ThemeChoice, card: Card, sent: Commands) -> Harness<'static, Option<LauncherUi>> {
-        let mut harness = Harness::builder().with_size(egui::vec2(width, 900.0)).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                let launcher = state.get_or_insert_with(|| {
-                    let stable = super::tests::Recorder(Rc::new(RefCell::new(Vec::new())));
-                    let mut launcher = LauncherUi::new(
-                        ui.ctx(),
-                        Box::new(stable),
-                        Settings { language: "en".into(), notify: false, theme, nightly_enabled: card.enabled, ..Default::default() },
-                    );
-                    launcher.nightly.backend = Some(Box::new(super::tests::Recorder(sent.clone())));
-                    launcher.nightly.active = true;
-                    if let Some(status) = &card.status {
-                        launcher.nightly.statuses.insert("photocraft".into(), status.clone());
-                    }
-                    let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
-                    photo.detected = true;
-                    photo.latest = card.latest.clone();
-                    photo.installable = card.installable;
-                    photo.installed = card.installed.map(|version| artcraft_launcher_core::Installed {
-                        version: version.and_then(artcraft_launcher_core::version::parse),
-                        source: artcraft_launcher_core::InstallSource::Launcher,
-                        location: "/apps/PhotoCraft Nightly".into(),
-                        package: None,
-                        externally_managed: false,
-                        origin: None,
-                        installation: None,
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(width, 900.0)).build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    let launcher = state.get_or_insert_with(|| {
+                        let stable = super::tests::Recorder(Rc::new(RefCell::new(Vec::new())));
+                        let mut launcher = LauncherUi::new(
+                            ui.ctx(),
+                            Box::new(stable),
+                            Settings { language: "en".into(), notify: false, theme, nightly_enabled: card.enabled, ..Default::default() },
+                        );
+                        launcher.nightly.backend = Some(Box::new(super::tests::Recorder(sent.clone())));
+                        launcher.nightly.active = true;
+                        if let Some(status) = &card.status {
+                            launcher.nightly.statuses.insert("photocraft".into(), status.clone());
+                        }
+                        let photo = launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap();
+                        photo.detected = true;
+                        photo.latest = card.latest.clone();
+                        photo.installable = card.installable;
+                        photo.installed = card.installed.map(|version| artcraft_launcher_core::Installed {
+                            version: version.and_then(artcraft_launcher_core::version::parse),
+                            source: artcraft_launcher_core::InstallSource::Launcher,
+                            location: "/apps/PhotoCraft Nightly".into(),
+                            package: None,
+                            externally_managed: false,
+                            origin: None,
+                            installation: None,
+                        });
+                        launcher
                     });
-                    launcher
-                });
-                launcher.logic(&ui.ctx().clone(), &mut Host);
-                launcher.ui(ui, &mut Host);
-            },
-            None,
-        );
+                    launcher.logic(&ui.ctx().clone(), &mut Host);
+                    launcher.ui(ui, &mut Host);
+                },
+                None,
+            );
         harness.run_steps(5);
         harness
     }
@@ -1435,7 +1703,7 @@ mod polish_tests {
                 for (name, card, install) in &cases {
                     let sent = Rc::new(RefCell::new(Vec::new()));
                     let mut harness = page(width, theme, card.clone(), sent.clone());
-                    let button = harness.query_by_label("Install pre-release");
+                    let button = harness.query_by_label("Install developer build");
                     if let Some(enabled) = install {
                         let button = button.unwrap_or_else(|| panic!("missing install action: {name}"));
                         assert_eq!(!button.accesskit_node().is_disabled(), *enabled, "{name}");
@@ -1451,7 +1719,7 @@ mod polish_tests {
                     if card.installed.is_some() {
                         harness.get_by_label("Open");
                         harness.get_by_label("Show installed copy");
-                        harness.get_by_label("Uninstall pre-release…");
+                        harness.get_by_label("Uninstall developer build…");
                     }
                 }
             }
@@ -1465,18 +1733,18 @@ mod polish_tests {
                 let mut consent = page(width, theme, current(), Rc::new(RefCell::new(Vec::new())));
                 consent.state_mut().as_mut().unwrap().open_nightly_consent(egui::Id::unique("polish-consent-reference"));
                 consent.run_steps(3);
-                let consent_title = consent.get_by_label("Enable pre-release builds?").rect();
+                let consent_title = consent.get_by_label("Enable developer builds?").rect();
                 let consent_frame = consent.ctx.memory(|memory| memory.area_rect(egui::Id::unique("nightly-consent-v1"))).unwrap();
                 let consent_padding = consent_title.min - consent_frame.min;
                 for enabled in [false, true] {
                     let sent = Rc::new(RefCell::new(Vec::new()));
                     let mut harness = page(width, theme, Card { enabled, ..current() }, sent.clone());
                     for cancel_key in [egui::Key::Escape, egui::Key::Enter] {
-                        harness.get_by_label("Uninstall pre-release…").focus();
+                        harness.get_by_label("Uninstall developer build…").focus();
                         harness.key_press(egui::Key::Enter);
                         harness.run_steps(3);
-                        let title = harness.get_by_label("Uninstall pre-release?").rect();
-                        let body = harness.get_by_label("Only this pre-release copy will be removed. Stable copies and user data are kept.").rect();
+                        let title = harness.get_by_label("Uninstall developer build?").rect();
+                        let body = harness.get_by_label("Only this developer build will be removed. Stable copies and user data are kept.").rect();
                         let cancel = harness.get_by_label("Cancel");
                         let frame = harness.ctx.memory(|memory| memory.area_rect(egui::Id::unique("nightly-uninstall-v1"))).unwrap();
                         let padding = title.min - frame.min;
@@ -1490,16 +1758,16 @@ mod polish_tests {
                         harness.key_press(cancel_key);
                         harness.run_steps(3);
                         assert!(harness.state().as_ref().unwrap().nightly.uninstall.is_none());
-                        assert!(harness.get_by_label("Uninstall pre-release…").accesskit_node().is_focused());
+                        assert!(harness.get_by_label("Uninstall developer build…").accesskit_node().is_focused());
                         assert!(!sent.borrow().iter().any(|cmd| matches!(cmd, Command::Uninstall { .. })));
                         assert!(harness.state().as_ref().unwrap().nightly.entries.iter().any(|entry| entry.installed.is_some()));
                     }
-                    harness.get_by_label("Uninstall pre-release…").focus();
+                    harness.get_by_label("Uninstall developer build…").focus();
                     harness.key_press(egui::Key::Enter);
                     harness.run_steps(3);
                     harness.key_press(egui::Key::Tab);
                     harness.run_steps(2);
-                    assert!(harness.get_by_label("Uninstall pre-release").accesskit_node().is_focused());
+                    assert!(harness.get_by_label("Uninstall developer build").accesskit_node().is_focused());
                     harness.key_press(egui::Key::Enter);
                     harness.run_steps(3);
                     assert_eq!(sent.borrow().iter().filter(|cmd| matches!(cmd, Command::Uninstall { app } if app == "photocraft")).count(), 1);
@@ -1509,10 +1777,16 @@ mod polish_tests {
         }
     }
     #[test]
-    fn shared_selection_pre_release_destination_lists_only_explicit_channel_apps_on_every_host() {
+    fn shared_selection_pre_release_destination_lists_every_explicit_channel_app_on_every_host() {
         for os in [artcraft_launcher_core::Os::Windows, artcraft_launcher_core::Os::Linux, artcraft_launcher_core::Os::MacOs] {
             let state = NightlyState::new(None, Some(Platform { os, arch: artcraft_launcher_core::Arch::X64 }));
-            assert_eq!(state.entries.iter().map(|entry| entry.app.id).collect::<Vec<_>>(), vec!["photocraft"]);
+            let expected: Vec<&str> = artcraft_launcher_core::hosted_catalog::apps()
+                .iter()
+                .filter(|app| app.has_separate_nightly_channel() && app.runs_on(os))
+                .map(|app| app.id)
+                .collect();
+            assert!(expected.len() > 1, "the destination is not a one-app page: {expected:?}");
+            assert_eq!(state.entries.iter().map(|entry| entry.app.id).collect::<Vec<_>>(), expected, "{os:?}");
         }
     }
     #[test]
@@ -1520,7 +1794,7 @@ mod polish_tests {
         let sent: Commands = Rc::default();
         let card = Card { installed: None, installable: Some(true), ..current() };
         let mut harness = page(1180.0, ThemeChoice::Light, card, sent);
-        assert!(harness.query_by_label("Install pre-release").is_some(), "precondition: an installable build offers the install action");
+        assert!(harness.query_by_label("Install developer build").is_some(), "precondition: an installable build offers the install action");
         let set_job = |harness: &mut Harness<'static, Option<LauncherUi>>, job: Option<JobPhase>| {
             let launcher = harness.state_mut().as_mut().unwrap();
             launcher.nightly.entries.iter_mut().find(|entry| entry.app.id == "photocraft").unwrap().job = job;
@@ -1533,7 +1807,7 @@ mod polish_tests {
             set_job(&mut harness, Some(phase));
             harness.run_steps(3);
             assert!(
-                harness.query_by_label("Install pre-release").is_none(),
+                harness.query_by_label("Install developer build").is_none(),
                 "{caption}: the install action must not stay clickable while installing"
             );
             let progress = harness.get_by_label(caption);
@@ -1541,7 +1815,7 @@ mod polish_tests {
         }
         set_job(&mut harness, None);
         harness.run_steps(3);
-        assert!(harness.query_by_label("Install pre-release").is_some(), "the action returns when the job ends");
+        assert!(harness.query_by_label("Install developer build").is_some(), "the action returns when the job ends");
     }
 }
 
@@ -1636,7 +1910,7 @@ mod trust_gate_tests {
         state.logic(&settings);
         assert!(state.entries[0].latest.is_none(), "no discovery is shown");
         assert_eq!(state.entries[0].installable, Some(false));
-        assert!(!state.destination_visible(true), "no Pre-Release page without a copy to manage");
+        assert!(!state.destination_visible(true), "no Developer Builds page without a copy to manage");
         state.entries[0].installed = Some(installed_copy());
         assert!(state.destination_visible(true) && state.destination_visible(false), "a retained copy keeps its page");
         sent.borrow_mut().clear();
@@ -1696,21 +1970,22 @@ mod trust_gate_tests {
 
     fn settings_open(available: bool, nightly_enabled: bool) -> Harness<'static, Option<LauncherUi>> {
         let mut backend = Some(Stable(available));
-        let mut harness = Harness::builder().with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
-            move |ui, state: &mut Option<LauncherUi>| {
-                if state.is_none()
-                    && let Some(backend) = backend.take()
-                {
-                    let settings = Settings { language: "en".into(), notify: false, nightly_enabled, ..Default::default() };
-                    *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings));
-                }
-                if let Some(launcher) = state {
-                    launcher.logic(&ui.ctx().clone(), &mut Host);
-                    launcher.ui(ui, &mut Host);
-                }
-            },
-            None,
-        );
+        let mut harness =
+            Harness::builder().with_context_setup(crate::framework::install_headless).with_size(egui::vec2(1180.0, 900.0)).build_ui_state(
+                move |ui, state: &mut Option<LauncherUi>| {
+                    if state.is_none()
+                        && let Some(backend) = backend.take()
+                    {
+                        let settings = Settings { language: "en".into(), notify: false, nightly_enabled, ..Default::default() };
+                        *state = Some(LauncherUi::new(ui.ctx(), Box::new(backend), settings));
+                    }
+                    if let Some(launcher) = state {
+                        launcher.logic(&ui.ctx().clone(), &mut Host);
+                        launcher.ui(ui, &mut Host);
+                    }
+                },
+                None,
+            );
         harness.run_steps(5);
         harness.get_by_label("Settings").focus();
         harness.key_press(egui::Key::Enter);
@@ -1719,8 +1994,8 @@ mod trust_gate_tests {
         harness
     }
 
-    const CHECKBOX: &str = "Discover nightly builds (Pre-Release page)";
-    const NOT_YET: &str = "Pre-release builds aren't available on this platform yet.";
+    const CHECKBOX: &str = "Discover nightly builds (Developer Builds page)";
+    const NOT_YET: &str = "Developer builds aren't available on this platform yet.";
 
     #[test]
     fn settings_says_pre_release_is_not_available_yet_without_configured_trust() {
@@ -1734,7 +2009,7 @@ mod trust_gate_tests {
         harness.run_steps(3);
         let state = harness.state().as_ref().unwrap();
         assert!(!state.settings.nightly_enabled && !state.nightly.consent_open);
-        assert!(harness.query_by_label("Pre-Release").is_none(), "no Pre-Release destination");
+        assert!(harness.query_by_label("Developer Builds").is_none(), "no Developer Builds destination");
     }
 
     #[test]

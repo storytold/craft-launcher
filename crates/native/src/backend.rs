@@ -9,14 +9,14 @@ use artcraft_launcher_core::catalog::{LAUNCHER, LAUNCHER_ID};
 use artcraft_launcher_core::feed::{Feed, FeedAnswer};
 use artcraft_launcher_core::platform::{Arch, Os, Platform, pick_asset};
 use artcraft_launcher_core::protocol::{
-    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED, PausedDownload,
-    Source, VersionTrack,
+    Backend, BackendOptions, CANCELLED, Capabilities, Command, Event, INSTALL_CANCELLED, JobPhase, LatestRelease, Origin, PAUSED_BY_CONNECTION,
+    PausedDownload, Source, VersionTrack, is_paused,
 };
-use artcraft_launcher_core::release::{Asset, Release, ReleaseQuery};
+use artcraft_launcher_core::release::{Asset, Priority, Release, ReleaseQuery};
 use artcraft_launcher_core::{CraftApp, Installed, PackageKind, version};
 
 use crate::feed_throttle::{self, FeedThrottle, Outcome};
-use crate::http::{self, Http, Stop};
+use crate::http::{self, FeedError, Http, Stop};
 use crate::install::{self, Job};
 use crate::manifest::Manifest;
 use crate::paths::Paths;
@@ -29,6 +29,10 @@ const RESTART_WAIT: Duration = Duration::from_secs(10 * 60);
 /// Automatic checks closer together than this reuse the last answers. The UI asks every five
 /// minutes; this stops a burst of requests (refresh, focus, timers) from repeating work.
 const FRESH_FOR: i64 = 4 * 60;
+/// An app following the nightly is asked about at most this often: nightlies come once a night.
+const NIGHTLY_TRACK_EVERY: i64 = 3 * 60 * 60;
+/// A forced check this soon after the last check reuses its GitHub answers (#713).
+const FORCED_REUSE: i64 = 2 * 60;
 /// Once every app has loaded, GitHub is asked about an app the feed can't vouch for at most this
 /// often (pressing Refresh asks right away).
 const GITHUB_FALLBACK_EVERY: i64 = 60 * 60;
@@ -73,6 +77,49 @@ struct ProcessLifecycle {
     // snapshots even when rollback restores an identical manifest record.
     revisions: Mutex<HashMap<String, u64>>,
 }
+/// Where installed copies are looked for besides the launcher's own records: the system. Tests
+/// look only at the records and a stub, so a copy installed on the machine running them (a
+/// Flatpak, a distro package, an AppImage) can't change what they see.
+#[derive(Clone)]
+enum HostDetection {
+    System,
+    #[cfg(test)]
+    Stub(HostStub),
+}
+
+/// What a test says is installed on the machine, besides the launcher's records.
+#[cfg(test)]
+type HostStub = Arc<dyn Fn(&CraftApp) -> Option<Installed> + Send + Sync>;
+
+impl HostDetection {
+    fn snapshot(&self) -> crate::detect::Snapshot {
+        match self {
+            Self::System => crate::detect::Snapshot::take(),
+            #[cfg(test)]
+            Self::Stub(_) => crate::detect::Snapshot::default(),
+        }
+    }
+
+    fn detect(&self, app: &CraftApp, manifest: &Manifest, snapshot: &crate::detect::Snapshot) -> Option<Installed> {
+        match self {
+            Self::System => crate::detect::detect(app, manifest, snapshot),
+            #[cfg(test)]
+            Self::Stub(host) => crate::detect::from_manifest(app, manifest)
+                .or_else(|| host(app).map(|found| crate::detect::with_recorded_release(found, manifest.releases.get(app.id)))),
+        }
+    }
+
+    /// What the system itself has registered of `app`, leaving out the launcher's own records: the
+    /// copy a Windows Installer package just put in.
+    fn registered(&self, app: &CraftApp) -> Option<Installed> {
+        match self {
+            Self::System => crate::detect::detect(app, &Manifest::default(), &self.snapshot()),
+            #[cfg(test)]
+            Self::Stub(host) => host(app),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq)]
 enum Admission {
     Reserved,
@@ -83,6 +130,7 @@ enum Admission {
 struct Shared {
     /// Immutable: Configure cannot turn the stable backend into a nightly installer.
     channel: artcraft_launcher_core::nightly::InstallChannel,
+    host: HostDetection,
     events: Mutex<Vec<Event>>,
     /// Held while an app's latest release or installed copy changes and its [`Event::Installable`]
     /// is worked out and queued, so no answer from older state lands after a newer one. Always
@@ -100,6 +148,8 @@ struct Shared {
     nightly_state: Mutex<crate::nightly_lookup::State>,
     #[cfg(test)]
     nightly_detection_observer: Mutex<Option<ReviewDetectionHook>>,
+    #[cfg(test)]
+    nightly_catalog_fixture: Mutex<Option<Feed>>,
     download_sizes: Mutex<HashMap<String, DownloadSize>>,
     installed: Mutex<HashMap<String, Installed>>,
     jobs: Mutex<HashMap<String, Arc<Stop>>>,
@@ -111,6 +161,11 @@ struct Shared {
     /// A detection pass is running; another request waits for the next one.
     detecting: AtomicBool,
     last_check: Mutex<Option<i64>>,
+    /// When a forced check last asked GitHub (Unix seconds), for [`FORCED_REUSE`].
+    last_forced: Mutex<Option<i64>>,
+    /// Set while a check the user pressed reuses the last forced check's answers: it still looks
+    /// past a feed that is behind GitHub, so it can't swap GitHub's newer answer for the feed's.
+    reusing_forced: AtomicBool,
     /// The newer ArtCraft Launcher release, once a check has found one, with the repo that check
     /// read it from (the feed's rename, if any): its download links must be that repo's.
     launcher_release: Mutex<Option<(Release, String)>>,
@@ -325,7 +380,7 @@ struct RefusedNightlyBackend {
 impl RefusedNightlyBackend {
     fn new(reason: String, platform: Option<Platform>, waker: Waker) -> Self {
         let reason = format!(
-            "Pre-Release storage is unavailable: {reason} Existing copies and data were not opened or changed. Fix the folders and restart the launcher to try again."
+            "Developer build storage is unavailable: {reason} Existing copies and data were not opened or changed. Fix the folders and restart the launcher to try again."
         );
         let apps = artcraft_launcher_core::hosted_catalog::apps()
             .iter()
@@ -413,7 +468,13 @@ impl NativeBackend {
         lifecycle: Arc<ProcessLifecycle>,
     ) -> Self {
         let waker: Waker = Arc::new(waker);
-        let http = match Http::new().and_then(|http| {
+        let limit = if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
+            crate::github_budget::DEVELOPER_BUILDS
+        } else {
+            crate::github_budget::STABLE
+        };
+        let budget = crate::github_budget::GitHubBudget::load(paths.github_budget(), limit);
+        let http = match Http::new().map(|http| http.with_budget(budget)).and_then(|http| {
             if channel == artcraft_launcher_core::nightly::InstallChannel::Nightly { http.with_nightly_test_transport() } else { Ok(http) }
         }) {
             Ok(h) => Some(h),
@@ -430,8 +491,11 @@ impl NativeBackend {
 
         let shared = Arc::new(Shared {
             channel,
+            host: HostDetection::System,
             #[cfg(test)]
             nightly_detection_observer: Mutex::new(None),
+            #[cfg(test)]
+            nightly_catalog_fixture: Mutex::new(None),
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
@@ -463,6 +527,8 @@ impl NativeBackend {
             feed_throttle: Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now())),
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
+            last_forced: Mutex::new(None),
+            reusing_forced: AtomicBool::new(false),
         });
         let pins = if channel == artcraft_launcher_core::nightly::InstallChannel::Stable {
             craft_update::pins::Pins::default_path()
@@ -497,17 +563,36 @@ impl NativeBackend {
         std::thread::spawn(move || {
             let _busy = busy;
             let initial = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-            let refreshed = match platform
-                .and_then(|platform| CraftApp::by_id("photocraft").and_then(|app| crate::nightly_profile::for_app(app, platform).ok()))
-            {
-                Some(adapter) => match crate::nightly_transaction::refresh(&paths, adapter) {
-                    Ok(manifest) => Some(manifest),
-                    Err(error) => {
-                        shared.emit(Event::Notice { app: "photocraft".into(), result: Err(error) });
-                        crate::nightly_transaction::stored_manifest(&paths).ok()
+            // Every app with a separate channel recovers its own interrupted transaction; a
+            // failure is reported against that app, and an unreadable manifest stays a read error
+            // rather than an empty one.
+            let adapters: Vec<_> = platform
+                .map(|platform| {
+                    artcraft_launcher_core::hosted_catalog::apps()
+                        .iter()
+                        .chain(std::iter::once(&LAUNCHER))
+                        .filter(|app| app.has_separate_nightly_channel() && app.runs_on(platform.os))
+                        .filter_map(|app| crate::nightly_profile::for_app(app, platform).ok())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let refreshed = if adapters.is_empty() {
+                Some(Manifest::default())
+            } else {
+                let mut refreshed = None;
+                let mut failed = false;
+                for adapter in adapters {
+                    match crate::nightly_transaction::refresh(&paths, adapter) {
+                        Ok(manifest) => refreshed = Some(manifest),
+                        Err(error) => {
+                            failed = true;
+                            shared.emit(Event::Notice { app: adapter.app().into(), result: Err(error) });
+                        }
                     }
-                },
-                None => Some(Manifest::default()),
+                }
+                // A manifest read from any app is the shared record; only when none succeeded does
+                // the stored manifest's own read decide between "no copy" and "unreadable".
+                if failed && refreshed.is_none() { crate::nightly_transaction::stored_manifest(&paths).ok() } else { refreshed }
             };
             // An unreadable manifest is not evidence that no copy is owned: keep the last known
             // record and publish nothing until a successful read can say what exists.
@@ -555,10 +640,10 @@ impl NativeBackend {
         }
         let options = self.options();
         let pre = options.prereleases;
-        let feed = if pre { None } else { load_feed(&self.paths) };
+        let feed = load_feed(&self.paths);
         let now = crate::now();
         for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| self.platform.is_none_or(|p| a.runs_on(p.os))) {
-            let answer = match feed.as_ref().map(|f| f.answer(app, now)) {
+            let answer = match feed.as_ref().map(|f| if pre { f.answer_prerelease(app, now) } else { f.answer(app, now) }) {
                 Some(FeedAnswer::Fresh(Some(r))) => Some((LatestRelease::Found(r), Origin::ArtCraftApi)),
                 Some(FeedAnswer::Fresh(None)) => Some((LatestRelease::None, Origin::ArtCraftApi)),
                 _ => self.source.as_ref().and_then(|s| s.cached(&release_query(feed.as_ref(), app), pre)).map(|l| (l, Origin::GitHub)),
@@ -607,10 +692,10 @@ impl NativeBackend {
             // Leftovers from interrupted installs or older versions of the launcher. A paused
             // download stays a month; a finished one kept after a failed install, a week.
             http::clean_downloads(&paths.downloads(), Duration::from_secs(30 * 86_400), Duration::from_secs(7 * 86_400));
-            let snapshot = crate::detect::Snapshot::take();
+            let snapshot = shared.host.snapshot();
             let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
             for app in artcraft_launcher_core::hosted_catalog::apps().iter().filter(|a| platform.is_none_or(|p| a.runs_on(p.os))) {
-                let found = crate::detect::detect(app, &manifest, &snapshot);
+                let found = shared.host.detect(app, &manifest, &snapshot);
                 publish_detected(app, found, &shared, platform);
             }
             // Downloads paused (or cut off by quitting) in an earlier run.
@@ -653,10 +738,20 @@ impl NativeBackend {
         self.check_nightly_at(manual, crate::now());
     }
 
+    // One signed catalog snapshot supplies all due Nightly candidates; the same descriptor and
+    // platform checks still apply. GitHub enumeration remains the bounded fallback.
     fn check_nightly_at(&self, manual: bool, now: i64) {
         let Some(platform) = self.platform else { return };
         let apps = self.nightly_apps();
+        // A scheduling failure covers the whole sweep, so its notice names the first app in it.
+        let sweep_app = apps.first().map_or(LAUNCHER_ID, |app| app.id);
         let keys: Vec<_> = apps.iter().map(|app| crate::nightly_lookup::key(app, platform)).collect();
+        // An app with a record in the Nightly manifest is installed here: its own Nightly is the copy
+        // its user is running, so it is refreshed hourly and first in every sweep.
+        let installed: std::collections::BTreeSet<String> = {
+            let manifest = self.shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            apps.iter().filter(|app| manifest.apps.contains_key(app.id)).map(|app| crate::nightly_lookup::key(app, platform)).collect()
+        };
         let (chosen, generation) = {
             let options = self.shared.options.lock().unwrap_or_else(PoisonError::into_inner);
             if !options.nightly_enabled {
@@ -671,10 +766,10 @@ impl NativeBackend {
                     report_installable(app, &self.shared, self.platform);
                 }
                 self.shared
-                    .emit(Event::Notice { app: "photocraft".into(), result: Err(format!("Nightly scheduling metadata is unavailable: {error}")) });
+                    .emit(Event::Notice { app: sweep_app.into(), result: Err(format!("Nightly scheduling metadata is unavailable: {error}")) });
                 return;
             }
-            let chosen = state.begin(&keys, now, manual, true);
+            let chosen = state.begin(&keys, &installed, now, manual, true);
             if chosen.is_empty() {
                 drop(state);
                 drop(options);
@@ -690,7 +785,7 @@ impl NativeBackend {
                     report_installable(app, &self.shared, self.platform);
                 }
                 self.shared
-                    .emit(Event::Notice { app: "photocraft".into(), result: Err(format!("Could not persist Nightly scheduling metadata: {error}")) });
+                    .emit(Event::Notice { app: sweep_app.into(), result: Err(format!("Could not persist Nightly scheduling metadata: {error}")) });
                 return;
             }
             (chosen, state.generation)
@@ -703,42 +798,157 @@ impl NativeBackend {
         (self.spawn)(Box::new(move || {
             let lease = NightlyCheckLease(shared.clone());
             shared.emit(Event::CheckStarted);
+            let enabled = || {
+                shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
+                    && shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).generation == generation
+            };
+            // One signed catalog fetch (document + detached signature) for the entire roster.
+            let catalog = enabled().then(|| http.as_ref().and_then(|http| nightly_catalog(http, &paths, &shared, &enabled))).flatten();
             // One sweep and one request at a time. All admitted app lookups share this deadline.
             let started = Instant::now();
-            for app in apps.into_iter().filter(|app| chosen.contains(&crate::nightly_lookup::key(app, platform))) {
-                let enabled = || {
-                    shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled
-                        && shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).generation == generation
-                };
+            let mut discovery_fallbacks = 0;
+            let mut deferred = Vec::new();
+            let mut used_github = false;
+            let mut used_catalog = false;
+            let mut github_blocked = false;
+            // `begin` decided the order: installed copies first, then the front of the queue.
+            let by_key: std::collections::BTreeMap<String, CraftApp> =
+                apps.into_iter().map(|app| (crate::nightly_lookup::key(&app, platform), app)).collect();
+            // Preserve installed-first priority, then prefer catalog candidates in each group.
+            let mut chosen = chosen;
+            if let Some(feed) = &catalog {
+                let state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                chosen.sort_by_key(|key| {
+                    (
+                        !installed.contains(key),
+                        by_key
+                            .get(key)
+                            .is_none_or(|app| crate::nightly_lookup::catalog_candidate(feed, app, now, state.record(key).tag.as_deref()).is_none()),
+                    )
+                });
+            }
+            // When the launcher's own budget held this sweep back, so the page can say it is waiting
+            // for GitHub instead of reporting a finished check that found nothing.
+            let mut held_back_until = None;
+            if http.is_none() && enabled() {
+                shared.emit(Event::Notice { app: sweep_app.into(), result: Err("Secure Nightly connections are unavailable.".into()) });
+                held_back_until = Some(crate::now().saturating_add(60));
+            }
+            for (index, key) in chosen.iter().enumerate() {
+                let Some(app) = by_key.get(key).copied() else { continue };
                 if !enabled() {
                     break;
                 }
-                let backoff = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
-                let outcome = if let Some(retry_at) = backoff {
-                    crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
-                        why: "Nightly discovery is waiting for server backoff.".into(),
-                        retry_at: Some(retry_at),
-                    })
-                } else if let Some(http) = &http {
-                    crate::nightly_lookup::lookup(
-                        &app,
-                        platform,
-                        now,
-                        &mut |url, max, timeout, now| http.nightly_get(url, max, timeout, now),
-                        &|| started.elapsed(),
-                        &enabled,
-                    )
+                // The user's own check outranks a background one; an installed copy outranks an app
+                // nobody has installed, which is what keeps discovery inside its budget.
+                let priority = if manual {
+                    Priority::User
+                } else if installed.contains(key) {
+                    Priority::Installed
                 } else {
-                    crate::nightly_lookup::Outcome::Indeterminate(crate::http::NightlyHttpError {
-                        why: "Secure Nightly connections are unavailable.".into(),
-                        retry_at: None,
-                    })
+                    Priority::Discovery
                 };
-                finish_nightly_result(&app, platform, generation, outcome, &shared, &paths);
+                let backoff = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
+                let previous_tag = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).record(key).tag;
+                let candidate =
+                    catalog.as_ref().and_then(|feed| crate::nightly_lookup::catalog_candidate(feed, &app, crate::now(), previous_tag.as_deref()));
+                let previous = shared.nightly_verified.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
+                let Some(http) = &http else {
+                    shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).defer(key);
+                    deferred.push(key.clone());
+                    continue;
+                };
+                let mut before_lookup = || {
+                    let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner);
+                    let mut state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                    let error = |why: String| crate::http::NightlyHttpError { over_budget: false, why, retry_at: None };
+                    if !options.nightly_enabled || state.generation != generation {
+                        return Err(error("Developer build discovery was turned off.".into()));
+                    }
+                    state.attempt(key, crate::now());
+                    state.save(&paths).map_err(error)
+                };
+                let policy = crate::nightly_lookup::LookupPolicy {
+                    candidate,
+                    previous: previous.as_ref(),
+                    backoff,
+                    github_blocked,
+                    before_lookup: &mut before_lookup,
+                    manual,
+                    installed: installed.contains(key),
+                    fallback_used: &mut discovery_fallbacks,
+                };
+                let Some((outcome, origin)) = crate::nightly_lookup::lookup_prefer_catalog(
+                    &app,
+                    platform,
+                    now,
+                    policy,
+                    &mut |url, max, timeout, now| http.nightly_get_as(url, max, timeout, now, priority),
+                    &|| started.elapsed(),
+                    &enabled,
+                ) else {
+                    shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).defer(key);
+                    deferred.push(key.clone());
+                    continue;
+                };
+                if let crate::nightly_lookup::Outcome::Indeterminate(error) = &outcome
+                    && error.over_budget
+                {
+                    let mut state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                    state.defer(key);
+                    deferred.push(key.clone());
+                    if started.elapsed() >= crate::nightly_lookup::MAX_TIME {
+                        for later in &chosen[index + 1..] {
+                            state.defer(later);
+                            deferred.push(later.clone());
+                        }
+                        break;
+                    }
+                    // A GitHub-only quota refusal does not consume static catalog results.
+                    github_blocked = true;
+                    held_back_until = http.nightly_budget_retry_at(priority, crate::now());
+                    continue;
+                }
+                used_github |= origin == Origin::GitHub;
+                used_catalog |= origin == Origin::ArtCraftApi;
+                finish_nightly_result(&app, platform, generation, outcome, origin, &shared, &paths);
+            }
+            if !deferred.is_empty() {
+                let _reporting = shared.reporting.lock().unwrap_or_else(PoisonError::into_inner);
+                let options = shared.options.lock().unwrap_or_else(PoisonError::into_inner);
+                let state = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner);
+                if options.nightly_enabled && state.generation == generation {
+                    match state.save(&paths) {
+                        Ok(()) => {
+                            // Queueing temporarily marked these rows incomplete. Restore their
+                            // presentation too when an allowance/backoff left them unattempted.
+                            let verified = shared.nightly_verified.lock().unwrap_or_else(PoisonError::into_inner);
+                            for key in deferred {
+                                if let Some(app) = by_key.get(&key) {
+                                    let record = state.record(&key);
+                                    let fresh = state.fresh(&key, crate::now()) && (record.tag.is_none() || verified.contains_key(app.id));
+                                    shared.emit(Event::NightlyStatus { app: app.id.into(), status: record.status(fresh) });
+                                }
+                            }
+                        }
+                        Err(error) => log::warn!("Could not persist deferred Nightly scheduling: {error}"),
+                    }
+                }
             }
             drop(lease);
             let retry = shared.nightly_state.lock().unwrap_or_else(PoisonError::into_inner).backoff(crate::now());
-            shared.emit(Event::CheckFinished { at: crate::now(), source: Source::GitHubApi, rate_limited_until: retry });
+            shared.emit(Event::CheckFinished {
+                at: crate::now(),
+                source: if used_github {
+                    Source::GitHubApi
+                } else if used_catalog {
+                    Source::Feed
+                } else {
+                    Source::Cache
+                },
+                // A server's backoff, or the launcher's own budget: both mean "ask again at this time".
+                rate_limited_until: retry.or(held_back_until),
+            });
         }));
     }
 
@@ -762,10 +972,13 @@ impl NativeBackend {
             return;
         };
         let now = crate::now();
-        let recent = self.shared.last_check.lock().unwrap_or_else(PoisonError::into_inner).is_some_and(|t| now - t < FRESH_FOR);
-        if (recent && !force) || self.shared.checking.swap(true, Ordering::SeqCst) {
+        let last = *self.shared.last_check.lock().unwrap_or_else(PoisonError::into_inner);
+        if (last.is_some_and(|t| now - t < FRESH_FOR) && !force) || self.shared.checking.swap(true, Ordering::SeqCst) {
             return;
         }
+        let pressed = force;
+        let force = self.shared.forced_now(force, now);
+        self.shared.reusing_forced.store(pressed && !force, Ordering::SeqCst);
         let shared = self.shared.clone();
         let busy = BusyGuard { shared: shared.clone(), flag: BusyFlag::Checking };
         let paths = self.paths.clone();
@@ -849,7 +1062,7 @@ impl NativeBackend {
             match work {
                 Work::Install(None) => {
                     if !self.options().nightly_enabled {
-                        return Err("Pre-Release installs and updates are off. Retained copies and data are kept.".into());
+                        return Err("Developer build installs and updates are off. Retained copies and data are kept.".into());
                     }
                     selected_nightly(app, &self.shared, platform)?;
                     Ok(())
@@ -862,7 +1075,7 @@ impl NativeBackend {
                     }
                     Ok(())
                 }
-                Work::Replace(_) | Work::Install(Some(_)) => {
+                Work::Replace(_) | Work::Install(Some(_)) | Work::Chosen(_) => {
                     Err("Nightly cannot replace a Stable/custom path or join a shared installer batch.".into())
                 }
             }
@@ -967,7 +1180,11 @@ impl NativeBackend {
                     let (approved, batch) = match &work {
                         Work::Replace(path) => (Some(path.as_str()), None),
                         Work::Install(batch) => (None, batch.clone()),
-                        Work::Uninstall | Work::Launch(_) => (None, None),
+                        Work::Uninstall | Work::Launch(_) | Work::Chosen(_) => (None, None),
+                    };
+                    let by_name = match &work {
+                        Work::Chosen(chosen) => Some(chosen),
+                        _ => None,
                     };
                     let r = run_install(
                         app,
@@ -983,12 +1200,12 @@ impl NativeBackend {
                         source.as_deref(),
                         batch,
                         place,
+                        by_name,
                     );
                     // Stopped by the connection rather than by the user: say so, and how to go on.
+                    // Still a pause (`protocol::is_paused`), so the UI keeps the request by name.
                     match r {
-                        Err(e) if e == PAUSED && stop.check().is_ok() => {
-                            Err("The download paused because the connection keeps dropping. Press Resume to continue where it stopped.".into())
-                        }
+                        Err(e) if is_paused(&e) && stop.check().is_ok() => Err(PAUSED_BY_CONNECTION.into()),
                         other => other,
                     }
                 };
@@ -997,7 +1214,7 @@ impl NativeBackend {
                 let found = if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
                     manifest.apps.get(app.id).and_then(|record| crate::nightly::owned_installation(app, record, &paths, platform?).ok())
                 } else {
-                    crate::detect::detect(app, &manifest, &crate::detect::Snapshot::take())
+                    shared.host.detect(app, &manifest, &shared.host.snapshot())
                 };
                 // One installer call can cover several apps, and fail after some of them went in.
                 let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
@@ -1166,12 +1383,24 @@ enum Work {
     Replace(String),
     Uninstall,
     Launch(Vec<String>),
+    /// Install the release the person picked by name (see [`Command::InstallChosen`]).
+    Chosen(Chosen),
 }
 
-fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
+/// The release the person picked by name in the version dialog, and the release they agreed may be
+/// put back instead of the installed version if going back fails ([`Event::GoBackFallback`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Chosen {
+    tag: String,
+    fallback: Option<String>,
+}
+
+/// Whether `release` may be installed on `track`. The app stays part of the call because the
+/// track is its own choice; that a Nightly is never an ordinary release is now shared policy.
+fn release_matches_track(_app: &CraftApp, release: &Release, track: &VersionTrack, prereleases: bool) -> bool {
     match track {
         VersionTrack::Stable => {
-            artcraft_launcher_core::release::ordinary_release_allowed(app.has_separate_nightly_channel(), release)
+            artcraft_launcher_core::release::ordinary_release_allowed(release)
                 && (prereleases || (!release.prerelease && release.version.as_ref().is_some_and(version::is_stable)))
         }
         VersionTrack::Nightly => artcraft_launcher_core::release::is_nightly(release),
@@ -1179,35 +1408,61 @@ fn release_matches_track(app: &CraftApp, release: &Release, track: &VersionTrack
     }
 }
 
-/// Whether `chosen` is a version picked by name that is older than the installed copy.
-fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>) -> bool {
-    let VersionTrack::Pinned(tag) = track else {
-        return false;
-    };
+/// Whether `chosen` is a version picked by name that is older than the installed copy: the pinned
+/// version, or the release `by_name` says the person picked in the version dialog
+/// ([`Command::InstallChosen`]), on any track. A release a check found on its own (the latest one)
+/// never is, so a feed can't send an app back to an older build.
+fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>, by_name: Option<&Chosen>) -> bool {
+    let named = by_name.is_some_and(|c| c.tag == chosen.tag) || matches!(track, VersionTrack::Pinned(tag) if chosen.tag == *tag);
     let (Some(chosen_v), Some(installed_v)) = (chosen.version.as_ref(), existing.and_then(|i| i.version.as_ref())) else {
         return false;
     };
-    chosen.tag == *tag && version::is_newer(installed_v, chosen_v)
+    named && version::is_newer(installed_v, chosen_v)
 }
 
-/// For a version chosen by name that is older than the installed copy: the installed version's own
-/// published release, to put back if the downgrade fails. `None` for anything else, without
-/// asking `list`. An error means the downgrade can't be made safe, so it must not start.
+/// Why going back can't start yet.
+#[derive(Debug, PartialEq, Eq)]
+enum NoWayBack {
+    /// Nothing changed, and nothing will until something else does.
+    Refused(String),
+    /// Only this release can be put back
+    /// ([`RestorePoint::SameNumbers`](artcraft_launcher_core::rollback::RestorePoint::SameNumbers)): the person decides.
+    Ask(Box<Release>),
+}
+
+/// For a version chosen by name that is older than the installed copy: the release to put back if
+/// the downgrade fails ([`artcraft_launcher_core::rollback::restore_point`]), the installed
+/// version's own or, once the person agreed to it (`by_name`'s `fallback`), a pre-release with its
+/// numbers. `recorded`: the launcher's own record says which release the copy is. `None` for
+/// anything else, without asking `list`.
 fn downgrade_previous(
     app: &CraftApp,
     track: &VersionTrack,
     chosen: &Release,
     existing: Option<&Installed>,
+    recorded: bool,
+    by_name: Option<&Chosen>,
     list: impl FnOnce() -> Result<Vec<Release>, String>,
-) -> Result<Option<Release>, String> {
-    let Some(installed_v) = existing.and_then(|i| i.version.as_ref()).filter(|_| is_chosen_downgrade(track, chosen, existing)) else {
+) -> Result<Option<Release>, NoWayBack> {
+    use artcraft_launcher_core::rollback::{RestorePoint, restore_point};
+    let Some(installed) = existing.filter(|_| is_chosen_downgrade(track, chosen, existing, by_name)) else {
         return Ok(None);
     };
-    let releases =
-        list().map_err(|e| format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))?;
-    releases.into_iter().find(|r| r.version.as_ref() == Some(installed_v)).map(Some).ok_or_else(|| {
-        format!("{} {installed_v} isn't published any more, so it couldn't be put back if going back fails. Nothing was changed.", app.name)
-    })
+    let installed_v = installed.version.as_ref().map(ToString::to_string).unwrap_or_default();
+    let releases = list().map_err(|e| {
+        NoWayBack::Refused(format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))
+    })?;
+    match restore_point(&releases, installed, chosen, recorded) {
+        RestorePoint::Exact(previous) => Ok(Some(previous.clone())),
+        RestorePoint::SameNumbers(fallback) if by_name.and_then(|c| c.fallback.as_deref()) == Some(fallback.tag.as_str()) => {
+            Ok(Some(fallback.clone()))
+        }
+        RestorePoint::SameNumbers(fallback) => Err(NoWayBack::Ask(Box::new(fallback.clone()))),
+        RestorePoint::None => Err(NoWayBack::Refused(format!(
+            "{} {installed_v} isn't published any more, so it couldn't be put back if going back fails. Nothing was changed.",
+            app.name
+        ))),
+    }
 }
 
 /// What an install does with a Flatpak its repository updates: `flatpak update`, on Linux, and
@@ -1257,6 +1512,7 @@ fn finish_nightly_result(
     platform: Platform,
     generation: u64,
     mut outcome: crate::nightly_lookup::Outcome,
+    origin: Origin,
     shared: &Shared,
     paths: &Paths,
 ) {
@@ -1273,6 +1529,7 @@ fn finish_nightly_result(
         let previous = state.record(&key).tag.and_then(|tag| version::parse(&tag));
         if previous.as_ref().zip(next.release().version.as_ref()).is_some_and(|(old, next)| version::is_newer(old, next)) {
             outcome = Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
                 why: "Nightly discovery would regress the previous verified SemVer selection; it was kept stale.".into(),
                 retry_at: None,
             });
@@ -1282,6 +1539,7 @@ fn finish_nightly_result(
         Ok(record) => record,
         Err(error) => {
             outcome = Outcome::Indeterminate(crate::http::NightlyHttpError {
+                over_budget: false,
                 why: format!("Could not persist Nightly result metadata: {error}"),
                 retry_at: state.record(&key).retry_at,
             });
@@ -1309,7 +1567,7 @@ fn finish_nightly_result(
     let installable = nightly_installable(app, shared, Some(platform), record.complete && state.fresh(&key, now));
     shared.emit_all([
         Event::Installable { app: app.id.into(), installable },
-        Event::Latest { app: app.id.into(), latest, from: Origin::GitHub },
+        Event::Latest { app: app.id.into(), latest, from: origin },
         Event::NightlyStatus { app: app.id.into(), status: record.status(record.complete) },
     ]);
 }
@@ -1324,7 +1582,7 @@ struct NightlyInstallPlan {
 
 fn nightly_install_plan(app: &CraftApp, shared: &Shared, paths: &Paths, platform: Option<Platform>) -> Result<NightlyInstallPlan, String> {
     if !shared.options.lock().unwrap_or_else(PoisonError::into_inner).nightly_enabled {
-        return Err("Pre-Release installs and updates are off. Retained copies and data are kept.".into());
+        return Err("Developer build installs and updates are off. Retained copies and data are kept.".into());
     }
     let platform = platform.ok_or("This nightly target is not supported on this system.")?;
     let verified = selected_nightly(app, shared, platform)?;
@@ -1366,7 +1624,7 @@ fn run_nightly_install(app: &CraftApp, shared: &Shared, platform: Option<Platfor
         crate::nightly::owned_installation(app, record, paths, platform)?;
         let consent = shared.options.lock().unwrap_or_else(PoisonError::into_inner);
         if !consent.nightly_enabled {
-            return Err("Pre-Release was turned off; the pending install was not committed.".into());
+            return Err("Developer builds were turned off; the pending install was not committed.".into());
         }
         let updated = lease.publish(previous.as_ref(), Some(record))?;
         committed = true;
@@ -1412,7 +1670,7 @@ fn install_plan(
     if app.has_separate_nightly_channel()
         && (artcraft_launcher_core::release::separate_channel_nightly(&release) || artcraft_launcher_core::release::is_nightly_track(track))
     {
-        return Err("Nightly builds use the separate Pre-Release channel; the stable copy was left unchanged.".into());
+        return Err("Nightly builds use the separate developer channel; the stable copy was left unchanged.".into());
     }
     if !release_matches_track(app, &release, track, options.prereleases) {
         return Err("the selected version isn't available yet. Check for updates before installing.".into());
@@ -1452,9 +1710,10 @@ fn run_install(
     source: Option<&dyn ReleaseSource>,
     batch: Option<crate::queue::Gather>,
     place: Option<crate::downloads::Place<'static>>,
+    by_name: Option<&Chosen>,
 ) -> Result<String, String> {
     if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
-        if approved.is_some() || batch.is_some() {
+        if approved.is_some() || batch.is_some() || by_name.is_some() {
             return Err("Nightly cannot use Stable replacement or shared installer-batch permission.".into());
         }
         let locations = Default::default();
@@ -1478,6 +1737,7 @@ fn run_install(
             downgrade: None,
             batch: None,
             place,
+            put_back: None,
         };
         return run_nightly_install(app, shared, platform, &mut job);
     }
@@ -1490,6 +1750,10 @@ fn run_install(
         // own update (network, maybe a prompt) so the ready members don't wait for it.
         drop(batch);
         let inst = update?;
+        // Its repository decides the version: a release picked by name can't be installed here.
+        if by_name.is_some() {
+            return Err(install::managed_elsewhere(app, inst, false).unwrap_or_else(|| "Update this app through its Flatpak repository".into()));
+        }
         #[cfg(target_os = "linux")]
         {
             shared.emit(Event::Progress { app: app.id.to_string(), phase: JobPhase::Installing });
@@ -1522,6 +1786,10 @@ fn run_install(
     }
     let latest = shared.latest.lock().unwrap_or_else(PoisonError::into_inner).get(app.id).cloned();
     let InstallPlan { release, platform, asset, kind } = install_plan(app, latest, platform, options, (existing, record), Asking::Install)?;
+    // The person picked a release by name: install that one, or nothing.
+    if let Some(chosen) = by_name.filter(|c| c.tag != release.tag) {
+        return Err(format!("{} {} isn't the version to install any more, so nothing was changed. Choose the version again.", app.name, chosen.tag));
+    }
     let http = http.ok_or("secure connections aren't available on this system")?;
     let track = options.versions.get(app.id).unwrap_or(&VersionTrack::Stable);
     // Going back to a version chosen by name. A macOS bundle, a launcher AppImage or Flatpak keeps the old
@@ -1531,11 +1799,40 @@ fn run_install(
     let previous = if keeps_old_copy {
         None
     } else {
-        downgrade_previous(app, track, &release, existing, || {
+        // The launcher's own record of which release this registration is (see
+        // `detect::with_recorded_release`): such a copy is never taken for a pre-release.
+        // `existing` is the copy after detection, so a release candidate the launcher recorded
+        // already reads as that candidate; `record_describes` matches the numbers-only version
+        // Windows reports and is then false. That is harmless: `restore_point` finds the published
+        // candidate itself as the exact release and never needs the same-numbers fallback.
+        let recorded = {
+            let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+            recorded_copy(&manifest, app, existing)
+        };
+        let previous = downgrade_previous(app, track, &release, existing, recorded, by_name, || {
             source
                 .ok_or_else(|| "secure connections aren't available on this system".to_string())?
                 .versions(&release_query(load_feed(paths).as_ref(), app))
-        })?
+        });
+        match previous {
+            Ok(previous) => previous,
+            Err(NoWayBack::Refused(why)) => return Err(why),
+            // Asked first, like an overwrite: the UI's question answers it.
+            Err(NoWayBack::Ask(fallback)) => {
+                // Only asked when that release has a package to put back.
+                if planned_asset(app, &fallback, platform, options, existing, record).is_none_or(|(_, k)| k != kind) {
+                    return Err(format!("{} {} has no matching download to put back, so nothing was changed.", app.name, fallback.version_label()));
+                }
+                let installed = existing.and_then(|i| i.version.as_ref()).map(ToString::to_string).unwrap_or_default();
+                shared.emit(Event::GoBackFallback {
+                    app: app.id.to_string(),
+                    installed: installed.clone(),
+                    chosen: release.tag.clone(),
+                    fallback: fallback.tag.clone(),
+                });
+                return Err(format!("{} {installed} isn't published, so going back waits for your answer. Nothing was changed.", app.name));
+            }
+        }
     };
     let previous_asset = match &previous {
         Some(p) => Some(
@@ -1547,7 +1844,7 @@ fn run_install(
         None => None,
     };
     let downgrade = if keeps_old_copy {
-        is_chosen_downgrade(track, &release, existing).then_some(install::Downgrade::KeepOldCopy)
+        is_chosen_downgrade(track, &release, existing, by_name).then_some(install::Downgrade::KeepOldCopy)
     } else {
         previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade::Reinstall { previous, asset })
     };
@@ -1581,6 +1878,7 @@ fn run_install(
         downgrade,
         batch: batch.take(),
         place,
+        put_back: None,
     };
     let mut commit_record = |record: &crate::manifest::Record| {
         let mut manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
@@ -1590,7 +1888,22 @@ fn run_install(
         *manifest = updated;
         Ok(())
     };
-    let new_record = install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record))?;
+    let new_record = match install::install_at(app, &release, &asset, kind, existing, record, &mut job, Some(&mut commit_record)) {
+        Ok(new_record) => new_record,
+        Err(e) => {
+            // A failed Windows Installer downgrade that put `previous` back reports which
+            // registration that package is in now; only then is a release recorded for it.
+            if let Some(put_back) = job.put_back.take()
+                && let Some(previous) = previous.as_ref()
+            {
+                remember_put_back(app, shared, paths, previous, &put_back);
+            }
+            return Err(e);
+        }
+    };
+    // Windows Installer keeps only the numbers of the version: remember which release this was.
+    let released =
+        if new_record.is_none() && kind == PackageKind::Msi { installed_release(&release, shared.host.registered(app).as_ref()) } else { None };
     {
         let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
         let changed = match new_record {
@@ -1601,7 +1914,13 @@ fn run_install(
             // Installed the platform's own way: any old launcher record is stale.
             None => m.apps.remove(app.id).is_some(),
         };
-        if changed && let Err(e) = m.save(&paths.manifest()) {
+        let release_changed = match released {
+            Some(r) => m.releases.insert(app.id.to_string(), r.clone()).as_ref() != Some(&r),
+            None => m.releases.remove(app.id).is_some(),
+        };
+        if (changed || release_changed)
+            && let Err(e) = m.save(&paths.manifest())
+        {
             log::warn!("couldn't save the install record: {e}");
         }
     }
@@ -1689,8 +2008,9 @@ fn finish_uninstall(paths: &Paths, m: &mut crate::manifest::Manifest, app: &Craf
         return Err(format!("{} isn't installed", app.name));
     }
     let removed_app = installed && m.apps.remove(app.id).is_some();
+    let released = installed && m.releases.remove(app.id).is_some();
     let tool = remove_cli_tool(paths, m, app.id);
-    if removed_app || matches!(tool, Ok(true)) {
+    if removed_app || released || matches!(tool, Ok(true)) {
         let _ = m.save(&paths.manifest());
     }
     match (installed, tool) {
@@ -1698,6 +2018,47 @@ fn finish_uninstall(paths: &Paths, m: &mut crate::manifest::Manifest, app: &Craf
         (true, Err(e)) => Ok(format!("{} was removed, but its command-line tool couldn't be removed ({e}). Remove it again to retry", app.name)),
         (false, Ok(_)) => Ok(format!("The command-line tool of {} was removed", app.name)),
         (false, Err(e)) => Err(format!("The command-line tool of {} couldn't be removed ({e})", app.name)),
+    }
+}
+
+/// What the launcher keeps of the Windows Installer copy it just installed from `release` (see
+/// [`InstalledRelease`](crate::manifest::InstalledRelease)): the release, tied to the registration
+/// `found` that is there now, when that copy has the release's numbers. `None` when the system
+/// shows no such copy, so nothing unverified is ever recorded.
+fn installed_release(release: &Release, found: Option<&Installed>) -> Option<crate::manifest::InstalledRelease> {
+    let found = found.filter(|f| f.source == artcraft_launcher_core::InstallSource::Msi)?;
+    let (seen, full) = (found.version.as_ref()?, release.version.as_ref()?);
+    let package = found.package.clone().filter(|code| !code.is_empty())?;
+    ((seen.major, seen.minor, seen.patch) == (full.major, full.minor, full.patch) && (seen.pre.is_empty() || seen == full))
+        .then(|| crate::manifest::InstalledRelease { tag: release.tag.clone(), version: full.to_string(), package })
+}
+
+/// Whether the launcher's record says which release the installed copy `existing` is, read
+/// exactly as detection reads it ([`crate::detect::record_describes`], numbers included): only
+/// then may the fallback decision conclude anything from it. A record whose numbers don't match
+/// the copy describes another release, not this one.
+fn recorded_copy(manifest: &Manifest, app: &CraftApp, existing: Option<&Installed>) -> bool {
+    crate::detect::record_describes(existing, manifest.releases.get(app.id))
+}
+
+/// After a Windows Installer downgrade that failed and put `previous` back: the install reports
+/// the registration that package is in now (the one product code, carrying the previous release's
+/// numbers, that the put-back is; see [`install::PutBack`]), and that release is recorded for
+/// exactly that registration. Nothing is read off the registry here, and a put-back after a
+/// removal that stopped partway reports nothing at all — a registration it left behind that
+/// happens to have the same numbers never gets the release, and the copy that was there before
+/// keeps its own.
+fn remember_put_back(app: &CraftApp, shared: &Shared, paths: &Paths, previous: &Release, put_back: &install::PutBack) {
+    let Some(version) = previous.version.as_ref() else { return };
+    let record =
+        crate::manifest::InstalledRelease { tag: previous.tag.clone(), version: version.to_string(), package: put_back.product_code.clone() };
+    let mut m = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner);
+    if m.releases.get(app.id) == Some(&record) {
+        return;
+    }
+    m.releases.insert(app.id.to_string(), record);
+    if let Err(e) = m.save(&paths.manifest()) {
+        log::warn!("couldn't save the install record: {e}");
     }
 }
 
@@ -1734,7 +2095,7 @@ fn installed_text(app: &CraftApp, update: bool, release: &Release) -> String {
 /// shared by several apps (Linux packages installed together) can have installed some of them;
 /// any other error, a cancellation or a pause stands, whatever is found afterwards.
 fn landed_despite(error: &str, before: Option<&Installed>, after: Option<&Installed>, latest: &version::Version) -> bool {
-    error != PAUSED && error != CANCELLED && error != INSTALL_CANCELLED && install::failed_in_shared_call(error) && landed(before, after, latest)
+    !is_paused(error) && error != CANCELLED && error != INSTALL_CANCELLED && install::failed_in_shared_call(error) && landed(before, after, latest)
 }
 
 /// Whether an install took, whatever its job reported: `latest` is there now and wasn't before.
@@ -1986,15 +2347,24 @@ fn planned_download(
 /// What one check asks: which feed to poll (a local mirror trumps everything), and how much to
 /// lean on GitHub.
 fn check_plan(http: &Http, mirror: Option<&String>, pre: bool, paths: &Paths, shared: &Arc<Shared>) -> (Option<Feed>, Fallback) {
+    // Backend harnesses use a stub release source; do not let current production releases
+    // supersede the fixture. The signed catalog paths have their own deterministic tests.
+    #[cfg(test)]
+    if matches!(&shared.host, HostDetection::Stub(_)) {
+        return (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY });
+    }
     if let Some(base) = mirror {
         // A local mirror answers for everything: GitHub is never asked.
         (local_feed(http, base), Fallback { trust_feed: true, github_every: GITHUB_FALLBACK_EVERY })
-    } else if pre {
-        // The feed serves stable releases only; with pre-releases on, GitHub decides.
-        (None, Fallback { trust_feed: false, github_every: EARLY_GITHUB_EVERY })
     } else {
-        feed_and_fallback(http, paths, shared)
+        remote_plan(pre, feed_and_fallback(http, paths, shared))
     }
+}
+
+/// The signed catalog describes all channels; legacy JSON only settles stable answers.
+/// Keep GitHub prerelease discovery for legacy feeds at the normal fallback pace (#713).
+fn remote_plan(pre: bool, (feed, fallback): (Option<Feed>, Fallback)) -> (Option<Feed>, Fallback) {
+    if pre && !feed.as_ref().is_some_and(|f| f.channel_aware) { (feed, Fallback { trust_feed: false, ..fallback }) } else { (feed, fallback) }
 }
 
 /// Answers the apps from a shared queue over a few workers, and returns which sources answered.
@@ -2029,10 +2399,7 @@ fn sweep(
                     };
                     let (latest, from, used) = match mirror {
                         Some(_) => mirror_chosen(app, feed, now, track),
-                        None if *track != VersionTrack::Stable => {
-                            let answer = source.chosen(&release_query(feed, app), track);
-                            (Some(answer.latest), Origin::GitHub, Some(answer.source))
-                        }
+                        None if *track != VersionTrack::Stable => track_answer(app, track, feed, source.as_ref(), shared, force, now),
                         None => latest_for(app, feed, fallback, source.as_ref(), shared, options.prereleases, force, now),
                     };
                     let latest = if shared.channel == artcraft_launcher_core::nightly::InstallChannel::Nightly {
@@ -2187,10 +2554,13 @@ fn latest_for(
 ) -> (Option<LatestRelease>, Origin, Option<Source>) {
     let repo = feed_repo(feed, app);
     if fallback.trust_feed {
-        match feed.map(|f| f.answer(app, now)) {
+        match feed.map(|f| if pre { f.answer_prerelease(app, now) } else { f.answer(app, now) }) {
             // The feed can lag GitHub by some minutes after a release. A check the user pressed
-            // looks past it when GitHub's quota-free redirect names something newer (#91).
-            Some(FeedAnswer::Fresh(found)) if !(force && feed_is_behind(source, &repo, found.as_ref())) => {
+            // looks past it when GitHub's quota-free redirect names something newer (#91); one
+            // reusing the last forced check's answers then takes GitHub's saved answer.
+            Some(FeedAnswer::Fresh(found))
+                if !((force || shared.reusing_forced.load(Ordering::SeqCst)) && feed_is_behind(source, &repo, found.as_ref())) =>
+            {
                 return (Some(found.map_or(LatestRelease::None, LatestRelease::Found)), Origin::ArtCraftApi, Some(Source::Feed));
             }
             Some(FeedAnswer::Fresh(_) | FeedAnswer::AskGitHub) | None => {}
@@ -2198,18 +2568,126 @@ fn latest_for(
     }
     let due = {
         let mut asked = shared.github_asked.lock().unwrap_or_else(PoisonError::into_inner);
-        let due = force || asked.get(app.id).is_none_or(|t| now - t >= fallback.github_every);
+        let key = asked_key(app, pre);
+        let due = force || asked.get(&key).is_none_or(|t| now - t >= fallback.github_every);
         if due {
-            asked.insert(app.id.to_string(), now);
+            asked.insert(key, now);
         }
         due
     };
     if due {
-        let answer = source.latest(&ReleaseQuery::for_app(app, repo), pre);
+        let query = ReleaseQuery::for_app(app, repo).with_priority(github_priority(app, &VersionTrack::Stable, shared, force));
+        let answer = source.latest(&query, pre);
+        // GitHub couldn't answer (its limit, the launcher's budget, the network), or fell back
+        // to a saved release older than the feed's: the feed's stable release stands.
+        let live = answer.source == Source::GitHubApi && !matches!(answer.latest, LatestRelease::Failed(_));
+        if !live && let Some(stable) = feed_if_newer(feed, app, pre, now, Some(&answer.latest)) {
+            return (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed));
+        }
         (Some(answer.latest), Origin::GitHub, Some(answer.source))
     } else {
-        (source.cached(&ReleaseQuery::for_app(app, repo), pre), Origin::GitHub, None)
+        let cached = source.cached(&ReleaseQuery::for_app(app, repo), pre);
+        // A stable release the feed already lists outranks an older one (or a beta or RC) GitHub
+        // named last time, without waiting for GitHub's next turn; so does it when nothing is
+        // saved from GitHub for this track yet (pre-releases just turned on). A check reusing a
+        // forced one's answers keeps whichever of the two is newer.
+        match feed_if_newer(feed, app, pre, now, cached.as_ref()) {
+            Some(stable) => (Some(LatestRelease::Found(stable)), Origin::ArtCraftApi, Some(Source::Feed)),
+            None => (cached, Origin::GitHub, None),
+        }
     }
+}
+
+/// The feed's fresh selected-channel release for `app`, when it is newer than `github`'s answer, or that
+/// answer is missing, empty or failed.
+fn feed_if_newer(feed: Option<&Feed>, app: &CraftApp, pre: bool, now: i64, github: Option<&LatestRelease>) -> Option<Release> {
+    let Some(FeedAnswer::Fresh(Some(stable))) = feed.map(|f| if pre && f.channel_aware { f.answer_prerelease(app, now) } else { f.answer(app, now) })
+    else {
+        return None;
+    };
+    let newer = match github {
+        Some(LatestRelease::Found(saved)) => {
+            stable.version.as_ref().zip(saved.version.as_ref()).is_some_and(|(stable, saved)| version::is_newer(stable, saved))
+        }
+        _ => true,
+    };
+    newer.then_some(stable)
+}
+
+impl Shared {
+    /// Whether a check asked for with `force` at `now` really skips the per-app throttles. A
+    /// forced check pressed again within [`FORCED_REUSE`] of the last forced one still finishes,
+    /// but reuses what that one asked GitHub. Only a forced check opens the window: one right after
+    /// an automatic check (at launch, say) or a settings change still asks.
+    fn forced_now(&self, force: bool, now: i64) -> bool {
+        if !force {
+            return false;
+        }
+        let mut last = self.last_forced.lock().unwrap_or_else(PoisonError::into_inner);
+        if last.is_some_and(|t| (0..FORCED_REUSE).contains(&(now - t))) {
+            return false;
+        }
+        *last = Some(now);
+        true
+    }
+}
+
+/// The release a pinned or nightly `track` follows. A pinned version is saved once (see
+/// [`ReleaseSource::chosen`]); the nightly is asked about at most every [`NIGHTLY_TRACK_EVERY`],
+/// with the saved version list standing in between (#713).
+fn track_answer(
+    app: &CraftApp,
+    track: &VersionTrack,
+    feed: Option<&Feed>,
+    source: &dyn ReleaseSource,
+    shared: &Shared,
+    force: bool,
+    now: i64,
+) -> (Option<LatestRelease>, Origin, Option<Source>) {
+    let query = release_query(feed, app).with_priority(github_priority(app, track, shared, force));
+    if *track == VersionTrack::Nightly {
+        if !force && let Some(FeedAnswer::Fresh(Some(nightly))) = feed.map(|f| f.answer_nightly(app, now)) {
+            return (Some(LatestRelease::Found(nightly)), Origin::ArtCraftApi, Some(Source::Feed));
+        }
+        // Its own record, apart from the stable track's: asking about one doesn't stand in for
+        // the other when the app switches tracks.
+        let key = format!("{}@nightly", app.id);
+        let mut asked = shared.github_asked.lock().unwrap_or_else(PoisonError::into_inner);
+        let due = force || asked.get(&key).is_none_or(|t| now - t >= NIGHTLY_TRACK_EVERY);
+        if !due && let Some(saved) = source.saved_choice(&query, track) {
+            return (Some(saved), Origin::GitHub, None);
+        }
+        asked.insert(key, now);
+        drop(asked);
+        if due {
+            // A due or pressed check asks GitHub now, past the saved version list however recent.
+            let answer = source.chosen_within(&query, track, 0);
+            return (Some(answer.latest), Origin::GitHub, Some(answer.source));
+        }
+    }
+    let answer = source.chosen(&query, track);
+    (Some(answer.latest), Origin::GitHub, Some(answer.source))
+}
+
+/// Who a GitHub request about `app` is for, when the GitHub budget runs short.
+fn github_priority(app: &CraftApp, track: &VersionTrack, shared: &Shared, force: bool) -> Priority {
+    // A reused forced check still asks as the user: it can hit GitHub when the feed is behind,
+    // and must not be held back as a background request.
+    if force || shared.reusing_forced.load(Ordering::SeqCst) {
+        Priority::User
+    } else if *track == VersionTrack::Nightly {
+        Priority::NightlyTrack
+    } else if shared.installed.lock().unwrap_or_else(PoisonError::into_inner).contains_key(app.id) {
+        Priority::Installed
+    } else {
+        Priority::NotInstalled
+    }
+}
+
+/// The key in [`Shared::github_asked`] for `app` with pre-releases on or off: the two settings
+/// get different answers from GitHub, so asking under one doesn't stand in for the other.
+fn asked_key(app: &CraftApp, pre: bool) -> String {
+    if pre { format!("{}+pre", app.id) } else { app.id.to_string() }
 }
 
 /// Whether GitHub names a newer stable release of `repo` than the feed's `latest` (`None`: the
@@ -2251,15 +2729,48 @@ enum FeedFetch {
     Held,
 }
 
-/// Asks ArtCraft's release feed up to `attempts` times, as often as `throttle` allows (waiting at
-/// most [`MAX_THROTTLE_WAIT`] for it), saving a good answer.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SignedFeedCache {
+    catalog: String,
+    signature: String,
+}
+
+/// Fetch and verify both parts of a signed feed using the caller's catalog transport.
+fn signed_feed(url: &str, get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>) -> Result<(Feed, SignedFeedCache), FeedError> {
+    let sig_url = format!("{url}.sig");
+    let catalog =
+        get(url, artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES)?.ok_or_else(|| FeedError::failed("hosted catalog is not published"))?;
+    let signature = get(&sig_url, artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES)?
+        .ok_or_else(|| FeedError::failed("catalog signature is not published"))?;
+    let feed = Feed::parse_signed_catalog(&catalog, &signature).map_err(FeedError::failed)?;
+    let saved = SignedFeedCache {
+        catalog: String::from_utf8(catalog).map_err(|_| FeedError::failed("catalog is not UTF-8"))?,
+        signature: String::from_utf8(signature).map_err(|_| FeedError::failed("signature is not UTF-8"))?,
+    };
+    Ok((feed, saved))
+}
+
+/// Asks ArtCraft's signed catalog (or a local-mirror JSON feed) up to `attempts` times, as often
+/// as `throttle` allows (waiting at most [`MAX_THROTTLE_WAIT`] for it), saving a good answer.
 fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrottle>, attempts: usize) -> FeedFetch {
+    fetch_feed_with_catalog(http, paths, url, throttle, attempts, |url, max| http.get_catalog_feed_bytes(url, max))
+}
+
+fn fetch_feed_with_catalog(
+    http: &Http,
+    paths: &Paths,
+    url: &str,
+    throttle: &Mutex<FeedThrottle>,
+    attempts: usize,
+    get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>,
+) -> FeedFetch {
     let mut asked = false;
+    let is_signed_catalog = url.ends_with(".toml");
     for attempt in 0..attempts.max(1) {
         let wait = throttle.lock().unwrap_or_else(PoisonError::into_inner).wait(crate::now());
         if wait > MAX_THROTTLE_WAIT {
             if !asked {
-                log::info!("holding off the ArtCraft API for {wait} s");
+                log::info!("holding off the release catalog for {wait} s");
             }
             break;
         }
@@ -2275,27 +2786,50 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
             throttle.sending(now);
         }
         asked = true;
-        let outcome = match http.get_feed(url) {
-            Ok(body) => match Feed::parse(&body) {
-                Some(feed) => {
-                    if let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), body.as_bytes()) {
-                        log::warn!("couldn't save the release feed: {e}");
+        let outcome = if is_signed_catalog {
+            let fetched = signed_feed(url, &get);
+            match fetched {
+                Ok((feed, saved)) => {
+                    if let Ok(bytes) = serde_json::to_vec(&saved)
+                        && let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), &bytes)
+                    {
+                        log::warn!("couldn't save the release catalog: {e}");
                     }
                     throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(Outcome::Answered, crate::now(), 0.0);
                     return FeedFetch::Answered(feed);
                 }
-                None => {
-                    log::warn!("the release feed answered with something unreadable (try {})", attempt + 1);
-                    Outcome::Failed { retry_after: None }
+                Err(e) if e.throttled => {
+                    log::warn!("the signed release catalog asked us to slow down (HTTP 429); holding off");
+                    Outcome::Throttled { retry_after: e.retry_after }
                 }
-            },
-            Err(e) if e.throttled => {
-                log::warn!("the ArtCraft API asked us to slow down (HTTP 429); holding off");
-                Outcome::Throttled { retry_after: e.retry_after }
+                Err(e) => {
+                    log::info!("signed release catalog unavailable (try {}): {}", attempt + 1, e.why);
+                    Outcome::Failed { retry_after: e.retry_after }
+                }
             }
-            Err(e) => {
-                log::info!("release feed unavailable (try {}): {}", attempt + 1, e.why);
-                Outcome::Failed { retry_after: e.retry_after }
+        } else {
+            match http.get_feed(url) {
+                Ok(body) => match Feed::parse(&body) {
+                    Some(feed) => {
+                        if let Err(e) = crate::paths::write_atomic(&paths.feed_cache(), body.as_bytes()) {
+                            log::warn!("couldn't save the release feed: {e}");
+                        }
+                        throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(Outcome::Answered, crate::now(), 0.0);
+                        return FeedFetch::Answered(feed);
+                    }
+                    None => {
+                        log::warn!("the release feed answered with something unreadable (try {})", attempt + 1);
+                        Outcome::Failed { retry_after: None }
+                    }
+                },
+                Err(e) if e.throttled => {
+                    log::warn!("the release feed asked us to slow down (HTTP 429); holding off");
+                    Outcome::Throttled { retry_after: e.retry_after }
+                }
+                Err(e) => {
+                    log::info!("release feed unavailable (try {}): {}", attempt + 1, e.why);
+                    Outcome::Failed { retry_after: e.retry_after }
+                }
             }
         };
         throttle.lock().unwrap_or_else(PoisonError::into_inner).finished(outcome, crate::now(), feed_throttle::jitter());
@@ -2304,6 +2838,58 @@ fn fetch_feed(http: &Http, paths: &Paths, url: &str, throttle: &Mutex<FeedThrott
         }
     }
     if asked { FeedFetch::Failed } else { FeedFetch::Held }
+}
+
+/// Nightly uses the pinned signed endpoint only. A failed/bad/stale catalog never proves absence.
+/// Cached bytes are reverified; legacy JSON is not a Nightly source.
+fn nightly_catalog(http: &Http, paths: &Paths, shared: &Shared, enabled: &impl Fn() -> bool) -> Option<Feed> {
+    // Existing backend fixtures and the opt-in local mirror must stay deterministic.
+    if !enabled() || local_mirror().is_some() {
+        return None;
+    }
+    #[cfg(test)]
+    if cfg!(test) {
+        return shared.nightly_catalog_fixture.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    }
+    nightly_catalog_with_fetch(http, paths, &shared.feed_throttle, enabled, |url, max| http.get_catalog_feed_bytes(url, max))
+}
+
+fn nightly_catalog_with_fetch(
+    http: &Http,
+    paths: &Paths,
+    throttle: &Mutex<FeedThrottle>,
+    enabled: &impl Fn() -> bool,
+    get: impl Fn(&str, usize) -> Result<Option<Vec<u8>>, FeedError>,
+) -> Option<Feed> {
+    if !enabled() {
+        return None;
+    }
+    crate::nightly_profile::validate_paths(paths).ok()?;
+    crate::nightly_profile::validate_file(&paths.feed_cache()).ok()?;
+    match fetch_feed_with_catalog(http, paths, artcraft_launcher_core::feed::FEED_URL, throttle, 1, |url, max| {
+        if !enabled() {
+            return Err(FeedError::failed("Developer build discovery was turned off."));
+        }
+        get(url, max)
+    }) {
+        FeedFetch::Answered(feed) => Some(feed),
+        FeedFetch::Held => load_signed_nightly_feed(paths),
+        FeedFetch::Failed => None,
+    }
+}
+
+fn load_signed_nightly_feed(paths: &Paths) -> Option<Feed> {
+    use std::io::Read as _;
+    const MAX: usize =
+        artcraft_launcher_core::hosted_catalog::MAX_CATALOG_BYTES * 6 + artcraft_launcher_core::hosted_catalog::MAX_SIGNATURE_BYTES + 128;
+    let mut file = std::fs::File::open(paths.feed_cache()).ok()?;
+    let mut body = Vec::new();
+    file.by_ref().take(MAX as u64 + 1).read_to_end(&mut body).ok()?;
+    if body.len() > MAX {
+        return None;
+    }
+    let saved: SignedFeedCache = serde_json::from_slice(&body).ok()?;
+    Feed::parse_signed_catalog(saved.catalog.as_bytes(), saved.signature.as_bytes()).ok()
 }
 
 /// The feed's address. `ARTCRAFT_LAUNCHER_FEED_URL` points at a staging server or a local copy
@@ -2385,9 +2971,14 @@ fn mirror_chosen(app: &CraftApp, feed: Option<&Feed>, now: i64, track: &VersionT
     (chosen, origin, source)
 }
 
-/// The last saved feed answer, if any.
+/// The last saved feed answer, if any. Signed catalog caches are always reverified against the
+/// pinned Ed25519 key before parsing.
 fn load_feed(paths: &Paths) -> Option<Feed> {
-    std::fs::read_to_string(paths.feed_cache()).ok().and_then(|body| Feed::parse(&body))
+    let body = std::fs::read_to_string(paths.feed_cache()).ok()?;
+    if let Ok(signed) = serde_json::from_str::<SignedFeedCache>(&body) {
+        return Feed::parse_signed_catalog(signed.catalog.as_bytes(), signed.signature.as_bytes()).ok();
+    }
+    Feed::parse(&body)
 }
 
 /// The machine's real architecture: an x64 launcher on Windows on ARM should still pick ARM64
@@ -2451,7 +3042,7 @@ impl Backend for NativeBackend {
         // An unavailable home or aliased namespace is not an ephemeral Nightly profile and
         // must never silently select the stable context or temporary storage.
         let channel = artcraft_launcher_core::nightly::InstallChannel::Nightly;
-        self.nightly_context_with_paths(Paths::new().map(|paths| paths.for_channel(channel)))
+        self.nightly_context_with_paths(Paths::new_resolved().map(|paths| paths.for_channel(channel)))
     }
 
     /// Carries out a command from the UI. Long work (checks, installs, removals) runs on its own
@@ -2508,7 +3099,11 @@ impl Backend for NativeBackend {
                 let shared = self.shared.clone();
                 let query = release_query(load_feed(&self.paths).as_ref(), def);
                 std::thread::spawn(move || {
-                    let result = source.ok_or("secure connections aren't available on this system".to_string()).and_then(|s| s.versions(&query));
+                    // Opening Choose version is the user's own look: a list saved more than
+                    // CHOOSER_FRESH ago is asked for again, as before the list moved to disk.
+                    let result = source
+                        .ok_or("secure connections aren't available on this system".to_string())
+                        .and_then(|s| s.versions_within(&query, crate::source::CHOOSER_FRESH));
                     shared.emit(Event::Versions { app, result });
                 });
             }
@@ -2518,6 +3113,9 @@ impl Backend for NativeBackend {
             Command::InstallAll { apps } => self.install_all(&apps),
             Command::Replace { app, path } => {
                 self.start_job(&app, Work::Replace(path));
+            }
+            Command::InstallChosen { app, tag, fallback } => {
+                self.start_job(&app, Work::Chosen(Chosen { tag, fallback }));
             }
             Command::Uninstall { app } => {
                 self.start_job(&app, Work::Uninstall);
@@ -2727,8 +3325,8 @@ fn run_mcp(shared: &Shared, cmd: Command) {
 /// The installed apps with their CLIs, from a fresh detection snapshot.
 fn detected_apps(shared: &Shared) -> Vec<crate::agents::InstalledApp> {
     let manifest = shared.manifest.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    let snapshot = crate::detect::Snapshot::take();
-    crate::agents::installed_apps(&manifest, &snapshot)
+    let snapshot = shared.host.snapshot();
+    crate::agents::installed_apps(|app| shared.host.detect(app, &manifest, &snapshot))
 }
 
 #[cfg(test)]
@@ -2825,6 +3423,7 @@ mod tests {
             None,
             Some(gather.clone()),
             None,
+            None,
         );
         assert_eq!(result, Err(artcraft_launcher_core::protocol::CANCELLED.into()));
         let seen = seen.lock().unwrap();
@@ -2834,6 +3433,35 @@ mod tests {
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    /// A Flatpak its repository updates can't install a release picked by name: the repository
+    /// decides the version, so the request is refused before `flatpak update` runs.
+    #[test]
+    fn a_release_picked_by_name_never_runs_the_repository_update() {
+        let seen = Arc::new(Mutex::new(0));
+        let mut shared = shared();
+        shared.waker = Arc::new({
+            let seen = seen.clone();
+            move || *seen.lock().unwrap() += 1
+        });
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let installed = Installed {
+            version: version::parse("0.5.0"),
+            source: InstallSource::Flatpak,
+            location: String::new(),
+            package: None,
+            externally_managed: true,
+            origin: None,
+            installation: Some("user".into()),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let picked = Chosen { tag: "v0.4.0".into(), fallback: None };
+        let (options, stop) = (BackendOptions::default(), Stop::default());
+        let paths = Paths::under(dir.path());
+        let result = run_install(app, &shared, &paths, None, None, &options, Some(&installed), None, &stop, None, None, None, None, Some(&picked));
+        assert!(result.as_ref().is_err_and(|e| e.as_str() != artcraft_launcher_core::protocol::CANCELLED), "{result:?}");
+        assert_eq!(*seen.lock().unwrap(), 0, "nothing started: no progress was reported");
     }
 
     /// A "Replace" answer covers the path that was shown, never a destination that changed since.
@@ -2861,11 +3489,15 @@ mod tests {
             installation: None,
         };
         let pinned = VersionTrack::Pinned("v0.13.0".into());
-        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed)));
-        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None));
+        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed), None));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None, None));
+        // The latest release, picked by name in the version dialog, goes back; found by a check, it doesn't.
+        let picked = Chosen { tag: "v0.13.0".into(), fallback: None };
+        assert!(is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), Some(&picked)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.12.0"), Some(&installed), Some(&picked)));
     }
 
     #[test]
@@ -2883,18 +3515,155 @@ mod tests {
         let pinned = VersionTrack::Pinned("v0.13.0".into());
         let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
         // An update, the latest release, nothing installed, or a stale release: no downgrade.
-        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), never), Ok(None));
-        assert_eq!(downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), never), Ok(None));
-        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, never), Ok(None));
-        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), never), Ok(None));
+        assert_eq!(downgrade_previous(app, &VersionTrack::Stable, &tagged("0.13.0"), Some(&installed), false, None, never), Ok(None));
+        assert_eq!(
+            downgrade_previous(app, &VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed), false, None, never),
+            Ok(None)
+        );
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.13.0"), None, false, None, never), Ok(None));
+        assert_eq!(downgrade_previous(app, &pinned, &tagged("0.12.0"), Some(&installed), false, None, never), Ok(None));
         // Going back finds the installed version's own release.
-        let found = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
+        let found =
+            downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Ok(vec![tagged("0.14.0"), tagged("0.13.0")]));
         assert_eq!(found.unwrap().map(|r| r.tag), Some("v0.14.0".to_string()));
         // Without it, or without the list, the downgrade doesn't start.
-        let gone = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Ok(vec![tagged("0.13.0")])).unwrap_err();
+        let refused = |result: Result<Option<Release>, NoWayBack>| match result {
+            Err(NoWayBack::Refused(why)) => why,
+            other => panic!("not refused: {other:?}"),
+        };
+        let gone = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Ok(vec![tagged("0.13.0")])));
         assert!(gone.contains("FilmCraft 0.14.0 isn't published any more") && gone.contains("Nothing was changed"), "{gone}");
-        let offline = downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), || Err("offline".into())).unwrap_err();
+        let offline = refused(downgrade_previous(app, &pinned, &tagged("0.13.0"), Some(&installed), false, None, || Err("offline".into())));
         assert!(offline.contains("(offline)") && offline.contains("nothing was changed"), "{offline}");
+    }
+
+    fn msi_copy(v: &str) -> Installed {
+        Installed {
+            version: version::parse(v),
+            source: InstallSource::Msi,
+            location: String::new(),
+            package: Some("{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}".into()),
+            externally_managed: false,
+            origin: None,
+            installation: None,
+        }
+    }
+
+    fn published() -> Vec<Release> {
+        let rc = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        vec![rc, tagged("0.23.1"), tagged("0.23.0")]
+    }
+
+    /// The release candidate the launcher installed reads back as itself (see
+    /// `detect::with_recorded_release`), so going back from it to the latest release finds the
+    /// candidate to put back, whether the latest release was picked in the dialog or pinned.
+    #[test]
+    fn going_back_from_an_installed_release_candidate_puts_the_candidate_back() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let rc = msi_copy("0.24.0-rc.1");
+        let picked = Chosen { tag: "v0.23.1".into(), fallback: None };
+        let back = downgrade_previous(app, &VersionTrack::Stable, &tagged("0.23.1"), Some(&rc), false, Some(&picked), || Ok(published()));
+        assert_eq!(back.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        let pinned = VersionTrack::Pinned("v0.23.0".into());
+        let back = downgrade_previous(app, &pinned, &tagged("0.23.0"), Some(&rc), false, None, || Ok(published()));
+        assert_eq!(back.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        // The candidate itself, chosen again, is the installed version: nothing to go back to.
+        let same = VersionTrack::Pinned("v0.24.0-rc.1".into());
+        let never = || -> Result<Vec<Release>, String> { panic!("no list is needed") };
+        assert_eq!(downgrade_previous(app, &same, &published()[0], Some(&rc), false, None, never), Ok(None));
+    }
+
+    /// A copy Windows registered as 0.24.0, with no release of that version and no record of what
+    /// was installed: going back to the latest release asks first, then puts back the candidate
+    /// with those numbers if it fails. An answer about another release asks again, and going back
+    /// to anything but the latest release stays refused.
+    #[test]
+    fn a_stuck_installer_copy_goes_back_to_the_latest_release_only_once_the_person_agrees() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let stuck = msi_copy("0.24.0");
+        let latest = tagged("0.23.1");
+        let picked = |fallback: Option<&str>| Chosen { tag: "v0.23.1".into(), fallback: fallback.map(String::from) };
+        let ask = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(None)), || Ok(published()));
+        assert!(matches!(&ask, Err(NoWayBack::Ask(fallback)) if fallback.tag == "v0.24.0-rc.1"), "{ask:?}");
+        let agreed =
+            downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(Some("v0.24.0-rc.1"))), || Ok(published()));
+        assert_eq!(agreed.unwrap().map(|r| r.tag).as_deref(), Some("v0.24.0-rc.1"));
+        // An answer about another release isn't an answer about this one.
+        let other = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), false, Some(&picked(Some("v0.23.0"))), || Ok(published()));
+        assert!(matches!(other, Err(NoWayBack::Ask(_))), "{other:?}");
+        // A copy the launcher recorded as the final 0.24.0 (since withdrawn) is never taken for the candidate.
+        let recorded = downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), true, Some(&picked(None)), || Ok(published()));
+        assert!(matches!(recorded, Err(NoWayBack::Refused(_))), "{recorded:?}");
+        // Not the latest release: refused as before.
+        let older =
+            downgrade_previous(app, &VersionTrack::Pinned("v0.23.0".into()), &tagged("0.23.0"), Some(&stuck), false, None, || Ok(published()));
+        assert!(matches!(older, Err(NoWayBack::Refused(_))), "{older:?}");
+    }
+
+    /// What the launcher records after a Windows Installer install: the release it checked, tied to
+    /// the registration that install left, and nothing when the system shows no copy with its numbers.
+    #[test]
+    fn an_installer_install_records_its_release_only_for_the_copy_it_left() {
+        let rc = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        let recorded = installed_release(&rc, Some(&msi_copy("0.24.0"))).unwrap();
+        assert_eq!((recorded.tag.as_str(), recorded.version.as_str()), ("v0.24.0-rc.1", "0.24.0-rc.1"));
+        assert_eq!(Some(recorded.package), msi_copy("0.24.0").package);
+        assert_eq!(installed_release(&rc, Some(&msi_copy("0.23.1"))), None, "another version is there");
+        assert_eq!(installed_release(&rc, Some(&Installed { package: None, ..msi_copy("0.24.0") })), None, "no registration to tie it to");
+        assert_eq!(installed_release(&rc, Some(&Installed { source: InstallSource::Launcher, ..msi_copy("0.24.0") })), None);
+        assert_eq!(installed_release(&rc, None), None);
+    }
+
+    /// A put-back is recorded for the registration the installer reports it created, never for a
+    /// leftover registration that happens to have the previous version's numbers.
+    #[test]
+    fn a_put_back_is_recorded_for_the_registration_the_installer_reported() {
+        const CREATED: &str = "{6B1C1C1E-0E0B-4B6B-9C59-2C1D2E3F4A5B}";
+        const LEFTOVER: &str = "{11111111-2222-3333-4444-555555555555}";
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        let mut shared = shared();
+        // A different registration with the previous version's numbers is still on the machine.
+        shared.host = HostDetection::Stub(Arc::new(|_| Some(Installed { package: Some(LEFTOVER.into()), ..msi_copy("0.24.0") })));
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let previous = Release { prerelease: true, ..tagged("0.24.0-rc.1") };
+        remember_put_back(app, &shared, &paths, &previous, &install::PutBack { product_code: CREATED.into() });
+        let recorded = shared.manifest.lock().unwrap().releases.get(app.id).cloned();
+        let wanted = crate::manifest::InstalledRelease { tag: "v0.24.0-rc.1".into(), version: "0.24.0-rc.1".into(), package: CREATED.into() };
+        assert_eq!(recorded, Some(wanted.clone()), "the reported registration, not the leftover one");
+        assert_eq!(Manifest::load(&paths.manifest()).releases.get(app.id), Some(&wanted), "saved for the next detection");
+        // Detection then reads that copy as the release the put-back installed.
+        let read = crate::detect::with_recorded_release(Installed { package: Some(CREATED.into()), ..msi_copy("0.24.0") }, Some(&wanted));
+        assert_eq!(read.version.map(|v| v.to_string()).as_deref(), Some("0.24.0-rc.1"));
+    }
+
+    /// The fallback decision asks whether the record describes the copy the way detection reads
+    /// it: a record whose numbers don't match the copy decides nothing, so the same-numbered
+    /// fallback is offered rather than refused.
+    #[test]
+    fn only_a_record_of_the_copy_itself_decides_what_going_back_may_put_back() {
+        let app = CraftApp::by_id("photocraft").unwrap();
+        let stuck = msi_copy("0.24.0");
+        let code = stuck.package.clone().unwrap();
+        let record = |tag: &str, version: &str| crate::manifest::InstalledRelease { tag: tag.into(), version: version.into(), package: code.clone() };
+        let mut manifest = Manifest::default();
+        let latest = tagged("0.23.1");
+        let picked = Chosen { tag: "v0.23.1".into(), fallback: None };
+        let outcome = |manifest: &Manifest| {
+            let recorded = recorded_copy(manifest, app, Some(&stuck));
+            downgrade_previous(app, &VersionTrack::Stable, &latest, Some(&stuck), recorded, Some(&picked), || Ok(published()))
+        };
+        // The record says the copy is the final 0.24.0 (since withdrawn): never taken for the candidate.
+        manifest.releases.insert(app.id.to_string(), record("v0.24.0", "0.24.0"));
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Refused(_))), "{:?}", outcome(&manifest));
+        // The record's numbers don't match the copy: it describes another release, so detection
+        // keeps what Windows reports and the candidate with the same numbers is put up for a yes.
+        manifest.releases.insert(app.id.to_string(), record("v0.23.5", "0.23.5"));
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Ask(_))), "{:?}", outcome(&manifest));
+        // Another registration is another copy, whatever it reports.
+        let elsewhere = crate::manifest::InstalledRelease { package: "{00000000-0000-0000-0000-000000000000}".into(), ..record("v0.24.0", "0.24.0") };
+        manifest.releases.insert(app.id.to_string(), elsewhere);
+        assert!(matches!(outcome(&manifest), Err(NoWayBack::Ask(_))), "{:?}", outcome(&manifest));
     }
 
     /// Going back is a conscious choice: a check for a pinned app reports the pinned release, so
@@ -2958,6 +3727,24 @@ mod tests {
         assert!(!release_matches_track(CraftApp::by_id("photocraft").unwrap(), &release, &VersionTrack::Stable, false));
     }
 
+    /// A Nightly is never the Stable track's copy: not for an app with its own Nightly
+    /// channel, and not for one without it (SolidCraft).
+    #[test]
+    fn a_nightly_is_never_a_stable_track_release_for_an_app_without_a_separate_channel() {
+        let app = CraftApp::by_id("solidcraft").unwrap();
+        assert!(!app.has_separate_nightly_channel(), "the community app is the non-roster example");
+        let mut nightly = Release { tag: "v0.9.0-nightly.20261028".into(), version: version::parse("v0.9.0-nightly.20261028"), ..Default::default() };
+        nightly.prerelease = true;
+        for prereleases in [false, true] {
+            assert!(!release_matches_track(app, &nightly, &VersionTrack::Stable, prereleases), "prereleases={prereleases}");
+            assert!(release_matches_track(app, &nightly, &VersionTrack::Nightly, prereleases), "the explicit Nightly track still asks for it");
+        }
+        let mut beta = Release { tag: "v0.9.0-beta.1".into(), version: version::parse("v0.9.0-beta.1"), ..Default::default() };
+        beta.prerelease = true;
+        assert!(!release_matches_track(app, &beta, &VersionTrack::Stable, false), "a plain beta stays behind the Stable track");
+        assert!(release_matches_track(app, &beta, &VersionTrack::Stable, true), "with pre-releases on it is an ordinary candidate");
+    }
+
     #[test]
     fn feed_url_overrides_are_loopback_only_outside_local_mirror_builds() {
         assert!(!feed_url_override_allowed("http://127.0.0.1:8787/release_info.json", false));
@@ -2990,7 +3777,10 @@ mod tests {
     pub(super) fn shared() -> Shared {
         Shared {
             channel: artcraft_launcher_core::nightly::InstallChannel::Stable,
+            host: HostDetection::Stub(Arc::new(|_| None)),
             nightly_detection_observer: Mutex::new(None),
+            #[cfg(test)]
+            nightly_catalog_fixture: Mutex::new(None),
             events: Mutex::new(Vec::new()),
             reporting: Mutex::new(()),
             system: Mutex::new(None),
@@ -3008,6 +3798,8 @@ mod tests {
             checking: AtomicBool::new(false),
             detecting: AtomicBool::new(false),
             last_check: Mutex::new(None),
+            last_forced: Mutex::new(None),
+            reusing_forced: AtomicBool::new(false),
             launcher_release: Mutex::new(None),
             self_install: OnceLock::new(),
             self_updating: OnceLock::new(),
@@ -3040,6 +3832,78 @@ mod tests {
             }
         });
         (url, hits)
+    }
+
+    #[test]
+    fn signed_feed_round_trips_through_offline_cache_and_rejects_tampering() {
+        use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_SIG, BUILD_CATALOG_TOML, CATALOG_URL, SIGNATURE_URL};
+        let (feed, mut saved) = signed_feed(CATALOG_URL, |url, _| match url {
+            CATALOG_URL => Ok(Some(BUILD_CATALOG_TOML.to_vec())),
+            SIGNATURE_URL => Ok(Some(BUILD_CATALOG_SIG.to_vec())),
+            _ => panic!("unexpected URL {url}"),
+        })
+        .unwrap();
+        assert!(!feed.apps.is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::under(dir.path());
+        crate::paths::write_atomic(&paths.feed_cache(), &serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert_eq!(load_feed(&paths), Some(feed));
+        saved.catalog.push('\n');
+        crate::paths::write_atomic(&paths.feed_cache(), &serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert!(load_feed(&paths).is_none());
+        assert!(signed_feed(CATALOG_URL, |_, _| Ok(None)).is_err());
+        assert!(signed_feed(CATALOG_URL, |url, _| Ok((url == CATALOG_URL).then(|| BUILD_CATALOG_TOML.to_vec()))).is_err());
+    }
+
+    #[test]
+    fn nightly_track_prefers_a_fresh_catalog_answer_without_requesting_github() {
+        let github = CountingGitHub::default();
+        let shared = shared();
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let tag = "v0.24.0-nightly.20261009.1.1";
+        let mut feed = feed();
+        feed.apps.get_mut(photo.id).unwrap().nightly = Some(artcraft_launcher_core::feed::FeedRelease {
+            tag: tag.into(),
+            prerelease: true,
+            assets: vec![(
+                "SHA256SUMS.txt".into(),
+                1,
+                format!("https://github.com/{}/releases/download/{tag}/SHA256SUMS.txt", photo.repo),
+                Some("a".repeat(64)),
+            )],
+            ..Default::default()
+        });
+        let (latest, origin, used) = track_answer(photo, &VersionTrack::Nightly, Some(&feed), &github, &shared, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(r)) if r.tag == tag));
+        assert_eq!(origin, Origin::ArtCraftApi);
+        assert_eq!(used, Some(Source::Feed));
+        assert_eq!(github.0.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn signed_catalog_429_stops_retries_and_preserves_backoff_after_restart() {
+        use artcraft_launcher_core::hosted_catalog::{BUILD_CATALOG_TOML, CATALOG_URL};
+        for throttle_signature in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = Paths::under(dir.path());
+            let http = Http::new().unwrap();
+            let throttle = Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now()));
+            let hits = AtomicUsize::new(0);
+            let get = |url: &str, _| {
+                hits.fetch_add(1, Ordering::SeqCst);
+                if throttle_signature && url == CATALOG_URL {
+                    return Ok(Some(BUILD_CATALOG_TOML.to_vec()));
+                }
+                Err(FeedError { why: "HTTP 429".into(), throttled: true, retry_after: Some(3600) })
+            };
+            assert!(matches!(fetch_feed_with_catalog(&http, &paths, CATALOG_URL, &throttle, FEED_ATTEMPTS, get), FeedFetch::Failed));
+            let expected = if throttle_signature { 2 } else { 1 };
+            assert_eq!(hits.load(Ordering::SeqCst), expected);
+            let restarted = Mutex::new(FeedThrottle::load(&paths.feed_throttle(), crate::now()));
+            assert!(restarted.lock().unwrap().wait(crate::now()) >= 3599);
+            assert!(matches!(fetch_feed_with_catalog(&http, &paths, CATALOG_URL, &restarted, FEED_ATTEMPTS, get), FeedFetch::Held));
+            assert_eq!(hits.load(Ordering::SeqCst), expected);
+        }
     }
 
     #[test]
@@ -3185,6 +4049,420 @@ mod tests {
         let fresh_shared = super::tests::shared();
         let (_, _, used) = latest_for(photo, Some(&feed), LOADED, &github, &fresh_shared, false, false, NOW + 2 * 86_400);
         assert_eq!(used, Some(Source::GitHubApi));
+    }
+
+    /// With pre-releases on, GitHub is asked at the fallback's pace, not on every check (#713),
+    /// and between its asks a newer stable release from the feed replaces an older saved RC.
+    #[test]
+    fn with_pre_releases_github_keeps_to_its_pace_and_the_feed_fills_in_newer_stables() {
+        /// GitHub, counting asks, whose last answer for the app is `saved`.
+        struct SavedRc(AtomicUsize, Mutex<Option<&'static str>>);
+        impl ReleaseSource for SavedRc {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Answer { latest: self.cached(_query, true).unwrap_or(LatestRelease::None), source: Source::GitHubApi }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                let tag = (*self.1.lock().unwrap())?;
+                Some(LatestRelease::Found(Release { tag: tag.into(), version: version::parse(tag), ..Default::default() }))
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, shared) = (feed(), shared());
+        let pre = Fallback { trust_feed: false, ..LOADED };
+        let github = SavedRc(AtomicUsize::new(0), Mutex::new(Some("v0.6.0-rc.1")));
+        let tag = |answer: Option<LatestRelease>| match answer {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => panic!("{other:?}"),
+        };
+
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW);
+        assert_eq!((tag(latest), used), ("v0.6.0-rc.1".to_string(), Some(Source::GitHubApi)), "the first check asks GitHub");
+        // Within the hour GitHub isn't asked again, and the feed's newer stable v0.6.0 wins.
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + 30 * 60);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+        // A saved RC newer than the feed's stable stays.
+        *github.1.lock().unwrap() = Some("v0.7.0-rc.1");
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + 40 * 60);
+        assert_eq!((tag(latest), used), ("v0.7.0-rc.1".to_string(), None));
+        assert_eq!(github.0.load(Ordering::SeqCst), 1, "one GitHub ask in the hour");
+        latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+        // Nothing saved from GitHub for this track (pre-releases just turned on): the feed's stable.
+        *github.1.lock().unwrap() = None;
+        let (latest, _, used) = latest_for(photo, Some(&feed), pre, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY + 10 * 60);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+    }
+
+    /// GitHub, counting asks, with nothing saved.
+    struct CountedAsks(AtomicUsize);
+    impl ReleaseSource for CountedAsks {
+        fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+        }
+        fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+            None
+        }
+        fn rate_limited_until(&self) -> Option<i64> {
+            None
+        }
+        fn save(&self) {}
+    }
+
+    /// The plan for a check with pre-releases on keeps GitHub to the feed's hourly pace once
+    /// everything has loaded: checks every 12 minutes ask about an app once in the hour (#713).
+    #[test]
+    fn with_pre_releases_the_check_plan_keeps_github_to_the_hourly_pace() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, plan) = remote_plan(true, (Some(feed()), LOADED));
+        assert!(!plan.trust_feed, "the feed can't settle a beta or RC");
+        let (github, shared) = (CountedAsks(AtomicUsize::new(0)), shared());
+        for minutes in [0, 12, 24, 36, 48] {
+            latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + minutes * 60);
+        }
+        assert_eq!(github.0.load(Ordering::SeqCst), 1, "a check every 12 minutes asks once in the hour");
+        latest_for(photo, feed.as_ref(), plan, &github, &shared, true, false, NOW + GITHUB_FALLBACK_EVERY);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "due again after an hour");
+    }
+
+    #[test]
+    fn signed_channel_aware_plan_uses_rc_and_keeps_it_on_github_failure() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let catalog = Feed::parse_catalog_toml(
+            r#"generated_at = "2026-10-09T13:00:00Z"
+[[apps]]
+id = "photocraft"
+repo = "storytold/photocraft"
+[apps.releases.stable]
+tag = "v0.23.1"
+[apps.releases.prerelease]
+tag = "v0.24.0-rc.1"
+prerelease = true
+"#,
+        )
+        .unwrap();
+        let (feed, plan) = remote_plan(true, (Some(catalog), LOADED));
+        assert!(plan.trust_feed);
+        let github = CountingGitHub::default();
+        let (latest, _, used) = latest_for(photo, feed.as_ref(), plan, &github, &shared(), true, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(r)) if r.tag == "v0.24.0-rc.1"));
+        assert_eq!(used, Some(Source::Feed));
+        assert_eq!(github.0.load(Ordering::SeqCst), 0);
+        let unavailable = Some(LatestRelease::Failed("offline".into()));
+        assert_eq!(feed_if_newer(feed.as_ref(), photo, true, NOW, unavailable.as_ref()).unwrap().tag, "v0.24.0-rc.1");
+        assert_eq!(feed_if_newer(feed.as_ref(), photo, false, NOW, unavailable.as_ref()).unwrap().tag, "v0.23.1");
+    }
+
+    /// Asking GitHub with pre-releases off doesn't stand in for asking with them on: turning them
+    /// on asks again at once, not after the hour.
+    #[test]
+    fn turning_pre_releases_on_asks_github_again_within_the_hour() {
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let (feed, shared) = (feed(), shared());
+        let plan = Fallback { trust_feed: false, ..LOADED };
+        let github = CountedAsks(AtomicUsize::new(0));
+        latest_for(photo, Some(&feed), plan, &github, &shared, false, false, NOW);
+        latest_for(photo, Some(&feed), plan, &github, &shared, true, false, NOW + 10 * 60);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "pre-releases on is its own question");
+        latest_for(photo, Some(&feed), plan, &github, &shared, true, false, NOW + 20 * 60);
+        latest_for(photo, Some(&feed), plan, &github, &shared, false, false, NOW + 30 * 60);
+        assert_eq!(github.0.load(Ordering::SeqCst), 2, "each setting keeps its own hourly pace");
+    }
+
+    /// A forced check right after an automatic one (the one at launch) still asks GitHub; only
+    /// pressing it again within two minutes of a forced one reuses that one's answers (#713).
+    #[test]
+    fn only_a_recent_forced_check_makes_a_forced_check_reuse_answers() {
+        let shared = shared();
+        *shared.last_check.lock().unwrap() = Some(NOW - 30);
+        assert!(shared.forced_now(true, NOW), "an automatic check doesn't stand in for a forced one");
+        assert!(!shared.forced_now(true, NOW + 60), "pressed again at once: reused");
+        assert!(!shared.forced_now(false, NOW + 61));
+        assert!(shared.forced_now(true, NOW + FORCED_REUSE), "asks again after the window");
+    }
+
+    /// An app following the nightly is asked about at most every three hours, the saved version
+    /// list answering in between, unless the user presses check (#713).
+    #[test]
+    fn the_nightly_track_is_asked_about_every_three_hours() {
+        #[derive(Default)]
+        struct Lists(AtomicUsize);
+        impl ReleaseSource for Lists {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+            }
+            fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(Vec::new())
+            }
+            fn saved_choice(&self, _query: &ReleaseQuery, _track: &VersionTrack) -> Option<LatestRelease> {
+                Some(LatestRelease::None)
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let (github, shared) = (Lists::default(), shared());
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        let asked = |at: i64, force: bool| {
+            track_answer(word, &VersionTrack::Nightly, None, &github, &shared, force, at);
+            github.0.load(Ordering::SeqCst)
+        };
+        assert_eq!(asked(NOW, false), 1);
+        assert_eq!(asked(NOW + 60 * 60, false), 1, "the saved list answers within the three hours");
+        assert_eq!(asked(NOW + NIGHTLY_TRACK_EVERY, false), 2);
+        assert_eq!(asked(NOW + NIGHTLY_TRACK_EVERY + 60, true), 3, "a pressed check asks at once");
+    }
+
+    /// A pressed check on the Nightly track asks GitHub now, past a version list saved a minute
+    /// ago; without it, that list stands in (#713). The budget of 0 refuses any request, so a
+    /// failure here means GitHub was asked.
+    #[test]
+    fn a_pressed_nightly_check_asks_github_past_a_recent_saved_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("releases.json");
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        let list = vec![Release { tag: "nightly-2026-11-23".into(), prerelease: true, ..Default::default() }];
+        let cache = serde_json::json!({ "entries": {}, "versions": { word.repo: [crate::now() - 60, list] } });
+        std::fs::write(&path, serde_json::to_vec(&cache).unwrap()).unwrap();
+        let http = Http::new().unwrap().with_budget(crate::github_budget::GitHubBudget::in_memory(0)).without_token();
+        let source = crate::source::GitHubSource::new(http, path);
+        let shared = shared();
+        let (latest, _, used) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Failed(_))), "a first due check asked GitHub: {latest:?}");
+        assert_eq!(used, Some(Source::GitHubApi));
+        let (latest, _, _) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, false, NOW + 60);
+        assert!(!matches!(latest, Some(LatestRelease::Failed(_))), "the recent list stands in within the three hours: {latest:?}");
+        let (latest, _, used) = track_answer(word, &VersionTrack::Nightly, None, &source, &shared, true, NOW + 120);
+        assert!(matches!(latest, Some(LatestRelease::Failed(_))), "a pressed check asked GitHub: {latest:?}");
+        assert_eq!(used, Some(Source::GitHubApi));
+    }
+
+    /// A due Nightly check asks GitHub even if Choose version saved a list a moment ago, so that
+    /// list cannot stand in for the next three hours (#713).
+    #[test]
+    fn a_due_nightly_check_asks_github_past_a_recent_version_list() {
+        #[derive(Default)]
+        struct Lists(Mutex<Vec<Option<i64>>>);
+        impl ReleaseSource for Lists {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+            }
+            fn versions(&self, query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                self.versions_within(query, crate::source::VERSIONS_FRESH)
+            }
+            fn versions_within(&self, _query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+                self.0.lock().unwrap().push(Some(max_age));
+                Ok(Vec::new())
+            }
+            fn saved_choice(&self, _query: &ReleaseQuery, _track: &VersionTrack) -> Option<LatestRelease> {
+                Some(LatestRelease::Found(Release { tag: "nightly-old".into(), ..Default::default() }))
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let (github, shared) = (Lists::default(), shared());
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        track_answer(word, &VersionTrack::Nightly, None, &github, &shared, false, NOW);
+        assert_eq!(*github.0.lock().unwrap(), vec![Some(0)], "a due check asks GitHub even if a list was just saved");
+        track_answer(word, &VersionTrack::Nightly, None, &github, &shared, false, NOW + 60);
+        assert_eq!(github.0.lock().unwrap().len(), 1, "within the three hours the saved choice stands in");
+        track_answer(word, &VersionTrack::Nightly, None, &github, &shared, false, NOW + NIGHTLY_TRACK_EVERY);
+        assert_eq!(*github.0.lock().unwrap(), vec![Some(0), Some(0)]);
+    }
+
+    /// The stable and Nightly tracks keep separate records of when GitHub was asked: asking about
+    /// an app's stable release doesn't put off asking about its nightly after a track switch.
+    #[test]
+    fn the_stable_and_nightly_tracks_keep_their_own_github_pace() {
+        #[derive(Default)]
+        struct Lists(AtomicUsize);
+        impl ReleaseSource for Lists {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+            }
+            fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(Vec::new())
+            }
+            fn saved_choice(&self, _query: &ReleaseQuery, _track: &VersionTrack) -> Option<LatestRelease> {
+                Some(LatestRelease::None)
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let (github, shared) = (Lists::default(), shared());
+        let word = CraftApp::by_id("wordcraft").unwrap();
+        latest_for(word, None, Fallback { trust_feed: false, ..LOADED }, &github, &shared, false, false, NOW);
+        track_answer(word, &VersionTrack::Nightly, None, &github, &shared, false, NOW + 60);
+        assert_eq!(github.0.load(Ordering::SeqCst), 1, "the nightly is asked about though the stable track just was");
+    }
+
+    /// Opening Choose version asks for a list saved more than 15 minutes ago again, though the
+    /// background tracks let one stand for an hour (#713).
+    #[test]
+    fn choose_version_asks_for_a_list_older_than_a_quarter_hour() {
+        struct Ages(Mutex<Vec<Option<i64>>>);
+        impl ReleaseSource for Ages {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::None, source: Source::GitHubApi }
+            }
+            fn versions(&self, _query: &ReleaseQuery) -> Result<Vec<Release>, String> {
+                self.0.lock().unwrap().push(None);
+                Ok(Vec::new())
+            }
+            fn versions_within(&self, _query: &ReleaseQuery, max_age: i64) -> Result<Vec<Release>, String> {
+                self.0.lock().unwrap().push(Some(max_age));
+                Ok(Vec::new())
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let Some(platform) = native_platform() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let ages = Arc::new(Ages(Mutex::new(Vec::new())));
+        let mut backend = backend(dir.path(), platform, Some(ages.clone()));
+        backend.send(Command::ListVersions { app: "wordcraft".into() });
+        let started = Instant::now();
+        while !backend.poll().iter().any(|e| matches!(e, Event::Versions { .. })) {
+            assert!(started.elapsed() < Duration::from_secs(20), "no version list");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(*ages.0.lock().unwrap(), vec![Some(crate::source::CHOOSER_FRESH)]);
+    }
+
+    /// A reused forced check still asks as the user, so the budget doesn't hold it back as a
+    /// background request for an app that isn't installed.
+    #[test]
+    fn a_reused_forced_check_keeps_the_users_priority() {
+        let shared = shared();
+        assert_eq!(github_priority(CraftApp::by_id("photocraft").unwrap(), &VersionTrack::Stable, &shared, false), Priority::NotInstalled);
+        shared.reusing_forced.store(true, Ordering::SeqCst);
+        assert_eq!(github_priority(CraftApp::by_id("photocraft").unwrap(), &VersionTrack::Stable, &shared, false), Priority::User);
+    }
+
+    /// With pre-releases on, GitHub's turn refused (by the budget, say) with nothing saved leaves
+    /// the feed's stable release standing, not an error.
+    #[test]
+    fn a_refused_github_turn_falls_back_to_the_feeds_release() {
+        struct Refused;
+        impl ReleaseSource for Refused {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: LatestRelease::Failed("held back".into()), source: Source::GitHubApi }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                None
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let plan = remote_plan(true, (None, LOADED)).1;
+        let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Refused, &shared(), true, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.6.0"), "{latest:?}");
+        assert_eq!(used, Some(Source::Feed));
+    }
+
+    /// A check reusing a forced one's answers, or a GitHub turn that fell back to a saved
+    /// release, keeps the feed's stable release when it is newer than what GitHub had saved.
+    #[test]
+    fn an_older_saved_github_answer_doesnt_hide_the_feeds_newer_release() {
+        /// GitHub answering only from the release it saved, `self.0`.
+        struct Saved(&'static str);
+        impl Saved {
+            fn saved(&self) -> LatestRelease {
+                LatestRelease::Found(Release { tag: format!("v{}", self.0), version: version::parse(self.0), ..Release::default() })
+            }
+        }
+        impl ReleaseSource for Saved {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                Answer { latest: self.saved(), source: Source::Cache }
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                Some(self.saved())
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+            fn newest_tag(&self, _repo: &str) -> Option<String> {
+                Some("v0.8.0".into())
+            }
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let tag = |latest: Option<LatestRelease>| match latest {
+            Some(LatestRelease::Found(r)) => r.tag,
+            other => format!("{other:?}"),
+        };
+        // Reusing a forced check: the feed's v0.6.0 is newer than the saved v0.5.0.
+        let reusing = shared();
+        reusing.github_asked.lock().unwrap().insert(asked_key(photo, false), NOW - 60);
+        reusing.reusing_forced.store(true, Ordering::SeqCst);
+        assert_eq!(tag(latest_for(photo, Some(&feed()), LOADED, &Saved("0.5.0"), &reusing, false, false, NOW).0), "v0.6.0");
+        // A refused turn answered from a saved RC older than the feed's release.
+        let plan = remote_plan(true, (None, LOADED)).1;
+        let (latest, _, used) = latest_for(photo, Some(&feed()), plan, &Saved("0.6.0-rc.1"), &shared(), true, false, NOW);
+        assert_eq!((tag(latest), used), ("v0.6.0".to_string(), Some(Source::Feed)));
+        // A saved RC newer than the feed's release stands.
+        let (latest, _, _) = latest_for(photo, Some(&feed()), plan, &Saved("0.7.0-rc.1"), &shared(), true, false, NOW);
+        assert_eq!(tag(latest), "v0.7.0-rc.1");
+    }
+
+    /// A check pressed again within the reuse window keeps the newer release the forced check
+    /// found on GitHub, rather than the feed's older one.
+    #[test]
+    fn a_reused_forced_check_keeps_githubs_newer_answer_over_the_feed() {
+        struct Saved;
+        impl ReleaseSource for Saved {
+            fn latest(&self, _query: &ReleaseQuery, _pre: bool) -> Answer {
+                panic!("a reused check doesn't ask the API again")
+            }
+            fn cached(&self, _query: &ReleaseQuery, _pre: bool) -> Option<LatestRelease> {
+                Some(LatestRelease::Found(Release { tag: "v0.7.0".into(), version: version::parse("0.7.0"), ..Release::default() }))
+            }
+            fn rate_limited_until(&self) -> Option<i64> {
+                None
+            }
+            fn save(&self) {}
+            fn newest_tag(&self, _repo: &str) -> Option<String> {
+                Some("v0.7.0".into())
+            }
+        }
+        let photo = CraftApp::by_id("photocraft").unwrap();
+        let shared = shared();
+        // The forced check a minute ago asked GitHub; this press reuses it.
+        shared.github_asked.lock().unwrap().insert(asked_key(photo, false), NOW - 60);
+        shared.reusing_forced.store(true, Ordering::SeqCst);
+        let (latest, _, _) = latest_for(photo, Some(&feed()), LOADED, &Saved, &shared, false, false, NOW);
+        assert!(matches!(latest, Some(LatestRelease::Found(ref r)) if r.tag == "v0.7.0"), "{latest:?}");
     }
 
     /// Refresh looks past a feed that is behind GitHub (#91).
@@ -3839,34 +5117,60 @@ mod tests {
         assert!(!ids.iter().any(|id| backend.shared.jobs.lock().unwrap().contains_key(*id)), "and the jobs are free again");
     }
 
+    /// Wherever the tests run: with or without a PhotoCraft installed on the machine (here a
+    /// stubbed host Flatpak, newer than any release the backend knows), JobFinished observers see
+    /// the job's final busy state and download plan.
     #[test]
     fn job_finished_follows_busy_cleanup_and_download_plan_publication() {
         let Some(platform) = native_platform() else {
             return;
         };
-        let dir = tempfile::tempdir().unwrap();
-        let mut backend = backend(dir.path(), platform, None);
-        let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
-        let shared_for_waker = shared.clone();
-        let (sent, received) = mpsc::channel();
-        Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
-            let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
-                return;
-            };
-            let finished = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
-            if finished {
-                let busy = shared.jobs.lock().unwrap().contains_key(APP);
-                let plan = shared.download_sizes.lock().unwrap().get(APP).and_then(|cached| cached.plan);
-                let _ = sent.send((busy, plan));
+        let host_flatpak = || Installed {
+            version: version::parse("99.0.0"),
+            source: InstallSource::Flatpak,
+            location: "ai.storyteller.photocraft".into(),
+            package: Some("ai.storyteller.photocraft".into()),
+            externally_managed: false,
+            origin: None,
+            installation: Some("system".into()),
+        };
+        for host_copy in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut backend = backend(dir.path(), platform, None);
+            if host_copy {
+                Arc::get_mut(&mut backend.shared).unwrap().host =
+                    HostDetection::Stub(Arc::new(move |app: &CraftApp| (app.id == APP).then(host_flatpak)));
             }
-        });
-        *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
+            let shared: Arc<Mutex<Option<std::sync::Weak<Shared>>>> = Arc::new(Mutex::new(None));
+            let shared_for_waker = shared.clone();
+            let paths = backend.paths.clone();
+            let (sent, received) = mpsc::channel();
+            Arc::get_mut(&mut backend.shared).unwrap().waker = Arc::new(move || {
+                let Some(shared) = shared_for_waker.lock().unwrap().as_ref().and_then(std::sync::Weak::upgrade) else {
+                    return;
+                };
+                let finished = shared.events.lock().unwrap().iter().any(|event| matches!(event, Event::JobFinished { app, .. } if app == APP));
+                if finished {
+                    let busy = shared.jobs.lock().unwrap().contains_key(APP);
+                    let plan = shared.download_sizes.lock().unwrap().get(APP).and_then(|cached| cached.plan);
+                    let options = shared.options.lock().unwrap().clone();
+                    let current = planned_download(CraftApp::by_id(APP).unwrap(), &shared, &paths, Some(platform), &options)
+                        .map(|(_, kind, size)| (kind, size));
+                    let _ = sent.send((busy, plan, current));
+                }
+            });
+            *shared.lock().unwrap() = Some(Arc::downgrade(&backend.shared));
 
-        backend.start_job(APP, Work::Uninstall);
-        let (busy, plan) = received.recv_timeout(Duration::from_secs(2)).unwrap();
-        assert!(!busy);
-        assert!(matches!(plan, Some((_, 3))), "JobFinished observers need the final download plan: {plan:?}");
-        assert_eq!(backend.download_size(APP), plan);
+            backend.start_job(APP, Work::Uninstall);
+            // Generous for a loaded machine; the job itself takes a few milliseconds.
+            let (busy, plan, current) = received.recv_timeout(Duration::from_secs(10)).unwrap();
+            assert!(!busy, "host copy: {host_copy}");
+            assert_eq!(plan, current, "JobFinished observers need the final download plan (host copy: {host_copy})");
+            if !host_copy {
+                assert!(matches!(plan, Some((_, 3))), "{plan:?}");
+            }
+            assert_eq!(backend.download_size(APP), plan);
+        }
     }
 
     /// Puts the planned download on disk, as a failed install leaves it.
@@ -4249,7 +5553,15 @@ mod tests {
         let landed_after = |error: &str| landed_despite(error, before.as_ref(), after.as_ref(), &latest);
         // An app's own failure stands, even if its new version shows up (an MSI or AppImage that
         // reported an error, a cancelled or dismissed prompt, a pause).
-        for error in ["the Windows Installer stopped with error 1603", "couldn't copy the AppImage", CANCELLED, INSTALL_CANCELLED, PAUSED] {
+        let paused = artcraft_launcher_core::protocol::PAUSED;
+        for error in [
+            "the Windows Installer stopped with error 1603",
+            "couldn't copy the AppImage",
+            CANCELLED,
+            INSTALL_CANCELLED,
+            paused,
+            PAUSED_BY_CONNECTION,
+        ] {
             assert!(!landed_after(error), "{error}");
         }
         // A call shared with other apps may have installed this one before it failed.

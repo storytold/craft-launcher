@@ -35,12 +35,28 @@ pub struct CliRecord {
     pub installed_at: i64,
 }
 
+/// The release behind a Windows Installer copy the launcher installed. Windows Installer keeps
+/// only the numbers of a version, so `0.24.0-rc.1` reads back as `0.24.0`; this keeps the release
+/// the launcher checked and installed, tied to the one registration (`package`, its product code)
+/// that install made. Every package build gets a new product code, so a copy installed any other
+/// way never matches it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstalledRelease {
+    pub tag: String,
+    /// The full version, pre-release label included.
+    pub version: String,
+    pub package: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
     pub apps: BTreeMap<String, Record>,
     /// Command-line tools, by app id.
     #[serde(default)]
     pub cli: BTreeMap<String, CliRecord>,
+    /// For copies the system's installer keeps the record of (`apps` has none for them).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub releases: BTreeMap<String, InstalledRelease>,
 }
 
 impl Manifest {
@@ -68,8 +84,15 @@ mod tests {
             "photocraft".into(),
             Record { version: "0.5.0".into(), kind: PackageKind::AppImage, path: "/x/y".into(), installed_at: 1, files: vec![], needs_root: false },
         );
+        m.releases.insert(
+            "photocraft".into(),
+            InstalledRelease { tag: "v0.6.0-rc.1".into(), version: "0.6.0-rc.1".into(), package: "{00000000-0000-0000-0000-000000000001}".into() },
+        );
         m.save(&path).unwrap();
         assert_eq!(Manifest::load(&path), m);
+        // A record written before `releases` existed still reads.
+        std::fs::write(&path, br#"{"apps":{}}"#).unwrap();
+        assert_eq!(Manifest::load(&path), Manifest::default());
         std::fs::write(&path, b"{not json").unwrap();
         assert_eq!(Manifest::load(&path), Manifest::default());
     }

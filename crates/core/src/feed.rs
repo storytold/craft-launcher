@@ -1,29 +1,32 @@
-//! The release feed from storyteller-web: `GET https://api.storyteller.ai/v1/craft_apps/release_info`.
+//! The release feed from the signed website catalog:
+//! `GET https://getartcraft.com/launcher-catalog.toml` and `.sig`.
 //!
-//! storyteller-web polls GitHub for every Craft App on a schedule and serves the result, so the
-//! launcher doesn't have to (GitHub allows 60 unauthenticated requests an hour). GitHub stays the
-//! fallback: for apps the feed doesn't list, apps it hasn't fetched within [`MAX_AGE`], or when
-//! the feed doesn't answer.
+//! The website build statically generates each app's stable, prerelease, and nightly release
+//! metadata into `launcher-catalog.toml` and signs it with the pinned Ed25519 key, so the
+//! launcher doesn't have to poll GitHub (which allows 60 unauthenticated requests an hour).
+//! GitHub stays the fallback: for apps or channels the catalog doesn't list, entries older than
+//! [`MAX_AGE`], or when the catalog doesn't answer or fails signature verification.
 //!
-//! The feed is input like any other: every field is optional, unknown fields are ignored, a field
-//! of the wrong type reads as missing, one bad entry never spoils the others, and download links
-//! must still point at the app's own GitHub releases.
-//!
-//! A developer can serve the feed and the builds from their own machine instead (see
-//! [`Feed::with_mirror`]): then links under the mirror are accepted too, and entries never go stale.
+//! A developer can still serve a JSON feed and builds from their own machine instead (see
+//! [`Feed::parse`] and [`Feed::with_mirror`]): then links under the mirror are accepted too, and
+//! entries never go stale.
 
 use std::collections::BTreeMap;
 
+use ed25519_dalek::VerifyingKey;
 use serde::Deserialize;
 use serde::de::{DeserializeOwned, Deserializer};
 
 use crate::catalog::{CraftApp, GITHUB_OWNER};
+use crate::hosted_catalog::{CATALOG_URL, MAX_CATALOG_BYTES, SIGNATURE_URL, check_signature, pinned_key};
 use crate::release::{self, Asset, Release, truncate};
 use crate::time::parse_rfc3339;
 use crate::version;
 
-/// Where the feed lives.
-pub const FEED_URL: &str = "https://api.storyteller.ai/v1/craft_apps/release_info";
+/// Where the signed release catalog lives.
+pub const FEED_URL: &str = CATALOG_URL;
+/// Detached Ed25519 signature over [`FEED_URL`].
+pub const FEED_SIGNATURE_URL: &str = SIGNATURE_URL;
 
 /// An app's entry is trusted for this long after storyteller-web fetched it.
 pub const MAX_AGE: i64 = 24 * 3600;
@@ -33,6 +36,8 @@ pub const MAX_AGE: i64 = 24 * 3600;
 pub struct Feed {
     /// By lowercase app name.
     pub apps: BTreeMap<String, FeedApp>,
+    /// Catalog TOML explicitly describes release channels; legacy JSON only describes stable.
+    pub channel_aware: bool,
     /// When the least recently fetched app was fetched (Unix seconds).
     pub last_fetched: Option<i64>,
     pub app_renames: Vec<AppRename>,
@@ -46,9 +51,13 @@ pub struct Feed {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FeedApp {
     pub repo: Option<String>,
-    /// Present when the repo has a published release. Meaningless unless `fetched_at` is set.
+    /// Present when the repo has a published stable release. Meaningless unless `fetched_at` is set.
     pub release: Option<FeedRelease>,
-    /// When storyteller-web last fetched this app (Unix seconds).
+    /// Present when the repo has a published non-nightly prerelease (beta/RC).
+    pub prerelease: Option<FeedRelease>,
+    /// Present when the repo has a published nightly build.
+    pub nightly: Option<FeedRelease>,
+    /// When the catalog or feed last fetched this app (Unix seconds).
     pub fetched_at: Option<i64>,
 }
 
@@ -58,6 +67,8 @@ pub struct FeedRelease {
     pub tag: String,
     pub name: String,
     pub published_at: Option<i64>,
+    /// Actual release reconciliation time, independent of the website rebuild time.
+    pub reconciled_at: Option<i64>,
     pub html_url: String,
     pub prerelease: bool,
     pub notes: String,
@@ -94,11 +105,45 @@ pub enum FeedAnswer {
 const MAX_TEXT: usize = 4000;
 
 impl Feed {
-    /// Reads the feed. `None` only when the answer isn't JSON (or isn't an object) at all.
+    /// Verifies the detached Ed25519 signature over `launcher-catalog.toml` using the pinned
+    /// public key and extracts its static release channels.
+    pub fn parse_signed_catalog(catalog_bytes: &[u8], signature_bytes: &[u8]) -> Result<Self, String> {
+        Self::parse_signed_catalog_with_key(catalog_bytes, signature_bytes, &pinned_key()?)
+    }
+
+    /// Like [`Self::parse_signed_catalog`], using an explicit verifying key (tests).
+    pub fn parse_signed_catalog_with_key(catalog_bytes: &[u8], signature_bytes: &[u8], key: &VerifyingKey) -> Result<Self, String> {
+        check_signature(catalog_bytes, signature_bytes, MAX_CATALOG_BYTES, key)?;
+        let text = std::str::from_utf8(catalog_bytes).map_err(|_| "catalog is not UTF-8")?;
+        Self::parse_catalog_toml(text)
+    }
+
+    /// Reads release metadata from an already-verified `launcher-catalog.toml` document.
+    pub fn parse_catalog_toml(toml_text: &str) -> Result<Self, String> {
+        let doc: CatalogDocument = toml::from_str(toml_text).map_err(|e| format!("invalid catalog TOML: {e}"))?;
+        let generated_at = doc.generated_at.as_deref().and_then(parse_rfc3339);
+        let mut apps = BTreeMap::new();
+        if let Some(launcher) = doc.launcher {
+            let id = launcher.id.unwrap_or_else(|| "artcraft-launcher".into()).to_lowercase();
+            if let Some(entry) = launcher.releases.and_then(|r| r.into_feed_app(launcher.repo, generated_at)) {
+                apps.insert(id, entry);
+            }
+        }
+        for app in doc.apps {
+            let Some(id) = app.id.filter(|s| !s.is_empty()) else { continue };
+            if let Some(entry) = app.releases.and_then(|r| r.into_feed_app(app.repo, generated_at)) {
+                apps.insert(id.to_lowercase(), entry);
+            }
+        }
+        Ok(Self { apps, channel_aware: true, last_fetched: generated_at, app_renames: Vec::new(), repo_renames: Vec::new(), mirror: None })
+    }
+
+    /// Reads the legacy/local-mirror JSON feed. `None` only when the answer isn't JSON (or isn't an object) at all.
     pub fn parse(json: &str) -> Option<Self> {
         let raw: RawResponse = serde_json::from_str(json).ok()?;
         let feed = Feed {
             apps: raw.release_info.apps.into_iter().map(|(k, v)| (k.to_lowercase(), v.into_app())).collect(),
+            channel_aware: false,
             last_fetched: raw.release_info.last_fetched.as_deref().and_then(parse_rfc3339),
             app_renames: raw.app_renames.into_iter().filter_map(RawAppRename::into_rename).collect(),
             repo_renames: raw.repo_renames.into_iter().filter_map(RawRepoRename::into_rename).collect(),
@@ -138,20 +183,76 @@ impl Feed {
         if self.mirror.is_none() && now.saturating_sub(fetched_at) > MAX_AGE {
             return FeedAnswer::AskGitHub;
         }
-        // The feed's repo must be the app's, or one the feed says it moved to.
-        let repo = self.repo_for(app);
+        // The feed's repo must be the app's, one the feed says it moved to, or the app's former repo
+        // (downloads are then checked against that one).
+        let mut repo = self.repo_for(app);
         if let Some(feed_repo) = &entry.repo
             && !feed_repo.eq_ignore_ascii_case(&repo)
         {
-            return FeedAnswer::AskGitHub;
+            match app.former_repo.filter(|former| feed_repo.eq_ignore_ascii_case(former)) {
+                Some(former) => repo = former.to_string(),
+                None => return FeedAnswer::AskGitHub,
+            }
         }
         match &entry.release {
+            // The app's other name may have the release: GitHub is asked about both.
+            None if app.former_repo.is_some() => FeedAnswer::AskGitHub,
             None => FeedAnswer::Fresh(None),
             Some(r) => match r.to_release(&repo, self.mirror.as_deref()) {
                 Some(release) => FeedAnswer::Fresh(Some(release)),
                 None => FeedAnswer::AskGitHub,
             },
         }
+    }
+
+    /// What the feed says about `app` when pre-releases are enabled: the higher version between
+    /// `stable` and `prerelease`, or `AskGitHub` if neither is fresh/valid.
+    pub fn answer_prerelease(&self, app: &CraftApp, now: i64) -> FeedAnswer {
+        let Some((entry, repo)) = self.fresh_entry(app, now) else { return FeedAnswer::AskGitHub };
+        let stable = entry.release.as_ref().and_then(|r| r.to_release(&repo, self.mirror.as_deref()));
+        let pre = entry.prerelease.as_ref().and_then(|r| r.to_release(&repo, self.mirror.as_deref()));
+        match (stable, pre) {
+            (Some(s), Some(p)) => {
+                let pick_pre = match (&p.version, &s.version) {
+                    (Some(pv), Some(sv)) => version::is_newer(pv, sv),
+                    _ => false,
+                };
+                FeedAnswer::Fresh(Some(if pick_pre { p } else { s }))
+            }
+            (Some(s), None) => FeedAnswer::Fresh(Some(s)),
+            (None, Some(p)) => FeedAnswer::Fresh(Some(p)),
+            (None, None) => FeedAnswer::AskGitHub,
+        }
+    }
+
+    /// What the feed says about `app`'s nightly build at `now`. Returns `AskGitHub` when no fresh
+    /// nightly with valid checksums is listed.
+    pub fn answer_nightly(&self, app: &CraftApp, now: i64) -> FeedAnswer {
+        let Some((entry, repo)) = self.fresh_entry(app, now) else { return FeedAnswer::AskGitHub };
+        let Some(nightly) = entry.nightly.as_ref().and_then(|r| r.to_release(&repo, self.mirror.as_deref())) else {
+            return FeedAnswer::AskGitHub;
+        };
+        if release::is_nightly(&nightly) && release::has_published_checksum(&nightly) {
+            FeedAnswer::Fresh(Some(nightly))
+        } else {
+            FeedAnswer::AskGitHub
+        }
+    }
+
+    fn fresh_entry(&self, app: &CraftApp, now: i64) -> Option<(&FeedApp, String)> {
+        let entry = self.apps.get(app.id)?;
+        let fetched_at = entry.fetched_at?;
+        if self.mirror.is_none() && now.saturating_sub(fetched_at) > MAX_AGE {
+            return None;
+        }
+        let mut repo = self.repo_for(app);
+        if let Some(feed_repo) = &entry.repo
+            && !feed_repo.eq_ignore_ascii_case(&repo)
+        {
+            let former = app.former_repo.filter(|former| feed_repo.eq_ignore_ascii_case(former))?;
+            repo = former.to_string();
+        }
+        Some((entry, repo))
     }
 }
 
@@ -191,6 +292,114 @@ impl FeedRelease {
             notes: truncate(&self.notes, 64 * 1024),
             prerelease: self.prerelease,
             assets,
+        })
+    }
+}
+
+// ---- signed catalog TOML format ---------------------------------------------------------------
+
+#[derive(Deserialize, Default)]
+struct CatalogDocument {
+    #[serde(default)]
+    generated_at: Option<String>,
+    #[serde(default)]
+    launcher: Option<CatalogLauncher>,
+    #[serde(default)]
+    apps: Vec<CatalogApp>,
+}
+
+#[derive(Deserialize, Default)]
+struct CatalogLauncher {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    releases: Option<CatalogReleases>,
+}
+
+#[derive(Deserialize, Default)]
+struct CatalogApp {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    releases: Option<CatalogReleases>,
+}
+
+#[derive(Deserialize, Default)]
+struct CatalogReleases {
+    #[serde(default)]
+    stable: Option<CatalogRelease>,
+    #[serde(default)]
+    prerelease: Option<CatalogRelease>,
+    #[serde(default)]
+    nightly: Option<CatalogRelease>,
+}
+
+#[derive(Deserialize, Default)]
+struct CatalogRelease {
+    #[serde(default)]
+    tag: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    published_at: Option<String>,
+    #[serde(default)]
+    reconciled_at: Option<String>,
+    #[serde(default)]
+    html_url: Option<String>,
+    #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
+    notes_markdown: Option<String>,
+    #[serde(default)]
+    assets: Vec<CatalogAsset>,
+}
+
+#[derive(Deserialize, Default)]
+struct CatalogAsset {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    size_bytes: u64,
+    #[serde(default)]
+    download_url: Option<String>,
+    #[serde(default)]
+    sha256: Option<String>,
+}
+
+impl CatalogRelease {
+    fn into_feed_release(self) -> Option<FeedRelease> {
+        let tag = self.tag.filter(|t| !t.is_empty() && t.len() <= 64)?;
+        Some(FeedRelease {
+            tag,
+            name: self.name.unwrap_or_default(),
+            published_at: self.published_at.as_deref().and_then(parse_rfc3339),
+            reconciled_at: self.reconciled_at.as_deref().and_then(parse_rfc3339),
+            html_url: self.html_url.unwrap_or_default(),
+            prerelease: self.prerelease,
+            notes: self.notes_markdown.unwrap_or_default(),
+            assets: self.assets.into_iter().filter_map(|a| Some((a.name?, a.size_bytes, a.download_url?, a.sha256))).take(300).collect(),
+        })
+    }
+}
+
+impl CatalogReleases {
+    fn into_feed_app(self, repo: Option<String>, fetched_at: Option<i64>) -> Option<FeedApp> {
+        let release = self.stable.and_then(CatalogRelease::into_feed_release);
+        let prerelease = self.prerelease.and_then(CatalogRelease::into_feed_release);
+        let nightly = self.nightly.and_then(CatalogRelease::into_feed_release);
+        if release.is_none() && prerelease.is_none() && nightly.is_none() {
+            return None;
+        }
+        Some(FeedApp {
+            repo: repo.filter(|r| r.split('/').count() == 2 && r.split('/').all(|part| !part.is_empty() && part != "." && part != "..")),
+            release,
+            prerelease,
+            nightly,
+            fetched_at,
         })
     }
 }
@@ -254,6 +463,8 @@ impl RawApp {
         FeedApp {
             repo: self.repo.filter(|r| r.split('/').count() == 2 && r.split('/').all(|part| !part.is_empty() && part != "." && part != "..")),
             release: self.latest_release.and_then(RawRelease::into_release),
+            prerelease: None,
+            nightly: None,
             fetched_at: self.app_last_fetched.as_deref().and_then(parse_rfc3339),
         }
     }
@@ -284,6 +495,7 @@ impl RawRelease {
             tag,
             name: self.name.unwrap_or_default(),
             published_at: self.published_at.as_deref().and_then(parse_rfc3339),
+            reconciled_at: None,
             html_url: self.html_url.unwrap_or_default(),
             prerelease: self.prerelease,
             notes: self.notes_markdown.unwrap_or_default(),
@@ -433,6 +645,36 @@ mod tests {
     }
 
     #[test]
+    fn an_app_with_a_former_repo_is_matched_under_either_name() {
+        // MailCraft moved from `UCS-Care-Group` to `UCSLabs` (#1593): a feed still naming the former
+        // repo is used, with downloads checked against that repo, and "no release" under one name
+        // sends the launcher to GitHub, where the other name is asked too.
+        let mut mailcraft = *app("mailcraft");
+        mailcraft.repo = "UCSLabs/mailcraft";
+        mailcraft.former_repo = Some("UCS-Care-Group/mailcraft");
+        let mailcraft = &mailcraft;
+        let former = "UCS-Care-Group/mailcraft";
+        let entry = |repo: &str, release: &str| {
+            format!(
+                r#"{{"release_info": {{"apps": {{"mailcraft": {{"repo": "{repo}", "app_last_fetched": "2026-10-09T13:00:00Z", "latest_release": {release}}}}}}}}}"#
+            )
+        };
+        let asset = |repo: &str| {
+            format!(
+                r#"{{"name": "mailcraft-0.15.0-x.msi", "size_bytes": 1, "download_url": "https://github.com/{repo}/releases/download/v0.15.0/mailcraft-0.15.0-x.msi", "sha256": "{HASH}"}}"#
+            )
+        };
+        let release = format!(r#"{{"tag": "v0.15.0", "assets": [{}, {}]}}"#, asset(former), asset(mailcraft.repo));
+        let FeedAnswer::Fresh(Some(r)) = Feed::parse(&entry(former, &release)).unwrap().answer(mailcraft, NOW) else { panic!() };
+        assert_eq!(r.assets.len(), 1);
+        assert!(r.assets[0].url.starts_with(&release::download_prefix(former)));
+        for repo in [mailcraft.repo, former] {
+            assert_eq!(Feed::parse(&entry(repo, "null")).unwrap().answer(mailcraft, NOW), FeedAnswer::AskGitHub, "{repo}");
+        }
+        assert_eq!(Feed::parse(&entry("someone/mailcraft", &release)).unwrap().answer(mailcraft, NOW), FeedAnswer::AskGitHub);
+    }
+
+    #[test]
     fn survives_anything_the_server_might_send() {
         for junk in ["", "null", "[]", "42", "<html>502 Bad Gateway</html>", "{\"success\":tru"] {
             let feed = Feed::parse(junk);
@@ -555,5 +797,97 @@ mod tests {
             let feed = sample().replace("\"tag\": \"v0.6.0\"", &format!("\"tag\": \"{odd}\""));
             assert_eq!(Feed::parse(&feed).unwrap().answer(app("photocraft"), NOW), FeedAnswer::AskGitHub, "{odd:?}");
         }
+    }
+
+    #[test]
+    fn catalog_channels_fall_back_independently_and_empty_records_are_ignored() {
+        let photo = app("photocraft");
+        let parsed = |channels: &str| {
+            Feed::parse_catalog_toml(&format!(
+                "generated_at = \"2026-10-09T13:00:00Z\"\n[[apps]]\nid = \"photocraft\"\nrepo = \"storytold/photocraft\"\n{channels}"
+            ))
+            .unwrap()
+        };
+        let stable = parsed("[apps.releases.stable]\ntag = \"v1.0.0\"\n");
+        assert!(matches!(stable.answer_prerelease(photo, NOW), FeedAnswer::Fresh(Some(r)) if r.tag == "v1.0.0"));
+        assert_eq!(stable.answer_nightly(photo, NOW), FeedAnswer::AskGitHub);
+        let pre = parsed("[apps.releases.prerelease]\ntag = \"v1.1.0-rc.1\"\n");
+        assert!(matches!(pre.answer_prerelease(photo, NOW), FeedAnswer::Fresh(Some(r)) if r.tag == "v1.1.0-rc.1"));
+        let empty = parsed("[apps.releases]\n");
+        assert!(empty.apps.is_empty());
+        assert_eq!(empty.answer_prerelease(photo, NOW), FeedAnswer::AskGitHub);
+        assert_eq!(pre.answer_prerelease(photo, NOW + MAX_AGE * 2), FeedAnswer::AskGitHub);
+    }
+
+    #[test]
+    fn signed_catalog_toml_answers_stable_prerelease_nightly_and_launcher() {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        use ed25519_dalek::{Signer as _, SigningKey};
+
+        let toml = format!(
+            r#"generated_at = "2026-10-09T13:00:00Z"
+
+[launcher]
+id = "artcraft-launcher"
+repo = "storytold/craft-launcher"
+[launcher.releases.stable]
+tag = "v0.20.4"
+version = "0.20.4"
+html_url = "https://github.com/storytold/craft-launcher/releases/tag/v0.20.4"
+prerelease = false
+[[launcher.releases.stable.assets]]
+name = "artcraft-launcher-0.20.4-macos-universal.dmg"
+download_url = "https://github.com/storytold/craft-launcher/releases/download/v0.20.4/artcraft-launcher-0.20.4-macos-universal.dmg"
+sha256 = "{HASH}"
+
+[[apps]]
+id = "photocraft"
+repo = "storytold/photocraft"
+[apps.releases.stable]
+tag = "v0.23.1"
+version = "0.23.1"
+html_url = "https://github.com/storytold/photocraft/releases/tag/v0.23.1"
+prerelease = false
+[[apps.releases.stable.assets]]
+name = "photocraft-0.23.1-macos-universal.dmg"
+download_url = "https://github.com/storytold/photocraft/releases/download/v0.23.1/photocraft-0.23.1-macos-universal.dmg"
+sha256 = "{HASH}"
+[apps.releases.prerelease]
+tag = "v0.24.0-rc.1"
+version = "0.24.0-rc.1"
+html_url = "https://github.com/storytold/photocraft/releases/tag/v0.24.0-rc.1"
+prerelease = true
+[apps.releases.nightly]
+tag = "v0.24.0-nightly.20261009.1.1"
+version = "0.24.0-nightly.20261009.1.1"
+html_url = "https://github.com/storytold/photocraft/releases/tag/v0.24.0-nightly.20261009.1.1"
+prerelease = true
+[[apps.releases.nightly.assets]]
+name = "photocraft-0.24.0-nightly.20261009.1.1-linux-x86_64.AppImage"
+download_url = "https://github.com/storytold/photocraft/releases/download/v0.24.0-nightly.20261009.1.1/photocraft-0.24.0-nightly.20261009.1.1-linux-x86_64.AppImage"
+sha256 = "{HASH}"
+"#
+        );
+        let key = SigningKey::from_bytes(&[7; 32]);
+        let sig = STANDARD.encode(key.sign(toml.as_bytes()).to_bytes());
+        let feed = Feed::parse_signed_catalog_with_key(toml.as_bytes(), sig.as_bytes(), &key.verifying_key()).unwrap();
+
+        let FeedAnswer::Fresh(Some(launcher)) = feed.answer(&LAUNCHER, NOW) else { panic!() };
+        assert_eq!(launcher.tag, "v0.20.4");
+
+        let FeedAnswer::Fresh(Some(stable)) = feed.answer(app("photocraft"), NOW) else { panic!() };
+        assert_eq!(stable.tag, "v0.23.1");
+        assert_eq!(stable.assets.len(), 1);
+
+        let FeedAnswer::Fresh(Some(pre)) = feed.answer_prerelease(app("photocraft"), NOW) else { panic!() };
+        assert_eq!(pre.tag, "v0.24.0-rc.1");
+
+        let FeedAnswer::Fresh(Some(nightly)) = feed.answer_nightly(app("photocraft"), NOW) else { panic!() };
+        assert_eq!(nightly.tag, "v0.24.0-nightly.20261009.1.1");
+
+        // Tampering or wrong key is rejected before parsing.
+        let wrong_key = SigningKey::from_bytes(&[9; 32]);
+        assert!(Feed::parse_signed_catalog_with_key(toml.as_bytes(), sig.as_bytes(), &wrong_key.verifying_key()).is_err());
+        assert!(Feed::parse_signed_catalog_with_key(format!("{toml}\n").as_bytes(), sig.as_bytes(), &key.verifying_key()).is_err());
     }
 }

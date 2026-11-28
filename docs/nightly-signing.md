@@ -15,8 +15,10 @@ unsigned schemas, missing/duplicate/foreign signatures and binding mismatches re
 
 `crates/native/src/nightly_trust.rs` is source-owned. Defaults are unavailable and
 refuse install/update. A reviewed source change must supply an independently trusted
-Linux armored public key **and full primary-key fingerprint**, and Windows **exact full
-native SignerCertificate.Subject** string. Never derive these from a feed, downloaded
+Linux armored public key **and full primary-key fingerprint**, and a Windows publisher:
+the **exact full native SignerCertificate.Subject** string, the root the signer's chain
+must end at (its exact Subject **and the root certificate's SHA-256**), and the enhanced
+key usages the signer certificate must carry. Never derive these from a feed, downloaded
 release key, unsigned Launcher, environment variable or debug/local setting. Public
 provisioning must include current revocation/expiry state; there is no release-selected
 key retrieval or automatic trust-root refresh.
@@ -24,6 +26,25 @@ key retrieval or automatic trust-root refresh.
 Linux is provisioned with the ArtCraft Linux Release Signing Key, the same key that signs
 stable Linux releases, pinned by its primary fingerprint; its signing subkey makes the
 signatures. A test checks a real signed stable release file against the configured signer.
+Infra, who hold the key, handed over the public key and primary fingerprint, and the same
+key is the `GPGKey` in getartcraft.com's artcraft-oci.flatpakrepo. The copy published with
+PhotoCraft releases is vouched for only by its own signature, so it is not the provenance.
+
+Windows is provisioned with PhotoCraft's Azure Trusted Signing (Microsoft ID Verified)
+identity, read on 2026-11-23 from the embedded signature of `photocraft.exe` in PhotoCraft
+v0.23.1's `photocraft-0.23.1-windows-x64-portable.zip` (archive SHA-256 `6317e764…60b1`,
+executable SHA-256 `c118ea72…9165`), and confirmed by a Windows 11 reading of the same file:
+
+- Subject `CN=Learning Machines Inc, O=Learning Machines Inc, L=Atlanta, S=Georgia, C=US`.
+- Chain: the leaf, Microsoft ID Verified CS EOC CA 03, Microsoft ID Verified Code Signing
+  PCA 2021, and the root Microsoft Identity Verification Root Certificate Authority 2020,
+  SHA-256 `5367f20c…1270` (the same as Microsoft's published certificate).
+- Enhanced key usages: Code Signing, `1.3.6.1.4.1.311.97.1.0`, and the identity's own
+  `1.3.6.1.4.1.311.97.627281783.214399755.66947568.492752054`.
+
+The leaf lasts three days and is renewed for each signing run, and the issuing CAs rotate,
+so neither is pinned. The pin is the subject, Code Signing plus the identity EKU, and the
+root by name and hash. A timestamped signature stays valid after its leaf expires.
 
 Linux uses installed `/usr/bin/gpg`, no user options/keyrings or automatic retrieval.
 A private temporary home imports only the pinned public material. Bounded subprocess
@@ -38,7 +59,12 @@ permitted textual notices. The staged EXE is held without write/delete sharing t
 verification and copy/commit. Existing verifysign is used with explicit native chain
 revocation, not convenience defaults. A fixed non-elevated read-only system PowerShell
 query requires Valid embedded Authenticode, a timestamp certificate and case-sensitive
-full Subject equality. Its leaf SHA-256 must match the native verifier's actual leaf;
+full Subject equality. It also rebuilds the signer's chain from the signature's own
+certificates (time validity ignored, revocation already checked) and reports the root's
+Subject and SHA-256 and the leaf's key usages, which must match the pin. The query may
+take up to 180 seconds (a cold run on a busy machine took 81); past that it is stopped
+and the message says it timed out, not that the signature was refused. Open checks the
+installed copy the same way. Its leaf SHA-256 must match the native verifier's actual leaf;
 this binds the two checks, not a rotating certificate pin. A full DN is not inferred
 from limited CN/O/OU/C fields. Native timestamp/signing-time policy is retained.
 The query uses trusted built-in modules, no profile, path-as-data, and no downloaded

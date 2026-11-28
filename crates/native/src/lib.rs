@@ -13,6 +13,7 @@ pub mod desktop_entry;
 pub mod detect;
 pub mod downloads;
 pub mod feed_throttle;
+mod github_budget;
 pub mod hosted_catalog;
 pub mod http;
 pub mod install;
@@ -29,6 +30,8 @@ mod nightly_transaction;
 mod nightly_trust;
 #[cfg(unix)]
 mod nightly_unix;
+#[cfg(any(windows, test))]
+mod nightly_windows_fence;
 #[cfg(all(test, windows))]
 mod nightly_windows_mechanics_tests;
 pub mod notices;

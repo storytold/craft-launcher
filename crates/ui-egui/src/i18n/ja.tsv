@@ -228,8 +228,8 @@ month	Oct	10月
 month	Nov	11月
 month	Dec	12月
 	Not checked yet	まだ確認していません
-	GitHub's hourly limit was reached; full details return in {min} min	GitHub の時間あたりの上限に達しました。{min} 分後に詳細が表示されます
-	GitHub limit hit; back in {min} min	GitHub の上限に達しました。{min} 分後に復旧します
+	Next GitHub check at {time}	次回の GitHub 確認: {time}
+	Next check at {time}	次回の確認: {time}
 	Installing for {platform}	{platform} にインストール
 	Downloads for {platform}	{platform} 用のダウンロード
 	No downloads for this system	このシステム用のダウンロードはありません
@@ -503,51 +503,54 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Fonts you haven't installed show their previews from this server, and installs try it first. Empty uses the default server.	インストールしていないフォントは、このサーバーからプレビューを表示します。インストール時もまずこのサーバーを試します。空欄の場合は既定のサーバーを使います。
 
 # New pre-release UI: explicit English fallback; translations are supplied through craft-i18n.
-	Enable pre-release builds	Enable pre-release builds
-	Enable pre-release builds?	Enable pre-release builds?
-	Install pre-release	Install pre-release
+	Enable developer builds	Enable developer builds
+	Enable developer builds?	Enable developer builds?
+	Install developer build	Install developer build
 	New builds as the apps evolve. Stable copies stay separate.	New builds as the apps evolve. Stable copies stay separate.
-	No pre-release build is available yet.	No pre-release build is available yet.
-	Only this pre-release copy will be removed. Stable copies and user data are kept.	Only this pre-release copy will be removed. Stable copies and user data are kept.
+	No developer build is available yet.	No developer build is available yet.
+	Only this developer build will be removed. Stable copies and user data are kept.	Only this developer build will be removed. Stable copies and user data are kept.
 	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.
 	Open stable	Open stable
-	Pre-Release	Pre-Release
-	Pre-release builds are off. Installed copies and their data are kept.	Pre-release builds are off. Installed copies and their data are kept.
-	Pre-release installation is unavailable on this platform.	Pre-release installation is unavailable on this platform.
+	Developer Builds	Developer Builds
+	Developer Build	Developer Build
+	Developer builds are off. Installed copies and their data are kept.	Developer builds are off. Installed copies and their data are kept.
+	Developer build installation is unavailable on this platform.	Developer build installation is unavailable on this platform.
 	Show installed copy	Show installed copy
 	Stable	Stable
-	These are pre-release builds. They will have issues and may lose work.	These are pre-release builds. They will have issues and may lose work.
+	These are developer builds. They will have issues and may lose work.	These are developer builds. They will have issues and may lose work.
 	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.
 	Try nightly builds	Try nightly builds
-	Turn off pre-release builds	Turn off pre-release builds
-	Uninstall pre-release	Uninstall pre-release
-	Uninstall pre-release?	Uninstall pre-release?
-	Uninstall pre-release…	Uninstall pre-release…
+	Turn off developer builds	Turn off developer builds
+	Uninstall developer build	Uninstall developer build
+	Uninstall developer build?	Uninstall developer build?
+	Uninstall developer build…	Uninstall developer build…
 
 # Nightly UI clarification (English fallback; translations are maintained in craft-i18n)
-	Pre-release builds are off.	Pre-release builds are off.
-	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.
-	Installed pre-release copy	Installed pre-release copy
+	Developer builds are off.	Developer builds are off.
+	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.	Installed copies and their data are kept. To discover new builds, enable developer builds in Settings.
+	Installed developer build	Installed developer build
 	Nightly builds use a separate install and settings. Stable updates stay unchanged.	Nightly builds use a separate install and settings. Stable updates stay unchanged.
 
-# Availability-only pre-release destination (English fallback)
-	Could not check for pre-release builds.	Could not check for pre-release builds.
-	No pre-release builds are available yet.	No pre-release builds are available yet.
-	Nightly builds, separate from your stable apps.	Nightly builds, separate from your stable apps.
+# Availability-only Developer Builds destination. English fallback, except the channel paragraph:
+# its translation predates the rename to Developer Builds and is kept until storytold/craft-i18n updates it.
+	Could not check for developer builds.	Could not check for developer builds.
+	No developer builds are available yet.	No developer builds are available yet.
+	The developer channel is updated automatically every night with the latest code. It may have bugs, performance and stability issues, and unfinished work. Please use the stable channel for important work.	プレリリースチャンネルは、毎晩最新のコードで自動的に更新されます。バグ、パフォーマンスや安定性の問題、未完成の機能が含まれている場合があります。重要な作業には、安定版チャンネルをご利用ください。
 
-# Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
-	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	プレビュー版では新機能をいち早く試せますが、不具合があり、未保存の作業が失われるおそれがあります。
-	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a pre-release build, as newer saves may not open in stable versions.	プレビュー版は独自の設定とデータを使用して安定版アプリと並行してインストールされるため、安定版の環境は変更されません。新しいバージョンで保存したファイルは安定版で開けない場合があるため、重要なファイルをプレビュー版で開く前に、必ずバックアップしてください。
-	You can turn this off at any time without deleting your installed pre-release apps or their data.	この設定はいつでもオフにできます。インストール済みのプレビュー版アプリやそのデータは削除されません。
+# Approved consent Copy A: translated paragraphs. The translations predate the rename to Developer Builds
+# and are kept unchanged until storytold/craft-i18n updates their wording.
+	Developer builds let you try new work early, but they will have bugs and may lose unsaved work.	プレビュー版では新機能をいち早く試せますが、不具合があり、未保存の作業が失われるおそれがあります。
+	They install alongside your stable apps with their own settings and data, leaving your stable setup untouched. Always back up important files before opening them in a developer build, as newer saves may not open in stable versions.	プレビュー版は独自の設定とデータを使用して安定版アプリと並行してインストールされるため、安定版の環境は変更されません。新しいバージョンで保存したファイルは安定版で開けない場合があるため、重要なファイルをプレビュー版で開く前に、必ずバックアップしてください。
+	You can turn this off at any time without deleting your installed developer builds or their data.	この設定はいつでもオフにできます。インストール済みのプレビュー版アプリやそのデータは削除されません。
 
 # Nightly build calendar date (date-only, never publication time or a local timestamp).
 	{month}/{day}/{year}	{year}/{month}/{day}
 
 # Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
 	Nightly builds	ナイトリービルド
-	Discover nightly builds (Pre-Release page)	ナイトリービルドを探す（Pre-Release ページ）
+	Discover nightly builds (Developer Builds page)	ナイトリービルドを探す（Developer Builds ページ）
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	インストール先、設定、データは別々です。オフにしてもインストール済みのコピーとそのデータは保持されます。
-	Pre-release builds aren't available on this platform yet.	Pre-release builds aren't available on this platform yet.
+	Developer builds aren't available on this platform yet.	Developer builds aren't available on this platform yet.
 	Betas and release candidates can replace your stable installation.	ベータ版やリリース候補版は、安定版のインストールを置き換える場合があります。
 
 # Nightly status (English fallback; localization is maintained upstream).
@@ -558,3 +561,9 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Announcements	お知らせ
 	No announcements	お知らせはありません
 @plural	Announcements, {n} unread|Announcements, {n} unread	お知らせ、未読 {n} 件
+# Going back from a copy whose version has no release of its own (English fallback; translations are maintained in craft-i18n).
+	Go back to {version}?	Go back to {version}?
+	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.	{app} {installed} isn't published, so if going back to {chosen} fails, the launcher reinstalls {fallback} instead. That's most likely the version you have.
+	Go back	Go back
+	{app} {version} isn't published any more, so it couldn't be put back if going back fails.	{app} {version} isn't published any more, so it couldn't be put back if going back fails.
+	Going back to an older version of {app} isn't available for this kind of install yet.	Going back to an older version of {app} isn't available for this kind of install yet.

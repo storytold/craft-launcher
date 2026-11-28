@@ -5,7 +5,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::manifest::Record;
 use crate::paths::Paths;
-use artcraft_launcher_core::{CraftApp, PackageKind};
+use artcraft_launcher_core::{Arch, CraftApp, Os, PackageKind, Platform};
 
 const MAX_FILES: usize = 10_000;
 const MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
@@ -236,7 +236,21 @@ pub(crate) fn install_signed(
     check_layout: &CheckLayout<'_>,
     commit: &mut dyn FnMut(&Record) -> Result<(), String>,
 ) -> Result<Record, String> {
-    install_with_authentication(package, check_layout, Some(&crate::nightly_signing::authenticate_windows), commit)
+    // The staged payload is authenticated as the row's own executable, whatever the app.
+    let adapter = windows_nightly_adapter(package.app)?;
+    install_with_authentication(
+        package,
+        check_layout,
+        Some(&move |root, files| crate::nightly_signing::authenticate_windows(adapter, root, files)),
+        commit,
+    )
+}
+
+/// The source-owned Windows row for this app: it names the executable Authenticode must vouch
+/// for. Every Windows Nightly row is that app's x86_64 ZIP, which an ARM64 Windows host runs
+/// too, so the row is looked up by app rather than by the host's architecture.
+fn windows_nightly_adapter(app: &CraftApp) -> Result<crate::nightly_profile::Adapter, String> {
+    crate::nightly_profile::for_app(app, Platform { os: Os::Windows, arch: Arch::X64 })
 }
 
 type Authenticate = dyn Fn(&Path, &[PathBuf]) -> Result<std::fs::File, String>;
@@ -695,11 +709,11 @@ pub(crate) mod tests {
         let error = install_checked(package(), &|files, entries| adapter.validate_layout(files, entries), &mut |record| {
             assert_eq!(std::fs::read(&record.path).unwrap(), b"new program");
             committed.set(true);
-            Err("Pre-Release was turned off before commit".into())
+            Err("Developer builds were turned off before commit".into())
         })
         .unwrap_err();
         assert!(committed.get());
-        assert_eq!(error, "Pre-Release was turned off before commit");
+        assert_eq!(error, "Developer builds were turned off before commit");
         assert!(!paths.apps().join(app.id).exists(), "a refused fresh install must not block the next admission");
         assert!(!paths.manifest().exists());
         let record = install_checked(package(), &|files, entries| adapter.validate_layout(files, entries), &mut |_| Ok(())).unwrap();

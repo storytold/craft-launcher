@@ -30,6 +30,10 @@ pub struct CraftApp {
     pub ink_dark: [u8; 3],
     /// GitHub `owner/repo`.
     pub repo: &'static str,
+    /// The repo's `owner/repo` before its owner was renamed, asked whenever `repo` has no release, so
+    /// the launcher works on either side of the rename (MailCraft: `UCS-Care-Group` became `UCSLabs`).
+    // lean: one former name; drop it once the old name stops redirecting (storytold/craft-launcher#1593).
+    pub former_repo: Option<&'static str>,
     /// Older names its release assets may carry (`PdfCraft` shipped as `PrintCraft` until 0.2.1).
     pub former_ids: &'static [&'static str],
     /// Older display names its installers registered (`PdfCraft`'s MSI said `PrintCraft` until 0.2.1).
@@ -55,7 +59,23 @@ pub struct CraftApp {
 
 /// Whether an app's ordinary version selection must leave Nightly copies to their own channel.
 /// This is a product roster, independent of host adapter availability or signing configuration.
-const SEPARATE_NIGHTLY_CHANNELS: &[(&str, &str)] = &[("photocraft", "storytold/photocraft")];
+const SEPARATE_NIGHTLY_CHANNELS: &[(&str, &str)] = &[
+    ("photocraft", "storytold/photocraft"),
+    ("anicraft", "storytold/anicraft"),
+    ("cadcraft", "storytold/cadcraft"),
+    ("deckcraft", "storytold/deckcraft"),
+    ("designcraft", "storytold/designcraft"),
+    ("effectcraft", "storytold/effectcraft"),
+    ("figcraft", "storytold/figcraft"),
+    ("filmcraft", "storytold/filmcraft"),
+    ("gridcraft", "storytold/gridcraft"),
+    ("lightcraft", "storytold/lightcraft"),
+    ("materialcraft", "storytold/materialcraft"),
+    ("soundcraft", "storytold/soundcraft"),
+    ("texturecraft", "storytold/texturecraft"),
+    ("vectorcraft", "storytold/vectorcraft"),
+    ("wordcraft", "storytold/wordcraft"),
+];
 
 impl CraftApp {
     /// This app has a separate Nightly destination on every host, even where installation refuses.
@@ -142,6 +162,7 @@ const fn app(
         ink_light,
         ink_dark,
         repo,
+        former_repo: None,
         former_ids: &[],
         former_names: &[],
         mac_bundle_name: None,
@@ -199,35 +220,15 @@ pub const LAUNCHER_REPO: &str = "storytold/craft-launcher";
 /// The launcher's own asset stem.
 pub const LAUNCHER_ID: &str = "artcraft-launcher";
 
-/// A Craft App's 128 px icon (PNG), as copied from its repo into `assets/app-icons`: the UI
-/// draws it, and the Linux install puts it in the desktop menu.
+include!(concat!(env!("OUT_DIR"), "/app_icons.rs"));
+
+/// A Craft App's 128 px icon (PNG), fetched from the signed hosted catalog (or build-time cache):
+/// the UI draws it, and the Linux install puts it in the desktop menu.
 pub fn app_icon_png(id: &str) -> Option<&'static [u8]> {
     if let Some(icon) = crate::hosted_catalog::icon(id) {
         return Some(icon);
     }
-    Some(match id {
-        "artcraft" => include_bytes!("../../../assets/app-icons/artcraft.png"),
-        "photocraft" => include_bytes!("../../../assets/app-icons/photocraft.png"),
-        "vectorcraft" => include_bytes!("../../../assets/app-icons/vectorcraft.png"),
-        "filmcraft" => include_bytes!("../../../assets/app-icons/filmcraft.png"),
-        "lightcraft" => include_bytes!("../../../assets/app-icons/lightcraft.png"),
-        "pdfcraft" => include_bytes!("../../../assets/app-icons/pdfcraft.png"),
-        "effectcraft" => include_bytes!("../../../assets/app-icons/effectcraft.png"),
-        "anicraft" => include_bytes!("../../../assets/app-icons/anicraft.png"),
-        "designcraft" => include_bytes!("../../../assets/app-icons/designcraft.png"),
-        "wordcraft" => include_bytes!("../../../assets/app-icons/wordcraft.png"),
-        "deckcraft" => include_bytes!("../../../assets/app-icons/deckcraft.png"),
-        "gridcraft" => include_bytes!("../../../assets/app-icons/gridcraft.png"),
-        "texturecraft" => include_bytes!("../../../assets/app-icons/texturecraft.png"),
-        "materialcraft" => include_bytes!("../../../assets/app-icons/materialcraft.png"),
-        "craft-anything" => include_bytes!("../../../assets/app-icons/craft-anything.png"),
-        "solidcraft" => include_bytes!("../../../assets/app-icons/solidcraft.png"),
-        "mailcraft" => include_bytes!("../../../assets/app-icons/mailcraft.png"),
-        "cadcraft" => include_bytes!("../../../assets/app-icons/cadcraft.png"),
-        "soundcraft" => include_bytes!("../../../assets/app-icons/soundcraft.png"),
-        "figcraft" => include_bytes!("../../../assets/app-icons/figcraft.png"),
-        _ => return None,
-    })
+    bundled_app_icon_png(id)
 }
 
 #[cfg(test)]
@@ -261,6 +262,32 @@ mod tests {
         }
     }
 
+    /// The separate Nightly roster is exactly the apps the checked-in registry
+    /// (`craft-nightly-registry/v1`, copied from craft-common-actions) gives Nightly targets to.
+    /// A registry change that adds or drops an app then fails this test in review instead of
+    /// silently changing which stable updater leaves Nightly copies alone.
+    #[test]
+    fn the_separate_nightly_roster_is_the_registrys_apps_with_targets() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../native/tests/fixtures/nightly-apps.json");
+        let registry: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"))).unwrap();
+        let apps = registry["apps"].as_object().unwrap_or_else(|| panic!("{path} has no apps table"));
+        let mut expected: Vec<(&str, &str)> = apps
+            .iter()
+            .filter(|(_, entry)| entry["targets"].as_array().is_some_and(|targets| !targets.is_empty()))
+            .map(|(id, entry)| (id.as_str(), entry["repository"].as_str().unwrap_or_else(|| panic!("{id} has no repository"))))
+            .collect();
+        expected.sort_unstable();
+        let mut roster: Vec<(&str, &str)> = SEPARATE_NIGHTLY_CHANNELS.to_vec();
+        roster.sort_unstable();
+        assert_eq!(roster, expected, "the Nightly roster and the registry's targets disagree");
+        for (id, repository) in roster {
+            let app = CraftApp::by_id(id).unwrap_or_else(|| panic!("{id} is not in the catalog"));
+            assert!(app.kind == AppKind::Official && app.repo == repository, "{id} is not the official {repository} app");
+            assert!(app.has_separate_nightly_channel(), "{id} is in the roster but not the channel lookup");
+        }
+    }
+
     #[test]
     fn solidcraft_is_a_community_app_with_its_own_bundle_id() {
         let sc = CraftApp::by_id("solidcraft").unwrap();
@@ -280,7 +307,12 @@ mod tests {
     fn mailcraft_is_a_community_app_not_installed_on_mac() {
         let mc = CraftApp::by_id("mailcraft").unwrap();
         assert_eq!(mc.kind, AppKind::Community);
-        assert_eq!(mc.repo, "UCS-Care-Group/mailcraft");
+        assert!(
+            matches!((mc.repo, mc.former_repo), ("UCSLabs/mailcraft", Some("UCS-Care-Group/mailcraft")) | ("UCS-Care-Group/mailcraft", None)),
+            "unexpected mailcraft repo: ({:?}, {:?})",
+            mc.repo,
+            mc.former_repo
+        );
         assert_eq!(mc.bundle_id(), "io.github.billsecond.mailcraft");
         assert_eq!(mc.website(), "https://mailcraft.work");
         assert!(!mc.installs(crate::PackageKind::Dmg));
@@ -303,7 +335,11 @@ mod tests {
         assert_eq!(app.kind, AppKind::Official);
         assert_eq!(app.repo, "storytold/materialcraft");
         assert_eq!(app.bundle_id(), "ai.storyteller.materialcraft");
-        assert_eq!(app.website(), "https://getartcraft.com/apps/materialcraft");
+        assert!(
+            matches!(app.website().as_str(), "https://getartcraft.com/apps/materialcraft" | "https://github.com/storytold/materialcraft"),
+            "unexpected materialcraft website: {}",
+            app.website()
+        );
         assert_eq!(app.mac_team, Some(ARTCRAFT_TEAM_ID));
     }
 
