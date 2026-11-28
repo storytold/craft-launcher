@@ -458,6 +458,7 @@ impl LauncherUi {
         .into_iter()
         .filter_map(|(label, value, platforms)| value.filter(|value| !value.trim().is_empty()).map(|value| (label, value, platforms)))
         .collect::<Vec<_>>();
+        let per_row = per_row.min(facts.len().max(1));
         for pair in facts.chunks(per_row) {
             let boxes = ui.columns(per_row, |cols| {
                 cols.iter_mut()

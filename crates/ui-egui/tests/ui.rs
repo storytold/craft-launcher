@@ -3997,6 +3997,49 @@ fn release_fact_cards_align_and_platform_names_appear_above_icons() {
 }
 
 #[test]
+fn release_fact_cards_fill_the_row_even_without_a_release_date() {
+    let mut events = events();
+    for event in &mut events {
+        if let Event::Latest { app, latest: LatestRelease::Found(release), .. } = event
+            && app == "photocraft"
+        {
+            release.published_at = None;
+        }
+    }
+    let (mut h, _) = harness_with(events, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    h.get_by_label("Latest release").scroll_to_me();
+    h.run_steps(5);
+    h.check_accessibility();
+    snapshot(&mut h, "release-without-date");
+
+    assert!(h.query_by_label("Released").is_none());
+    let card_for = |label| {
+        let label = h.get_by_label(label).rect();
+        h.output()
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) if !shape.stroke.is_empty() && shape.rect.contains_rect(label) => Some(shape.rect),
+                _ => None,
+            })
+            .min_by(|a, b| a.area().total_cmp(&b.area()))
+            .expect("the fact has an outline")
+    };
+    let [version, download, platforms] = ["Version", "Download", "Platforms"].map(card_for);
+    assert!(version.right() < download.left() && download.right() < platforms.left());
+    for card in [version, download] {
+        assert!((card.width() - platforms.width()).abs() < 1.0);
+        assert!((card.bottom() - platforms.bottom()).abs() < 1.0);
+    }
+    let download_gap = download.left() - version.right();
+    let last_feature = card_for("Serious color");
+    assert!((platforms.right() - last_feature.right()).abs() < download_gap, "the release facts should fill the drawer width");
+}
+
+#[test]
 /// Enlarge adds a second, keyboard-navigable view over the drawer; Esc closes the enlarged
 /// picture before the drawer.
 fn the_lead_picture_can_be_enlarged() {
