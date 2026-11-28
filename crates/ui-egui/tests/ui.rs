@@ -2031,6 +2031,23 @@ fn assert_update_commands(sent: &RefCell<Vec<Command>>, apps: &[&str]) {
 }
 
 #[test]
+fn download_progress_keeps_its_accessible_identity_as_the_caption_changes() {
+    artcraft_launcher_ui_egui::i18n::set_test_lang(artcraft_launcher_ui_egui::i18n::Lang::EN);
+    for view in [ViewMode::Grid, ViewMode::Table] {
+        let (mut h, _sent, queue) = versions_harness(Machine::default(), None, vec![]);
+        h.state_mut().as_mut().unwrap().settings.view = view;
+        h.run_steps(4);
+        let before = h.get_by_label_contains("of 131 MB").accesskit_node().locate();
+        let caption = h.get_by_label_contains("of 131 MB").accesskit_node().label().map(|label| label.to_string());
+        queue.borrow_mut().push(Event::Progress { app: "filmcraft".into(), phase: JobPhase::Downloading { done: 64 << 20, total: 131 << 20 } });
+        h.run_steps(4);
+        let after = h.get_by_label_contains("of 131 MB");
+        assert_ne!(after.accesskit_node().label().map(|label| label.to_string()), caption, "{view:?}: the download caption must advance");
+        assert_eq!(after.accesskit_node().locate(), before, "{view:?}: a caption update must keep the existing progress node");
+    }
+}
+
+#[test]
 fn downloads_can_be_paused_resumed_and_discarded() {
     let (mut h, sent) = harness(ViewMode::Grid, egui::Theme::Dark, true);
     h.run_steps(4);

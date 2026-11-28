@@ -702,7 +702,8 @@ fn paint_cell<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, opt: &T, cell: &C
 /// A slim square progress bar with a caption above it.
 pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color32, width: f32) {
     let t = Tokens::get(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(width, theme::CONTROL_H), Sense::hover());
+    // Reuse the allocated response so caption updates keep the same accessible identity.
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, theme::CONTROL_H), Sense::hover());
     let p = ui.painter();
     let bar = Rect::from_min_size(egui::pos2(rect.left(), rect.bottom() - 4.0), vec2(width, 4.0));
     p.rect_filled(bar, CornerRadius::ZERO, t.line);
@@ -725,7 +726,6 @@ pub fn progress(ui: &mut Ui, fraction: Option<f32>, caption: &str, color: Color3
         }
     }
     p.text(egui::pos2(rect.left(), rect.top() + 9.0), egui::Align2::LEFT_CENTER, caption, egui::FontId::new(12.0, theme::medium()), t.muted);
-    let resp = ui.interact(rect, ui.scope_id().with(("progress", caption)), Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ProgressIndicator, true, caption));
 }
 
