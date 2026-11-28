@@ -11,6 +11,9 @@ use std::time::{Duration, Instant};
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new(program);
+    // The launcher's GitHub token is its own credential. Installed apps, including approved
+    // community apps, have no business with it (audit: launcher #2).
+    cmd.env_remove("ARTCRAFT_LAUNCHER_GITHUB_TOKEN");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
