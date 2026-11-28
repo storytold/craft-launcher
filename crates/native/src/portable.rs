@@ -327,6 +327,7 @@ fn install_with_authentication(
         installed_at: crate::now(),
         files: files.iter().map(|relative| destination.join(relative)).collect(),
         needs_root: false,
+        sha256: None,
     };
     let mut moved = Vec::new();
     let mut copied = Vec::new();
@@ -943,6 +944,7 @@ pub(crate) mod tests {
             installed_at: 0,
             files: vec![alias_root.join("photocraft.exe")],
             needs_root: false,
+            sha256: None,
         };
         std::process::Command::new("cmd.exe").args(["/C", "rmdir"]).arg(&link).status().unwrap();
         junction(&link, &second);

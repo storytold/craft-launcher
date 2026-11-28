@@ -21,6 +21,10 @@ pub struct Record {
     /// The files are in a system prefix and removing them needs root.
     #[serde(default)]
     pub needs_root: bool,
+    /// SHA-256 of the single file installed (an AppImage). An update deletes the old file only
+    /// while it still has these bytes: the path alone doesn't prove it's still the launcher's copy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 /// The release behind a Windows Installer copy the launcher installed. Windows Installer keeps
@@ -67,7 +71,15 @@ mod tests {
         let mut m = Manifest::default();
         m.apps.insert(
             "photocraft".into(),
-            Record { version: "0.5.0".into(), kind: PackageKind::AppImage, path: "/x/y".into(), installed_at: 1, files: vec![], needs_root: false },
+            Record {
+                version: "0.5.0".into(),
+                kind: PackageKind::AppImage,
+                path: "/x/y".into(),
+                installed_at: 1,
+                files: vec![],
+                needs_root: false,
+                sha256: None,
+            },
         );
         m.releases.insert(
             "photocraft".into(),
