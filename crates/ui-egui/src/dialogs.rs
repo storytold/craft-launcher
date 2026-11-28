@@ -31,7 +31,7 @@ impl LauncherUi {
         // uninstall prompt would open as tall as Settings and never shrink (#88).
         // The large dialogs run their header to the card's edges; the small prompts keep a margin.
         let large = matches!(dialog, Dialog::Settings | Dialog::Notes(_));
-        let modal = egui::Modal::new(egui::Id::unique("dialog").with(dialog.key())).frame(if large {
+        let modal = crate::sheet::modal(egui::Id::unique("dialog").with(dialog.key())).frame(if large {
             crate::sheet::frame(&t)
         } else {
             egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(theme::PAD as i8)
@@ -75,7 +75,7 @@ impl LauncherUi {
         let now = self.backend.now();
         let Some(alert) = self.alerts.iter().find(|a| a.current(now) && !self.settings.dismissed_notices.contains(&a.id)).cloned() else { return };
         let t = Tokens::get(ctx);
-        let modal = egui::Modal::new(egui::Id::unique("feed_alert").with(&alert.id)).frame(
+        let modal = crate::sheet::modal(egui::Id::unique("feed_alert").with(&alert.id)).frame(
             egui::Frame::new().fill(t.bg).stroke(egui::Stroke::new(1.0, t.line_strong)).shadow(theme::shadow(&t)).inner_margin(theme::PAD as i8),
         );
         let mut ok = false;

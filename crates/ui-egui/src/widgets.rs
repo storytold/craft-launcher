@@ -266,8 +266,7 @@ enum WindowButton {
 /// Minimize, maximize (or restore) and close, `height` tall, for a right-to-left layout: close
 /// ends up at the right. Under a dialog egui ignores the header, so there they are drawn in a
 /// layer above the dialog's backdrop, as a system title bar is: the first click on Close closes
-/// the window, not the dialog (#853). The details drawer and the lightbox still cover them, since
-/// their own controls and the apps' menus can sit in that corner.
+/// the window, not the dialog (#853). The details drawer and lightbox start below the header.
 pub(crate) fn window_buttons_width() -> f32 {
     3.0 * CAPTION_W + 1.0
 }

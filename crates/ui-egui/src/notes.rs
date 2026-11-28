@@ -37,8 +37,11 @@ pub(crate) fn classify(line: &str) -> Line<'_> {
 /// How many changes show before the rest folds away.
 const SHOWN: usize = 6;
 
-pub(crate) fn show(ui: &mut Ui, notes: &str) {
-    show_scaled(ui, notes, 1.0);
+pub(crate) fn show_in_details(ui: &mut Ui, notes: &str) {
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = 4.0;
+        show_lines(ui, notes, 1.0, true);
+    });
 }
 
 /// The notes at `scale` times their usual size (the notes dialog's own zoom).
@@ -47,19 +50,23 @@ pub(crate) fn show_scaled(ui: &mut Ui, notes: &str, scale: f32) {
         for font in ui.style_mut().text_styles.values_mut() {
             font.size *= scale;
         }
-        show_lines(ui, notes, scale);
+        show_lines(ui, notes, scale, false);
     });
 }
 
 /// The notes, short: the first few changes in full, the rest behind "Show N more changes", and the
 /// link to the full changelog always in view.
-fn show_lines(ui: &mut Ui, notes: &str, scale: f32) {
+fn show_lines(ui: &mut Ui, notes: &str, scale: f32, has_section_heading: bool) {
     let t = Tokens::get(ui.ctx());
     if notes.trim().is_empty() {
         ui.label(RichText::new(tl!("No notes were published with this release.")).color(t.muted));
         return;
     }
-    let (changelog, lines): (Vec<Line<'_>>, Vec<Line<'_>>) = notes.lines().map(classify).partition(|l| full_changelog(l).is_some());
+    let (changelog, mut lines): (Vec<Line<'_>>, Vec<Line<'_>>) =
+        notes.lines().map(classify).filter(|line| *line != Line::Blank).partition(|l| full_changelog(l).is_some());
+    if has_section_heading && matches!(lines.first(), Some(Line::Heading(title)) if title.eq_ignore_ascii_case("What's Changed")) {
+        lines.remove(0);
+    }
     let bullets = lines.iter().filter(|l| matches!(l, Line::Bullet(..))).count();
     let (head, rest) = lines.split_at(fold_at(&lines).unwrap_or(lines.len()));
     for line in head {
@@ -118,9 +125,7 @@ fn draw(ui: &mut Ui, line: &Line<'_>, t: &Tokens, scale: f32) {
         Line::Text(text) => {
             ui.label(RichText::new(*text).color(t.muted));
         }
-        Line::Blank => {
-            ui.add_space(2.0);
-        }
+        Line::Blank => {}
     }
 }
 

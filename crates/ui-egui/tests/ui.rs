@@ -3479,21 +3479,26 @@ fn the_lifted_caption_buttons_leave_tab_and_the_backdrop_to_the_dialog() {
     assert!(h.query_by_label("Done").is_none(), "a click left of Minimize dismisses the dialog");
 }
 
-/// The details drawer covers the header, and the window's Close stays under it.
+/// The details drawer stays below the caption buttons, including while the page is open.
 #[test]
-fn the_details_drawer_keeps_the_caption_buttons_under_it() {
+fn the_details_drawer_keeps_the_caption_buttons_accessible() {
     let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
     h.run_steps(8);
-    let close = h.get_by_label("Close").rect().center();
     h.get_by_label("PhotoCraft details").click();
     h.run_steps(10);
-    let asked = click_at(&mut h, close);
-    assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
+    for (label, command) in [
+        ("Minimize", egui::ViewportCommand::Minimized(true)),
+        ("Maximize", egui::ViewportCommand::Maximized(true)),
+        ("Close", egui::ViewportCommand::Close),
+    ] {
+        let spot = h.get_by_label(label).rect().center();
+        let asked = click_at(&mut h, spot);
+        assert!(asked.contains(&command), "{label} did not reach the launcher window: {asked:?}");
+        h.get_by_label("Enlarge picture");
+    }
 }
 
-/// The enlarged picture's own Close sits under the custom title bar's Close. With no dialog open
-/// the caption buttons stay in the header, under the picture, so that click closes the picture
-/// and not the window.
+/// The picture has its own close button below the window's Close.
 #[test]
 fn the_enlarged_pictures_close_closes_the_picture_not_the_window() {
     let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
@@ -3502,14 +3507,42 @@ fn the_enlarged_pictures_close_closes_the_picture_not_the_window() {
     h.run_steps(10);
     h.get_by_label("Enlarge picture").click();
     h.run_steps(4);
-    // The drawer's Close is lower down; the picture's is at the top right, under the title bar.
     let picture = h.query_all_by_label("Close (Esc)").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).unwrap();
-    let spot = picture.intersect(h.get_by_label("Close").rect());
-    assert!(spot.is_positive(), "the two buttons don't overlap: {picture:?}");
-    let asked = click_at(&mut h, spot.center());
+    let window = h.get_by_label("Close").rect();
+    assert!(picture.top() >= window.bottom(), "the picture's close overlaps the caption: {picture:?}");
+    let asked = click_at(&mut h, window.center());
+    assert!(asked.contains(&egui::ViewportCommand::Close), "the title bar did not receive Close: {asked:?}");
+    let asked = click_at(&mut h, picture.center());
     assert!(!asked.contains(&egui::ViewportCommand::Close), "the click reached the window's Close: {asked:?}");
     h.run_steps(4);
     assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1, "the enlarged picture is still open");
+    assert!(h.query_by_label("Enlarge picture").is_some(), "the drawer remains open after closing the enlarged picture");
+}
+
+#[test]
+fn settings_opens_over_the_drawer_and_receives_input_after_enlarging_a_picture() {
+    use egui::accesskit::Role;
+
+    let (mut h, _) = harness_with_title_bar(events(), ViewMode::Grid, egui::Theme::Dark, true, 1.0, artcraft_launcher_ui_egui::TitleBar::Custom);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    h.get_by_label("Enlarge picture").click();
+    h.run_steps(4);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 2, "the enlarged picture is open");
+
+    let settings = h.get_by_label("Settings").rect().center();
+    click_at(&mut h, settings);
+    assert_eq!(h.query_all_by_label("Close (Esc)").count(), 1, "the enlarged picture closes when Settings opens");
+    h.key_press(egui::Key::Tab);
+    h.run_steps(2);
+    let language = h.get_by_role_and_label(Role::ComboBox, "Language");
+    assert!(language.accesskit_node().is_focused(), "Tab focuses the Language control inside Settings");
+
+    let done = h.get_by_label("Done").rect().center();
+    click_at(&mut h, done);
+    assert!(h.query_by_label("Done").is_none(), "the mouse can activate a control inside Settings");
+    h.get_by_label("Enlarge picture");
 }
 
 /// Maximized, the window's top-right pixel is the screen's corner: there is no resize band there,
@@ -3726,6 +3759,8 @@ fn clicking_a_card_opens_its_details_drawer() {
     h.get_by_label("Website ↗");
     h.get_by_label("GitHub ↗");
     h.get_by_label("Releases ↗");
+    assert_eq!(h.query_all_by_label("What's Changed").count(), 1, "the release heading is shown once");
+    h.get_by_role_and_label(egui::accesskit::Role::Image, "Windows");
     // The picture arrows wrap around, and the thumbnails jump.
     h.get_by_label("Previous picture (←)").click();
     h.run_steps(3);
@@ -3748,6 +3783,60 @@ fn details_drawer_in_the_light_theme() {
     h.run_steps(10);
     snapshot(&mut h, "details-light");
     h.get_all_by_label_contains("The image editor you already know how to use").last().unwrap();
+}
+
+#[test]
+fn the_details_header_and_scrollbar_stay_inside_the_drawer_after_resize() {
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+
+    for width in [1180.0, 720.0, 1000.0] {
+        h.set_size(egui::vec2(width, 650.0));
+        h.run_steps(12);
+        let close = h.get_by_label("Close (Esc)").rect();
+        let frame = h
+            .output()
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) if !shape.stroke.is_empty() && shape.rect.contains_rect(close) && shape.rect.height() > 400.0 => {
+                    Some(shape.rect)
+                }
+                _ => None,
+            })
+            .expect("the drawer has a frame");
+        let photo = artcraft_launcher_core::CraftApp::by_id("photocraft").unwrap();
+        let accent = artcraft_launcher_ui_egui::theme::rgb(photo.color);
+        let stripe = h
+            .output()
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) if shape.fill == accent && shape.rect.height() <= 2.0 && shape.rect.top() >= frame.top() => {
+                    Some(shape.rect.intersect(clipped.clip_rect))
+                }
+                _ => None,
+            })
+            .expect("the drawer has an accent stripe");
+        assert!(frame.contains_rect(stripe), "the stripe crosses the drawer frame at width {width}: {stripe:?} vs {frame:?}");
+        let scrollbar = h
+            .query_all_by_role(egui::accesskit::Role::ScrollBar)
+            .map(|node| node.rect())
+            .filter(|rect| rect.left() > close.right())
+            .min_by(|a, b| a.top().total_cmp(&b.top()))
+            .expect("the details pane has a visible scrollbar");
+        assert!(frame.contains_rect(scrollbar), "the scrollbar crosses the drawer frame at width {width}: {scrollbar:?} vs {frame:?}");
+        assert!(
+            h.output().shapes.iter().any(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) => shape.rect.intersect(clipped.clip_rect) == scrollbar && shape.fill != egui::Color32::TRANSPARENT,
+                _ => false,
+            }),
+            "the scrollbar track is painted at width {width}"
+        );
+    }
+    h.check_accessibility();
+    snapshot(&mut h, "details-bounded-dark");
 }
 
 fn fetches(sent: &Rc<RefCell<Vec<Command>>>, app: &str) -> usize {
@@ -3867,6 +3956,87 @@ fn a_page_without_pictures_has_no_gallery() {
     h.get_by_label_contains("Search as you type");
     assert!(h.query_by_label("Enlarge picture").is_none());
     assert!(h.query_by_label("Next picture (→)").is_none());
+}
+
+#[test]
+fn release_fact_cards_align_and_platform_names_appear_above_icons() {
+    use egui::{Shape, accesskit::Role};
+
+    let (mut h, _) = harness(ViewMode::Grid, egui::Theme::Dark, true);
+    h.run_steps(8);
+    h.get_by_label("PdfCraft details").scroll_to_me();
+    h.run_steps(3);
+    h.get_by_label("PdfCraft details").click();
+    h.run_steps(10);
+
+    let card_for = |label| {
+        let label = h.get_by_label(label).rect();
+        h.output()
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                Shape::Rect(shape) if !shape.stroke.is_empty() && shape.rect.contains_rect(label) => Some(shape.rect),
+                _ => None,
+            })
+            .min_by(|a, b| a.area().total_cmp(&b.area()))
+            .expect("the fact has an outline")
+    };
+    let download = card_for("Download");
+    let platforms = card_for("Platforms");
+    assert!(!download.intersects(platforms), "each fact has its own card");
+    assert!((download.width() - platforms.width()).abs() < 1.0, "the two cards use equal column widths");
+    assert!((download.bottom() - platforms.bottom()).abs() < 1.0, "the two cards align at the bottom");
+
+    let icon = h.get_by_role_and_label(Role::Image, "Windows").rect();
+    h.hover_at(icon.center());
+    h.run_steps(40);
+    let tooltip = h.get_by_role_and_label(Role::Label, "Windows").rect();
+    assert!(tooltip.bottom() < icon.top(), "the platform name appears above the icon");
+    h.check_accessibility();
+    snapshot(&mut h, "release-platform-tooltip-dark");
+}
+
+#[test]
+fn release_fact_cards_fill_the_row_even_without_a_release_date() {
+    let mut events = events();
+    for event in &mut events {
+        if let Event::Latest { app, latest: LatestRelease::Found(release), .. } = event
+            && app == "photocraft"
+        {
+            release.published_at = None;
+        }
+    }
+    let (mut h, _) = harness_with(events, ViewMode::Grid, egui::Theme::Dark, true, 1.0);
+    h.run_steps(8);
+    h.get_by_label("PhotoCraft details").click();
+    h.run_steps(10);
+    h.get_by_label("Latest release").scroll_to_me();
+    h.run_steps(5);
+    h.check_accessibility();
+    snapshot(&mut h, "release-without-date");
+
+    assert!(h.query_by_label("Released").is_none());
+    let card_for = |label| {
+        let label = h.get_by_label(label).rect();
+        h.output()
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) if !shape.stroke.is_empty() && shape.rect.contains_rect(label) => Some(shape.rect),
+                _ => None,
+            })
+            .min_by(|a, b| a.area().total_cmp(&b.area()))
+            .expect("the fact has an outline")
+    };
+    let [version, download, platforms] = ["Version", "Download", "Platforms"].map(card_for);
+    assert!(version.right() < download.left() && download.right() < platforms.left());
+    for card in [version, download] {
+        assert!((card.width() - platforms.width()).abs() < 1.0);
+        assert!((card.bottom() - platforms.bottom()).abs() < 1.0);
+    }
+    let download_gap = download.left() - version.right();
+    let last_feature = card_for("Serious color");
+    assert!((platforms.right() - last_feature.right()).abs() < download_gap, "the release facts should fill the drawer width");
 }
 
 #[test]

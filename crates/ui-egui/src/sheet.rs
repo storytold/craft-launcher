@@ -11,9 +11,21 @@ use egui::{Color32, Context, CornerRadius, Frame, ImageSource, Margin, Ui, Vec2,
 use crate::theme::{self, Tokens, tint};
 use crate::widgets;
 
+/// The launcher header stays available while a sheet or picture is open.
+pub(crate) fn content_rect(ctx: &Context) -> egui::Rect {
+    let mut rect = ctx.content_rect();
+    rect.min.y = (rect.min.y + crate::views::HEADER_H).min(rect.max.y);
+    rect
+}
+
+/// Center modal content below the header, using egui's modal backdrop and focus behavior.
+pub(crate) fn modal(id: egui::Id) -> egui::Modal {
+    egui::Modal::new(id).area(egui::Modal::default_area(id).anchor(egui::Align2::CENTER_CENTER, vec2(0.0, crate::views::HEADER_H / 2.0)))
+}
+
 /// The size of a large dialog: the window less a margin all round, no larger than `max`.
 pub(crate) fn size(ctx: &Context, max: Vec2) -> Vec2 {
-    let screen = ctx.content_rect();
+    let screen = content_rect(ctx);
     vec2((screen.width() - 64.0).clamp(1.0, max.x), (screen.height() - 48.0).clamp(1.0, max.y))
 }
 
